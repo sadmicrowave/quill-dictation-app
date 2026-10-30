@@ -189,6 +189,22 @@ A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a pa
 - **Play sample** plays only the selected sound set's chime (or says only the selected word); choosing a sound set or word also plays it once.
 - **Collapsing the log** shrinks the window to fit (the empty footer is hidden too) and reopening restores the earlier height.
 
+### Settings window
+
+A sidebar of groups (**General**, **Appearance**, **Sounds**, **Keywords**) with a **search box** at the top, and rows of *name, muted help text, control*, in the style of Claude's own settings. Search filters the rows of every group (it matches names, help text and extra keywords, and a keyword phrase finds the Keywords page) and hides groups with no match. Controls: toggle switches, a three-icon **Theme** selector (Auto / Light / Dark), plain-text drop-downs with a chevron (no box), sliders with a live percentage, and the keyword table on its own page, which takes all the spare height. Built from `ui/settings_widgets.py` (`SettingRow`, `ToggleSwitch`, `SegmentedControl`, `FlatCombo`) and `ui/settings_dialog.py`. The Settings window itself always stays solid, so it can be read even when the main window is made very transparent.
+
+- **Window opacity**: 10 to 100 % (0 would make the window vanish with its own Settings button inside it).
+- **Window blur**: 0 to 100 %. 0 is off; higher makes the window background more see-through and the blur behind it stronger (macOS: the `NSVisualEffectView`'s alpha; Windows 11: acrylic on/off, since the backdrop strength cannot be set).
+- **Current row** can be collapsed like the log (arrow beside the heading; remembered). The window gives back the height of whatever you collapse and takes it again when you reopen it.
+
+### Sounds
+
+The five sets now differ in instrument *and* melody, not just pitch: **Chime** (bells, rising fifth), **Marimba** (wooden mallet knocks, a roll for sorting, one low knock to dismiss), **Glass** (high long-ringing pings, an octave pair, a falling cascade), **Digital** (8-bit square waves: a fast arpeggio, a siren, a pitch dive, a buzz), **Walkie-talkie** (radio beeps in a puff of static). A test checks that every pair of sets differs for every cue.
+
+### App icon ideas
+
+`tools/make_icon_ideas.py` draws ten concepts into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
+
 ## The window, the tray icon and settings
 
 - **Main window**: status light, Start/Stop, Settings, workbook picker and Refresh, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).

@@ -52,9 +52,20 @@ DENSITIES = {
                         header="10px", cell="7px", radius=14, margin=20, gap=12),
 }
 
-#: With blur on, the window background is see-through so the blur shows; cards stay more solid.
-GLASS_WINDOW_ALPHA = 0.72
-GLASS_SURFACE_ALPHA = 0.86
+#: At full blur strength the window background is this opaque (so the blur shows through)
+#: and cards are this opaque; at 0 both are fully solid, and strengths in between blend.
+GLASS_WINDOW_ALPHA = 0.60
+GLASS_SURFACE_ALPHA = 0.80
+
+
+def window_alpha(strength: float) -> float:
+    """Window background opacity for a blur *strength* of 0 to 1."""
+    return 1.0 - (1.0 - GLASS_WINDOW_ALPHA) * max(0.0, min(1.0, strength))
+
+
+def surface_alpha(strength: float) -> float:
+    """Card / field opacity for a blur *strength* of 0 to 1."""
+    return 1.0 - (1.0 - GLASS_SURFACE_ALPHA) * max(0.0, min(1.0, strength))
 
 DEFAULT_ACCENT = "terracotta"
 DEFAULT_FONT_SIZE = 12
@@ -76,7 +87,7 @@ def rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {round(max(0.0, min(1.0, alpha)) * 255)})"
 
 
-def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, glass: bool = False) -> QPalette:
+def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, glass: float = 0.0) -> QPalette:
     """A palette built from the tokens (so native-drawn bits match the style sheet)."""
     t = colors_for(dark, accent)
     palette = QPalette()
@@ -91,7 +102,7 @@ def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, glass: bool = False) -
     ):
         palette.setColor(role, QColor(t[key]))
     window = QColor(t["bg"])
-    window.setAlphaF(GLASS_WINDOW_ALPHA if glass else 1.0)
+    window.setAlphaF(window_alpha(glass))
     palette.setColor(QPalette.ColorRole.Window, window)
     for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
         palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(t["disabled"]))
@@ -129,13 +140,13 @@ _ICON_CACHE: dict[tuple[str, str, str], dict[str, str]] = {}
 
 
 def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING,
-                   font_size: int = DEFAULT_FONT_SIZE, glass: bool = False) -> str:
+                   font_size: int = DEFAULT_FONT_SIZE, glass: float = 0.0) -> str:
     """The style sheet: rounded controls, hairline borders, an accent for the main action."""
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     icon = _chevrons(t)
-    win = rgba(t["bg"], GLASS_WINDOW_ALPHA if glass else 1.0)           # the see-through part
-    surf = rgba(t["surface"], GLASS_SURFACE_ALPHA if glass else 1.0)    # cards and fields: more solid
+    win = rgba(t["bg"], window_alpha(glass))             # the see-through part
+    surf = rgba(t["surface"], surface_alpha(glass))      # cards and fields: more solid
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: {win}; }}
@@ -213,13 +224,32 @@ QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_acce
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
 QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}
-QSlider::handle:horizontal {{ width: 16px; height: 16px; margin: -6px 0; border-radius: 8px;
+QSlider::handle:horizontal {{ width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;
               background: {t['accent']}; border: 2px solid {t['surface']}; }}
 QLabel#termPrompt {{ font-size: {font_size + 3}pt; font-weight: 500; }}
 QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2px 0;
               font-size: {font_size}pt;
               color: {t['muted']}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
+QWidget#settingsSidebar {{ border-right: 1px solid {t['border']}; }}
+QListWidget#settingsNav {{ background: transparent; border: none; outline: none; padding: 0; }}
+QListWidget#settingsNav::item {{ padding: 8px 12px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}
+QListWidget#settingsNav::item:hover {{ background: {rgba(t['text'], 0.06)}; }}
+QListWidget#settingsNav::item:selected {{ background: {rgba(t['text'], 0.10)}; color: {t['text']}; }}
+QListWidget#settingsNav::item:disabled {{ color: {t['muted']}; padding: 14px 12px 4px 12px; background: transparent; }}
+QScrollArea#settingsPage, QWidget#settingsPageBody {{ background: transparent; }}
+QWidget#settingsFooter {{ border-top: 1px solid {t['border']}; }}
+QFrame#settingsDivider {{ background: {t['border']}; border: none; }}
+QLabel#pageTitle {{ font-size: {font_size + 3}pt; padding-bottom: 4px; }}
+QLabel[muted="true"] {{ color: {t['muted']}; }}
+QComboBox[flat="true"] {{ background: transparent; border: none; border-radius: 8px;
+              padding: 6px 34px 6px 12px; }}
+QComboBox[flat="true"]:hover {{ background: {rgba(t['text'], 0.06)}; }}
+QComboBox[flat="true"]:disabled {{ background: transparent; color: {t['disabled']}; }}
+QWidget#segmented {{ background: {rgba(t['text'], 0.06)}; border-radius: 10px; }}
+QToolButton[segment="true"] {{ border: none; border-radius: 8px; padding: 6px 10px; background: transparent; }}
+QToolButton[segment="true"]:hover {{ background: {rgba(t['text'], 0.06)}; }}
+QToolButton[segment="true"]:checked {{ background: {t['surface']}; border: 1px solid {t['border']}; }}
 QCheckBox {{ spacing: 10px; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid {t['muted']};
               background: {surf}; }}
@@ -243,7 +273,7 @@ def _restyle(app: QApplication) -> None:
     accent = str(app.property("quillAccent") or DEFAULT_ACCENT)
     spacing = str(app.property("quillSpacing") or DEFAULT_SPACING)
     size = int(app.property("quillFontSize") or DEFAULT_FONT_SIZE)
-    glass = bool(app.property("quillGlass"))
+    glass = int(app.property("quillGlass") or 0) / 100
     key = f"{dark}/{accent}/{spacing}/{size}/{glass}"
     if app.property("quillThemeKey") == key:
         return                      # unchanged: re-polishing every widget is slow
@@ -257,7 +287,7 @@ def _restyle(app: QApplication) -> None:
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
                 spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE,
-                blur: bool = False) -> None:
+                blur: int = 0) -> None:
     """Set the colour scheme, accent and spacing, and apply Quill's look.
 
     Args:
@@ -268,8 +298,8 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
         spacing: ``"compact"`` or ``"comfortable"``. Layout margins and gaps
             are applied separately by :func:`apply_spacing`.
         font_size: Base text size in points (the Needs-sorting questions are 3 larger).
-        blur: True for the "glass" look: a see-through window background (so a blur
-            behind the window shows) with cards that stay more solid. Needs windows
+        blur: Blur strength 0 to 100. Above 0 the window background turns see-through
+            (so a blur behind the window shows) and cards stay more solid. Needs windows
             created with ``WA_TranslucentBackground`` (Quill's are).
     """
     if not app.property("quillFusion"):      # once: re-setting the style re-polishes everything
@@ -280,7 +310,7 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
     app.setProperty("quillAccent", accent if accent in ACCENTS else DEFAULT_ACCENT)
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
     app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
-    app.setProperty("quillGlass", bool(blur))
+    app.setProperty("quillGlass", max(0, min(100, int(blur))))
     _restyle(app)
     if not app.property("quillThemeHooked"):
         app.styleHints().colorSchemeChanged.connect(lambda *_: _restyle(app))

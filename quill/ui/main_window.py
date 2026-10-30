@@ -45,6 +45,7 @@ class MainWindow:
         on_sorting: Called when the user opens the Needs-sorting list.
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
         on_log_toggled: Called with True/False when the user collapses/expands the log.
+        on_row_toggled: Same, for the Current row section.
         log_collapsed: Start with the log collapsed.
     """
 
@@ -59,6 +60,8 @@ class MainWindow:
         on_undo: Callable[[], None] | None = None,
         on_log_toggled: Callable[[bool], None] | None = None,
         log_collapsed: bool = False,
+        on_row_toggled: Callable[[bool], None] | None = None,
+        row_collapsed: bool = False,
     ) -> None:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
@@ -69,10 +72,13 @@ class MainWindow:
         self._on_undo = on_undo or (lambda: None)
         self._on_log_toggled = on_log_toggled or (lambda collapsed: None)
         self._log_collapsed = log_collapsed
+        self._on_row_toggled = on_row_toggled or (lambda collapsed: None)
+        self._row_collapsed = row_collapsed
+        self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
+        self._freed: dict[str, int] = {}     # window height each collapsed section gave back
         self._window: QMainWindow | None = None
         self._listening = False
         self._on_accent = "#FFFFFF"
-        self._open_height = 520            # window height to return to when the log reopens
 
     # ------------------------------------------------------------------ #
     # Construction                                                         #
@@ -123,7 +129,8 @@ class MainWindow:
         layout.addWidget(self.sheet_label)
 
         # --- current row
-        layout.addWidget(self._heading("Current row"))
+        self.row_toggle = self._section_toggle("row", "Show or hide the row being built")
+        layout.addWidget(self.row_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         self.row_table = QTableWidget(0, 2)
         self.row_table.horizontalHeader().setVisible(False)
         self.row_table.verticalHeader().setVisible(False)
@@ -160,11 +167,7 @@ class MainWindow:
         layout.addWidget(self.undo_button)
 
         # --- log
-        self.log_toggle = QToolButton()
-        self.log_toggle.setProperty("heading", True)
-        self.log_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.log_toggle.setToolTip("Show or hide the log")
-        self.log_toggle.clicked.connect(lambda: self.set_log_collapsed(not self._log_collapsed, notify=True))
+        self.log_toggle = self._section_toggle("log", "Show or hide the log")
         layout.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -185,7 +188,8 @@ class MainWindow:
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)   # lets opacity < 100 show through
         self._window = window
         self.refresh_icons()
-        self.set_log_collapsed(self._log_collapsed)
+        self._set_collapsed("row", self._row_collapsed)
+        self._set_collapsed("log", self._log_collapsed)
         self.set_listening_indicator(False)
 
     @staticmethod
@@ -204,22 +208,59 @@ class MainWindow:
 
     def set_log_collapsed(self, collapsed: bool, notify: bool = False) -> None:
         """Hide or show the log; the heading's arrow points down when collapsed, up when open."""
-        was_collapsed = self._log_collapsed
+        self._set_collapsed("log", collapsed, notify)
+
+    @property
+    def row_collapsed(self) -> bool:
+        return self._row_collapsed
+
+    def set_row_collapsed(self, collapsed: bool, notify: bool = False) -> None:
+        """Hide or show the Current row table, like the log."""
+        self._set_collapsed("row", collapsed, notify)
+
+    def _section_toggle(self, name: str, tip: str) -> QToolButton:
+        button = QToolButton()
+        button.setProperty("heading", True)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip(tip)
+        button.clicked.connect(lambda: self._set_collapsed(name, not self._collapsed(name), notify=True))
+        return button
+
+    def _collapsed(self, name: str) -> bool:
+        return self._log_collapsed if name == "log" else self._row_collapsed
+
+    def _set_collapsed(self, name: str, collapsed: bool, notify: bool = False) -> None:
+        """Collapse or expand a section, and resize the window so no blank gap is left.
+
+        The window gives back the height the section used when it collapses and
+        takes the same height again when it reopens.
+        """
+        body, toggle, title = ((self.log, self.log_toggle, "Log") if name == "log"
+                               else (self.row_table, self.row_toggle, "Current row"))
+        was = self._applied.get(name, False)      # what is on screen now (not the saved preference)
         window = self._window
-        if collapsed and not was_collapsed and window is not None and window.isVisible():
-            self._open_height = window.height()      # to restore when the log is shown again
-        self._log_collapsed = collapsed
-        self.log.setVisible(not collapsed)
+        shown = window is not None and window.isVisible()
+        height = window.height() if window is not None else 0
+        spacing = window.centralWidget().layout().spacing() if window is not None else 0
+        used = body.height() + max(spacing, 0)
+        if name == "log":
+            self._log_collapsed = collapsed
+        else:
+            self._row_collapsed = collapsed
+        self._applied[name] = collapsed
+        body.setVisible(not collapsed)
         if window is not None:
             window.centralWidget().layout().activate()
-            if collapsed:                             # no empty gap where the log was
-                window.resize(window.width(), window.sizeHint().height())
-            elif was_collapsed:
-                window.resize(window.width(), max(self._open_height, window.sizeHint().height()))
-        self.log_toggle.setText(f"Log  {'▾' if collapsed else '▴'}")
-        self.log_toggle.setToolTip("Show the log" if collapsed else "Hide the log")
+            if collapsed and not was:
+                target = max(window.sizeHint().height(), height - used) if shown else window.sizeHint().height()
+                window.resize(window.width(), target)
+                self._freed[name] = max(height - window.height(), 0) if shown else 0   # what it really gave back
+            elif was and not collapsed:
+                window.resize(window.width(), max(height + self._freed.pop(name, 0), window.sizeHint().height()))
+        toggle.setText(f"{title}  {'▾' if collapsed else '▴'}")
+        toggle.setToolTip(f"Show the {title.lower()}" if collapsed else f"Hide the {title.lower()}")
         if notify:
-            self._on_log_toggled(collapsed)
+            (self._on_log_toggled if name == "log" else self._on_row_toggled)(collapsed)
 
     # ------------------------------------------------------------------ #
     # Window                                                               #

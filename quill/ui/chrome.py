@@ -40,7 +40,7 @@ def colorref(hex_color: str) -> int:
 
 
 def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | None = None,
-                 opacity: int = 100, blur: bool = False) -> str | None:
+                 opacity: int = 100, blur: int = 0) -> str | None:
     """Tint *widget*'s native title bar to match the theme.
 
     Args:
@@ -48,7 +48,7 @@ def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | Non
         dark: Whether the dark theme is active.
         colors: The theme colours (``bg``, ``text``, ``border``).
         opacity: Window opacity in percent (macOS: lets the window be see-through).
-        blur: Blur what is behind the window (macOS vibrancy, Windows 11 acrylic).
+        blur: Blur strength 0 to 100 (macOS vibrancy, Windows 11 acrylic; 0 = off).
         platform: Override ``sys.platform`` (tests).
 
     Returns:
@@ -79,7 +79,7 @@ def _native_platform(platform: str) -> bool:
 
 
 def windows_chrome(hwnd: int, dark: bool, colors: dict[str, str],
-                   set_attribute: DwmSetter | None = None, blur: bool = False,
+                   set_attribute: DwmSetter | None = None, blur: int = 0,
                    extend_frame: Callable[[int], None] | None = None) -> bool:
     """Apply the Windows 11 title bar look (and acrylic blur) through DWM.
 
@@ -96,8 +96,8 @@ def windows_chrome(hwnd: int, dark: bool, colors: dict[str, str],
                            (DWMWA_BORDER_COLOR, "border")):
         _quietly(set_attribute, hwnd, attribute, colorref(colors[key]))   # Windows 11 only
     _quietly(set_attribute, hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND)
-    _quietly(set_attribute, hwnd, DWMWA_SYSTEMBACKDROP_TYPE, BACKDROP_ACRYLIC if blur else BACKDROP_NONE)
-    if blur:                          # the backdrop shows only where the frame is extended into the window
+    _quietly(set_attribute, hwnd, DWMWA_SYSTEMBACKDROP_TYPE, BACKDROP_ACRYLIC if blur > 0 else BACKDROP_NONE)
+    if blur > 0:                          # the backdrop shows only where the frame is extended into the window
         _quietly(extend_frame or _extend_frame, hwnd)
     return True
 
@@ -145,7 +145,7 @@ _NS_VIEW_SIZABLE = 2 | 16                  # width and height
 
 
 def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, opacity: int = 100,
-               blur: bool = False) -> bool:
+               blur: int = 0) -> bool:
     """Make the title bar transparent and match the appearance; True if applied.
 
     Args:
@@ -166,30 +166,31 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
         return False
     r, g, b = (int(colors["bg"][i:i + 2], 16) / 255 for i in (1, 3, 5))
     window.setTitlebarAppearsTransparent_(True)
-    see_through = blur or opacity < 100
-    window.setOpaque_(not see_through)      # a see-through window must not be marked opaque
-    # With blur the window colour is a light tint over the blur; otherwise it is solid
-    # (window-wide opacity is applied with setWindowOpacity, not here).
-    alpha = 0.72 if blur else 1.0
+    strength = max(0, min(100, blur)) / 100
+    window.setOpaque_(not (strength > 0 or opacity < 100))   # a see-through window must not be marked opaque
+    # With blur the window colour is a tint over the blur, lighter the stronger it is; otherwise
+    # solid (window-wide opacity is applied with setWindowOpacity, not here).
+    alpha = 1.0 - 0.40 * strength
     window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
-    _set_blur(view, appkit, blur)
+    _set_blur(view, appkit, strength)
     window.invalidateShadow()               # the shadow follows the visible shape
     return True
 
 
-def _set_blur(view, appkit, on: bool) -> None:
-    """Add (or remove) a vibrancy view behind Qt's content view."""
+def _set_blur(view, appkit, strength: float) -> None:
+    """Add, fade or remove a vibrancy view behind Qt's content view (*strength* 0 to 1)."""
     holder = view.superview()
     if holder is None:
         return
     existing = [v for v in holder.subviews() if v.identifier() == BLUR_ID]
-    if not on:
+    if strength <= 0:
         for v in existing:
             v.removeFromSuperview()
         return
     if existing:
+        existing[0].setAlphaValue_(strength)
         return
     effect = appkit.NSVisualEffectView.alloc().initWithFrame_(view.frame())
     effect.setIdentifier_(BLUR_ID)
@@ -197,4 +198,5 @@ def _set_blur(view, appkit, on: bool) -> None:
     effect.setBlendingMode_(_BEHIND_WINDOW)
     effect.setState_(_STATE_ACTIVE)
     effect.setAutoresizingMask_(_NS_VIEW_SIZABLE)
+    effect.setAlphaValue_(strength)          # fades the blur in: 0 = none, 1 = full
     holder.addSubview_positioned_relativeTo_(effect, _NS_WINDOW_BELOW, view)

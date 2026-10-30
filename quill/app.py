@@ -87,6 +87,7 @@ class QuillApp:
             on_download_model=self.download_model, on_sorting=self.show_sorting,
             on_undo=self.undo, on_log_toggled=self._log_toggled,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
+            on_row_toggled=self._row_toggled, row_collapsed=bool(settings.preferences["row_collapsed"]),
         )
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
                                      on_voice=self.toggle_voice_sorting,
@@ -290,6 +291,11 @@ class QuillApp:
         if SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback).exec():
             self.apply_settings()
 
+    def _row_toggled(self, collapsed: bool) -> None:
+        """Remember whether the user collapsed the Current row section."""
+        self.settings.preferences["row_collapsed"] = collapsed
+        self.settings.save()
+
     def _log_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the log."""
         self.settings.preferences["log_collapsed"] = collapsed
@@ -299,13 +305,13 @@ class QuillApp:
         """Apply theme, accent and spacing from the settings to the app and its windows."""
         prefs = self.settings.preferences
         apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]),
-                    int(prefs["font_size"]), bool(prefs["blur"]))
+                    int(prefs["font_size"]), int(prefs["blur"]))
         dark = is_dark(self.qapp)
         colors = colors_for(dark, str(prefs["accent"]))
         for window in (self.window.widget, self.sorting.widget):
             if window is not None:
                 apply_spacing(window, str(prefs["spacing"]))
-                apply_chrome(window, dark, colors, opacity=int(prefs["opacity"]), blur=bool(prefs["blur"]))
+                apply_chrome(window, dark, colors, opacity=int(prefs["opacity"]), blur=int(prefs["blur"]))
                 apply_opacity(window, int(prefs["opacity"]))
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         self.tray.set_badge(self.tray.badge, colors["accent"])

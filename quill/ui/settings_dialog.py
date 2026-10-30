@@ -1,25 +1,38 @@
-"""Keyword editor dialog — editable table of phrase -> action bindings.
+"""The Settings window: a sidebar of groups with a search box, and rows of settings.
 
-Also hosts the appearance and speech preferences. Nothing is saved until the
-user confirms with OK, and a keyword table that fails validation keeps the
-dialog open with the reasons shown.
+Layout (like Claude's own settings):
+
+    [ Search            ]  | Appearance
+    Preferences            |   Theme .............. [ auto | light | dark ]
+      General              |   Accent colour ...... Terracotta  v
+      Appearance           |   ...
+      Sounds               |
+    Voice and commands     |
+      Keywords             |                              [Cancel] [OK]
+
+Each setting is a :class:`SettingRow` (name, muted help text, control). The
+search box filters the rows of every group and hides groups with no match.
+Nothing is saved until the user confirms with OK, and a keyword table that
+fails validation keeps the window open with the reasons shown.
 """
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
-    QHeaderView, QMessageBox, QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSlider,
+    QSpinBox, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from quill.config.settings import (
-    FONT_SIZE_RANGE, HISTORY_LIMIT_RANGE, OPACITY_RANGE, SPACINGS, THEMES,
+    BLUR_RANGE, FONT_SIZE_RANGE, HISTORY_LIMIT_RANGE, OPACITY_RANGE, SPACINGS, THEMES,
 )
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
+from quill.ui.settings_widgets import FlatCombo, SegmentedControl, SettingRow, ToggleSwitch
 from quill.ui.theme import ACCENTS, DENSITIES, apply_opacity, apply_spacing
 
 if TYPE_CHECKING:
@@ -27,6 +40,12 @@ if TYPE_CHECKING:
 
 #: Actions a user can bind a phrase to (NONE is internal).
 BINDABLE_ACTIONS = [a for a in Action if a is not Action.NONE]
+
+#: Sidebar groups: (caption, [page titles]).
+GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
+          ("Voice and commands", ["Keywords"])]
+
+THEME_ICONS = {"auto": "monitor", "light": "sun", "dark": "moon"}
 
 
 def action_label(action: Action) -> str:
@@ -38,7 +57,6 @@ def _swatch(color: str) -> QIcon:
     """A small round colour chip for the accent picker."""
     pixmap = QPixmap(16, 16)
     pixmap.fill(QColor("transparent"))
-    from PySide6.QtGui import QPainter
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setBrush(QColor(color))
@@ -48,12 +66,32 @@ def _swatch(color: str) -> QIcon:
     return QIcon(pixmap)
 
 
+def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel, QWidget]:
+    """A horizontal slider with a live "NN%" label; returns (slider, label, container)."""
+    slider = QSlider(Qt.Orientation.Horizontal)
+    slider.setRange(low, high)
+    slider.setValue(value)
+    slider.setToolTip(tip)
+    slider.setMinimumWidth(180)
+    label = QLabel(f"{value}%")
+    label.setMinimumWidth(40)
+    label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    slider.valueChanged.connect(lambda v: label.setText(f"{v}%"))
+    box = QWidget()
+    row = QHBoxLayout(box)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.addWidget(slider, 1)
+    row.addWidget(label)
+    return slider, label, box
+
+
 class SettingsDialog:
     """Modal editor for keywords and preferences.
 
     Args:
         settings: The Settings object to edit (mutated and saved on OK).
         parent: Optional parent QWidget.
+        on_preview: Called with ``(mode, sound_pack, echo_word)`` to play one sample.
     """
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None) -> None:
@@ -62,17 +100,25 @@ class SettingsDialog:
         self._parent = parent
         self._dialog: QDialog | None = None
         self.table: QTableWidget | None = None
-        self.theme_combo: QComboBox | None = None
-        self.speak_check: QCheckBox | None = None
-        self.auto_sort_check: QCheckBox | None = None
+        self.search: QLineEdit | None = None
+        self.nav: QListWidget | None = None
+        self.pages: QStackedWidget | None = None
+        self.rows: list[SettingRow] = []
+        self._page_rows: dict[str, list[SettingRow]] = {}
+        self._page_index: dict[str, int] = {}
+        self._nav_items: dict[str, QListWidgetItem] = {}
+        self.theme_combo: SegmentedControl | None = None
         self.accent_combo: QComboBox | None = None
         self.spacing_combo: QComboBox | None = None
         self.font_spin: QSpinBox | None = None
         self.opacity_slider: QSlider | None = None
+        self.blur_slider: QSlider | None = None
         self.feedback_combo: QComboBox | None = None
         self.pack_combo: QComboBox | None = None
         self.echo_combo: QComboBox | None = None
         self.history_spin: QSpinBox | None = None
+        self.speak_check: ToggleSwitch | None = None
+        self.auto_sort_check: ToggleSwitch | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -85,28 +131,267 @@ class SettingsDialog:
         from quill.ui.theme import colors_for, is_dark
         app = QApplication.instance()
         if app is not None:
-            apply_chrome(self._dialog, is_dark(app),
-                         colors_for(is_dark(app), str(self._settings.preferences["accent"])),
-                         opacity=int(self._settings.preferences["opacity"]),
-                         blur=bool(self._settings.preferences["blur"]))
-            apply_opacity(self._dialog, int(self._settings.preferences["opacity"]))
+            dark = is_dark(app)
+            apply_chrome(self._dialog, dark, colors_for(dark, str(self._settings.preferences["accent"])),
+                         opacity=100, blur=int(self._settings.preferences["blur"]))
+            apply_opacity(self._dialog, 100)         # Settings stays solid so it can always be read
         return self._dialog.exec() == QDialog.DialogCode.Accepted
 
     def build(self) -> QDialog:
         """Construct the dialog widgets (separate from exec for testing)."""
         dialog = QDialog(self._parent)
         dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)    # paint the themed background
         dialog.setWindowTitle("Quill Settings")
-        dialog.resize(440, 440)
-        layout = QVBoxLayout(dialog)
+        dialog.resize(920, 740)
+        dialog.setMinimumSize(720, 520)
+        outer = QVBoxLayout(dialog)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
+        body = QHBoxLayout()
+        body.setSpacing(0)
+        body.addWidget(self._build_sidebar())
+        self.pages = QStackedWidget()
+        body.addWidget(self.pages, 1)
+        outer.addLayout(body, 1)
+
+        self._build_pages()
+        self._fill_nav()
+
+        footer = QWidget()
+        footer.setObjectName("settingsFooter")
+        foot = QHBoxLayout(footer)
+        foot.setContentsMargins(24, 12, 24, 14)
+        foot.addStretch(1)
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
+        box.accepted.connect(lambda: self.try_accept(dialog))
+        box.rejected.connect(dialog.reject)
+        foot.addWidget(box)
+        outer.addWidget(footer)
+
+        self._dialog = dialog
+        self.nav.setCurrentRow(self._nav_row("General"))
+        return dialog
+
+    # ------------------------------------------------------------------ #
+    # Sidebar and search                                                   #
+    # ------------------------------------------------------------------ #
+
+    def _build_sidebar(self) -> QWidget:
+        side = QWidget()
+        side.setObjectName("settingsSidebar")
+        side.setFixedWidth(236)
+        layout = QVBoxLayout(side)
+        layout.setContentsMargins(14, 16, 14, 12)
+        layout.setSpacing(10)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self.filter)
+        layout.addWidget(self.search)
+        self.empty_label = QLabel("No settings match your search.")
+        self.empty_label.setProperty("muted", True)
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setVisible(False)
+        layout.addWidget(self.empty_label)
+        self.nav = QListWidget()
+        self.nav.setObjectName("settingsNav")
+        self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.currentRowChanged.connect(self._show_page)
+        layout.addWidget(self.nav, 1)
+        return side
+
+    def _fill_nav(self) -> None:
+        for caption, titles in GROUPS:
+            head = QListWidgetItem(caption)
+            head.setFlags(Qt.ItemFlag.NoItemFlags)           # a caption, not selectable
+            head.setData(Qt.ItemDataRole.UserRole, None)
+            head.setData(Qt.ItemDataRole.AccessibleDescriptionRole, "caption")
+            self.nav.addItem(head)
+            for title in titles:
+                item = QListWidgetItem(title)
+                item.setData(Qt.ItemDataRole.UserRole, title)
+                self.nav.addItem(item)
+                self._nav_items[title] = item
+            self._captions = getattr(self, "_captions", []) + [head]
+
+    def _nav_row(self, title: str) -> int:
+        return self.nav.row(self._nav_items[title])
+
+    def _show_page(self, row: int) -> None:
+        item = self.nav.item(row)
+        title = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if title:
+            self.pages.setCurrentIndex(self._page_index[title])
+
+    def filter(self, text: str) -> int:
+        """Show only settings matching *text* (every word), hiding empty groups.
+
+        Returns:
+            How many settings match. An empty query shows everything.
+        """
+        query = text.strip()
+        total = 0
+        for title, rows in self._page_rows.items():
+            hits = 0
+            for row in rows:
+                visible = not query or row.matches(query)
+                row.setVisible(visible)
+                hits += visible
+            self._nav_items[title].setHidden(bool(query) and hits == 0)
+            total += hits
+        shown = {t for t, item in self._nav_items.items() if not item.isHidden()}
+        for head, (_, titles) in zip(self._captions, GROUPS):
+            head.setHidden(not any(t in shown for t in titles))
+        self.empty_label.setVisible(bool(query) and total == 0)
+        current = self.nav.currentItem()
+        if query and (current is None or current.isHidden()) and shown:
+            first = next(t for _, titles in GROUPS for t in titles if t in shown)
+            self.nav.setCurrentRow(self._nav_row(first))
+        return total
+
+    # ------------------------------------------------------------------ #
+    # Pages                                                                #
+    # ------------------------------------------------------------------ #
+
+    def _page(self, title: str, intro: str = "") -> QVBoxLayout:
+        """Start a page: a scroll area with a title; returns the layout to add rows to."""
+        scroll = QScrollArea()
+        scroll.setObjectName("settingsPage")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        holder = QWidget()
+        holder.setObjectName("settingsPageBody")
+        layout = QVBoxLayout(holder)
+        layout.setContentsMargins(36, 22, 36, 20)
+        layout.setSpacing(0)
+        heading = QLabel(title)
+        heading.setObjectName("pageTitle")
+        layout.addWidget(heading)
+        if intro:
+            note = QLabel(intro)
+            note.setWordWrap(True)
+            note.setProperty("muted", True)
+            layout.addWidget(note)
+        layout.addSpacing(8)
+        scroll.setWidget(holder)
+        self._page_index[title] = self.pages.addWidget(scroll)
+        self._page_rows[title] = []
+        return layout
+
+    def _add(self, page: str, layout: QVBoxLayout, title: str, description: str, control: QWidget,
+             keywords: str = "") -> SettingRow:
+        row = SettingRow(title, description, control, keywords)
+        layout.addWidget(row)
+        self._page_rows[page].append(row)
+        self.rows.append(row)
+        return row
+
+    def _build_pages(self) -> None:
+        prefs = self._settings.preferences
+        # --- General
+        page = self._page("General")
+        self.speak_check = ToggleSwitch()
+        self.speak_check.setChecked(bool(prefs["speak_prompts"]))
+        self._add("General", page, "Read questions aloud",
+                  "Quill speaks its questions, such as “Add it to the list?”.", self.speak_check)
+        self.auto_sort_check = ToggleSwitch()
+        self.auto_sort_check.setChecked(bool(prefs["auto_voice_sort"]))
+        self._add("General", page, "Sort by voice automatically",
+                  "Start answering the Needs-sorting list by voice as soon as terms need sorting.",
+                  self.auto_sort_check, "voice sorting")
+        self.history_spin = QSpinBox()
+        self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
+        self.history_spin.setValue(int(prefs["history_limit"]))
+        self.history_spin.setSuffix(" actions")
+        self.history_spin.setToolTip("How many sorting answers Undo can step back through")
+        self._add("General", page, "Undo remembers",
+                  "How many of your latest sorting answers can be taken back.", self.history_spin, "history")
+        page.addStretch(1)
+
+        # --- Appearance
+        page = self._page("Appearance")
+        self.theme_combo = SegmentedControl()
+        for key in THEMES:
+            self.theme_combo.addItem(THEME_ICONS[key], key.title(), key)
+        self.theme_combo.setCurrentIndex(THEMES.index(prefs["theme"]))
+        self._add("Appearance", page, "Theme", "Follow the system, or always light or dark.",
+                  self.theme_combo, "dark light auto colour scheme")
+        self.accent_combo = FlatCombo()
+        for key, (label, (light, _), _night) in ACCENTS.items():
+            self.accent_combo.addItem(_swatch(light), label, key)
+        self.accent_combo.setCurrentIndex(self.accent_combo.findData(prefs["accent"]))
+        self._add("Appearance", page, "Accent colour", "Used for the main button, badges and highlights.",
+                  self.accent_combo, "color")
+        self.spacing_combo = FlatCombo()
+        for key in SPACINGS:
+            self.spacing_combo.addItem(DENSITIES[key]["label"], key)
+        self.spacing_combo.setCurrentIndex(SPACINGS.index(prefs["spacing"]))
+        self._add("Appearance", page, "Spacing", "Compact packs controls closely; Comfortable gives them room.",
+                  self.spacing_combo, "layout density padding margin")
+        self.font_spin = QSpinBox()
+        self.font_spin.setRange(*FONT_SIZE_RANGE)
+        self.font_spin.setValue(int(prefs["font_size"]))
+        self.font_spin.setSuffix(" pt")
+        self._add("Appearance", page, "Text size", "The size of text throughout Quill (default 12).",
+                  self.font_spin, "font")
+        self.opacity_slider, self.opacity_label, box = _slider(
+            *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included")
+        self._add("Appearance", page, "Window opacity",
+                  "Fades the whole window, text and controls included. The lowest is 10%.", box,
+                  "transparent transparency")
+        self.blur_slider, self.blur_label, box = _slider(
+            *BLUR_RANGE, int(prefs["blur"]), "How strongly the desktop behind the window is blurred")
+        self._add("Appearance", page, "Window blur",
+                  "Frosted-glass blur behind the windows (macOS and Windows 11). 0% is off.", box,
+                  "glass vibrancy acrylic")
+        page.addStretch(1)
+
+        # --- Sounds
+        page = self._page("Sounds")
+        self.feedback_combo = FlatCombo()
+        for mode in MODES:
+            self.feedback_combo.addItem(MODE_LABELS[mode], mode)
+        self.feedback_combo.setCurrentIndex(MODES.index(prefs["feedback"]))
+        self._add("Sounds", page, "Confirm with", "How Quill tells you it has done something.",
+                  self.feedback_combo, "feedback audio sound echo")
+        self.pack_combo = FlatCombo()
+        for key, label in PACKS.items():
+            self.pack_combo.addItem(label, key)
+        self.pack_combo.setCurrentIndex(self.pack_combo.findData(prefs["sound_pack"]))
+        self._add("Sounds", page, "Sound set", "Choosing one plays it.", self.pack_combo, "chime marimba glass")
+        self.echo_combo = FlatCombo()
+        for key, label in ECHO_WORDS.items():
+            self.echo_combo.addItem(label, key)
+        self.echo_combo.setCurrentIndex(self.echo_combo.findData(prefs["echo_style"]))
+        self._add("Sounds", page, "Spoken word", "What Quill says for a success when it speaks instead.",
+                  self.echo_combo, "echo voice")
+        self.feedback_combo.currentIndexChanged.connect(self._update_feedback_choices)
+        self._update_feedback_choices()
+        self.pack_combo.activated.connect(lambda _=0: self.play_sample())    # picking one plays it
+        self.echo_combo.activated.connect(lambda _=0: self.play_sample())
+        sample = QPushButton("Play sample")
+        sample.setToolTip("Hear the sound set (or word) selected above")
+        sample.clicked.connect(self.play_sample)
+        self._add("Sounds", page, "Preview", "Plays the selected sound, or says the selected word.", sample)
+        page.addStretch(1)
+
+        # --- Keywords (the table gets all the height the window has)
+        page = self._page("Keywords", "Say a phrase on the left and Quill does the action on the right.")
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["When you say…", "Quill does…"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
-        layout.addWidget(self.table)
+        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setMinimumHeight(280)
         self._fill_table(self._settings.keywords.items())
-
+        keyword_box = QWidget()
+        inner = QVBoxLayout(keyword_box)
+        inner.setContentsMargins(0, 6, 0, 0)
+        inner.addWidget(self.table, 1)
         buttons = QHBoxLayout()
         for label, slot in (("Add", self.add_row), ("Remove", self.remove_selected),
                             ("Restore defaults", self.restore_defaults)):
@@ -114,91 +399,11 @@ class SettingsDialog:
             button.clicked.connect(slot)
             buttons.addWidget(button)
         buttons.addStretch(1)
-        layout.addLayout(buttons)
-
-        form = QFormLayout()
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems([t.title() for t in THEMES])
-        self.theme_combo.setCurrentIndex(THEMES.index(self._settings.preferences["theme"]))
-        form.addRow("Appearance", self.theme_combo)
-        self.accent_combo = QComboBox()
-        for key, (label, (light, _), _night) in ACCENTS.items():
-            self.accent_combo.addItem(_swatch(light), label, key)
-        self.accent_combo.setCurrentIndex(self.accent_combo.findData(self._settings.preferences["accent"]))
-        form.addRow("Accent colour", self.accent_combo)
-        self.spacing_combo = QComboBox()
-        for key in SPACINGS:
-            self.spacing_combo.addItem(DENSITIES[key]["label"], key)
-        self.spacing_combo.setCurrentIndex(SPACINGS.index(self._settings.preferences["spacing"]))
-        self.spacing_combo.setToolTip("Compact packs controls closely; Comfortable gives them more room")
-        form.addRow("Spacing", self.spacing_combo)
-        self.font_spin = QSpinBox()
-        self.font_spin.setRange(*FONT_SIZE_RANGE)
-        self.font_spin.setValue(int(self._settings.preferences["font_size"]))
-        self.font_spin.setSuffix(" pt")
-        self.font_spin.setToolTip("Text size throughout Quill (default 12)")
-        form.addRow("Text size", self.font_spin)
-        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(*OPACITY_RANGE)
-        self.opacity_slider.setValue(int(self._settings.preferences["opacity"]))
-        self.opacity_slider.setToolTip("How see-through the whole window is, text and controls included")
-        self.opacity_label = QLabel(f"{self.opacity_slider.value()}%")
-        self.opacity_slider.valueChanged.connect(lambda v: self.opacity_label.setText(f"{v}%"))
-        opacity_row = QHBoxLayout()
-        opacity_row.addWidget(self.opacity_slider, 1)
-        opacity_row.addWidget(self.opacity_label)
-        form.addRow("Window opacity", opacity_row)
-        self.blur_check = QCheckBox("Blur behind windows (macOS and Windows 11)")
-        self.blur_check.setChecked(bool(self._settings.preferences["blur"]))
-        form.addRow("", self.blur_check)
-        self.speak_check = QCheckBox("Read questions aloud")
-        self.speak_check.setChecked(bool(self._settings.preferences["speak_prompts"]))
-        form.addRow("", self.speak_check)
-        self.auto_sort_check = QCheckBox("Start voice sorting automatically when terms need sorting")
-        self.auto_sort_check.setChecked(bool(self._settings.preferences["auto_voice_sort"]))
-        form.addRow("", self.auto_sort_check)
-        prefs = self._settings.preferences
-        self.history_spin = QSpinBox()
-        self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
-        self.history_spin.setValue(int(prefs["history_limit"]))
-        self.history_spin.setSuffix(" actions")
-        self.history_spin.setToolTip("How many sorting answers Undo can step back through")
-        form.addRow("Undo remembers", self.history_spin)
-
-        self.feedback_combo = QComboBox()
-        for mode in MODES:
-            self.feedback_combo.addItem(MODE_LABELS[mode], mode)
-        self.feedback_combo.setCurrentIndex(MODES.index(prefs["feedback"]))
-        form.addRow("Confirm with", self.feedback_combo)
-        self.pack_combo = QComboBox()
-        for key, label in PACKS.items():
-            self.pack_combo.addItem(label, key)
-        self.pack_combo.setCurrentIndex(self.pack_combo.findData(prefs["sound_pack"]))
-        form.addRow("Sound set", self.pack_combo)
-        self.echo_combo = QComboBox()
-        for key, label in ECHO_WORDS.items():
-            self.echo_combo.addItem(label, key)
-        self.echo_combo.setCurrentIndex(self.echo_combo.findData(prefs["echo_style"]))
-        form.addRow("Spoken word", self.echo_combo)
-        self.feedback_combo.currentIndexChanged.connect(self._update_feedback_choices)
-        self._update_feedback_choices()
-        sample = QPushButton("Play sample")
-        sample.setToolTip("Hear the sound set (or word) selected above")
-        self.pack_combo.activated.connect(lambda _=0: self.play_sample())    # picking one plays it
-        self.echo_combo.activated.connect(lambda _=0: self.play_sample())
-        sample.clicked.connect(self.play_sample)
-        form.addRow("", sample)
-        layout.addLayout(form)
-
-        box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        box.accepted.connect(lambda: self.try_accept(dialog))
-        box.rejected.connect(dialog.reject)
-        layout.addWidget(box)
-        apply_spacing(dialog)
-        self._dialog = dialog
-        return dialog
+        inner.addLayout(buttons)
+        page.addWidget(keyword_box, 1)
+        self._keyword_box = keyword_box
+        self._keyword_row = _KeywordSearch(keyword_box, self)
+        self._page_rows["Keywords"].append(self._keyword_row)
 
     def _update_feedback_choices(self) -> None:
         """Only the choice that applies to the selected way of confirming is enabled."""
@@ -259,21 +464,23 @@ class SettingsDialog:
         rows = self.collect_rows()
         errors = self._settings.validate_keywords(rows)
         if errors:
+            self.nav.setCurrentRow(self._nav_row("Keywords"))
             self.show_errors(errors)
             return False
+        prefs = self._settings.preferences
         self._settings.set_keywords(rows)
-        self._settings.preferences["theme"] = THEMES[self.theme_combo.currentIndex()]
-        self._settings.preferences["speak_prompts"] = self.speak_check.isChecked()
-        self._settings.preferences["auto_voice_sort"] = self.auto_sort_check.isChecked()
-        self._settings.preferences["accent"] = self.accent_combo.currentData()
-        self._settings.preferences["spacing"] = self.spacing_combo.currentData()
-        self._settings.preferences["font_size"] = self.font_spin.value()
-        self._settings.preferences["opacity"] = self.opacity_slider.value()
-        self._settings.preferences["blur"] = self.blur_check.isChecked()
-        self._settings.preferences["history_limit"] = self.history_spin.value()
-        self._settings.preferences["feedback"] = self.feedback_combo.currentData()
-        self._settings.preferences["sound_pack"] = self.pack_combo.currentData()
-        self._settings.preferences["echo_style"] = self.echo_combo.currentData()
+        prefs["theme"] = THEMES[self.theme_combo.currentIndex()]
+        prefs["speak_prompts"] = self.speak_check.isChecked()
+        prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
+        prefs["accent"] = self.accent_combo.currentData()
+        prefs["spacing"] = self.spacing_combo.currentData()
+        prefs["font_size"] = self.font_spin.value()
+        prefs["opacity"] = self.opacity_slider.value()
+        prefs["blur"] = self.blur_slider.value()
+        prefs["history_limit"] = self.history_spin.value()
+        prefs["feedback"] = self.feedback_combo.currentData()
+        prefs["sound_pack"] = self.pack_combo.currentData()
+        prefs["echo_style"] = self.echo_combo.currentData()
         self._settings.save()
         (dialog or self._dialog).accept()
         return True
@@ -281,3 +488,24 @@ class SettingsDialog:
     def show_errors(self, errors: list[str]) -> None:
         """Tell the user what is wrong (overridden in tests to avoid a modal box)."""
         QMessageBox.warning(self._dialog, "Check your keywords", "\n".join(errors))
+
+
+class _KeywordSearch:
+    """Makes the keyword editor searchable like a row (it matches its phrases and actions)."""
+
+    def __init__(self, widget: QWidget, dialog: "SettingsDialog") -> None:
+        self._widget, self._dialog = widget, dialog
+
+    @property
+    def search_text(self) -> str:
+        words = ["keywords", "when you say", "quill does", "commands", "phrases"]
+        for phrase, action in self._dialog.collect_rows():
+            words += [phrase, action_label(action)]
+        return " ".join(words).lower()
+
+    def matches(self, query: str) -> bool:
+        text = self.search_text
+        return all(word in text for word in query.lower().split())
+
+    def setVisible(self, visible: bool) -> None:                 # noqa: N802 (Qt name)
+        self._widget.setVisible(visible)

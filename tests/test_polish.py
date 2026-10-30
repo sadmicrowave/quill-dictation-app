@@ -9,6 +9,7 @@ from quill.config.settings import Settings
 from quill.ui import theme
 from quill.ui.main_window import MainWindow
 from quill.ui.settings_dialog import SettingsDialog
+from quill.ui.settings_widgets import ToggleSwitch
 from quill.ui.tray import TrayIcon
 
 _app = QApplication.instance() or QApplication([])
@@ -93,7 +94,8 @@ class TestCheckboxAndHeadings(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dlg = SettingsDialog(Settings.load(pathlib.Path(tmp)))
             dlg.build()
-            self.assertTrue(dlg.speak_check.isCheckable() and dlg.blur_check.isCheckable())
+            self.assertTrue(dlg.speak_check.isCheckable() and dlg.auto_sort_check.isCheckable())
+            self.assertIsInstance(dlg.speak_check, ToggleSwitch)
 
 
 class TestTrayClick(unittest.TestCase):

@@ -61,6 +61,7 @@ class FakeView:
     def setBlendingMode_(self, v): self.props["blending"] = v
     def setState_(self, v): self.props["state"] = v
     def setAutoresizingMask_(self, v): self.props["mask"] = v
+    def setAlphaValue_(self, v): self.props["alpha"] = v
     def frame(self): return "frame"
     def initWithFrame_(self, frame): return self
     def alloc(self): return self
@@ -104,14 +105,14 @@ class FakeAppKit:
 class TestMacChrome(unittest.TestCase):
     def test_transparent_title_bar_with_theme_colour_and_appearance(self):
         window = FakeWindow()
-        self.assertTrue(chrome.mac_chrome(5, True, COLORS, appkit=FakeAppKit(window), blur=False))
+        self.assertTrue(chrome.mac_chrome(5, True, COLORS, appkit=FakeAppKit(window), blur=0))
         self.assertEqual(window.calls, [("transparent", True), ("opaque", True),
                                         ("bg", (0.98, 0.98, 0.96, 1.0)),
                                         ("appearance", "NSAppearanceNameDarkAqua"), ("shadow",)])
 
     def test_light_appearance(self):
         window = FakeWindow()
-        chrome.mac_chrome(5, False, COLORS, appkit=FakeAppKit(window), blur=False)
+        chrome.mac_chrome(5, False, COLORS, appkit=FakeAppKit(window), blur=0)
         self.assertIn(("appearance", "NSAppearanceNameAqua"), window.calls)
 
     def test_a_view_without_a_window_is_left_alone(self):
@@ -120,7 +121,7 @@ class TestMacChrome(unittest.TestCase):
     def test_blur_adds_one_vibrancy_view_behind_the_content(self):
         window, kit = FakeWindow(), FakeAppKit(FakeWindow())
         window = kit._window
-        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=True)
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=60)
         self.assertEqual(len(kit.holder.added), 1)
         view, where, _ = kit.holder.added[0]
         self.assertEqual(where, -1)                                   # below the content
@@ -128,17 +129,26 @@ class TestMacChrome(unittest.TestCase):
         self.assertEqual((view.props["material"], view.props["blending"], view.props["state"]), (7, 0, 1))
         self.assertEqual(view.props["mask"], 18)                      # grows with the window
         self.assertIn(("opaque", False), window.calls)                # blur needs a see-through window
-        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.72)), window.calls)
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.76)), window.calls)        # 1 - 0.4 * 0.6
+        self.assertEqual(view.props["alpha"], 0.6)                           # the blur's strength
 
-    def test_blur_is_not_added_twice(self):
-        kit = FakeAppKit(FakeWindow(), FakeHolder([FakeView(chrome.BLUR_ID)]))
-        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=True)
+    def test_blur_is_not_added_twice_but_its_strength_updates(self):
+        existing = FakeView(chrome.BLUR_ID)
+        kit = FakeAppKit(FakeWindow(), FakeHolder([existing]))
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=30)
         self.assertEqual(kit.holder.added, [])
+        self.assertEqual(existing.props["alpha"], 0.3)
+
+    def test_zero_blur_is_solid_and_has_no_view(self):
+        kit = FakeAppKit(FakeWindow())
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=0)
+        self.assertEqual(kit.holder.added, [])
+        self.assertIn(("opaque", True), kit._window.calls)
 
     def test_turning_blur_off_removes_the_view(self):
         ours, other = FakeView(chrome.BLUR_ID), FakeView("something else")
         kit = FakeAppKit(FakeWindow(), FakeHolder([ours, other]))
-        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=False)
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=0)
         self.assertTrue(ours.removed)
         self.assertFalse(other.removed)
 
@@ -151,14 +161,14 @@ class TestMacChrome(unittest.TestCase):
 class TestWindowsBlur(unittest.TestCase):
     def test_acrylic_backdrop_and_extended_frame_when_blurred(self):
         calls, extended = [], []
-        chrome.windows_chrome(9, False, COLORS, lambda h, a, v: calls.append((a, v)), blur=True,
+        chrome.windows_chrome(9, False, COLORS, lambda h, a, v: calls.append((a, v)), blur=40,
                               extend_frame=extended.append)
         self.assertIn((chrome.DWMWA_SYSTEMBACKDROP_TYPE, chrome.BACKDROP_ACRYLIC), calls)
         self.assertEqual(extended, [9])
 
     def test_no_backdrop_when_not_blurred(self):
         calls, extended = [], []
-        chrome.windows_chrome(9, False, COLORS, lambda h, a, v: calls.append((a, v)), blur=False,
+        chrome.windows_chrome(9, False, COLORS, lambda h, a, v: calls.append((a, v)), blur=0,
                               extend_frame=extended.append)
         self.assertIn((chrome.DWMWA_SYSTEMBACKDROP_TYPE, chrome.BACKDROP_NONE), calls)
         self.assertEqual(extended, [])
@@ -167,7 +177,7 @@ class TestWindowsBlur(unittest.TestCase):
         def picky(hwnd, attribute, value):
             if attribute == chrome.DWMWA_SYSTEMBACKDROP_TYPE:
                 raise OSError("unknown attribute")
-        self.assertTrue(chrome.windows_chrome(1, True, COLORS, picky, blur=True, extend_frame=lambda h: None))
+        self.assertTrue(chrome.windows_chrome(1, True, COLORS, picky, blur=50, extend_frame=lambda h: None))
 
 
 class TestApplyChrome(unittest.TestCase):

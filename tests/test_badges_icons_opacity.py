@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
-from quill.config.settings import OPACITY_RANGE, Settings
+from quill.config.settings import BLUR_RANGE, OPACITY_RANGE, Settings
 from quill.ui import icons, theme
 from quill.ui.main_window import MainWindow
 from quill.ui.settings_dialog import SettingsDialog
@@ -214,10 +214,12 @@ class TestOpacityAndGlass(unittest.TestCase):
 
     def test_defaults_and_clamping(self):
         prefs = Settings.load(self.dir).preferences
-        self.assertEqual((prefs["opacity"], prefs["blur"]), (100, True))
-        (self.dir / "keywords.toml").write_text("[preferences]\nopacity = 5\nblur = false\n")
+        self.assertEqual((prefs["opacity"], prefs["blur"]), (100, 60))
+        (self.dir / "keywords.toml").write_text("[preferences]\nopacity = 2\nblur = 400\n")
         prefs = Settings.load(self.dir).preferences
-        self.assertEqual((prefs["opacity"], prefs["blur"]), (OPACITY_RANGE[0], False))
+        self.assertEqual((prefs["opacity"], prefs["blur"]), (OPACITY_RANGE[0], 100))
+        (self.dir / "keywords.toml").write_text("[preferences]\nblur = -5\n")
+        self.assertEqual(Settings.load(self.dir).preferences["blur"], 0)
         (self.dir / "keywords.toml").write_text("[preferences]\nopacity = 500\n")
         self.assertEqual(Settings.load(self.dir).preferences["opacity"], 100)
 
@@ -240,13 +242,13 @@ class TestOpacityAndGlass(unittest.TestCase):
 
     def test_text_and_controls_are_not_individually_faded(self):
         # Opacity is window-wide; per-element alpha would double the fade.
-        for glass in (False, True):
+        for glass in (0.0, 1.0):
             sheet = theme.stylesheet_for(False, glass=glass)
             self.assertNotIn(theme.rgba(theme.TOKENS["light"]["text"], 0.5), sheet)
 
     def test_glass_makes_the_window_see_through_and_keeps_cards_more_solid(self):
         bg, surface = theme.TOKENS["light"]["bg"], theme.TOKENS["light"]["surface"]
-        solid, glass = theme.stylesheet_for(False), theme.stylesheet_for(False, glass=True)
+        solid, glass = theme.stylesheet_for(False), theme.stylesheet_for(False, glass=1.0)
         self.assertIn(f"background: {theme.rgba(bg, 1.0)}; }}", solid.split("\n")[1])
         window_rule = glass.split("\n")[1]
         self.assertIn(theme.rgba(bg, theme.GLASS_WINDOW_ALPHA), window_rule)
@@ -257,13 +259,13 @@ class TestOpacityAndGlass(unittest.TestCase):
     def test_palette_window_alpha_follows_glass(self):
         from PySide6.QtGui import QPalette
         self.assertEqual(theme.palette_for(False).color(QPalette.ColorRole.Window).alphaF(), 1.0)
-        self.assertAlmostEqual(theme.palette_for(False, glass=True).color(QPalette.ColorRole.Window).alphaF(),
+        self.assertAlmostEqual(theme.palette_for(False, glass=1.0).color(QPalette.ColorRole.Window).alphaF(),
                                theme.GLASS_WINDOW_ALPHA, 2)
 
     def test_apply_theme_restyles_when_blur_changes(self):
         theme.apply_theme(_app, "light", blur=False)
         before = _app.styleSheet()
-        theme.apply_theme(_app, "light", blur=True)
+        theme.apply_theme(_app, "light", blur=60)
         self.assertNotEqual(_app.styleSheet(), before)
 
     def test_windows_are_built_translucent_so_blur_and_opacity_can_show(self):
@@ -277,15 +279,32 @@ class TestOpacityAndGlass(unittest.TestCase):
         settings = Settings.load(self.dir)
         dlg = SettingsDialog(settings)
         dlg.build()
-        self.assertEqual((dlg.opacity_slider.value(), dlg.blur_check.isChecked()), (100, True))
+        self.assertEqual((dlg.opacity_slider.value(), dlg.blur_slider.value()), (100, 60))
         dlg.opacity_slider.setValue(75)
-        dlg.blur_check.setChecked(False)
-        self.assertEqual(dlg.opacity_label.text(), "75%")
+        dlg.blur_slider.setValue(0)
+        self.assertEqual((dlg.opacity_label.text(), dlg.blur_label.text()), ("75%", "0%"))
         self.assertTrue(dlg.try_accept())
         prefs = Settings.load(self.dir).preferences
-        self.assertEqual((prefs["opacity"], prefs["blur"]), (75, False))
+        self.assertEqual((prefs["opacity"], prefs["blur"]), (75, 0))
         dlg.opacity_slider.setValue(1)
         self.assertEqual(dlg.opacity_slider.value(), OPACITY_RANGE[0])
+        dlg.blur_slider.setValue(1000)
+        self.assertEqual(dlg.blur_slider.value(), 100)
+
+    def test_the_scales_run_to_the_ends(self):
+        self.assertEqual(OPACITY_RANGE, (10, 100))
+        self.assertEqual(BLUR_RANGE, (0, 100))
+
+    def test_glass_strength_blends_between_solid_and_the_most_see_through(self):
+        self.assertEqual((theme.window_alpha(0), theme.surface_alpha(0)), (1.0, 1.0))
+        self.assertAlmostEqual(theme.window_alpha(1), theme.GLASS_WINDOW_ALPHA)
+        self.assertAlmostEqual(theme.surface_alpha(1), theme.GLASS_SURFACE_ALPHA)
+        self.assertGreater(theme.window_alpha(0.3), theme.window_alpha(0.7))
+        self.assertEqual(theme.window_alpha(9), theme.window_alpha(1))
+
+    def test_blur_setting_changes_the_look_continuously(self):
+        sheets = {s: theme.stylesheet_for(False, glass=s) for s in (0.0, 0.5, 1.0)}
+        self.assertEqual(len(set(sheets.values())), 3)
 
 
 if __name__ == "__main__":

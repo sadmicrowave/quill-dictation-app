@@ -56,12 +56,16 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "spacing": "compact",     # "compact" | "comfortable"
     "font_size": 12,          # base text size in points
     "log_collapsed": False,   # the main window's log starts hidden
+    "row_collapsed": False,   # the main window's Current row section starts hidden
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
-    "blur": True,             # blur behind the windows (macOS / Windows 11)
+    "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
 }
 
-#: Allowed range for ``opacity`` (percent). Below this the text becomes hard to read.
-OPACITY_RANGE = (55, 100)
+#: Allowed range for ``opacity`` (percent). At 0 the window would vanish, so 10 is the floor.
+OPACITY_RANGE = (10, 100)
+
+#: Allowed range for ``blur`` (percent).
+BLUR_RANGE = (0, 100)
 
 #: Allowed range for ``font_size`` (points).
 FONT_SIZE_RANGE = (9, 20)
@@ -180,6 +184,8 @@ class Settings:
         settings.preferences["history_limit"] = max(low, min(high, int(settings.preferences["history_limit"])))
         low, high = OPACITY_RANGE
         settings.preferences["opacity"] = max(low, min(high, int(settings.preferences["opacity"])))
+        low, high = BLUR_RANGE
+        settings.preferences["blur"] = max(low, min(high, int(settings.preferences["blur"])))
         low, high = FONT_SIZE_RANGE
         settings.preferences["font_size"] = max(low, min(high, int(settings.preferences["font_size"])))
         if settings.preferences["theme"] not in THEMES:
