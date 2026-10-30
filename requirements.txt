@@ -8,6 +8,9 @@ sounddevice>=0.4.6
 # Text-to-speech (platform-specific; both installed, only one used at runtime)
 pyttsx3>=2.90
 
+# Title bar styling on macOS (optional; skipped if missing)
+pyobjc-framework-Cocoa>=10; sys_platform == "darwin"
+
 # Excel bridge
 openpyxl>=3.1          # used for file-based fallback and validation reads
 xlwings>=0.31          # macOS AppleScript bridge + Windows COM

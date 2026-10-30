@@ -18,8 +18,10 @@ from typing import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QPlainTextEdit,
-    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
+
+from quill.ui.widgets import ElidedLabel, tooltip_lines
 
 #: Active-light colours (the same hues are used by the tray icon).
 COLOR_ACTIVE = "#34c759"
@@ -41,6 +43,8 @@ class MainWindow:
         on_download_model: Called when the user asks to download the speech model.
         on_sorting: Called when the user opens the Needs-sorting list.
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
+        on_log_toggled: Called with True/False when the user collapses/expands the log.
+        log_collapsed: Start with the log collapsed.
     """
 
     def __init__(
@@ -52,6 +56,8 @@ class MainWindow:
         on_download_model: Callable[[], None] | None = None,
         on_sorting: Callable[[], None] | None = None,
         on_undo: Callable[[], None] | None = None,
+        on_log_toggled: Callable[[bool], None] | None = None,
+        log_collapsed: bool = False,
     ) -> None:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
@@ -60,6 +66,8 @@ class MainWindow:
         self._on_download_model = on_download_model or (lambda: None)
         self._on_sorting = on_sorting or (lambda: None)
         self._on_undo = on_undo or (lambda: None)
+        self._on_log_toggled = on_log_toggled or (lambda collapsed: None)
+        self._log_collapsed = log_collapsed
         self._window: QMainWindow | None = None
         self._listening = False
 
@@ -117,7 +125,7 @@ class MainWindow:
         self.row_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.row_table.setMaximumHeight(150)
         layout.addWidget(self.row_table)
-        self.last_label = QLabel("Last saved: –")
+        self.last_label = ElidedLabel("Last saved: –")      # one line however much was saved
         layout.addWidget(self.last_label)
 
         self.sorting_button = QPushButton()
@@ -131,7 +139,12 @@ class MainWindow:
         layout.addWidget(self.undo_button)
 
         # --- log
-        layout.addWidget(self._heading("Log"))
+        self.log_toggle = QToolButton()
+        self.log_toggle.setProperty("heading", True)
+        self.log_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.log_toggle.setToolTip("Show or hide the log")
+        self.log_toggle.clicked.connect(lambda: self.set_log_collapsed(not self._log_collapsed, notify=True))
+        layout.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(MAX_LOG_LINES)
@@ -148,15 +161,31 @@ class MainWindow:
 
         window.setCentralWidget(central)
         self._window = window
+        self.set_log_collapsed(self._log_collapsed)
         self.set_listening_indicator(False)
 
     @staticmethod
     def _heading(text: str) -> QLabel:
         label = QLabel(text)
-        font = label.font()
-        font.setBold(True)
-        label.setFont(font)
+        label.setProperty("heading", True)      # bold via the style sheet, so it follows the font size
         return label
+
+    # ------------------------------------------------------------------ #
+    # Collapsible log                                                      #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def log_collapsed(self) -> bool:
+        return self._log_collapsed
+
+    def set_log_collapsed(self, collapsed: bool, notify: bool = False) -> None:
+        """Hide or show the log; the heading's arrow points down when collapsed, up when open."""
+        self._log_collapsed = collapsed
+        self.log.setVisible(not collapsed)
+        self.log_toggle.setText(f"Log  {'▾' if collapsed else '▴'}")
+        self.log_toggle.setToolTip("Show the log" if collapsed else "Hide the log")
+        if notify:
+            self._on_log_toggled(collapsed)
 
     # ------------------------------------------------------------------ #
     # Window                                                               #
@@ -208,8 +237,21 @@ class MainWindow:
                     item.setForeground(self.row_table.palette().placeholderText())
                 self.row_table.setItem(r, c, item)
 
-    def set_last_saved(self, text: str) -> None:
-        self.last_label.setText(f"Last saved: {text}")
+    def set_last_saved(self, row: str, record: dict[str, object] | None = None) -> None:
+        """Show the last saved row as one line: ``Row 6 · 12 fields · Type: T-Shirt, …``.
+
+        However much was saved the line stays one line (it is shortened to fit);
+        the tooltip lists every field, capped at a screenful.
+        """
+        parts = [row]
+        tip = row
+        if record:
+            items = [(k, v.isoformat() if isinstance(v, dt.date) else str(v)) for k, v in record.items()]
+            count = len(items)
+            parts.append(f"{count} field{'s' if count != 1 else ''}")
+            parts.append(", ".join(f"{k}: {v}" for k, v in items))
+            tip = f"{row}\n{tooltip_lines(items)}"
+        self.last_label.setFullText("Last saved: " + " · ".join(p for p in parts if p), tip)
 
     def append_log(self, text: str) -> None:
         """Add a timestamped line to the log."""

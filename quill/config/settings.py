@@ -54,7 +54,12 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "history_limit": 100,     # how many sorting answers undo remembers
     "accent": "terracotta",   # one of ACCENTS (ui/theme.py)
     "spacing": "compact",     # "compact" | "comfortable"
+    "font_size": 12,          # base text size in points
+    "log_collapsed": False,   # the main window's log starts hidden
 }
+
+#: Allowed range for ``font_size`` (points).
+FONT_SIZE_RANGE = (9, 20)
 
 #: Allowed range for ``history_limit``.
 HISTORY_LIMIT_RANGE = (5, 500)
@@ -168,6 +173,8 @@ class Settings:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]
         low, high = HISTORY_LIMIT_RANGE
         settings.preferences["history_limit"] = max(low, min(high, int(settings.preferences["history_limit"])))
+        low, high = FONT_SIZE_RANGE
+        settings.preferences["font_size"] = max(low, min(high, int(settings.preferences["font_size"])))
         if settings.preferences["theme"] not in THEMES:
             settings.preferences["theme"] = DEFAULT_PREFERENCES["theme"]
         return settings

@@ -28,7 +28,8 @@ from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.theme import apply_spacing, apply_theme
+from quill.ui.chrome import apply_chrome
+from quill.ui.theme import apply_spacing, apply_theme, colors_for, is_dark
 from quill.ui.tray import TrayIcon
 
 
@@ -84,7 +85,8 @@ class QuillApp:
             on_toggle=self.toggle_listening, on_settings=self.open_settings,
             on_refresh=self.refresh, on_workbook=self.select_workbook,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
-            on_undo=self.undo,
+            on_undo=self.undo, on_log_toggled=self._log_toggled,
+            log_collapsed=bool(settings.preferences["log_collapsed"]),
         )
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
                                      on_voice=self.toggle_voice_sorting,
@@ -287,13 +289,22 @@ class QuillApp:
         if SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback).exec():
             self.apply_settings()
 
+    def _log_toggled(self, collapsed: bool) -> None:
+        """Remember whether the user collapsed the log."""
+        self.settings.preferences["log_collapsed"] = collapsed
+        self.settings.save()
+
     def _apply_look(self) -> None:
         """Apply theme, accent and spacing from the settings to the app and its windows."""
         prefs = self.settings.preferences
-        apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]))
+        apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]),
+                    int(prefs["font_size"]))
+        dark = is_dark(self.qapp)
+        colors = colors_for(dark, str(prefs["accent"]))
         for window in (self.window.widget, self.sorting.widget):
             if window is not None:
                 apply_spacing(window, str(prefs["spacing"]))
+                apply_chrome(window, dark, colors)
 
     def apply_settings(self) -> None:
         """Push changed settings into the running app."""
@@ -322,8 +333,7 @@ class QuillApp:
             self.window.set_footer(NO_WORKBOOK_HELP)
             self.tray.notify(NO_WORKBOOK_HELP)
         elif kind == "committed":
-            summary = ", ".join(f"{k}: {v}" for k, v in event.record.items())
-            self.window.set_last_saved(f"{event.detail} — {summary}" if event.detail else summary)
+            self.window.set_last_saved(event.detail or "Row saved", event.record)
         elif kind == "confirm":
             self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)
             self.refresh_sorting(reveal=True)

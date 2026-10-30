@@ -60,6 +60,7 @@ class TermRow(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
 
         self.prompt = QLabel(question_for(column, term))
+        self.prompt.setObjectName("termPrompt")      # larger than body text (see theme)
         self.prompt.setWordWrap(True)
         self.edit = QLineEdit(term)
         self.edit.setToolTip("Correct the words if Quill heard too much")

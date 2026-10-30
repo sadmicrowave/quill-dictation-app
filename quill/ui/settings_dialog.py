@@ -13,9 +13,10 @@ from PySide6.QtWidgets import (
     QHeaderView, QMessageBox, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
-from quill.config.settings import HISTORY_LIMIT_RANGE, SPACINGS, THEMES
+from quill.config.settings import FONT_SIZE_RANGE, HISTORY_LIMIT_RANGE, SPACINGS, THEMES
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
+from quill.ui.chrome import apply_chrome
 from quill.ui.theme import ACCENTS, DENSITIES, apply_spacing
 
 if TYPE_CHECKING:
@@ -63,6 +64,7 @@ class SettingsDialog:
         self.auto_sort_check: QCheckBox | None = None
         self.accent_combo: QComboBox | None = None
         self.spacing_combo: QComboBox | None = None
+        self.font_spin: QSpinBox | None = None
         self.feedback_combo: QComboBox | None = None
         self.pack_combo: QComboBox | None = None
         self.echo_combo: QComboBox | None = None
@@ -75,6 +77,12 @@ class SettingsDialog:
     def exec(self) -> bool:
         """Show modally. Returns True if the user saved changes."""
         self.build()
+        from PySide6.QtWidgets import QApplication
+        from quill.ui.theme import colors_for, is_dark
+        app = QApplication.instance()
+        if app is not None:
+            apply_chrome(self._dialog, is_dark(app),
+                         colors_for(is_dark(app), str(self._settings.preferences["accent"])))
         return self._dialog.exec() == QDialog.DialogCode.Accepted
 
     def build(self) -> QDialog:
@@ -116,6 +124,12 @@ class SettingsDialog:
         self.spacing_combo.setCurrentIndex(SPACINGS.index(self._settings.preferences["spacing"]))
         self.spacing_combo.setToolTip("Compact packs controls closely; Comfortable gives them more room")
         form.addRow("Spacing", self.spacing_combo)
+        self.font_spin = QSpinBox()
+        self.font_spin.setRange(*FONT_SIZE_RANGE)
+        self.font_spin.setValue(int(self._settings.preferences["font_size"]))
+        self.font_spin.setSuffix(" pt")
+        self.font_spin.setToolTip("Text size throughout Quill (default 12)")
+        form.addRow("Text size", self.font_spin)
         self.speak_check = QCheckBox("Read questions aloud")
         self.speak_check.setChecked(bool(self._settings.preferences["speak_prompts"]))
         form.addRow("", self.speak_check)
@@ -230,6 +244,7 @@ class SettingsDialog:
         self._settings.preferences["auto_voice_sort"] = self.auto_sort_check.isChecked()
         self._settings.preferences["accent"] = self.accent_combo.currentData()
         self._settings.preferences["spacing"] = self.spacing_combo.currentData()
+        self._settings.preferences["font_size"] = self.font_spin.value()
         self._settings.preferences["history_limit"] = self.history_spin.value()
         self._settings.preferences["feedback"] = self.feedback_combo.currentData()
         self._settings.preferences["sound_pack"] = self.pack_combo.currentData()

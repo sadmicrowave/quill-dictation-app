@@ -12,6 +12,8 @@ when the user changes it.
 """
 
 from __future__ import annotations
+import pathlib
+import tempfile
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
@@ -51,6 +53,7 @@ DENSITIES = {
 }
 
 DEFAULT_ACCENT = "terracotta"
+DEFAULT_FONT_SIZE = 12
 DEFAULT_SPACING = "compact"
 
 
@@ -82,10 +85,37 @@ def palette_for(dark: bool, accent: str = DEFAULT_ACCENT) -> QPalette:
     return palette
 
 
-def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING) -> str:
+def _chevrons(t: dict[str, str]) -> dict[str, str]:
+    """Write the little chevron images used by drop-downs and spin boxes; return their paths.
+
+    Drawn in the theme's own colours so they follow light/dark. Stored once per
+    colour set in a temporary folder (a style sheet can only point at files).
+    """
+    key = (t["muted"], t["disabled"])
+    if key not in _ICON_CACHE:
+        folder = pathlib.Path(tempfile.mkdtemp(prefix="quill-icons-"))
+        paths: dict[str, str] = {}
+        for name, color in (("", t["muted"]), ("-disabled", t["disabled"])):
+            for direction, points in (("down", "3,6 8,11 13,6"), ("up", "3,10 8,5 13,10")):
+                svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">'
+                       f'<polyline points="{points}" fill="none" stroke="{color}" stroke-width="1.8" '
+                       f'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+                path = folder / f"{direction}{name}.svg"
+                path.write_text(svg, encoding="utf-8")
+                paths[f"{direction}{name}"] = path.as_posix()
+        _ICON_CACHE[key] = paths
+    return _ICON_CACHE[key]
+
+
+_ICON_CACHE: dict[tuple[str, str], dict[str, str]] = {}
+
+
+def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING,
+                   font_size: int = DEFAULT_FONT_SIZE) -> str:
     """The style sheet: rounded controls, hairline borders, an accent for the main action."""
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
+    icon = _chevrons(t)
     return f"""
 QMainWindow, QDialog {{ background: {t['bg']}; }}
 QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
@@ -106,9 +136,24 @@ QLineEdit, QSpinBox, QComboBox {{ background: {t['surface']}; color: {t['text']}
               selection-background-color: {t['accent']}; selection-color: {t['on_accent']}; }}
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{ border: 1px solid {t['accent']}; }}
 QComboBox:disabled, QSpinBox:disabled {{ color: {t['disabled']}; background: {t['bg']}; }}
+QComboBox {{ combobox-popup: 0; padding-right: 32px; }}
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 30px;
+              border: none; background: transparent; }}
+QComboBox::down-arrow {{ image: url({icon['down']}); width: 14px; height: 14px; }}
+QComboBox::down-arrow:disabled {{ image: url({icon['down-disabled']}); }}
+QSpinBox {{ padding-right: 28px; }}
+QSpinBox::up-button {{ subcontrol-origin: padding; subcontrol-position: top right; width: 24px;
+              border: none; background: transparent; }}
+QSpinBox::down-button {{ subcontrol-origin: padding; subcontrol-position: bottom right; width: 24px;
+              border: none; background: transparent; }}
+QSpinBox::up-arrow {{ image: url({icon['up']}); width: 12px; height: 12px; }}
+QSpinBox::down-arrow {{ image: url({icon['down']}); width: 12px; height: 12px; }}
+QSpinBox::up-arrow:disabled, QSpinBox::up-arrow:off {{ image: url({icon['up-disabled']}); }}
+QSpinBox::down-arrow:disabled, QSpinBox::down-arrow:off {{ image: url({icon['down-disabled']}); }}
 QComboBox QAbstractItemView {{ background: {t['surface']}; border: 1px solid {t['border']};
               border-radius: 8px; selection-background-color: {t['accent']};
               selection-color: {t['on_accent']}; outline: none; padding: 4px; }}
+QComboBox QAbstractItemView::item {{ padding: 6px 10px; min-height: 22px; border-radius: 6px; }}
 
 QPlainTextEdit, QTextEdit, QTableWidget {{ background: {t['surface']}; color: {t['text']};
               border: 1px solid {t['border']}; border-radius: 10px; padding: 4px;
@@ -136,11 +181,17 @@ QMenu::item {{ padding: {d['item']}; border-radius: 6px; }}
 QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
+QLabel[heading="true"] {{ font-weight: 700; }}
+QLabel#termPrompt {{ font-size: {font_size + 3}pt; font-weight: 500; }}
+QToolButton[heading="true"] {{ border: none; background: transparent; font-weight: 700; padding: 2px 0;
+              font-size: {font_size}pt;
+              color: {t['text']}; }}
+QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
 QCheckBox {{ spacing: 8px; }}
 """
 
 
-def _is_dark(app: QApplication) -> bool:
+def is_dark(app: QApplication) -> bool:
     """True if the dark look applies: chosen explicitly, or the OS is dark in auto mode."""
     mode = app.property("quillThemeMode")
     if mode in ("light", "dark"):
@@ -149,19 +200,23 @@ def _is_dark(app: QApplication) -> bool:
 
 
 def _restyle(app: QApplication) -> None:
-    dark = _is_dark(app)
+    dark = is_dark(app)
     accent = str(app.property("quillAccent") or DEFAULT_ACCENT)
     spacing = str(app.property("quillSpacing") or DEFAULT_SPACING)
-    key = f"{dark}/{accent}/{spacing}"
+    size = int(app.property("quillFontSize") or DEFAULT_FONT_SIZE)
+    key = f"{dark}/{accent}/{spacing}/{size}"
     if app.property("quillThemeKey") == key:
         return                      # unchanged: re-polishing every widget is slow
     app.setProperty("quillThemeKey", key)
+    font = app.font()
+    font.setPointSize(size)
+    app.setFont(font)
     app.setPalette(palette_for(dark, accent))
-    app.setStyleSheet(stylesheet_for(dark, accent, spacing))
+    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
-                spacing: str = DEFAULT_SPACING) -> None:
+                spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE) -> None:
     """Set the colour scheme, accent and spacing, and apply Quill's look.
 
     Args:
@@ -171,6 +226,7 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
         accent: A key of :data:`ACCENTS`.
         spacing: ``"compact"`` or ``"comfortable"``. Layout margins and gaps
             are applied separately by :func:`apply_spacing`.
+        font_size: Base text size in points (the Needs-sorting questions are 3 larger).
     """
     if not app.property("quillFusion"):      # once: re-setting the style re-polishes everything
         app.setStyle("Fusion")
@@ -179,6 +235,7 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
     app.setProperty("quillThemeMode", mode)
     app.setProperty("quillAccent", accent if accent in ACCENTS else DEFAULT_ACCENT)
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
+    app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
     _restyle(app)
     if not app.property("quillThemeHooked"):
         app.styleHints().colorSchemeChanged.connect(lambda *_: _restyle(app))
