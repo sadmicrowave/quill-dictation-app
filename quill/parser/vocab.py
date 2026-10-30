@@ -133,6 +133,22 @@ class Vocabulary:
             self._entries.append(VocabEntry(actual, column, tokens))
         return True
 
+    def remove(self, column: str, value: str) -> None:
+        """Forget a value added with :meth:`add` (and any synonyms that pointed at it)."""
+        target = value.strip().lower()
+        self._by_column[column] = [v for v in self._by_column.get(column, [])
+                                   if v.lower() != target]
+        self._entries[:] = [e for e in self._entries
+                            if not (e.column == column and e.canonical.lower() == target)]
+
+    def remove_alias(self, column: str, phrase: str, canonical: str) -> None:
+        """Forget a synonym taught with :meth:`add_alias` (the value itself stays)."""
+        tokens = _tokenize(phrase)
+        self._entries[:] = [e for e in self._entries
+                            if not (e.column == column and e.tokens == tokens
+                                    and e.canonical.lower() == canonical.lower()
+                                    and tokens != _tokenize(e.canonical.lower()))]
+
     def default_amount_column(self) -> tuple[str | None, str | None]:
         """The column a bare amount ("under 50", "thirty dollars") belongs to.
 

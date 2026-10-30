@@ -106,6 +106,11 @@ class Event:
     """committed: the terms heard in that row (so their cells can be back-filled)."""
     cells: list | None = None
     """add_values/alias_added: ``(sheet, row, column, value)`` cells to back-fill."""
+    resolved: dict | None = None
+    """skipped/add_values/alias_added: what undo needs (term key, its list position,
+    where it was heard, and whether the value already existed)."""
+    filled: list | None = None
+    """add_values/alias_added: the subset of ``cells`` the controller actually wrote."""
 
 
 @dataclass
@@ -177,6 +182,16 @@ class Session:
             self.pending.remove(key)
             self.pending.append(key)
 
+    def restore_term(self, key: TermKey, index: int, origin: tuple | None = None) -> None:
+        """Put a term back in the pending list at *index* (undo of resolve / defer)."""
+        pending = list(self.pending or [])
+        if key in pending:
+            pending.remove(key)
+        pending.insert(max(0, min(index, len(pending))), key)
+        self.pending = pending
+        if origin is not None:
+            self.origins[key] = origin
+
     def tag_origin(self, terms: list[TermKey], sheet: str, row: int) -> None:
         """Remember which saved row each of *terms* was heard in."""
         for key in terms:
@@ -192,29 +207,35 @@ class Session:
         """
         if not self.pending or key not in self.pending:
             return []
+        index = self.pending.index(key)
         self.pending.remove(key)
         origin = self.origins.pop(key, None)
         if not self.pending:
             self.pending, self._voice_open = None, False
         words = " ".join(tokenize(term if term is not None else key[1])) or key[1]
 
+        info = {"key": key, "index": index, "origin": origin, "words": words,
+                "column": decision.column}
         if decision.kind == "ignore":
-            return [Event("skipped", detail=f"Ignored '{words}'")]
+            return [Event("skipped", detail=f"Ignored '{words}'", resolved=info)]
 
         column = decision.column
         if decision.kind == "alias":
             if not self.vocab.add_alias(column, words, decision.value):
                 return [Event("error", detail=f"'{decision.value}' is not a {column} value")]
             value, kind = decision.value, "alias_added"
+            info["value"] = value
             values = [(column, words, decision.value)]
             detail = f"'{words}' now means {decision.value} in {column}"
         else:
             value, kind = decision.value or display_name(words), "add_values"
+            info["value"] = value
+            info["existed"] = value.lower() in (v.lower() for v in self.vocab.values_for(column))
             self.vocab.add(column, value)
             values = [(column, value)]
             detail = f"Added {value} to {column}"
         cells = [(origin[0], origin[1], column, self._canonical(column, value))] if origin else []
-        return [Event(kind, detail=detail, values=values, cells=cells)]
+        return [Event(kind, detail=detail, values=values, cells=cells, resolved=info)]
 
     def _canonical(self, column: str, value: str) -> str:
         known = {v.lower(): v for v in self.vocab.values_for(column)}
@@ -270,6 +291,8 @@ class Session:
             return [Event("clear_search")]
         if action is Action.SORT_TERMS:
             return [Event("sort_terms")]
+        if action is Action.UNDO:
+            return [Event("undo")]
         return []
 
     def _commit(self) -> list[Event]:

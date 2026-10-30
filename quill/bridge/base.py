@@ -119,6 +119,21 @@ class WorkbookBridge(ABC):
         """
 
 
+    def remove_from_list(self, column_name: str, value: str) -> bool:
+        """Take *value* back out of the list for *column_name* (undo of ``add_to_list``).
+
+        Returns True if it was found and cleared; False if it wasn't there or
+        this bridge can't (the default).
+        """
+        return False
+
+    def clear_value(self, sheet_name: str, row: int, column: str, expected: object) -> bool:
+        """Empty one cell, but only if it still holds *expected* (undo of ``set_value``).
+
+        Never removes something the user typed over it. Returns True if cleared.
+        """
+        return False
+
     def set_value(self, sheet_name: str, row: int, column: str, value: object) -> bool:
         """Fill one cell of an existing row, only if it is currently empty.
 

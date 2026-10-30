@@ -80,9 +80,11 @@ class QuillApp:
             on_toggle=self.toggle_listening, on_settings=self.open_settings,
             on_refresh=self.refresh, on_workbook=self.select_workbook,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
+            on_undo=self.undo,
         )
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
-                                     on_voice=self.toggle_voice_sorting)
+                                     on_voice=self.toggle_voice_sorting,
+                                     on_undo=self.undo, batch=self.controller.batch)
         self.tray = TrayIcon(
             qapp, self.window,
             on_start=lambda: self.toggle_listening(True),
@@ -243,8 +245,15 @@ class QuillApp:
         pending = self.controller.pending_terms()
         self.sorting.set_items(pending)
         self.window.set_sorting_count(len(pending))
+        undoable = len(self.controller.history)
+        self.sorting.set_undo_available(undoable)
+        self.window.set_undo_count(undoable)
         if reveal and pending:
             self.sorting.show()
+
+    def undo(self) -> None:
+        """Take back the last sorting answer (button); the event refreshes the list."""
+        self.controller.request_undo()
 
     def toggle_voice_sorting(self) -> None:
         """Start or stop answering the Needs-sorting list by voice."""
@@ -309,6 +318,10 @@ class QuillApp:
             self.window.append_log(f"Voice sort: {event.detail}")
             self.refresh_sorting()
             return
+        elif kind == "undone":
+            self.window.append_log(event.detail)
+            self.refresh_sorting(reveal=True)
+            return
         elif kind in ("add_values", "alias_added", "skipped"):
             self.window.append_log(event.detail)
             self.refresh_sorting()
@@ -327,6 +340,7 @@ class QuillApp:
             "committed": "Saved row", "discarded": "Row discarded",
             "updated": "Heard", "confirm": "Question", "error": "Error",
             "searched": "Search", "cleared": "Search cleared", "unsure": "Unsure",
+            "undone": "Undo",
         }
         label = labels.get(event.kind)
         return f"{label}: {event.detail}".rstrip(": ") if label else event.detail

@@ -102,7 +102,7 @@ build the row. When the row ends (`next row`) or you stop listening, the
 
 - **Suggested column** appears when Quill can tell: you said the column name (`color teal`), the term looks like the values of exactly one list (a pattern like `1990s`), or only one list column is still empty in this row. Otherwise it asks "which column is that?" and never guesses.
 - **Add** puts the term (capitalised) in the chosen column's drop-down list.
-- **Same as…** says the term is another name for an existing value ("extra large" means XL). Saved in your settings, so it works next time.
+- **Same as…** says the term is another name for an existing value ("extra large" means whichever value of that list you pick, say XL in a clothing sheet). Saved in your settings, so it works next time.
 - **Ignore** drops it.
 - You can correct the words first (a run like "mainly teal" can be trimmed to "teal").
 - If the term was heard in a row that's already saved, deciding **fills that row's empty cell** (never overwriting anything). Terms from an unsaved or discarded row aren't back-filled.
@@ -115,15 +115,16 @@ build the row. When the row ends (`next row`) or you stop listening, the
 Click the first term (or **🎤 Sort by voice**, or say **"sort terms"**) and just talk. Everything
 Quill hears is then read as sort commands applied to the **top** term; it leaves the list, the
 next one moves up (the highlighted row), and the stream continues. Chain several in one breath:
-*"same as XL, color, same as 1990s"*. The window shows `Heard ‘…’ → what happened` as it goes.
+*"same as <value>, color, same as <value>"*, where a value is anything from your own lists. The window shows `Heard ‘…’ → what happened` as it goes.
 
 | Say | Does |
 |-----|------|
 | `yes` · `add` · `ok` | Add the term to its suggested column |
 | a column name (`color`) · `add to color` | Add it to that column |
-| `same as XL` | It's another name for the existing value XL (the column is found from the value when only one list has it; spelled letters like "x l" work) |
+| `same as <value>` | It's another name for an existing value from your lists, whatever your sheet holds: "same as fern", "same as XL", "same as walnut" (the column is found from the value when only one list has it; spelled letters like "x l" work) |
 | `same` … then the value in the next phrase | Same, in two steps |
-| `size same as XL` | Alias, naming the column |
+| `<column> same as <value>` | Alias, naming the column ("size same as XL") |
+| `undo` · `oops` | Take back the last answer; `undo three` steps back three |
 | `ignore` · `no` · `drop` · `forget it` | Forget the term |
 | `later` · `skip` · `pass` · `next` | Keep it; move it to the end |
 | `add all` · `ignore all` | Every term (add all: only those with a column) |
@@ -135,6 +136,15 @@ If "yes" is said for a term with no suggested column Quill answers "Which column
 Turn on **Start voice sorting automatically when terms need sorting** in Settings to skip the click.
 
 Example, speaking: *"this next item is an extra large t-shirt made in the 90s, mainly teal, could sell for thirty five dollars"* → Type = T-Shirt and Appraisal = 35 are written at once; "90s", "teal" and "extra large" are listed. Choosing *Era → Same as 1990s*, *Color → Add*, *Size → Same as XL* fills the row's other three cells.
+
+### Undo
+
+Every answer you give (add, same as, ignore, later; the bulk buttons and "add all" / "ignore all" count as one) goes into a running history of the **last 100 actions**; the oldest quietly drops off, so it never grows without end. Step backwards through it with:
+
+- the **↶ Undo (n)** button in the Needs-sorting window or the main window (press repeatedly to keep going back),
+- the spoken keyword **`undo`** while dictating (a default keyword; add it under Settings if your keywords were saved earlier), or `undo` / `oops` / `undo three` while voice sorting. Undo is also understood in the same breath as the answers: *"ignore ignore oops"*.
+
+An undo puts the term back where it was in the list and reverses everything the answer did: the value is removed from the workbook list (unless it was already there), the synonym is forgotten, and the cell that was back-filled is emptied again, but only if it still holds what Quill wrote (if you've changed it since, it is left alone and the log says so). The history is cleared when you connect to a different workbook. Only sorting answers are undoable; a saved row is an ordinary Excel row (use Excel's own undo or edit it).
 
 ## The window, the tray icon and settings
 

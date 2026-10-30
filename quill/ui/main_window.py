@@ -40,6 +40,7 @@ class MainWindow:
         on_workbook: Called with a workbook name picked in the combo box.
         on_download_model: Called when the user asks to download the speech model.
         on_sorting: Called when the user opens the Needs-sorting list.
+        on_undo: Called when the user presses Undo (takes back the last sorting answer).
     """
 
     def __init__(
@@ -50,6 +51,7 @@ class MainWindow:
         on_workbook: Callable[[str], None] | None = None,
         on_download_model: Callable[[], None] | None = None,
         on_sorting: Callable[[], None] | None = None,
+        on_undo: Callable[[], None] | None = None,
     ) -> None:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
@@ -57,6 +59,7 @@ class MainWindow:
         self._on_workbook = on_workbook or (lambda name: None)
         self._on_download_model = on_download_model or (lambda: None)
         self._on_sorting = on_sorting or (lambda: None)
+        self._on_undo = on_undo or (lambda: None)
         self._window: QMainWindow | None = None
         self._listening = False
 
@@ -120,6 +123,11 @@ class MainWindow:
         self.sorting_button.clicked.connect(lambda: self._on_sorting())
         self.sorting_button.setVisible(False)
         layout.addWidget(self.sorting_button)
+        self.undo_button = QPushButton("↶ Undo")
+        self.undo_button.setToolTip("Take back the last sorting answer; press again to keep stepping back")
+        self.undo_button.clicked.connect(lambda: self._on_undo())
+        self.undo_button.setVisible(False)
+        layout.addWidget(self.undo_button)
 
         # --- log
         layout.addWidget(self._heading("Log"))
@@ -212,6 +220,11 @@ class MainWindow:
         self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
         self.state_label.setText("Listening" if active else "Not listening")
         self.toggle_button.setText("Stop" if active else "Start")
+
+    def set_undo_count(self, count: int) -> None:
+        """Show "Undo (n)" while there is a sorting answer to take back."""
+        self.undo_button.setVisible(count > 0)
+        self.undo_button.setText(f"↶ Undo ({count})")
 
     def set_sorting_count(self, count: int) -> None:
         """Show a "Needs sorting (n)" button while terms are waiting."""

@@ -154,6 +154,24 @@ class GridBridge(WorkbookBridge):
         self._after_write()
         return True
 
+    def clear_value(self, sheet_name: str, row: int, column: str, expected: object) -> bool:
+        grid = self._require()
+        if sheet_name not in grid.sheet_names():
+            return False
+        header_row = self._header_row(grid, sheet_name)
+        width = grid.last_col(sheet_name)
+        headers = grid.read(sheet_name, header_row, 1, 1, max(width, 1))[0]
+        wanted = normalize_header(column)
+        index = next((i for i, h in enumerate(headers, 1)
+                      if not is_blank(h) and normalize_header(h) == wanted), None)
+        if index is None:
+            return False
+        if cell_text(grid.read(sheet_name, row, index, 1, 1)[0][0]).lower() != cell_text(expected).lower():
+            return False
+        grid.write(sheet_name, row, index, None)
+        self._after_write()
+        return True
+
     @staticmethod
     def _next_free_row(grid: Grid, sheet: str, header_row: int, columns: list[int]) -> int:
         """First row below the header whose *columns* cells are all empty or computed.
@@ -272,6 +290,21 @@ class GridBridge(WorkbookBridge):
             self._discovery.sources[source.column] = dataclasses.replace(source, last_row=target)
         grid.write(source.sheet, target, source.col, text)
         self._after_write()
+
+    def remove_from_list(self, column_name: str, value: str) -> bool:
+        grid = self._require()
+        source = self._find_source(column_name)
+        if source.is_inline:
+            return False
+        rows = max(source.last_row - source.first_row + 1, 0)
+        cells = [r[0] for r in grid.read(source.sheet, source.first_row, source.col, rows, 1)]
+        wanted = value.strip().lower()
+        for offset in range(len(cells) - 1, -1, -1):      # last match: the one just added
+            if cell_text(cells[offset]).lower() == wanted:
+                grid.write(source.sheet, source.first_row + offset, source.col, None)
+                self._after_write()
+                return True
+        return False
 
     def _find_source(self, column_name: str) -> ListSource:
         wanted = normalize_header(column_name)

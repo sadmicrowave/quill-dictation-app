@@ -26,6 +26,7 @@ class Action(Enum):
     SEARCH_FOR      = auto()
     CLEAR_SEARCH    = auto()
     SORT_TERMS      = auto()
+    UNDO            = auto()
     NONE            = auto()   # no command found in this segment
 
 

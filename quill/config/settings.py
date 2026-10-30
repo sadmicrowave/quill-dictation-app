@@ -225,6 +225,14 @@ class Settings:
         """Remember that spoken *phrase* means *canonical* in *column* (not yet saved)."""
         self.aliases.setdefault(column, {})[phrase.strip().lower()] = canonical
 
+    def remove_alias(self, column: str, phrase: str) -> str | None:
+        """Forget a remembered synonym (not yet saved); returns what it used to mean."""
+        mapping = self.aliases.get(column, {})
+        previous = mapping.pop(phrase.strip().lower(), None)
+        if not mapping:
+            self.aliases.pop(column, None)
+        return previous
+
     def reset_keywords(self) -> None:
         """Restore the shipped default keywords (preferences are untouched)."""
         self.keywords = self.defaults().keywords

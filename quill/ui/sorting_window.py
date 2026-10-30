@@ -17,6 +17,7 @@ command resolves the top term, it leaves the list and the next one moves up
 while the stream continues; see :mod:`quill.sorting_voice`.
 """
 from __future__ import annotations
+import contextlib
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -149,9 +150,13 @@ class SortingWindow:
                   "(or ‘add all’, ‘ignore all’)")
 
     def __init__(self, vocab: Vocabulary, on_resolve: ResolveCallback,
-                 on_voice: Callable[[], None] | None = None) -> None:
+                 on_voice: Callable[[], None] | None = None,
+                 on_undo: Callable[[], None] | None = None,
+                 batch: Callable[[str], object] | None = None) -> None:
         self._vocab = vocab
         self._on_resolve = on_resolve
+        self._on_undo = on_undo or (lambda: None)
+        self._batch = batch or (lambda label: contextlib.nullcontext())
         self._on_voice = on_voice or (lambda: None)
         self._voice_active = False
         self._window: QWidget | None = None
@@ -195,6 +200,10 @@ class SortingWindow:
         self.ignore_all_button = QPushButton("Ignore all")
         self.ignore_all_button.clicked.connect(self.ignore_all)
         footer.addWidget(self.add_all_button)
+        self.undo_button = QPushButton("↶ Undo")
+        self.undo_button.setToolTip("Take back the last answer (you can keep stepping back)")
+        self.undo_button.clicked.connect(lambda: self._on_undo())
+        footer.addWidget(self.undo_button)
         footer.addStretch(1)
         footer.addWidget(self.ignore_all_button)
         layout.addLayout(footer)
@@ -261,10 +270,18 @@ class SortingWindow:
 
     def add_all(self) -> None:
         """Add every row that already has a column chosen."""
-        for row in list(self.rows):
-            if row.column and row.words:
-                row.add()
+        with self._batch("Added terms"):
+            for row in list(self.rows):
+                if row.column and row.words:
+                    row.add()
 
     def ignore_all(self) -> None:
-        for row in list(self.rows):
-            row.ignore()
+        with self._batch("Ignored terms"):
+            for row in list(self.rows):
+                row.ignore()
+
+    def set_undo_available(self, count: int) -> None:
+        """Enable the Undo button while there is something to take back."""
+        if self._window is not None:
+            self.undo_button.setEnabled(count > 0)
+            self.undo_button.setText(f"↶ Undo ({count})" if count else "↶ Undo")

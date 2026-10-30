@@ -5,7 +5,7 @@ sort commands* applied, in order, to the first term in the list. Each command
 resolves that term, it leaves the list, the next one moves up, and the chain
 continues, so you can say several answers in one breath:
 
-    "yes   same as XL   color   ignore"
+    "yes   same as <value>   color   ignore"
 
 Commands (any of the listed words):
 
@@ -20,6 +20,7 @@ Commands (any of the listed words):
   ignore / no / drop ...........  forget the term
   later / skip / pass / next ...  keep it, move it to the end of the list
   add all / ignore all .........  every term (add all: those with a column)
+  undo / oops ..................  take back the last answer ("undo 3" takes back three)
   stop / done ..................  leave voice sorting
 
 This module is pure: it only calls ``Controller.resolve_term`` and
@@ -40,9 +41,10 @@ IGNORE_WORDS = frozenset({"no", "nope", "nah", "ignore", "cancel", "drop", "dont
 DEFER_WORDS = frozenset({"later", "skip", "pass", "next"})
 STOP_WORDS = frozenset({"stop", "done", "finished", "finish", "exit", "quit"})
 SAME_WORDS = frozenset({"same", "alias", "means"})
+UNDO_WORDS = frozenset({"undo", "oops", "revert"})
 ALL_WORD = "all"
 
-#: Little words ignored between commands ("same AS the XL", "add TO color").
+#: Little words ignored between commands ("same AS the <value>", "add TO color").
 FILLERS = frozenset({"as", "a", "an", "the", "to", "in", "is", "it", "its", "this", "that",
                      "one", "term", "and", "then", "also", "thanks", "thank", "you"})
 
@@ -88,6 +90,10 @@ class VoiceSorter:
         heard_command = False
         while i < len(tokens):
             pending = self._ctl.pending_terms()
+            if tokens[i] in UNDO_WORDS:       # works even after the last term was answered
+                heard_command = True
+                i = self._undo(tokens, i + 1, result)
+                continue
             if not pending:
                 break
             key = pending[0]
@@ -104,14 +110,23 @@ class VoiceSorter:
             result.finished = True
         if not heard_command and not result.messages:
             result.messages.append(
-                "Didn't catch a command. Say yes, a column name, same as …, ignore, later, or done."
+                "Didn't catch a command. Say yes, a column name, same as …, ignore, later, undo or done."
             )
         return result
 
     # ------------------------------------------------------------------ #
 
+    def _undo(self, tokens: list[str], j: int, result: VoiceSortResult) -> int:
+        """Handle "undo" or "undo <n>": step back through the answers just given."""
+        count, used = parse_number(tokens, j)
+        count = int(count) if count is not None and count >= 1 else 1
+        messages = self._ctl.undo(count)
+        result.messages += messages
+        result.resolved -= sum(1 for m in messages if m.startswith("Undid"))
+        return j + used
+
     def _is_command(self, word: str) -> bool:
-        return (word in ADD_WORDS or word in IGNORE_WORDS or word in DEFER_WORDS
+        return (word in UNDO_WORDS or word in ADD_WORDS or word in IGNORE_WORDS or word in DEFER_WORDS
                 or word in STOP_WORDS or word in SAME_WORDS or word == ALL_WORD)
 
     def _list_column_at(self, tokens: list[str], i: int):
@@ -217,7 +232,7 @@ class VoiceSorter:
         """Find an existing list value spoken at ``tokens[j]``.
 
         Restricted to *column* when known; otherwise it must belong to exactly
-        one column. Also reads spelled letters ("x l" -> XL) and number words.
+        one column. Also reads spelled letters (a spoken "x l" becomes "xl") and number words.
         """
         vocab = self._ctl.vocab
         candidates: list[tuple[str, str, int]] = list(vocab.matches_at(tokens, j))
@@ -242,11 +257,12 @@ class VoiceSorter:
 
     def _bulk(self, add: bool, result: VoiceSortResult) -> None:
         count = 0
-        for key in list(self._ctl.pending_terms()):
-            if add and not key[0]:
-                continue
-            decision = Decision.add(key[0], display_name(key[1])) if add else Decision.ignore()
-            self._ctl.resolve_term(key, decision)
-            count += 1
+        with self._ctl.batch("Added terms" if add else "Ignored terms"):   # one undo for all
+            for key in list(self._ctl.pending_terms()):
+                if add and not key[0]:
+                    continue
+                decision = Decision.add(key[0], display_name(key[1])) if add else Decision.ignore()
+                self._ctl.resolve_term(key, decision)
+                count += 1
         result.resolved += count
         result.messages.append(f"{'Added' if add else 'Ignored'} {count} term{'s' if count != 1 else ''}")

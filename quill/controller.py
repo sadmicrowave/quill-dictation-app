@@ -12,6 +12,7 @@ from typing import Callable
 
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.config.settings import Settings
+from quill.history import History
 from quill.parser.commands import Action, CommandMatcher
 from quill.parser.vocab import Vocabulary
 from quill.search import parse_search
@@ -62,6 +63,8 @@ class Controller:
         """True while attached to a workbook."""
         self.voice_sorter: VoiceSorter | None = None
         """Set while the user is answering the Needs-sorting list by voice."""
+        self.history = History()
+        """The most recent sorting decisions, newest last, for :meth:`undo`."""
 
     # ------------------------------------------------------------------ #
     # Workbook connection                                                  #
@@ -74,6 +77,7 @@ class Controller:
             BridgeError: if the workbook cannot be reached.
         """
         self.connected = False
+        self.history.clear()   # undo steps belong to the workbook they were made in
         self.bridge.connect(workbook)
         self.reload_vocab()
         self.connected = True
@@ -132,9 +136,10 @@ class Controller:
             self.try_connect()   # a workbook may have been opened since we last looked
         else:
             self._follow_active_sheet()
-        for event in self._refuse_without_workbook(self.session.feed(text)):
-            self._carry_out(event)
-            self._on_event(event)
+        with self.history.group("Sorted several terms"):   # a spoken "yes" can answer many
+            for event in self._refuse_without_workbook(self.session.feed(text)):
+                self._carry_out(event)
+                self._on_event(event)
 
     def _refuse_without_workbook(self, events: list[Event]) -> list[Event]:
         """With nothing to write to, swap "started" for guidance and keep the gate shut."""
@@ -161,14 +166,97 @@ class Controller:
         return list(self.session.pending or [])
 
     def resolve_term(self, key: TermKey, decision: Decision, term: str | None = None) -> None:
-        """Apply the user's decision about one unrecognised term."""
+        """Apply the user's decision about one unrecognised term (undoable)."""
         for event in self.session.resolve(key, decision, term):
             self._carry_out(event)
             self._on_event(event)
 
     def defer_term(self, key: TermKey) -> None:
         """Leave a term for later (moves it to the end of the list)."""
+        pending = self.session.pending or []
+        if key not in pending or pending[-1] == key:
+            return
+        index = pending.index(key)
         self.session.defer(key)
+        self.history.push(f"Left ‘{key[1]}’ for later", lambda: self._restore(key, index, None))
+
+    def batch(self, label: str):
+        """Context manager: decisions made inside undo together as one step."""
+        return self.history.group(label)
+
+    # ------------------------------------------------------------------ #
+    # Undo                                                                 #
+    # ------------------------------------------------------------------ #
+
+    def undo(self, count: int = 1) -> list[str]:
+        """Reverse the last *count* sorting decisions, newest first.
+
+        Returns:
+            One plain-language line per step ("Undid: Added ‘teal’ to Color"),
+            plus notes for anything that could not be put back; or a single
+            "Nothing to undo" line when the history is empty.
+        """
+        messages: list[str] = []
+        for _ in range(max(1, count)):
+            entry = self.history.pop()
+            if entry is None:
+                if not messages:
+                    messages.append("Nothing to undo")
+                break
+            messages.append(f"Undid: {entry.label}")
+            messages += entry.undo()
+        return messages
+
+    def request_undo(self, count: int = 1) -> None:
+        """Undo from the UI or a spoken keyword and report it as an event."""
+        messages = self.undo(count)
+        undone = messages[0] != "Nothing to undo"
+        self._on_event(Event("undone" if undone else "ignored", detail="; ".join(messages)))
+
+    def _record(self, event: Event) -> None:
+        """Add a resolved term to the undo history (before its effects are carried out)."""
+        info = event.resolved
+        key, index, origin = info["key"], info["index"], info["origin"]
+        if event.kind == "skipped":
+            self.history.push(f"Ignored ‘{info['words']}’", lambda: self._restore(key, index, origin))
+            return
+        previous = (self.settings.aliases.get(info["column"], {}).get(info["words"])
+                    if event.kind == "alias_added" else None)
+        self.history.push(event.detail,
+                          lambda: self._undo_teach(event, previous))
+
+    def _restore(self, key: TermKey, index: int, origin) -> list[str]:
+        self.session.restore_term(key, index, origin)
+        return []
+
+    def _undo_teach(self, event: Event, previous: str | None) -> list[str]:
+        """Undo an add / same-as: empty back-filled cells, forget the value or synonym."""
+        info, notes = event.resolved, []
+        column, words = info["column"], info["words"]
+        for sheet, row, col, value in event.filled or []:
+            try:
+                if not self.bridge.clear_value(sheet, row, col, value):
+                    notes.append(f"Left {col} on row {row} as it is (it was changed)")
+            except BridgeError as exc:
+                notes.append(f"Could not empty {col} on row {row}: {exc}")
+        if event.kind == "add_values":
+            value = info["value"]
+            if not info["existed"]:
+                self.vocab.remove(column, value)
+                try:
+                    if not self.bridge.remove_from_list(column, value):
+                        notes.append(f"Left ‘{value}’ in the {column} list (couldn't find it)")
+                except BridgeError as exc:
+                    notes.append(f"Could not remove ‘{value}’ from the list: {exc}")
+        else:
+            self.vocab.remove_alias(column, words, info["value"])
+            self.settings.remove_alias(column, words)
+            if previous:
+                self.settings.add_alias(column, words, previous)
+                self.vocab.add_alias(column, words, previous)
+            self.settings.save()
+        self.session.restore_term(info["key"], info["index"], info["origin"])
+        return notes
 
     # ------------------------------------------------------------------ #
     # Voice sorting                                                        #
@@ -217,6 +305,8 @@ class Controller:
             self._on_event(Event("ignored", detail=f"Now on sheet '{current}'"))
 
     def _carry_out(self, event: Event) -> None:
+        if event.resolved is not None:
+            self._record(event)
         if event.kind == "committed":
             self._write_row(event)
         elif event.kind == "add_values":
@@ -227,6 +317,10 @@ class Controller:
             self._search(event)
         elif event.kind == "clear_search":
             self._clear_search(event)
+        elif event.kind == "undo":
+            messages = self.undo()
+            event.kind = "undone" if messages[0] != "Nothing to undo" else "ignored"
+            event.detail = "; ".join(messages)
         elif event.kind == "sort_terms":
             if self.start_voice_sort():
                 event.kind, event.detail = "ignored", "Sorting terms by voice"
@@ -310,5 +404,6 @@ class Controller:
             try:
                 if self.bridge.set_value(sheet, row, column, value):
                     event.detail += f"; filled {column} on row {row}"
+                    event.filled = [*(event.filled or []), (sheet, row, column, value)]
             except BridgeError as exc:
                 self._on_event(Event("error", detail=f"Could not fill {column} on row {row}: {exc}"))
