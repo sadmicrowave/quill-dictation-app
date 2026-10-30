@@ -28,7 +28,7 @@ from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.theme import apply_theme
+from quill.ui.theme import apply_spacing, apply_theme
 from quill.ui.tray import TrayIcon
 
 
@@ -126,9 +126,10 @@ class QuillApp:
 
     def start(self) -> None:
         """Build the UI, connect to the workbook, and start listening for speech."""
-        apply_theme(self.qapp, str(self.settings.preferences["theme"]))
+        self._apply_look()
         self.window.setup()
         self.sorting.setup()
+        self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
         self.window.show()
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
@@ -286,9 +287,17 @@ class QuillApp:
         if SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback).exec():
             self.apply_settings()
 
+    def _apply_look(self) -> None:
+        """Apply theme, accent and spacing from the settings to the app and its windows."""
+        prefs = self.settings.preferences
+        apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]))
+        for window in (self.window.widget, self.sorting.widget):
+            if window is not None:
+                apply_spacing(window, str(prefs["spacing"]))
+
     def apply_settings(self) -> None:
         """Push changed settings into the running app."""
-        apply_theme(self.qapp, str(self.settings.preferences["theme"]))
+        self._apply_look()
         self.speaker.enabled = bool(self.settings.preferences["speak_prompts"])
         self.controller.apply_settings()
         self.controller.lead_in_s = self.feedback.lead_in_s()

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from quill.parser.tokens import display_name
 from quill.parser.vocab import Vocabulary
 from quill.session import Decision, TermKey
+from quill.ui.theme import apply_spacing
 
 #: Called with (key, decision, corrected words) when the user decides.
 ResolveCallback = Callable[[TermKey, Decision, str], None]
@@ -87,6 +88,7 @@ class TermRow(QFrame):
             controls.addWidget(button)
         top.addLayout(controls)
 
+        apply_spacing(self)
         self.combo.currentIndexChanged.connect(self._update_enabled)
         self.add_button.clicked.connect(self.add)
         self.ignore_button.clicked.connect(self.ignore)

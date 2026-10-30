@@ -165,13 +165,13 @@ When one breath triggers several (a voice-sort chain answering five terms), only
 
 ### Look
 
-A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a palette and style sheet built from one colour table, in warm light and dark variants with rounded controls and an accent colour. *Auto* follows the OS and restyles live. Third-party packages were considered and not used: `qt-material` (Material Design look), `pyqtdarktheme` (unmaintained), `qdarkstyle` (dark only), `PyQt-Fluent-Widgets` (GPL or paid licence). Screenshots are in the project's `Screenshots/` folder.
+A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a palette and style sheet built from one colour table, in warm light and dark variants with rounded controls and an accent colour. *Auto* follows the OS and restyles live. Two more choices in **Settings**: an **accent colour** (Terracotta, Ocean, Forest, Violet or Rose, each tuned for light and dark with readable text on it) and **spacing**: *Compact* (the original, packed look) or *Comfortable* (roomier padding, margins and gaps). Both apply as soon as you press OK. Colours and spacing live in the tables `ACCENTS` and `DENSITIES` in `ui/theme.py`; layout margins can't be set from a style sheet, so `apply_spacing()` sets them on each window's layouts (new Needs-sorting rows pick up the current choice). Cost: about 25 ms at startup and under 1 ms per repaint, measured. Third-party packages were considered and not used: `qt-material` (Material Design look), `pyqtdarktheme` (unmaintained), `qdarkstyle` (dark only), `PyQt-Fluent-Widgets` (GPL or paid licence). Screenshots are in the project's `Screenshots/` folder.
 
 ## The window, the tray icon and settings
 
 - **Main window**: status light, Start/Stop, Settings, workbook picker and Refresh, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).
 - **Tray / menu bar icon**: green dot when listening, grey ring when not. Menu: Start/Stop Listening, Open Quill, Quit. While listening it begins with `Editing: <workbook>` and the workbook's folder (`~` for home, long paths shortened); click either line to bring the workbook to the front. On Windows a left click toggles listening; on macOS use the menu.
-- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
+- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), accent colour, spacing (compact / comfortable), "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
 
 Quill mutes the microphone while it speaks so it can't hear itself.
 

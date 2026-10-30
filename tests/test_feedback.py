@@ -13,7 +13,7 @@ from quill.history import History
 from quill.session import Event
 from quill.speaker.speaker import Speaker
 from quill.ui.settings_dialog import SettingsDialog
-from quill.ui.theme import TOKENS, apply_theme, palette_for, stylesheet_for
+from quill.ui.theme import TOKENS, apply_theme, colors_for, palette_for, stylesheet_for
 from tests.test_sorting import SENTENCE, DemoCase
 
 _app = QApplication.instance() or QApplication([])
@@ -341,7 +341,7 @@ class TestLook(unittest.TestCase):
     def test_stylesheet_uses_the_tokens(self):
         for dark, name in ((False, "light"), (True, "dark")):
             sheet = stylesheet_for(dark)
-            self.assertIn(TOKENS[name]["accent"], sheet)
+            self.assertIn(colors_for(dark)["accent"], sheet)
             self.assertIn(TOKENS[name]["bg"], sheet)
             self.assertNotIn("{t[", sheet)
 

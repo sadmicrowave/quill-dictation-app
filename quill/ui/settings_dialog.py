@@ -7,14 +7,16 @@ dialog open with the reasons shown.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
     QHeaderView, QMessageBox, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
-from quill.config.settings import HISTORY_LIMIT_RANGE, THEMES
+from quill.config.settings import HISTORY_LIMIT_RANGE, SPACINGS, THEMES
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
+from quill.ui.theme import ACCENTS, DENSITIES, apply_spacing
 
 if TYPE_CHECKING:
     from quill.config.settings import Settings
@@ -26,6 +28,20 @@ BINDABLE_ACTIONS = [a for a in Action if a is not Action.NONE]
 def action_label(action: Action) -> str:
     """Human-readable action name: ``NEXT_ROW`` -> ``Next Row``."""
     return action.name.replace("_", " ").title()
+
+
+def _swatch(color: str) -> QIcon:
+    """A small round colour chip for the accent picker."""
+    pixmap = QPixmap(16, 16)
+    pixmap.fill(QColor("transparent"))
+    from PySide6.QtGui import QPainter
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor(color))
+    painter.setPen(QColor("transparent"))
+    painter.drawEllipse(1, 1, 14, 14)
+    painter.end()
+    return QIcon(pixmap)
 
 
 class SettingsDialog:
@@ -45,6 +61,8 @@ class SettingsDialog:
         self.theme_combo: QComboBox | None = None
         self.speak_check: QCheckBox | None = None
         self.auto_sort_check: QCheckBox | None = None
+        self.accent_combo: QComboBox | None = None
+        self.spacing_combo: QComboBox | None = None
         self.feedback_combo: QComboBox | None = None
         self.pack_combo: QComboBox | None = None
         self.echo_combo: QComboBox | None = None
@@ -87,6 +105,17 @@ class SettingsDialog:
         self.theme_combo.addItems([t.title() for t in THEMES])
         self.theme_combo.setCurrentIndex(THEMES.index(self._settings.preferences["theme"]))
         form.addRow("Appearance", self.theme_combo)
+        self.accent_combo = QComboBox()
+        for key, (label, (light, _), _night) in ACCENTS.items():
+            self.accent_combo.addItem(_swatch(light), label, key)
+        self.accent_combo.setCurrentIndex(self.accent_combo.findData(self._settings.preferences["accent"]))
+        form.addRow("Accent colour", self.accent_combo)
+        self.spacing_combo = QComboBox()
+        for key in SPACINGS:
+            self.spacing_combo.addItem(DENSITIES[key]["label"], key)
+        self.spacing_combo.setCurrentIndex(SPACINGS.index(self._settings.preferences["spacing"]))
+        self.spacing_combo.setToolTip("Compact packs controls closely; Comfortable gives them more room")
+        form.addRow("Spacing", self.spacing_combo)
         self.speak_check = QCheckBox("Read questions aloud")
         self.speak_check.setChecked(bool(self._settings.preferences["speak_prompts"]))
         form.addRow("", self.speak_check)
@@ -130,6 +159,7 @@ class SettingsDialog:
         box.accepted.connect(lambda: self.try_accept(dialog))
         box.rejected.connect(dialog.reject)
         layout.addWidget(box)
+        apply_spacing(dialog)
         self._dialog = dialog
         return dialog
 
@@ -198,6 +228,8 @@ class SettingsDialog:
         self._settings.preferences["theme"] = THEMES[self.theme_combo.currentIndex()]
         self._settings.preferences["speak_prompts"] = self.speak_check.isChecked()
         self._settings.preferences["auto_voice_sort"] = self.auto_sort_check.isChecked()
+        self._settings.preferences["accent"] = self.accent_combo.currentData()
+        self._settings.preferences["spacing"] = self.spacing_combo.currentData()
         self._settings.preferences["history_limit"] = self.history_spin.value()
         self._settings.preferences["feedback"] = self.feedback_combo.currentData()
         self._settings.preferences["sound_pack"] = self.pack_combo.currentData()

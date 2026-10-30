@@ -52,12 +52,16 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "sound_pack": "chime",    # one of feedback.PACKS
     "echo_style": "okay",     # one of feedback.ECHO_WORDS
     "history_limit": 100,     # how many sorting answers undo remembers
+    "accent": "terracotta",   # one of ACCENTS (ui/theme.py)
+    "spacing": "compact",     # "compact" | "comfortable"
 }
 
 #: Allowed range for ``history_limit``.
 HISTORY_LIMIT_RANGE = (5, 500)
 
 THEMES = ("auto", "light", "dark")
+ACCENTS = ("terracotta", "ocean", "forest", "violet", "rose")   # same keys as ui/theme.ACCENTS
+SPACINGS = ("compact", "comfortable")                          # same keys as ui/theme.DENSITIES
 
 
 def _config_dir() -> pathlib.Path:
@@ -158,7 +162,8 @@ class Settings:
                     settings.aliases[column] = {
                         str(k).lower(): str(v) for k, v in mapping.items() if isinstance(v, str)
                     }
-        for key, allowed in (("feedback", MODES), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS)):
+        for key, allowed in (("feedback", MODES), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS),
+                             ("accent", ACCENTS), ("spacing", SPACINGS)):
             if settings.preferences[key] not in allowed:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]
         low, high = HISTORY_LIMIT_RANGE
