@@ -11,6 +11,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import threading
+import time
 from typing import Callable
 
 DoneCallback = Callable[[], None]
@@ -37,20 +38,21 @@ class Speaker:
         self._platform = platform or sys.platform
         self._threaded = run_in_thread
 
-    def say(self, text: str, on_done: DoneCallback | None = None) -> None:
+    def say(self, text: str, on_done: DoneCallback | None = None, lead_in: float = 0.0) -> None:
         """Print and optionally speak *text*. Non-blocking by default.
 
         Args:
             text: What to say.
             on_done: Called after speech ends (also when speech is disabled
                 or fails), on the speaking thread.
+            lead_in: Seconds to wait first (a sound cue is playing).
         """
         print(f"  Quill: {text}")
         if not self.enabled:
             if on_done:
                 on_done()
             return
-        job = self._job(text, on_done)
+        job = self._job(text, on_done, lead_in)
         if self._threaded:
             threading.Thread(target=job, name="quill-speaker", daemon=True).start()
         else:
@@ -60,9 +62,12 @@ class Speaker:
     # Platform implementations                                             #
     # ------------------------------------------------------------------ #
 
-    def _job(self, text: str, on_done: DoneCallback | None) -> Callable[[], None]:
+    def _job(self, text: str, on_done: DoneCallback | None,
+             lead_in: float = 0.0) -> Callable[[], None]:
         def run() -> None:
             try:
+                if lead_in > 0:
+                    time.sleep(lead_in)
                 if self._platform == "darwin":
                     self._say_mac(text)
                 elif self._platform == "win32":

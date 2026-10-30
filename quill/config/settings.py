@@ -36,6 +36,7 @@ except ImportError:
     except ImportError:
         tomllib = None  # type: ignore[assignment]
 
+from quill.feedback import ECHO_WORDS, MODES, PACKS
 from quill.parser.commands import RESERVED_ANSWER_WORDS, Action
 from quill.parser.tokens import tokenize
 
@@ -47,7 +48,14 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "last_workbook": "",      # re-selected on launch when still open
     "prompt_timeout_s": 20,   # seconds to wait for a yes/no answer
     "auto_voice_sort": False,  # start voice sorting as soon as terms need sorting
+    "feedback": "sounds",     # "off" | "sounds" | "echo": how Quill confirms what it did
+    "sound_pack": "chime",    # one of feedback.PACKS
+    "echo_style": "okay",     # one of feedback.ECHO_WORDS
+    "history_limit": 100,     # how many sorting answers undo remembers
 }
+
+#: Allowed range for ``history_limit``.
+HISTORY_LIMIT_RANGE = (5, 500)
 
 THEMES = ("auto", "light", "dark")
 
@@ -150,6 +158,11 @@ class Settings:
                     settings.aliases[column] = {
                         str(k).lower(): str(v) for k, v in mapping.items() if isinstance(v, str)
                     }
+        for key, allowed in (("feedback", MODES), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS)):
+            if settings.preferences[key] not in allowed:
+                settings.preferences[key] = DEFAULT_PREFERENCES[key]
+        low, high = HISTORY_LIMIT_RANGE
+        settings.preferences["history_limit"] = max(low, min(high, int(settings.preferences["history_limit"])))
         if settings.preferences["theme"] not in THEMES:
             settings.preferences["theme"] = DEFAULT_PREFERENCES["theme"]
         return settings

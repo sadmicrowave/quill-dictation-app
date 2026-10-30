@@ -63,7 +63,9 @@ class Controller:
         """True while attached to a workbook."""
         self.voice_sorter: VoiceSorter | None = None
         """Set while the user is answering the Needs-sorting list by voice."""
-        self.history = History()
+        self.lead_in_s = 0.0
+        """Seconds the spoken sorting question waits so a cue can play first (set by the app)."""
+        self.history = History(int(settings.preferences["history_limit"]))
         """The most recent sorting decisions, newest last, for :meth:`undo`."""
 
     # ------------------------------------------------------------------ #
@@ -122,6 +124,7 @@ class Controller:
     def apply_settings(self) -> None:
         """Rebuild the keyword matcher after the user edited settings."""
         self.session.matcher = CommandMatcher(self.settings.keywords)
+        self.history.limit = int(self.settings.preferences["history_limit"])
 
     # ------------------------------------------------------------------ #
     # Dictation                                                            #
@@ -284,7 +287,7 @@ class Controller:
 
     def _voice_sort(self, text: str) -> None:
         result = self.voice_sorter.handle(text)
-        self._on_event(Event("sorting", detail="; ".join(result.messages), record={"heard": text}))
+        self._on_event(Event("sorting", detail="; ".join(result.messages), record={"heard": text, "problem": result.problem}))
         if result.finished:
             done = not self.session.pending
             self.stop_voice_sort("All sorted" if done else "Voice sorting off")
@@ -329,14 +332,15 @@ class Controller:
         elif event.kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self._say(event.detail)
         elif event.kind == "confirm":
-            self._say(event.detail)
+            self._say(event.detail, lead_in=self.lead_in_s)
 
-    def _say(self, text: str) -> None:
+    def _say(self, text: str, lead_in: float = 0.0) -> None:
         """Speak *text* if there is a speaker, muting the mic meanwhile."""
         if self.speaker is None:
             return
         self._on_speech(True)
-        self.speaker.say(text, on_done=lambda: self._on_speech(False))
+        extra = {"lead_in": lead_in} if lead_in else {}
+        self.speaker.say(text, on_done=lambda: self._on_speech(False), **extra)
 
     def _search(self, event: Event) -> None:
         """Turn the spoken criteria into filters on the active sheet."""

@@ -267,6 +267,7 @@ class SortingWindow:
         if self._window is not None and self.rows:
             self._window.show()
             self._window.raise_()
+            self._window.activateWindow()
 
     def add_all(self) -> None:
         """Add every row that already has a column chosen."""

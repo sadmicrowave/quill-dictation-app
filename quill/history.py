@@ -37,6 +37,15 @@ class History:
         self._group: list[HistoryEntry] | None = None
         self._label = ""
 
+    @property
+    def limit(self) -> int:
+        return self._entries.maxlen or 0
+
+    @limit.setter
+    def limit(self, value: int) -> None:
+        """Change the cap; if it shrinks, the oldest entries are dropped."""
+        self._entries = deque(self._entries, maxlen=max(1, value))
+
     def __len__(self) -> int:
         return len(self._entries)
 

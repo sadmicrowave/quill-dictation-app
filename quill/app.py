@@ -19,11 +19,13 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
+from quill.feedback import Feedback
 from quill.listener.listener import Listener
 from quill.listener.model import download_model, find_model, user_model_dir
 from quill.session import Decision, Event, TermKey
 from quill.speaker.speaker import Speaker
 from quill.ui.main_window import MainWindow
+from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
 from quill.ui.theme import apply_theme
@@ -67,6 +69,8 @@ class QuillApp:
         model_downloader: Callable = download_model,
         speaker: Speaker | None = None,
         poll_interval_ms: int = POLL_INTERVAL_MS,
+        sound_player: Callable | None = None,
+        echo_speaker=None,
     ) -> None:
         self.qapp = qapp
         self.settings = settings
@@ -99,6 +103,14 @@ class QuillApp:
         self._expiry = QTimer()
         self._expiry.setSingleShot(True)
         self._expiry.timeout.connect(self.controller.expire_prompt)
+        self.echo_speaker = echo_speaker or Speaker(enabled=True)
+        self.feedback = Feedback(settings, sound_player or SoundPlayer(), self._speak_word,
+                                 busy=self._mute_for)
+        self.controller.lead_in_s = self.feedback.lead_in_s()
+        self._cue_timer = QTimer()          # lets one breath's events settle into a single cue
+        self._cue_timer.setSingleShot(True)
+        self._cue_timer.setInterval(60)
+        self._cue_timer.timeout.connect(self.feedback.flush)
         self._watcher = QTimer()
         self._watcher.setInterval(poll_interval_ms)
         self._watcher.timeout.connect(self.poll_workbooks)
@@ -271,7 +283,7 @@ class QuillApp:
 
     def open_settings(self) -> None:
         """Show the settings dialog; apply the result if saved."""
-        if SettingsDialog(self.settings, self.window.widget).exec():
+        if SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback).exec():
             self.apply_settings()
 
     def apply_settings(self) -> None:
@@ -279,6 +291,8 @@ class QuillApp:
         apply_theme(self.qapp, str(self.settings.preferences["theme"]))
         self.speaker.enabled = bool(self.settings.preferences["speak_prompts"])
         self.controller.apply_settings()
+        self.controller.lead_in_s = self.feedback.lead_in_s()
+        self.refresh_sorting()
         self.window.append_log("Settings saved")
 
     # ------------------------------------------------------------------ #
@@ -288,6 +302,9 @@ class QuillApp:
     def handle_event(self, event: Event) -> None:
         """Reflect a Session/Controller event in the window and tray."""
         kind = event.kind
+        self.feedback.request(event)
+        if not self._cue_timer.isActive():
+            self._cue_timer.start()
         if kind == "started":
             self._set_listening(True)
         elif kind == "stopped":
@@ -354,6 +371,22 @@ class QuillApp:
     def _set_listening(self, active: bool) -> None:
         self.window.set_listening_indicator(active)
         self.tray.set_listening(active)
+
+    def preview_feedback(self, mode: str, pack: str, echo: str) -> None:
+        """Play each cue once, a moment apart, using the (unsaved) choices in Settings."""
+        for i, (cue, word) in enumerate((("success", ""), ("sort", ""), ("dismiss", "Ignored"),
+                                         ("error", ""))):
+            QTimer.singleShot(i * 900, lambda c=cue, w=word: self.feedback.cue(c, w, mode, pack, echo))
+
+    def _speak_word(self, word: str) -> None:
+        self.echo_speaker.say(word)
+
+    def _mute_for(self, seconds: float) -> None:
+        """Keep the microphone muted while a cue is sounding."""
+        if self.listener is None:
+            return
+        self.listener.mute()
+        QTimer.singleShot(int(seconds * 1000), self.listener.unmute)
 
     def _on_speech(self, speaking: bool) -> None:
         """Mute the microphone while Quill talks so it doesn't hear itself."""

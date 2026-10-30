@@ -229,7 +229,7 @@ class Listener:
 class Speaker:
     enabled = True
 
-    def say(self, text, on_done=None):
+    def say(self, text, on_done=None, lead_in=0.0):
         if on_done:
             on_done()
 

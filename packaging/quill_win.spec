@@ -7,7 +7,7 @@ sd_d, sd_b, sd_h = collect_all("sounddevice")
 a = Analysis(
     ["main.py"], pathex=["."],
     binaries=[*vosk_b, *sd_b],
-    datas=[("quill/config/defaults.json","quill/config"),*vosk_d,*sd_d],
+    datas=[("quill/config/defaults.json","quill/config"),("quill/sounds","quill/sounds"),*vosk_d,*sd_d],
     hiddenimports=[*vosk_h, *sd_h, *collect_submodules("quill"), "xlwings","win32com.client","pyttsx3.drivers.sapi5"],
 )
 pyz = PYZ(a.pure)

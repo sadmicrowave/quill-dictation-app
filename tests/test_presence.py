@@ -26,7 +26,7 @@ class FakeSpeaker:
     def __init__(self):
         self.said = []
 
-    def say(self, text, on_done=None):
+    def say(self, text, on_done=None, lead_in=0.0):
         self.said.append(text)
         if on_done:
             on_done()

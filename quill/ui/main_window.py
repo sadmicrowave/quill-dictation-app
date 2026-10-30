@@ -79,6 +79,7 @@ class MainWindow:
         self.dot = QLabel("●")
         self.state_label = QLabel()
         self.toggle_button = QPushButton()
+        self.toggle_button.setProperty("accent", True)
         self.toggle_button.clicked.connect(lambda: self._on_toggle(not self._listening))
         settings_button = QPushButton("Settings…")
         settings_button.clicked.connect(lambda: self._on_settings())

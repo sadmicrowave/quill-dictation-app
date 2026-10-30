@@ -318,7 +318,7 @@ class TestAppSorting(unittest.TestCase):
                                   "unmute": lambda s: None})(),
                               model_finder=lambda c: self.dir,
                               speaker=type("S", (), {"enabled": True,
-                                                     "say": lambda s, t, on_done=None: on_done and on_done()})())
+                                                     "say": lambda s, t, on_done=None, lead_in=0.0: on_done and on_done()})())
         self.quill.start()
 
     def tearDown(self):

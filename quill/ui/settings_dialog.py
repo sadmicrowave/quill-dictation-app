@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
-    QHeaderView, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QHeaderView, QMessageBox, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
-from quill.config.settings import THEMES
+from quill.config.settings import HISTORY_LIMIT_RANGE, THEMES
+from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
 
 if TYPE_CHECKING:
@@ -35,7 +36,8 @@ class SettingsDialog:
         parent: Optional parent QWidget.
     """
 
-    def __init__(self, settings: "Settings", parent=None) -> None:
+    def __init__(self, settings: "Settings", parent=None, on_preview=None) -> None:
+        self._on_preview = on_preview or (lambda mode, pack, echo: None)
         self._settings = settings
         self._parent = parent
         self._dialog: QDialog | None = None
@@ -43,6 +45,10 @@ class SettingsDialog:
         self.theme_combo: QComboBox | None = None
         self.speak_check: QCheckBox | None = None
         self.auto_sort_check: QCheckBox | None = None
+        self.feedback_combo: QComboBox | None = None
+        self.pack_combo: QComboBox | None = None
+        self.echo_combo: QComboBox | None = None
+        self.history_spin: QSpinBox | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -87,6 +93,35 @@ class SettingsDialog:
         self.auto_sort_check = QCheckBox("Start voice sorting automatically when terms need sorting")
         self.auto_sort_check.setChecked(bool(self._settings.preferences["auto_voice_sort"]))
         form.addRow("", self.auto_sort_check)
+        prefs = self._settings.preferences
+        self.history_spin = QSpinBox()
+        self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
+        self.history_spin.setValue(int(prefs["history_limit"]))
+        self.history_spin.setSuffix(" actions")
+        self.history_spin.setToolTip("How many sorting answers Undo can step back through")
+        form.addRow("Undo remembers", self.history_spin)
+
+        self.feedback_combo = QComboBox()
+        for mode in MODES:
+            self.feedback_combo.addItem(MODE_LABELS[mode], mode)
+        self.feedback_combo.setCurrentIndex(MODES.index(prefs["feedback"]))
+        form.addRow("Confirm with", self.feedback_combo)
+        self.pack_combo = QComboBox()
+        for key, label in PACKS.items():
+            self.pack_combo.addItem(label, key)
+        self.pack_combo.setCurrentIndex(self.pack_combo.findData(prefs["sound_pack"]))
+        form.addRow("Sound set", self.pack_combo)
+        self.echo_combo = QComboBox()
+        for key, label in ECHO_WORDS.items():
+            self.echo_combo.addItem(label, key)
+        self.echo_combo.setCurrentIndex(self.echo_combo.findData(prefs["echo_style"]))
+        form.addRow("Spoken word", self.echo_combo)
+        self.feedback_combo.currentIndexChanged.connect(self._update_feedback_choices)
+        self._update_feedback_choices()
+        sample = QPushButton("Play sample")
+        sample.setToolTip("Hear a success, a needs-sorting, an ignore/undo and an error cue")
+        sample.clicked.connect(self.play_sample)
+        form.addRow("", sample)
         layout.addLayout(form)
 
         box = QDialogButtonBox(
@@ -97,6 +132,17 @@ class SettingsDialog:
         layout.addWidget(box)
         self._dialog = dialog
         return dialog
+
+    def _update_feedback_choices(self) -> None:
+        """Only the choice that applies to the selected way of confirming is enabled."""
+        mode = self.feedback_combo.currentData()
+        self.pack_combo.setEnabled(mode == "sounds")
+        self.echo_combo.setEnabled(mode == "echo")
+
+    def play_sample(self) -> None:
+        """Preview the current (unsaved) choices."""
+        self._on_preview(self.feedback_combo.currentData(), self.pack_combo.currentData(),
+                         self.echo_combo.currentData())
 
     # ------------------------------------------------------------------ #
     # Table editing                                                        #
@@ -152,6 +198,10 @@ class SettingsDialog:
         self._settings.preferences["theme"] = THEMES[self.theme_combo.currentIndex()]
         self._settings.preferences["speak_prompts"] = self.speak_check.isChecked()
         self._settings.preferences["auto_voice_sort"] = self.auto_sort_check.isChecked()
+        self._settings.preferences["history_limit"] = self.history_spin.value()
+        self._settings.preferences["feedback"] = self.feedback_combo.currentData()
+        self._settings.preferences["sound_pack"] = self.pack_combo.currentData()
+        self._settings.preferences["echo_style"] = self.echo_combo.currentData()
         self._settings.save()
         (dialog or self._dialog).accept()
         return True

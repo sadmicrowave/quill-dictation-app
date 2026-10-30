@@ -62,6 +62,8 @@ class VoiceSortResult:
     """How many terms left the list."""
     finished: bool = False
     """True if the user said stop/done or the list is empty."""
+    problem: bool = False
+    """True if something was not understood or could not be done (plays the error cue)."""
 
 
 class VoiceSorter:
@@ -109,6 +111,7 @@ class VoiceSorter:
         if not self._ctl.pending_terms():
             result.finished = True
         if not heard_command and not result.messages:
+            result.problem = True
             result.messages.append(
                 "Didn't catch a command. Say yes, a column name, same as …, ignore, later, undo or done."
             )
@@ -121,6 +124,7 @@ class VoiceSorter:
         count, used = parse_number(tokens, j)
         count = int(count) if count is not None and count >= 1 else 1
         messages = self._ctl.undo(count)
+        result.problem = result.problem or messages == ["Nothing to undo"]
         result.messages += messages
         result.resolved -= sum(1 for m in messages if m.startswith("Undid"))
         return j + used
@@ -200,6 +204,7 @@ class VoiceSorter:
     def _add(self, key, column: str | None, result: VoiceSortResult) -> None:
         term = key[1]
         if not column:
+            result.problem = True
             result.messages.append(f"Which column is ‘{term}’? Say a column name.")
             return
         self._ctl.resolve_term(key, Decision.add(column, display_name(term)))
@@ -218,6 +223,7 @@ class VoiceSorter:
             return j
         found = self._match_value(tokens, j, column)
         if found is None:
+            result.problem = True
             where = f" in {column}" if column else ""
             result.messages.append(f"I don't have ‘{' '.join(tokens[j:j + 2])}’{where}. "
                                    "Try again, or say ignore.")
