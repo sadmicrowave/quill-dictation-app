@@ -12,7 +12,10 @@ value, so callers can tell computed columns from typed-in data.
 
 from __future__ import annotations
 import datetime as dt
+import sys
 from abc import ABC, abstractmethod
+
+from quill.bridge.filters import ColumnFilter
 
 
 class Grid(ABC):
@@ -46,6 +49,36 @@ class Grid(ABC):
         """Write one cell."""
 
 
+    # Optional capabilities: implemented by grids that can filter/navigate.
+
+    def set_autofilter(
+        self, sheet: str, header_row: int, first_col: int, last_col: int, last_row: int,
+        criteria: dict[int, ColumnFilter],
+    ) -> int | None:
+        """Turn on AutoFilter over the table and apply *criteria* (col index -> filter).
+
+        Returns the matching row count when known, else None.
+        """
+        from quill.bridge.base import BridgeError
+        raise BridgeError("Filtering is not supported here.")
+
+    def clear_autofilter(self, sheet: str) -> None:
+        """Show all rows again (the filter arrows stay on)."""
+        from quill.bridge.base import BridgeError
+        raise BridgeError("Filtering is not supported here.")
+
+    def get_cursor(self, sheet: str) -> tuple[int, int] | None:
+        """The selected cell as (row, col), or None if unknown."""
+        return None
+
+    def set_cursor(self, sheet: str, row: int, col: int) -> None:
+        """Select a cell and scroll it into view."""
+
+    def path(self) -> str:
+        """Full path of the workbook ('' if unsaved/unknown)."""
+        return ""
+
+
 def is_blank(value: object) -> bool:
     """True for None, empty/whitespace text, and formulas (computed cells)."""
     if value is None:
@@ -73,6 +106,8 @@ class OpenpyxlGrid(Grid):
 
     def __init__(self, wb) -> None:
         self._wb = wb
+        self._hidden: dict[str, set[int]] = {}      # rows we hid, per sheet
+        self._cursor: dict[str, tuple[int, int]] = {}
 
     def sheet_names(self) -> list[str]:
         return list(self._wb.sheetnames)
@@ -106,6 +141,39 @@ class OpenpyxlGrid(Grid):
     def write(self, sheet: str, row: int, col: int, value: object) -> None:
         self._ws(sheet).cell(row=row, column=col).value = value
 
+    def set_autofilter(self, sheet, header_row, first_col, last_col, last_row, criteria):
+        """Record the filter in the file and hide non-matching rows.
+
+        Excel only re-applies a stored filter on demand, so the rows are
+        hidden explicitly to keep the file consistent with the criteria.
+        """
+        from openpyxl.utils import get_column_letter
+        ws = self._ws(sheet)
+        self.clear_autofilter(sheet)
+        ws.auto_filter.ref = (
+            f"{get_column_letter(first_col)}{header_row}:{get_column_letter(last_col)}{last_row}"
+        )
+        matched = 0
+        for row in range(header_row + 1, last_row + 1):
+            keep = all(f.matches(ws.cell(row=row, column=col).value) for col, f in criteria.items())
+            if keep:
+                matched += 1
+            else:
+                ws.row_dimensions[row].hidden = True
+                self._hidden.setdefault(sheet, set()).add(row)
+        return matched
+
+    def clear_autofilter(self, sheet: str) -> None:
+        ws = self._ws(sheet)
+        for row in self._hidden.pop(sheet, set()):
+            ws.row_dimensions[row].hidden = False
+
+    def get_cursor(self, sheet: str):
+        return self._cursor.get(sheet)
+
+    def set_cursor(self, sheet: str, row: int, col: int) -> None:
+        self._cursor[sheet] = (row, col)
+
     def _ws(self, sheet: str):
         if sheet not in self._wb.sheetnames:
             from quill.bridge.base import BridgeError
@@ -121,8 +189,9 @@ class XlwingsGrid(Grid):
     and macOS.
     """
 
-    def __init__(self, book) -> None:
+    def __init__(self, book, platform: str | None = None) -> None:
         self._book = book
+        self._platform = platform or sys.platform
 
     def sheet_names(self) -> list[str]:
         return [s.name for s in self._book.sheets]
@@ -153,6 +222,96 @@ class XlwingsGrid(Grid):
         if isinstance(value, dt.date) and not isinstance(value, dt.datetime):
             value = dt.datetime(value.year, value.month, value.day)
         self._book.sheets[sheet].range((row, col)).value = value
+
+
+    # ---- filtering / navigation ------------------------------------------------
+    #
+    # Excel's filter object model is not exposed by xlwings itself, so these go
+    # through the native API (COM on Windows, AppleScript on macOS) via ``.api``.
+    # Not yet exercised against a real Excel; see the To Do.
+
+    _XL_AND = 1
+    _XL_FILTER_VALUES = 7
+
+    def set_autofilter(self, sheet, header_row, first_col, last_col, last_row, criteria):
+        from quill.bridge.base import BridgeError
+        ws = self._book.sheets[sheet]
+        table = ws.range((header_row, first_col), (max(last_row, header_row + 1), last_col))
+        try:
+            if self._platform == "win32":
+                if ws.api.AutoFilterMode:
+                    ws.api.AutoFilterMode = False
+                for col, flt in criteria.items():
+                    self._apply_windows(table.api, col - first_col + 1, flt)
+            else:
+                if ws.api.autofilter_mode.get():
+                    ws.api.autofilter_mode.set(False)
+                for col, flt in criteria.items():
+                    self._apply_mac(table.api, col - first_col + 1, flt)
+        except Exception as exc:
+            raise BridgeError(f"Excel would not apply the filter: {exc}") from exc
+        return None   # visible-row count is not read back from Excel
+
+    def _apply_windows(self, rng_api, field: int, flt: ColumnFilter) -> None:
+        if flt.values:
+            if len(flt.values) == 1:
+                rng_api.AutoFilter(Field=field, Criteria1="=" + flt.values[0])
+            else:
+                rng_api.AutoFilter(Field=field, Criteria1=list(flt.values),
+                                   Operator=self._XL_FILTER_VALUES)
+            return
+        tests = [f"{op}{limit:g}" for op, limit in flt.comparisons]
+        if len(tests) == 1:
+            rng_api.AutoFilter(Field=field, Criteria1=tests[0])
+        else:
+            rng_api.AutoFilter(Field=field, Criteria1=tests[0], Operator=self._XL_AND,
+                               Criteria2=tests[1])
+
+    def _apply_mac(self, rng_api, field: int, flt: ColumnFilter) -> None:
+        from appscript import k
+        if flt.values:
+            rng_api.autofilter(field=field, criteria1="=" + flt.values[0])
+            if len(flt.values) > 1:   # AppleScript has no value-list form; OR the first two
+                rng_api.autofilter(field=field, criteria1="=" + flt.values[0], operator=k.autofilter_or,
+                                   criteria2="=" + flt.values[1])
+            return
+        tests = [f"{op}{limit:g}" for op, limit in flt.comparisons]
+        if len(tests) == 1:
+            rng_api.autofilter(field=field, criteria1=tests[0])
+        else:
+            rng_api.autofilter(field=field, criteria1=tests[0], operator=k.autofilter_and,
+                               criteria2=tests[1])
+
+    def clear_autofilter(self, sheet: str) -> None:
+        from quill.bridge.base import BridgeError
+        ws = self._book.sheets[sheet]
+        try:
+            if self._platform == "win32":
+                if ws.api.FilterMode:
+                    ws.api.ShowAllData()
+            elif ws.api.filter_mode.get():
+                ws.api.show_all_data()
+        except Exception as exc:
+            raise BridgeError(f"Excel would not clear the filter: {exc}") from exc
+
+    def get_cursor(self, sheet: str):
+        try:
+            cell = self._book.app.selection
+            return cell.row, cell.column
+        except Exception:
+            return None
+
+    def set_cursor(self, sheet: str, row: int, col: int) -> None:
+        try:
+            ws = self._book.sheets[sheet]
+            ws.activate()
+            ws.range((row, col)).select()
+        except Exception:
+            pass   # cosmetic; never fail a search over scroll position
+
+    def path(self) -> str:
+        full = getattr(self._book, "fullname", "") or ""
+        return full if ("/" in full or "\\" in full) else ""
 
 
 def _as_block(raw: object, rows: int, cols: int) -> list[list[object]]:

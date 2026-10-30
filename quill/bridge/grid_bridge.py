@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 
 from quill.bridge.base import BridgeError, WorkbookBridge
+from quill.bridge.filters import ColumnFilter
 from quill.bridge.grid import Grid, cell_text, is_blank
 from quill.bridge.introspect import HEADER_SCAN_ROWS, Discovery, ListSource, guess_header_row
 
@@ -26,6 +27,8 @@ class GridBridge(WorkbookBridge):
         self._grid: Grid | None = None
         self._discovery = Discovery()
         self._name = ""
+        # Where the user was before the first search of a run: (sheet, row, col)
+        self._saved_cursor: tuple[str, int, int] | None = None
 
     # ------------------------------------------------------------------ #
     # Hooks for subclasses                                                 #
@@ -150,6 +153,79 @@ class GridBridge(WorkbookBridge):
                 if all(is_blank(cells[c - 1]) for c in columns):
                     return header_row + 1 + offset
         return max(last, header_row) + 1
+
+    # ------------------------------------------------------------------ #
+    # Search                                                               #
+    # ------------------------------------------------------------------ #
+
+    #: A column is numeric when at least this share of its entries are numbers.
+    _NUMERIC_SHARE = 0.8
+    #: Rows sampled below the header when judging whether a column is numeric.
+    _SAMPLE_ROWS = 200
+
+    @property
+    def workbook_path(self) -> str:
+        return self._grid.path() if self._grid is not None else ""
+
+    def numeric_columns(self, sheet_name: str | None = None) -> list[str]:
+        grid = self._require()
+        sheet = sheet_name or grid.active_sheet()
+        header_row = self._header_row(grid, sheet)
+        width = grid.last_col(sheet)
+        rows = min(grid.last_row(sheet) - header_row, self._SAMPLE_ROWS)
+        if width == 0 or rows <= 0:
+            return []
+        headers = grid.read(sheet, header_row, 1, 1, width)[0]
+        data = grid.read(sheet, header_row + 1, 1, rows, width)
+        found = []
+        for index, header in enumerate(headers):
+            if is_blank(header):
+                continue
+            entries = [r[index] for r in data if not is_blank(r[index])]
+            numbers = [v for v in entries
+                       if isinstance(v, (int, float)) and not isinstance(v, bool)]
+            if entries and len(numbers) / len(entries) >= self._NUMERIC_SHARE:
+                found.append(str(header).strip())
+        return found
+
+    def apply_filters(self, sheet_name: str, filters: list[ColumnFilter]) -> int | None:
+        grid = self._require()
+        if sheet_name not in grid.sheet_names():
+            raise BridgeError(f"No sheet named '{sheet_name}'")
+        header_row = self._header_row(grid, sheet_name)
+        width = grid.last_col(sheet_name)
+        header_cells = grid.read(sheet_name, header_row, 1, 1, max(width, 1))[0]
+        columns = {normalize_header(c): i for i, c in enumerate(header_cells, 1) if not is_blank(c)}
+        criteria: dict[int, ColumnFilter] = {}
+        for flt in filters:
+            index = columns.get(normalize_header(flt.column))
+            if index is None:
+                raise BridgeError(f"Sheet '{sheet_name}' has no column named '{flt.column}'")
+            criteria[index] = flt
+
+        if self._saved_cursor is None:   # remember only the pre-search position
+            cursor = grid.get_cursor(sheet_name)
+            if cursor:
+                self._saved_cursor = (sheet_name, *cursor)
+            else:
+                self._saved_cursor = (sheet_name, header_row + 1, 1)
+        count = grid.set_autofilter(
+            sheet_name, header_row, 1, width, max(grid.last_row(sheet_name), header_row + 1), criteria
+        )
+        grid.set_cursor(sheet_name, header_row + 1, 1)
+        self._after_write()
+        return count
+
+    def clear_filters(self, sheet_name: str) -> bool:
+        grid = self._require()
+        saved, self._saved_cursor = self._saved_cursor, None
+        if saved is None:
+            return False
+        grid.clear_autofilter(saved[0] if saved[0] in grid.sheet_names() else sheet_name)
+        if saved[0] in grid.sheet_names():
+            grid.set_cursor(*saved)
+        self._after_write()
+        return True
 
     def add_to_list(self, column_name: str, value: str) -> None:
         grid = self._require()

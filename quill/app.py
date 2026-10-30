@@ -18,7 +18,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.config.settings import Settings
-from quill.controller import Controller
+from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.listener.listener import Listener
 from quill.listener.model import download_model, find_model, user_model_dir
 from quill.session import Event
@@ -50,7 +50,11 @@ class QuillApp:
         model_finder: ``(configured_path) -> Path | None``.
         model_downloader: ``(dest_dir, progress) -> Path``; tests inject a fake.
         speaker: Speaker to use (default: platform TTS honouring settings).
+        poll_interval_ms: How often to look for workbooks being opened/closed.
     """
+
+    #: Default polling period of the workbook watcher.
+    POLL_INTERVAL_MS = 3000
 
     def __init__(
         self,
@@ -61,6 +65,7 @@ class QuillApp:
         model_finder: Callable[[str], pathlib.Path | None] = find_model,
         model_downloader: Callable = download_model,
         speaker: Speaker | None = None,
+        poll_interval_ms: int = POLL_INTERVAL_MS,
     ) -> None:
         self.qapp = qapp
         self.settings = settings
@@ -79,6 +84,7 @@ class QuillApp:
             qapp, self.window,
             on_start=lambda: self.toggle_listening(True),
             on_stop=lambda: self.toggle_listening(False),
+            on_open_workbook=self.show_workbook,
         )
         self.listener = None
         self.connected = False
@@ -88,6 +94,9 @@ class QuillApp:
         self._expiry = QTimer()
         self._expiry.setSingleShot(True)
         self._expiry.timeout.connect(self.controller.expire_prompt)
+        self._watcher = QTimer()
+        self._watcher.setInterval(poll_interval_ms)
+        self._watcher.timeout.connect(self.poll_workbooks)
 
         self.relay.transcript.connect(self.controller.handle_transcript)
         self.relay.error.connect(self._on_error)
@@ -106,9 +115,15 @@ class QuillApp:
         self.window.show()
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
         self._start_listener()
+        self._watcher.start()
 
-    def connect_workbook(self, name: str | None = None) -> None:
-        """Connect (or reconnect) to a workbook and refresh the UI; never raises."""
+    def connect_workbook(self, name: str | None = None, quiet: bool = False) -> None:
+        """Connect (or reconnect) to a workbook and refresh the UI; never raises.
+
+        Args:
+            name: Workbook to target; None for the active one.
+            quiet: Don't log or show a message when nothing is found.
+        """
         bridge = self.controller.bridge
         try:
             names = bridge.open_workbooks()
@@ -117,8 +132,9 @@ class QuillApp:
             self.controller.connect(name)
         except BridgeError as exc:
             self.connected = False
-            self.window.append_log(f"Not connected: {exc}")
-            self.window.set_footer("Open a workbook in Excel, then press Refresh.")
+            if not quiet:
+                self.window.append_log(f"Not connected: {exc}")
+            self.window.set_footer(NO_WORKBOOK_HELP)
             return
         self.connected = True
         self.window.update_workbooks(names, bridge.workbook_name)
@@ -131,8 +147,44 @@ class QuillApp:
         if warning:
             self.window.append_log(warning)
         self.window.set_footer("")
+        self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
         self.settings.preferences["last_workbook"] = bridge.workbook_name
         self.settings.save()
+
+    def poll_workbooks(self) -> None:
+        """Watcher tick: attach when a workbook appears, detach when it closes.
+
+        This is what makes "just open a spreadsheet and start talking" work:
+        Quill need not be told which workbook; it notices.
+        """
+        bridge = self.controller.bridge
+        try:
+            names = bridge.open_workbooks()
+        except BridgeError:
+            names = []   # Excel not running
+        if self.connected:
+            if bridge.workbook_name in names:
+                return
+            closed = bridge.workbook_name
+            self.controller.detach()
+            self.connected = False
+            self._set_listening(False)
+            self.tray.set_workbook("", "")
+            self.window.update_workbooks([])
+            self.window.append_log(f"'{closed}' was closed.")
+            self.window.set_footer(NO_WORKBOOK_HELP)
+        if names and not self.connected:
+            preferred = str(self.settings.preferences["last_workbook"])
+            self.connect_workbook(preferred if preferred in names else None, quiet=True)
+            if self.connected:
+                self.window.append_log(f"Attached to {bridge.workbook_name} automatically.")
+
+    def show_workbook(self) -> None:
+        """Bring the workbook being dictated into to the front (tray click)."""
+        try:
+            self.controller.bridge.activate()
+        except BridgeError as exc:
+            self.window.append_log(str(exc))
 
     def _start_listener(self) -> None:
         model = self._model_finder(str(self.settings.preferences["model_path"]))
@@ -157,10 +209,9 @@ class QuillApp:
     def toggle_listening(self, active: bool) -> None:
         """Open or close the listening gate (button, tray, or menu)."""
         if active and not self.connected:
-            self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
-            if not self.connected:
-                return
-        self.controller.set_listening(active)
+            self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None,
+                                  quiet=True)
+        self.controller.set_listening(active)   # explains what to do if there is no workbook
 
     def refresh(self) -> None:
         """Re-read the workbook (or connect, if not yet connected)."""
@@ -204,6 +255,9 @@ class QuillApp:
             self._set_listening(True)
         elif kind == "stopped":
             self._set_listening(False)
+        elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
+            self.window.set_footer(NO_WORKBOOK_HELP)
+            self.tray.notify(NO_WORKBOOK_HELP)
         elif kind == "committed":
             summary = ", ".join(f"{k}: {v}" for k, v in event.record.items())
             self.window.set_last_saved(f"{event.detail} — {summary}" if event.detail else summary)
@@ -226,6 +280,7 @@ class QuillApp:
             "started": "Listening started", "stopped": "Listening stopped",
             "committed": "Saved row", "discarded": "Row discarded",
             "updated": "Heard", "confirm": "Question", "error": "Error",
+            "searched": "Search", "cleared": "Search cleared", "unsure": "Unsure",
         }
         label = labels.get(event.kind)
         return f"{label}: {event.detail}".rstrip(": ") if label else event.detail

@@ -6,7 +6,10 @@ do not use it on a workbook that is open and unsaved in Excel.
 """
 
 from __future__ import annotations
+import os
 import pathlib
+import subprocess
+import sys
 
 import openpyxl
 
@@ -32,7 +35,12 @@ class XlsxBridge(GridBridge):
         self._wb = None
 
     def connect(self, workbook: str | None = None) -> None:
-        path = pathlib.Path(workbook) if workbook else self._path
+        # The picker and saved settings pass a workbook *name*; only a path that
+        # differs from the one we already hold is treated as a new file.
+        if workbook and not (self._path and workbook == self._path.name):
+            path = pathlib.Path(workbook)
+        else:
+            path = self._path
         if path is None:
             raise BridgeError("No workbook path given")
         if not path.exists():
@@ -50,8 +58,22 @@ class XlsxBridge(GridBridge):
         super().disconnect()
         self._wb = None
 
+    @property
+    def workbook_path(self) -> str:
+        return str(self._path.resolve()) if self._path else ""
+
+    def activate(self) -> None:
+        """Open the file in the system's default spreadsheet application."""
+        if self._path is None:
+            return
+        if sys.platform == "win32":
+            os.startfile(str(self._path))   # type: ignore[attr-defined]
+        else:
+            subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(self._path)],
+                           check=False)
+
     def open_workbooks(self) -> list[str]:
-        return [self._path.name] if self._path else []
+        return [self._path.name] if self._path and self._path.exists() else []
 
     def refresh(self) -> None:
         """Reload the file from disk, discarding unsaved in-memory state."""

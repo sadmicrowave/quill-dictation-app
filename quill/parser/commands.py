@@ -24,6 +24,7 @@ class Action(Enum):
     NEXT_ROW        = auto()
     DELETE_ROW      = auto()
     SEARCH_FOR      = auto()
+    CLEAR_SEARCH    = auto()
     NONE            = auto()   # no command found in this segment
 
 

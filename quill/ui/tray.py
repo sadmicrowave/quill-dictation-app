@@ -1,6 +1,8 @@
 """System tray / menu bar icon via PySide6 QSystemTrayIcon.
 
 Menu items:
+  Editing: <workbook>   (these two lines appear only while listening;
+  <folder it lives in>   click either to bring the workbook to the front)
   Start Listening / Stop Listening  (label flips with state)
   Open Quill
   Quit
@@ -10,6 +12,7 @@ On Windows a left click toggles listening. On macOS a click opens the menu
 (a Qt/AppKit convention when a menu is attached), so use the menu item.
 """
 from __future__ import annotations
+import pathlib
 from typing import Callable
 
 from PySide6.QtCore import QPoint, Qt
@@ -19,6 +22,31 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 from quill.ui.main_window import COLOR_ACTIVE, COLOR_IDLE
 
 ICON_SIZE = 64
+
+#: Longest workbook name / folder path shown in the menu before eliding.
+MAX_TITLE_CHARS = 44
+MAX_FOLDER_CHARS = 52
+
+
+def elide_end(text: str, width: int) -> str:
+    """Shorten *text* to *width* characters, ending with an ellipsis."""
+    return text if len(text) <= width else text[: width - 1] + "…"
+
+
+def elide_middle(text: str, width: int) -> str:
+    """Shorten *text* keeping both ends: ``~/Docs/…/Plants/2026``."""
+    if len(text) <= width:
+        return text
+    keep = width - 1
+    head = keep // 3
+    return text[:head] + "…" + text[len(text) - (keep - head):]
+
+
+def folder_for_display(path: str) -> str:
+    """The containing folder of *path*, with the home folder shown as ``~``."""
+    folder = str(pathlib.Path(path).parent)
+    home = str(pathlib.Path.home())
+    return "~" + folder[len(home):] if folder.startswith(home) else folder
 
 
 def make_icon(listening: bool) -> QIcon:
@@ -46,13 +74,20 @@ class TrayIcon:
         main_window: Window to raise on "Open Quill".
         on_start: Called when the user asks to start listening.
         on_stop: Called when the user asks to stop listening.
+        on_open_workbook: Called when the user clicks the workbook line.
     """
 
-    def __init__(self, app, main_window, on_start: Callable, on_stop: Callable) -> None:
+    def __init__(self, app, main_window, on_start: Callable, on_stop: Callable,
+                 on_open_workbook: Callable | None = None) -> None:
         self._app = app
         self._main_window = main_window
         self._on_start = on_start
         self._on_stop = on_stop
+        self._on_open_workbook = on_open_workbook or (lambda: None)
+        self._workbook_name = ""
+        self._workbook_path = ""
+        self._title_action: QAction | None = None
+        self._folder_action: QAction | None = None
         self._tray: QSystemTrayIcon | None = None
         self._toggle_action: QAction | None = None
         self._menu: QMenu | None = None
@@ -72,21 +107,56 @@ class TrayIcon:
 
         Returns:
             False if the platform has no system tray (the app then runs with
-            the window only).
+            the window only). The menu object is still built.
         """
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            return False
-        self._tray = QSystemTrayIcon(make_icon(False))
         self._menu = QMenu()
+        self._title_action = self._menu.addAction("", lambda: self._on_open_workbook())
+        self._folder_action = self._menu.addAction("", lambda: self._on_open_workbook())
+        self._menu.addSeparator()
         self._toggle_action = self._menu.addAction("Start Listening", self.toggle)
         self._menu.addAction("Open Quill", self._main_window.show)
         self._menu.addSeparator()
         self._menu.addAction("Quit", self._app.quit)
+        self._refresh_workbook_items()
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return False
+        self._tray = QSystemTrayIcon(make_icon(False))
         self._tray.setContextMenu(self._menu)
         self._tray.activated.connect(self._on_activated)
         self._tray.setToolTip("Quill — not listening")
         self._tray.show()
         return True
+
+    @property
+    def workbook_items(self) -> tuple[QAction | None, QAction | None]:
+        """The (title, folder) menu entries (exposed for tests)."""
+        return self._title_action, self._folder_action
+
+    def set_workbook(self, name: str, path: str = "") -> None:
+        """Set the workbook shown in the menu ('' clears it)."""
+        self._workbook_name, self._workbook_path = name, path
+        self._refresh_workbook_items()
+
+    def _refresh_workbook_items(self) -> None:
+        """Show the workbook lines only while listening on a known workbook."""
+        if self._title_action is None:
+            return
+        show = self._listening and bool(self._workbook_name)
+        self._title_action.setVisible(show)
+        self._folder_action.setVisible(show and bool(self._workbook_path))
+        if not show:
+            return
+        self._title_action.setText("Editing: " + elide_end(self._workbook_name, MAX_TITLE_CHARS))
+        self._title_action.setToolTip(self._workbook_path or self._workbook_name)
+        if self._workbook_path:
+            folder = folder_for_display(self._workbook_path)
+            self._folder_action.setText(elide_middle(folder, MAX_FOLDER_CHARS))
+            self._folder_action.setToolTip(self._workbook_path)
+
+    def notify(self, message: str, title: str = "Quill") -> None:
+        """Pop a system notification from the tray icon (no-op without a tray)."""
+        if self._tray is not None:
+            self._tray.showMessage(title, message)
 
     def toggle(self) -> None:
         """Flip listening by asking the app to start or stop."""
@@ -95,6 +165,7 @@ class TrayIcon:
     def set_listening(self, active: bool) -> None:
         """Swap icon colour and flip the Start/Stop label."""
         self._listening = active
+        self._refresh_workbook_items()
         if self._toggle_action is not None:
             self._toggle_action.setText("Stop Listening" if active else "Start Listening")
         if self._tray is not None:

@@ -7,13 +7,16 @@
     "new record": "NEXT_ROW",
     "delete row": "DELETE_ROW",
     "cancel": "DELETE_ROW",
-    "search for": "SEARCH_FOR"
+    "search for": "SEARCH_FOR",
+    "clear search": "CLEAR_SEARCH",
+    "reset filters": "CLEAR_SEARCH"
   },
   "actions": {
     "START_LISTENING": "Open the listening gate; begin capturing spoken input",
     "STOP_LISTENING": "Close the listening gate",
     "NEXT_ROW": "Commit the current record to the workbook and start a new one",
     "DELETE_ROW": "Discard the current in-progress record without writing it",
-    "SEARCH_FOR": "Set a text filter on the active sheet (future)"
+    "SEARCH_FOR": "Filter the active sheet by the spoken criteria, e.g. 'search for black blouses under 50'",
+    "CLEAR_SEARCH": "Remove the search filters and return to where you were before searching"
   }
 }

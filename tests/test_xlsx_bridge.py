@@ -43,6 +43,11 @@ class TestConnect(BridgeCase):
         with self.assertRaises(BridgeError):
             _ = self.bridge.workbook_name
 
+    def test_reconnect_by_name_uses_known_path(self):
+        self.bridge.disconnect()
+        self.bridge.connect("plants.xlsx")
+        self.assertEqual(self.bridge.workbook_name, "plants.xlsx")
+
     def test_open_workbooks(self):
         self.assertEqual(self.bridge.open_workbooks(), ["plants.xlsx"])
 

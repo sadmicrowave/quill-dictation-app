@@ -12,6 +12,8 @@ Use bridge.factory.get_bridge() to obtain the right one at runtime.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
+from quill.bridge.filters import ColumnFilter
+
 
 class WorkbookBridge(ABC):
     """Thin, platform-neutral interface to an open Excel workbook."""
@@ -40,6 +42,14 @@ class WorkbookBridge(ABC):
     @abstractmethod
     def workbook_name(self) -> str:
         """Display name of the connected workbook (filename without path)."""
+
+    @property
+    def workbook_path(self) -> str:
+        """Full path of the connected workbook ('' if unknown or unsaved)."""
+        return ""
+
+    def activate(self) -> None:
+        """Bring the connected workbook to the front. Default: do nothing."""
 
     def open_workbooks(self) -> list[str]:
         """Names of every workbook that can be targeted (for a picker).
@@ -107,6 +117,37 @@ class WorkbookBridge(ABC):
         Raises:
             BridgeError: if the column or its list source cannot be found.
         """
+
+
+    # ------------------------------------------------------------------ #
+    # Search (optional capability)                                         #
+    # ------------------------------------------------------------------ #
+
+    def numeric_columns(self, sheet_name: str | None = None) -> list[str]:
+        """Headers whose data is mostly numbers (candidates for "under 50")."""
+        return []
+
+    def apply_filters(self, sheet_name: str, filters: list[ColumnFilter]) -> int | None:
+        """Filter *sheet_name* to rows matching every filter.
+
+        Turns on AutoFilter on the header row. The cursor position is
+        remembered the first time so :meth:`clear_filters` can return to it.
+
+        Returns:
+            The number of matching rows when known, else None.
+
+        Raises:
+            BridgeError: if filtering is unsupported or fails.
+        """
+        raise BridgeError("This bridge cannot filter.")
+
+    def clear_filters(self, sheet_name: str) -> bool:
+        """Show every row again and return to where the user was.
+
+        Returns:
+            True if a search was active (and has been cleared).
+        """
+        raise BridgeError("This bridge cannot filter.")
 
 
 class BridgeError(Exception):

@@ -15,9 +15,11 @@ Speech recognition is offline (Vosk); nothing leaves your machine.
 | a column name + value (`pot size large`, `price twelve fifty`, `acquired today`, `notes needs water`) | Fills that column: list value, amount, date, or free text |
 | `next row` (or `new record`) | Writes the row to the next empty row of the active sheet |
 | `cancel` / `delete row` | Discards the row being built |
+| `search for black blouses under 50` | Turns on filters on the active sheet's header row: `black` → Color, `blouses` → Type, `under 50` → Purchase Price `< 50` |
+| `clear search` (or `reset filters`) | Removes the filters and returns you to the cell you were on before searching |
 | a value that isn't on a list | At the end of the row Quill asks "…isn't in the Color list. Add it?" Say `yes` to add it to the workbook |
 
-Keywords are editable in **Settings**. Dates understand `today`, `yesterday`
+Keywords are editable in **Settings**. If you saved keywords before `clear search` existed, add it there (or *Restore defaults*). Dates understand `today`, `yesterday`
 and `october 30 [2026]`; amounts understand `twelve dollars and fifty cents`.
 
 ## Running
@@ -28,6 +30,16 @@ and `october 30 [2026]`; amounts understand `twelve dollars and fifty cents`.
     python main.py --workbook file.xlsx  # edits a file directly (no Excel needed)
 
 On first run, press **Download speech model** (about 40 MB).
+
+**No spreadsheet open?** Quill tells you (window, notification, and voice) and keeps
+watching: as soon as a workbook opens in Excel it attaches automatically, and if the
+workbook closes it lets go and stops listening. While listening, the menu bar / tray
+menu shows `Editing: <workbook>` and its folder; click either to bring the workbook
+to the front.
+
+Search words: `under`/`below`/`less than` (<), `at most`/`up to` (<=), `over`/`above`/`more than` (>),
+`at least` (>=), `exactly` (=). A number applies to a column you name just before it
+(`sale price under 20`); otherwise to the first money-like numeric column (the log says which).
 
 Drop-down lists are read from the workbook *file*, so save after adding a
 validation rule and press **Refresh**. Values and rows are written live.
@@ -45,6 +57,7 @@ Tests run headless (Qt offscreen) and need no Excel, microphone or model.
 |---------|------|
 | `quill/bridge/` | Workbook access: introspection, live Excel (xlwings), file (openpyxl) |
 | `quill/parser/` | Tokens, numbers/dates, vocabulary, phrase parser, keyword matcher |
+| `quill/search.py` | Spoken search → per-column filters |
 | `quill/session.py` | Pure state machine: gate, row building, new-value question |
 | `quill/controller.py` | Carries Session events out to the bridge and speaker |
 | `quill/listener/`, `quill/speaker/` | Vosk microphone input, text-to-speech |

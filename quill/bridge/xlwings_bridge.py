@@ -92,6 +92,16 @@ class XlwingsBridge(GridBridge):
         super().disconnect()
         self._book = None
 
+    def activate(self) -> None:
+        """Bring Excel and this workbook to the front."""
+        if self._book is None:
+            return
+        try:
+            self._book.activate()
+            self._book.app.activate(steal_focus=True)
+        except Exception as exc:
+            raise BridgeError(f"Could not bring '{self._name}' to the front: {exc}") from exc
+
     def refresh(self) -> None:
         self._require()
         self._load_structure()

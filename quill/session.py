@@ -61,7 +61,9 @@ class Event:
 
     kind: str
     """One of: started, stopped, updated, committed, discarded, ignored, unsure,
-    search, confirm, add_values, skipped, expired, error."""
+    search, clear_search, confirm, add_values, skipped, expired, error.
+    The controller rewrites ``search``/``clear_search`` into ``searched`` /
+    ``cleared`` (or ``unsure`` / ``error``) once it has acted on them."""
 
     record: dict | None = None
     detail: str = ""
@@ -176,7 +178,11 @@ class Session:
         if action is Action.DELETE_ROW:
             return self._discard()
         if action is Action.SEARCH_FOR:
+            if not command.remainder:
+                return [Event("ignored", detail="Say what to search for, like 'search for black shirts under 50'")]
             return [Event("search", detail=command.remainder)]
+        if action is Action.CLEAR_SEARCH:
+            return [Event("clear_search")]
         return []
 
     def _commit(self) -> list[Event]:

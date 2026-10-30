@@ -14,9 +14,16 @@ from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.config.settings import Settings
 from quill.parser.commands import Action, CommandMatcher
 from quill.parser.vocab import Vocabulary
+from quill.search import parse_search
 from quill.session import Event, Session
 
 EventCallback = Callable[[Event], None]
+
+#: Shown and spoken whenever Quill is asked to listen with no spreadsheet to listen to.
+NO_WORKBOOK_HELP = (
+    "I can't find an open spreadsheet. Open one in Excel and I'll attach to it "
+    "automatically, then say start listening."
+)
 
 
 class Controller:
@@ -50,6 +57,8 @@ class Controller:
         self.vocab = Vocabulary()
         self.session = Session(self.vocab, CommandMatcher(settings.keywords), today=today)
         self._sheet = ""
+        self.connected = False
+        """True while attached to a workbook."""
 
     # ------------------------------------------------------------------ #
     # Workbook connection                                                  #
@@ -61,8 +70,29 @@ class Controller:
         Raises:
             BridgeError: if the workbook cannot be reached.
         """
+        self.connected = False
         self.bridge.connect(workbook)
         self.reload_vocab()
+        self.connected = True
+
+    def try_connect(self, workbook: str | None = None) -> bool:
+        """Like :meth:`connect` but returns False instead of raising."""
+        try:
+            self.connect(workbook)
+        except BridgeError:
+            return False
+        return True
+
+    def detach(self) -> None:
+        """Let go of a workbook that was closed; closes the gate if it was open."""
+        self.connected = False
+        try:
+            self.bridge.disconnect()
+        except BridgeError:
+            pass
+        if self.session.listening:
+            for event in self.session.apply(Action.STOP_LISTENING):
+                self._on_event(event)
 
     def reload_vocab(self) -> None:
         """Re-read lists and headers (after a refresh or a sheet change)."""
@@ -84,14 +114,30 @@ class Controller:
 
     def handle_transcript(self, text: str) -> None:
         """Process one recognised phrase end to end."""
-        self._follow_active_sheet()
-        for event in self.session.feed(text):
+        if not self.connected:
+            self.try_connect()   # a workbook may have been opened since we last looked
+        else:
+            self._follow_active_sheet()
+        for event in self._refuse_without_workbook(self.session.feed(text)):
             self._carry_out(event)
             self._on_event(event)
+
+    def _refuse_without_workbook(self, events: list[Event]) -> list[Event]:
+        """With nothing to write to, swap "started" for guidance and keep the gate shut."""
+        if self.connected or not any(e.kind == "started" for e in events):
+            return events
+        self.session.listening = False
+        self.session.record.clear()
+        return [Event("error", detail=NO_WORKBOOK_HELP) if e.kind == "started" else e
+                for e in events]
 
     def set_listening(self, active: bool) -> None:
         """Open or close the listening gate without speech (tray / button)."""
         action = Action.START_LISTENING if active else Action.STOP_LISTENING
+        if active and not self.connected and not self.try_connect():
+            self._carry_out(Event("error", detail=NO_WORKBOOK_HELP))
+            self._on_event(Event("error", detail=NO_WORKBOOK_HELP))
+            return
         for event in self.session.apply(action):
             self._carry_out(event)
             self._on_event(event)
@@ -116,9 +162,52 @@ class Controller:
             self._write_row(event)
         elif event.kind == "add_values":
             self._write_values(event)
-        elif event.kind == "confirm" and self.speaker is not None:
-            self._on_speech(True)
-            self.speaker.say(event.detail, on_done=lambda: self._on_speech(False))
+        elif event.kind == "search":
+            self._search(event)
+        elif event.kind == "clear_search":
+            self._clear_search(event)
+        elif event.kind == "error" and event.detail == NO_WORKBOOK_HELP:
+            self._say(event.detail)
+        elif event.kind == "confirm":
+            self._say(event.detail)
+
+    def _say(self, text: str) -> None:
+        """Speak *text* if there is a speaker, muting the mic meanwhile."""
+        if self.speaker is None:
+            return
+        self._on_speech(True)
+        self.speaker.say(text, on_done=lambda: self._on_speech(False))
+
+    def _search(self, event: Event) -> None:
+        """Turn the spoken criteria into filters on the active sheet."""
+        try:
+            sheet = self.bridge.active_sheet_name()
+            query = parse_search(event.detail, self.vocab, self.bridge.numeric_columns(sheet))
+            notes = [*query.assumptions, *query.problems]
+            if not query.filters:
+                event.kind = "unsure"
+                event.detail = ("Nothing to filter on in '" + event.detail + "'. "
+                                "Use values from your lists, like 'search for fern under 20'.")
+                return
+            count = self.bridge.apply_filters(sheet, query.filters)
+        except BridgeError as exc:
+            event.kind, event.detail = "error", f"Could not search: {exc}"
+            return
+        shown = ", ".join(f.describe() for f in query.filters)
+        tail = f" — {count} row{'s' if count != 1 else ''}" if count is not None else ""
+        extras = [f"Unrecognised: {' '.join(query.unmatched)}"] if query.unmatched else []
+        event.kind = "searched"
+        event.detail = "; ".join([f"{shown}{tail}", *notes, *extras])
+
+    def _clear_search(self, event: Event) -> None:
+        try:
+            cleared = self.bridge.clear_filters(self.bridge.active_sheet_name())
+        except BridgeError as exc:
+            event.kind, event.detail = "error", f"Could not clear the search: {exc}"
+            return
+        event.kind = "cleared" if cleared else "ignored"
+        event.detail = ("Search cleared; back where you were" if cleared
+                        else "No search is active")
 
     def _write_row(self, event: Event) -> None:
         try:

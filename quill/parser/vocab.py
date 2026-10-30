@@ -34,6 +34,7 @@ class Vocabulary:
         self._by_column: dict[str, list[str]] = {}
         # (tokens, column header) for every spoken field word, longest first
         self._fields: list[tuple[tuple[str, ...], str]] = []
+        self._headers: list[str] = []   # every field word's column, in load order
 
     # ------------------------------------------------------------------ #
     # Loading                                                              #
@@ -54,7 +55,8 @@ class Vocabulary:
         self._entries.clear()
         self._by_column.clear()
         self._fields = []
-        for name in [*lists.keys(), *(headers or [])]:
+        self._headers = []
+        for name in [*(headers or []), *lists.keys()]:
             self._add_field(name)
         for column, values in lists.items():
             col_list: list[str] = []
@@ -86,6 +88,7 @@ class Vocabulary:
         if not tokens or any(f == (tokens, column) for f in self._fields):
             return
         self._fields.append((tokens, column))
+        self._headers.append(column)
         self._fields.sort(key=lambda f: len(f[0]), reverse=True)
 
     # ------------------------------------------------------------------ #
@@ -99,6 +102,10 @@ class Vocabulary:
     def values_for(self, column: str) -> list[str]:
         """Return canonical values for a column (empty list if unknown)."""
         return list(self._by_column.get(column, []))
+
+    def headers(self) -> list[str]:
+        """Every known column: sheet headers in sheet order, then list-only columns."""
+        return list(self._headers)
 
     def is_list_column(self, column: str) -> bool:
         """True if *column* has a drop-down list of known values."""
