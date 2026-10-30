@@ -95,8 +95,8 @@ class Event:
 
     kind: str
     """One of: started, stopped, updated, committed, discarded, ignored,
-    search, clear_search, confirm, add_values, alias_added, skipped, expired,
-    error. The controller rewrites ``search``/``clear_search`` into
+    search, clear_search, sort_terms, confirm, add_values, alias_added, skipped,
+    expired, error. The controller rewrites ``search``/``clear_search`` into
     ``searched`` / ``cleared`` (or ``unsure`` / ``error``) once it has acted."""
 
     record: dict | None = None
@@ -170,6 +170,12 @@ class Session:
         """Put back a record whose write failed, so nothing the user said is lost."""
         self.record = {**record, **self.record}
         self.committed = max(0, self.committed - 1)
+
+    def defer(self, key: TermKey) -> None:
+        """Move a pending term to the end of the list without deciding it."""
+        if self.pending and key in self.pending:
+            self.pending.remove(key)
+            self.pending.append(key)
 
     def tag_origin(self, terms: list[TermKey], sheet: str, row: int) -> None:
         """Remember which saved row each of *terms* was heard in."""
@@ -262,6 +268,8 @@ class Session:
             return [Event("search", detail=command.remainder)]
         if action is Action.CLEAR_SEARCH:
             return [Event("clear_search")]
+        if action is Action.SORT_TERMS:
+            return [Event("sort_terms")]
         return []
 
     def _commit(self) -> list[Event]:

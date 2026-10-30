@@ -42,6 +42,7 @@ class SettingsDialog:
         self.table: QTableWidget | None = None
         self.theme_combo: QComboBox | None = None
         self.speak_check: QCheckBox | None = None
+        self.auto_sort_check: QCheckBox | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -83,6 +84,9 @@ class SettingsDialog:
         self.speak_check = QCheckBox("Read questions aloud")
         self.speak_check.setChecked(bool(self._settings.preferences["speak_prompts"]))
         form.addRow("", self.speak_check)
+        self.auto_sort_check = QCheckBox("Start voice sorting automatically when terms need sorting")
+        self.auto_sort_check.setChecked(bool(self._settings.preferences["auto_voice_sort"]))
+        form.addRow("", self.auto_sort_check)
         layout.addLayout(form)
 
         box = QDialogButtonBox(
@@ -147,6 +151,7 @@ class SettingsDialog:
         self._settings.set_keywords(rows)
         self._settings.preferences["theme"] = THEMES[self.theme_combo.currentIndex()]
         self._settings.preferences["speak_prompts"] = self.speak_check.isChecked()
+        self._settings.preferences["auto_voice_sort"] = self.auto_sort_check.isChecked()
         self._settings.save()
         (dialog or self._dialog).accept()
         return True

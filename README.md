@@ -71,6 +71,7 @@ Details worth knowing:
 | delete row · cancel | Discard the row |
 | search for … | Filter the sheet (see below) |
 | clear search · reset filters | Remove the filter |
+| sort terms | Start answering the Needs-sorting list by voice |
 
 If you saved keywords before a default existed, add it in Settings or press *Restore defaults*.
 
@@ -109,13 +110,37 @@ build the row. When the row ends (`next row`) or you stop listening, the
 - When every term has a suggestion Quill also asks aloud ("Gucci isn't in the Brand list. Add it? Say yes or no."): `yes` accepts the suggestions, `no` ignores them. If nobody answers, the terms stay in the window.
 - A **Needs sorting (n)** button in the main window reopens the list.
 
+### Sorting by voice
+
+Click the first term (or **🎤 Sort by voice**, or say **"sort terms"**) and just talk. Everything
+Quill hears is then read as sort commands applied to the **top** term; it leaves the list, the
+next one moves up (the highlighted row), and the stream continues. Chain several in one breath:
+*"same as XL, color, same as 1990s"*. The window shows `Heard ‘…’ → what happened` as it goes.
+
+| Say | Does |
+|-----|------|
+| `yes` · `add` · `ok` | Add the term to its suggested column |
+| a column name (`color`) · `add to color` | Add it to that column |
+| `same as XL` | It's another name for the existing value XL (the column is found from the value when only one list has it; spelled letters like "x l" work) |
+| `same` … then the value in the next phrase | Same, in two steps |
+| `size same as XL` | Alias, naming the column |
+| `ignore` · `no` · `drop` · `forget it` | Forget the term |
+| `later` · `skip` · `pass` · `next` | Keep it; move it to the end |
+| `add all` · `ignore all` | Every term (add all: only those with a column) |
+| `done` · `stop` | Leave voice sorting (the rest stay listed) |
+
+While voice sorting is on, speech goes only to the list (nothing is dictated into the sheet). It ends by itself when the list is empty.
+If "yes" is said for a term with no suggested column Quill answers "Which column is ‘teal’? Say a column name." and keeps the term. If a *same as* value isn't found it says so and keeps the term.
+"`color same as 1990s`" means *add to Color, then the next term is the same as 1990s* unless 1990s is a Color value.
+Turn on **Start voice sorting automatically when terms need sorting** in Settings to skip the click.
+
 Example, speaking: *"this next item is an extra large t-shirt made in the 90s, mainly teal, could sell for thirty five dollars"* → Type = T-Shirt and Appraisal = 35 are written at once; "90s", "teal" and "extra large" are listed. Choosing *Era → Same as 1990s*, *Color → Add*, *Size → Same as XL* fills the row's other three cells.
 
 ## The window, the tray icon and settings
 
 - **Main window**: status light, Start/Stop, Settings, workbook picker and Refresh, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).
 - **Tray / menu bar icon**: green dot when listening, grey ring when not. Menu: Start/Stop Listening, Open Quill, Quit. While listening it begins with `Editing: <workbook>` and the workbook's folder (`~` for home, long paths shortened); click either line to bring the workbook to the front. On Windows a left click toggles listening; on macOS use the menu.
-- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), and "read questions aloud". Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
+- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), "read questions aloud", and automatic voice sorting. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
 
 Quill mutes the microphone while it speaks so it can't hear itself.
 
@@ -157,6 +182,7 @@ offscreen platform (system tray, colour scheme).
 |---------|------|
 | `quill/bridge/` | Workbook access: `introspect.py` (finds lists), `grid.py` (cell-level read/write/filter over openpyxl or xlwings), `grid_bridge.py` (shared logic), `xlsx_bridge.py` (file), `xlwings_bridge.py` + `win_bridge.py`/`mac_bridge.py` (live Excel), `filters.py` |
 | `quill/parser/` | `tokens`, `numbers` (numbers, money, dates), `vocab` (values, field words, aliases), `phrase_parser`, `commands` (keyword matcher) |
+| `quill/sorting_voice.py` | Voice sorting: chained spoken commands applied to the top pending term |
 | `quill/session.py` | Pure state machine: gate, row building, terms to sort and their decisions |
 | `quill/search.py` | Spoken search → per-column filters |
 | `quill/controller.py` | Carries Session events out to the bridge and speaker; back-fills cells, saves synonyms |
@@ -170,6 +196,6 @@ The Session never does I/O, so the dictation logic is tested without Excel, audi
 
 ## Status and limits
 
-Built and unit-tested: introspection, parser, keywords and settings, window, tray, sorting window, search, workbook watcher.
+Built and unit-tested: introspection, parser, keywords and settings, window, tray, sorting window (clicks and voice), search, workbook watcher.
 **Not yet verified**: against real Excel on macOS or Windows (including the AutoFilter calls and bring-to-front), with a real microphone and Vosk model, the tray on a real desktop, and PyInstaller builds. See `$ To Do.md`.
 Not built: Linux, free-text "contains" search, date comparisons in search, a file picker for non-Excel users.

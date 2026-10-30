@@ -81,7 +81,8 @@ class QuillApp:
             on_refresh=self.refresh, on_workbook=self.select_workbook,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
         )
-        self.sorting = SortingWindow(self.controller.vocab, self.resolve_term)
+        self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
+                                     on_voice=self.toggle_voice_sorting)
         self.tray = TrayIcon(
             qapp, self.window,
             on_start=lambda: self.toggle_listening(True),
@@ -245,6 +246,14 @@ class QuillApp:
         if reveal and pending:
             self.sorting.show()
 
+    def toggle_voice_sorting(self) -> None:
+        """Start or stop answering the Needs-sorting list by voice."""
+        if self.controller.voice_sorter is not None:
+            self.controller.stop_voice_sort()
+        elif not self.controller.start_voice_sort():
+            self.window.append_log("Nothing to sort")
+            self.sorting.set_voice_active(False)
+
     def show_sorting(self) -> None:
         self.refresh_sorting(reveal=True)
 
@@ -283,6 +292,23 @@ class QuillApp:
         elif kind == "confirm":
             self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)
             self.refresh_sorting(reveal=True)
+            if self.settings.preferences["auto_voice_sort"] and self.listener is not None:
+                self.controller.start_voice_sort()
+        elif kind == "sort_voice_started":
+            self.sorting.set_voice_active(True)
+            self.refresh_sorting(reveal=True)
+            self.window.append_log(event.detail)
+            return
+        elif kind == "sort_voice_ended":
+            self.sorting.set_voice_active(False)
+            self.sorting.set_voice_status("", event.detail)
+            self.window.append_log(event.detail)
+            return
+        elif kind == "sorting":
+            self.sorting.set_voice_status((event.record or {}).get("heard", ""), event.detail)
+            self.window.append_log(f"Voice sort: {event.detail}")
+            self.refresh_sorting()
+            return
         elif kind in ("add_values", "alias_added", "skipped"):
             self.window.append_log(event.detail)
             self.refresh_sorting()

@@ -15,6 +15,7 @@ from quill.config.settings import Settings
 from quill.parser.commands import Action, CommandMatcher
 from quill.parser.vocab import Vocabulary
 from quill.search import parse_search
+from quill.sorting_voice import VoiceSorter
 from quill.session import Decision, Event, Session, TermKey
 
 EventCallback = Callable[[Event], None]
@@ -59,6 +60,8 @@ class Controller:
         self._sheet = ""
         self.connected = False
         """True while attached to a workbook."""
+        self.voice_sorter: VoiceSorter | None = None
+        """Set while the user is answering the Needs-sorting list by voice."""
 
     # ------------------------------------------------------------------ #
     # Workbook connection                                                  #
@@ -122,6 +125,9 @@ class Controller:
 
     def handle_transcript(self, text: str) -> None:
         """Process one recognised phrase end to end."""
+        if self.voice_sorter is not None:
+            self._voice_sort(text)
+            return
         if not self.connected:
             self.try_connect()   # a workbook may have been opened since we last looked
         else:
@@ -160,6 +166,41 @@ class Controller:
             self._carry_out(event)
             self._on_event(event)
 
+    def defer_term(self, key: TermKey) -> None:
+        """Leave a term for later (moves it to the end of the list)."""
+        self.session.defer(key)
+
+    # ------------------------------------------------------------------ #
+    # Voice sorting                                                        #
+    # ------------------------------------------------------------------ #
+
+    def start_voice_sort(self) -> bool:
+        """Route speech to the Needs-sorting list until it is empty or the user says done.
+
+        Returns:
+            False (and does nothing) if no term is waiting.
+        """
+        if not self.session.pending:
+            return False
+        if self.voice_sorter is None:
+            self.voice_sorter = VoiceSorter(self)
+            self._on_event(Event("sort_voice_started",
+                                 detail="Voice sorting on: say yes, a column name, same as …, ignore, later or done"))
+        return True
+
+    def stop_voice_sort(self, detail: str = "Voice sorting off") -> None:
+        """Return speech to normal dictation."""
+        if self.voice_sorter is not None:
+            self.voice_sorter = None
+            self._on_event(Event("sort_voice_ended", detail=detail))
+
+    def _voice_sort(self, text: str) -> None:
+        result = self.voice_sorter.handle(text)
+        self._on_event(Event("sorting", detail="; ".join(result.messages), record={"heard": text}))
+        if result.finished:
+            done = not self.session.pending
+            self.stop_voice_sort("All sorted" if done else "Voice sorting off")
+
     def expire_prompt(self) -> None:
         """Give up waiting for a yes/no answer."""
         for event in self.session.expire_prompt():
@@ -186,6 +227,11 @@ class Controller:
             self._search(event)
         elif event.kind == "clear_search":
             self._clear_search(event)
+        elif event.kind == "sort_terms":
+            if self.start_voice_sort():
+                event.kind, event.detail = "ignored", "Sorting terms by voice"
+            else:
+                event.kind, event.detail = "ignored", "Nothing to sort"
         elif event.kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self._say(event.detail)
         elif event.kind == "confirm":

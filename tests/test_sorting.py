@@ -293,6 +293,12 @@ class TestSortingWindow(unittest.TestCase):
         self.assertEqual(self.win.widget.windowTitle(), "Needs sorting")
         self.assertFalse(self.win.widget.isVisible())
 
+    def test_removed_rows_leave_the_screen_immediately(self):
+        self.win.set_items([("Era", "90s"), (None, "teal")])
+        old = list(self.win.rows)
+        self.win.set_items([(None, "teal")])
+        self.assertTrue(all(r.isHidden() and r.parent() is None for r in old))
+
     def test_is_resizable_and_scrollable(self):
         self.win.set_items([(None, f"term{i}") for i in range(30)])
         self.assertTrue(self.win.scroll.widgetResizable())

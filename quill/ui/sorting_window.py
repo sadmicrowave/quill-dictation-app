@@ -11,6 +11,10 @@ The user can correct the words, pick (or change) the column, then
   * **Ignore** it.
 The window only reports decisions through a callback; the controller does the
 work and the app refreshes the list.
+
+Voice sorting: click the first term (or the microphone button) and speak. Each
+command resolves the top term, it leaves the list and the next one moves up
+while the stream continues; see :mod:`quill.sorting_voice`.
 """
 from __future__ import annotations
 from typing import Callable
@@ -42,9 +46,12 @@ def question_for(column: str | None, term: str) -> str:
 class TermRow(QFrame):
     """One unrecognised term and its controls."""
 
-    def __init__(self, key: TermKey, vocab: Vocabulary, on_resolve: ResolveCallback) -> None:
+    def __init__(self, key: TermKey, vocab: Vocabulary, on_resolve: ResolveCallback,
+                 on_activate: Callable[[], None] | None = None) -> None:
         super().__init__()
+        self.setObjectName("termRow")
         self.key = key
+        self._on_activate = on_activate
         self._vocab = vocab
         self._on_resolve = on_resolve
         column, term = key
@@ -83,6 +90,16 @@ class TermRow(QFrame):
         self.add_button.clicked.connect(self.add)
         self.ignore_button.clicked.connect(self.ignore)
         self._update_enabled()
+
+    def set_active(self, active: bool) -> None:
+        """Highlight this row as the one the voice stream is answering."""
+        self.setStyleSheet("#termRow { border: 2px solid palette(highlight); }" if active else "")
+
+    def mousePressEvent(self, event) -> None:
+        """Clicking the (first) row starts answering it by voice."""
+        if self._on_activate is not None:
+            self._on_activate()
+        super().mousePressEvent(event)
 
     @property
     def column(self) -> str | None:
@@ -123,11 +140,20 @@ class SortingWindow:
     Args:
         vocab: Vocabulary of the active sheet (supplies columns and values).
         on_resolve: Called with each decision.
+        on_voice: Called when the user toggles voice sorting (button or click
+            on the first term).
     """
 
-    def __init__(self, vocab: Vocabulary, on_resolve: ResolveCallback) -> None:
+    #: Shown while voice sorting is on.
+    VOICE_HINT = ("Say: yes · a column name · same as … · ignore · later · done   "
+                  "(or ‘add all’, ‘ignore all’)")
+
+    def __init__(self, vocab: Vocabulary, on_resolve: ResolveCallback,
+                 on_voice: Callable[[], None] | None = None) -> None:
         self._vocab = vocab
         self._on_resolve = on_resolve
+        self._on_voice = on_voice or (lambda: None)
+        self._voice_active = False
         self._window: QWidget | None = None
         self.rows: list[TermRow] = []
 
@@ -141,6 +167,17 @@ class SortingWindow:
         self.intro = QLabel("Quill heard these but couldn't place them. Tell it what each one is.")
         self.intro.setWordWrap(True)
         layout.addWidget(self.intro)
+
+        voice_row = QHBoxLayout()
+        self.voice_button = QPushButton()
+        self.voice_button.setCheckable(True)
+        self.voice_button.clicked.connect(lambda: self._on_voice())
+        voice_row.addWidget(self.voice_button)
+        self.voice_status = QLabel()
+        self.voice_status.setWordWrap(True)
+        voice_row.addWidget(self.voice_status, 1)
+        layout.addLayout(voice_row)
+        self._render_voice()
 
         self._list = QVBoxLayout()
         self._list.addStretch(1)
@@ -171,10 +208,15 @@ class SortingWindow:
         """Replace the list with *items*; hides the window when it is empty."""
         for row in self.rows:
             self._list.removeWidget(row)
+            row.hide()               # leave the screen now, not when Qt gets to deleteLater
+            row.setParent(None)
             row.deleteLater()
         self.rows = []
         for key in items:
-            row = TermRow(key, self._vocab, self._on_resolve)
+            first = not self.rows
+            row = TermRow(key, self._vocab, self._on_resolve,
+                          on_activate=self._start_voice if first and not self._voice_active else None)
+            row.set_active(first and self._voice_active)
             self._list.insertWidget(self._list.count() - 1, row)
             self.rows.append(row)
         if self._window is not None:
@@ -183,6 +225,34 @@ class SortingWindow:
             self.ignore_all_button.setEnabled(bool(items))
             if not items:
                 self._window.hide()
+
+    # -- voice sorting -----------------------------------------------------
+
+    @property
+    def voice_active(self) -> bool:
+        return self._voice_active
+
+    def _start_voice(self) -> None:
+        self._on_voice()
+
+    def set_voice_active(self, active: bool) -> None:
+        """Reflect voice sorting being on/off (highlight, button, hint)."""
+        self._voice_active = active
+        if not active:
+            self.voice_status.setText("")
+        self._render_voice()
+        self.set_items([r.key for r in self.rows])   # re-arm click and highlight
+
+    def set_voice_status(self, heard: str, message: str) -> None:
+        """Show what was heard and what Quill did with it."""
+        self.voice_status.setText(f"Heard ‘{heard}’ → {message}" if heard else message)
+
+    def _render_voice(self) -> None:
+        self.voice_button.setChecked(self._voice_active)
+        self.voice_button.setText("🎤 Listening… (click to stop)" if self._voice_active
+                                  else "🎤 Sort by voice")
+        if self._voice_active and not self.voice_status.text():
+            self.voice_status.setText(self.VOICE_HINT)
 
     def show(self) -> None:
         if self._window is not None and self.rows:

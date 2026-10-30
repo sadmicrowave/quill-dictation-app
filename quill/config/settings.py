@@ -46,6 +46,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "model_path": "",         # Vosk model folder; empty = search the usual places
     "last_workbook": "",      # re-selected on launch when still open
     "prompt_timeout_s": 20,   # seconds to wait for a yes/no answer
+    "auto_voice_sort": False,  # start voice sorting as soon as terms need sorting
 }
 
 THEMES = ("auto", "light", "dark")
