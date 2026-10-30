@@ -181,13 +181,19 @@ A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a pa
 - **Needs sorting button.** Filled with the accent colour (like Start/Stop) while terms wait, with the count as an inline **pill** in the sentence: `Needs sorting (3)`. The pill is painted by hand (`ui/widgets.Pill`) because a style-sheet radius was square on macOS.
 - **Icons.** Start/Stop show a play or stop glyph; Settings is an icon-only (sliders) button with a tooltip and accessible name. The icons are SVG redrawn in the theme's colours (`ui/icons.py`).
 - **Last saved** is a smaller italic supporting note (2 pt under the text size, muted colour).
-- **Window opacity** (Settings, 55 to 100 %, default 100). Lowers the opacity of the *background* only: text, icons and accent colours stay solid, and cards and fields stay more solid than the window (halfway to opaque) so they remain legible. The windows are created translucent (`WA_TranslucentBackground`); on macOS the title bar follows (`NSWindow.setOpaque_`), on Windows the title bar stays opaque. There is no blur behind the window yet (a macOS vibrancy view or Windows acrylic would add it).
+- **Window opacity** (Settings, 55 to 100 %, default 100) fades the *whole* window (`setWindowOpacity`): text, inputs, buttons, selection boxes and text areas all follow it together.
+- **Blur behind windows** (Settings checkbox, on by default). The windows are created translucent (`WA_TranslucentBackground`). With blur on, the window background becomes a light tint (72 % opaque, cards 86 %) over a blur of whatever is behind it. *macOS*: an `NSVisualEffectView` (Sidebar material, always active) is added behind Qt's view and removed again when you turn blur off; checked against a real window's view hierarchy. *Windows 11*: the acrylic backdrop (`DWMWA_SYSTEMBACKDROP_TYPE`) plus `DwmExtendFrameIntoClientArea`; needs 22H2 or later, **never run on Windows**. Turning blur off gives solid windows.
+- **Hover and selection** in drop-down lists and menus is a soft accent tint with the normal text colour, never the white-on-light combination (a test checks the contrast for every accent in light and dark).
+- **Checkboxes** are rounded boxes that fill with the accent and show a tick (generated SVG, `on_accent` colour). **Headings** ("Current row", "Log") are regular weight in the muted colour.
+- **Tray icon clicks** only ever open the menu; they never start or stop listening (a left click pops the menu up on Windows, where it otherwise shows only on right click).
+- **Play sample** plays only the selected sound set's chime (or says only the selected word); choosing a sound set or word also plays it once.
+- **Collapsing the log** shrinks the window to fit (the empty footer is hidden too) and reopening restores the earlier height.
 
 ## The window, the tray icon and settings
 
 - **Main window**: status light, Start/Stop, Settings, workbook picker and Refresh, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).
 - **Tray / menu bar icon**: green dot when listening, grey ring when not. Menu: Start/Stop Listening, Open Quill, Quit. While listening it begins with `Editing: <workbook>` and the workbook's folder (`~` for home, long paths shortened); click either line to bring the workbook to the front. On Windows a left click toggles listening; on macOS use the menu.
-- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), accent colour, spacing (compact / comfortable), text size, window opacity, "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
+- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), accent colour, spacing (compact / comfortable), text size, window opacity and blur, "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
 
 Quill mutes the microphone while it speaks so it can't hear itself.
 

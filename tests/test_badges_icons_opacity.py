@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -193,78 +193,99 @@ class TestNoteStyle(unittest.TestCase):
         self.assertIn("font-size: 14pt; font-style: italic", theme.stylesheet_for(False, font_size=16))
 
 
-class TestOpacity(unittest.TestCase):
+class TestOpacityAndGlass(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.dir = pathlib.Path(self._tmp.name)
 
     def tearDown(self):
         self._tmp.cleanup()
-        theme.apply_theme(_app, "light", opacity=100)
+        theme.apply_theme(_app, "light", blur=False)
+
+    def make_app(self):
+        app = QuillApp(_app, Settings.load(self.dir), XlsxBridge(self.dir / "none.xlsx"),
+                       listener_factory=lambda *a: None, model_finder=lambda c: None, sound_player=lambda p: None)
+        app.start()
+        return app
 
     def test_rgba_helper(self):
         self.assertEqual(theme.rgba("#FF8000", 0.5), "rgba(255, 128, 0, 128)")
         self.assertEqual(theme.rgba("#000000", 2), "rgba(0, 0, 0, 255)")
 
-    def test_default_is_fully_opaque_and_the_range_is_clamped(self):
-        self.assertEqual(Settings.load(self.dir).preferences["opacity"], 100)
-        (self.dir / "keywords.toml").write_text("[preferences]\nopacity = 5\n")
-        self.assertEqual(Settings.load(self.dir).preferences["opacity"], OPACITY_RANGE[0])
+    def test_defaults_and_clamping(self):
+        prefs = Settings.load(self.dir).preferences
+        self.assertEqual((prefs["opacity"], prefs["blur"]), (100, True))
+        (self.dir / "keywords.toml").write_text("[preferences]\nopacity = 5\nblur = false\n")
+        prefs = Settings.load(self.dir).preferences
+        self.assertEqual((prefs["opacity"], prefs["blur"]), (OPACITY_RANGE[0], False))
         (self.dir / "keywords.toml").write_text("[preferences]\nopacity = 500\n")
         self.assertEqual(Settings.load(self.dir).preferences["opacity"], 100)
 
-    def test_window_background_follows_opacity_but_cards_stay_more_solid(self):
-        solid = theme.stylesheet_for(False, opacity=100)
-        clear = theme.stylesheet_for(False, opacity=60)
-        bg = theme.TOKENS["light"]["bg"]
+    def test_opacity_fades_the_whole_window_text_and_controls_included(self):
+        w = QWidget()
+        theme.apply_opacity(w, 70)
+        self.assertAlmostEqual(w.windowOpacity(), 0.7, 2)
+        theme.apply_opacity(w, 300)
+        self.assertEqual(w.windowOpacity(), 1.0)
+
+    def test_the_app_applies_opacity_to_every_window_live(self):
+        app = self.make_app()
+        app.settings.preferences["opacity"] = 70
+        app.apply_settings()
+        self.assertAlmostEqual(app.window.widget.windowOpacity(), 0.7, 2)
+        self.assertAlmostEqual(app.sorting.widget.windowOpacity(), 0.7, 2)
+        app.settings.preferences["opacity"] = 100
+        app.apply_settings()
+        self.assertEqual(app.window.widget.windowOpacity(), 1.0)
+
+    def test_text_and_controls_are_not_individually_faded(self):
+        # Opacity is window-wide; per-element alpha would double the fade.
+        for glass in (False, True):
+            sheet = theme.stylesheet_for(False, glass=glass)
+            self.assertNotIn(theme.rgba(theme.TOKENS["light"]["text"], 0.5), sheet)
+
+    def test_glass_makes_the_window_see_through_and_keeps_cards_more_solid(self):
+        bg, surface = theme.TOKENS["light"]["bg"], theme.TOKENS["light"]["surface"]
+        solid, glass = theme.stylesheet_for(False), theme.stylesheet_for(False, glass=True)
         self.assertIn(f"background: {theme.rgba(bg, 1.0)}; }}", solid.split("\n")[1])
-        window_rule = clear.split("\n")[1]
-        self.assertIn(theme.rgba(bg, 0.6), window_rule)
+        window_rule = glass.split("\n")[1]
+        self.assertIn(theme.rgba(bg, theme.GLASS_WINDOW_ALPHA), window_rule)
         self.assertIn("QWidget#sortingWindow", window_rule)
-        self.assertIn(theme.rgba(theme.TOKENS["light"]["surface"], 0.8), clear)    # (1 + 0.6) / 2
+        self.assertIn(theme.rgba(surface, theme.GLASS_SURFACE_ALPHA), glass)
+        self.assertGreater(theme.GLASS_SURFACE_ALPHA, theme.GLASS_WINDOW_ALPHA)
 
-    def test_text_colours_are_never_made_see_through(self):
-        clear = theme.stylesheet_for(True, opacity=55)
-        text = theme.TOKENS["dark"]["text"]
-        self.assertIn(f"color: {text}", clear)
-        self.assertNotIn(theme.rgba(text, 0.55), clear)
-
-    def test_palette_window_alpha(self):
+    def test_palette_window_alpha_follows_glass(self):
         from PySide6.QtGui import QPalette
-        self.assertAlmostEqual(theme.palette_for(False, opacity=70).color(QPalette.ColorRole.Window).alphaF(), 0.7, 2)
+        self.assertEqual(theme.palette_for(False).color(QPalette.ColorRole.Window).alphaF(), 1.0)
+        self.assertAlmostEqual(theme.palette_for(False, glass=True).color(QPalette.ColorRole.Window).alphaF(),
+                               theme.GLASS_WINDOW_ALPHA, 2)
 
-    def test_apply_theme_restyles_when_opacity_changes(self):
-        theme.apply_theme(_app, "light", opacity=100)
+    def test_apply_theme_restyles_when_blur_changes(self):
+        theme.apply_theme(_app, "light", blur=False)
         before = _app.styleSheet()
-        theme.apply_theme(_app, "light", opacity=70)
+        theme.apply_theme(_app, "light", blur=True)
         self.assertNotEqual(_app.styleSheet(), before)
 
-    def test_windows_are_built_translucent_so_opacity_can_show(self):
+    def test_windows_are_built_translucent_so_blur_and_opacity_can_show(self):
         w = MainWindow()
         w.setup()
         self.assertTrue(w.widget.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
         dlg = SettingsDialog(Settings.load(self.dir)).build()
         self.assertTrue(dlg.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
 
-    def test_dialog_slider_saves_and_is_limited(self):
+    def test_dialog_slider_and_blur_box_save(self):
         settings = Settings.load(self.dir)
         dlg = SettingsDialog(settings)
         dlg.build()
-        self.assertEqual(dlg.opacity_slider.value(), 100)
+        self.assertEqual((dlg.opacity_slider.value(), dlg.blur_check.isChecked()), (100, True))
         dlg.opacity_slider.setValue(75)
+        dlg.blur_check.setChecked(False)
         self.assertEqual(dlg.opacity_label.text(), "75%")
         self.assertTrue(dlg.try_accept())
-        self.assertEqual(Settings.load(self.dir).preferences["opacity"], 75)
+        prefs = Settings.load(self.dir).preferences
+        self.assertEqual((prefs["opacity"], prefs["blur"]), (75, False))
         dlg.opacity_slider.setValue(1)
         self.assertEqual(dlg.opacity_slider.value(), OPACITY_RANGE[0])
-
-    def test_app_applies_the_setting_live(self):
-        app = QuillApp(_app, Settings.load(self.dir), XlsxBridge(self.dir / "none.xlsx"),
-                       listener_factory=lambda *a: None, model_finder=lambda c: None, sound_player=lambda p: None)
-        app.start()
-        app.settings.preferences["opacity"] = 70
-        app.apply_settings()
-        self.assertIn(theme.rgba(theme.TOKENS["light"]["bg"], 0.7), _app.styleSheet())
 
 
 if __name__ == "__main__":

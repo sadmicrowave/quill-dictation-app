@@ -52,6 +52,10 @@ DENSITIES = {
                         header="10px", cell="7px", radius=14, margin=20, gap=12),
 }
 
+#: With blur on, the window background is see-through so the blur shows; cards stay more solid.
+GLASS_WINDOW_ALPHA = 0.72
+GLASS_SURFACE_ALPHA = 0.86
+
 DEFAULT_ACCENT = "terracotta"
 DEFAULT_FONT_SIZE = 12
 DEFAULT_SPACING = "compact"
@@ -72,7 +76,7 @@ def rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {round(max(0.0, min(1.0, alpha)) * 255)})"
 
 
-def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, opacity: int = 100) -> QPalette:
+def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, glass: bool = False) -> QPalette:
     """A palette built from the tokens (so native-drawn bits match the style sheet)."""
     t = colors_for(dark, accent)
     palette = QPalette()
@@ -87,7 +91,7 @@ def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, opacity: int = 100) ->
     ):
         palette.setColor(role, QColor(t[key]))
     window = QColor(t["bg"])
-    window.setAlphaF(max(0.0, min(1.0, opacity / 100)))
+    window.setAlphaF(GLASS_WINDOW_ALPHA if glass else 1.0)
     palette.setColor(QPalette.ColorRole.Window, window)
     for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
         palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(t["disabled"]))
@@ -100,7 +104,7 @@ def _chevrons(t: dict[str, str]) -> dict[str, str]:
     Drawn in the theme's own colours so they follow light/dark. Stored once per
     colour set in a temporary folder (a style sheet can only point at files).
     """
-    key = (t["muted"], t["disabled"])
+    key = (t["muted"], t["disabled"], t["on_accent"])
     if key not in _ICON_CACHE:
         folder = pathlib.Path(tempfile.mkdtemp(prefix="quill-icons-"))
         paths: dict[str, str] = {}
@@ -112,22 +116,27 @@ def _chevrons(t: dict[str, str]) -> dict[str, str]:
                 path = folder / f"{direction}{name}.svg"
                 path.write_text(svg, encoding="utf-8")
                 paths[f"{direction}{name}"] = path.as_posix()
+        check = folder / "check.svg"
+        check.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">'
+                         f'<polyline points="3.5,8.5 6.8,11.8 12.5,4.8" fill="none" stroke="{t["on_accent"]}" '
+                         'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>', encoding="utf-8")
+        paths["check"] = check.as_posix()
         _ICON_CACHE[key] = paths
     return _ICON_CACHE[key]
 
 
-_ICON_CACHE: dict[tuple[str, str], dict[str, str]] = {}
+_ICON_CACHE: dict[tuple[str, str, str], dict[str, str]] = {}
 
 
 def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING,
-                   font_size: int = DEFAULT_FONT_SIZE, opacity: int = 100) -> str:
+                   font_size: int = DEFAULT_FONT_SIZE, glass: bool = False) -> str:
     """The style sheet: rounded controls, hairline borders, an accent for the main action."""
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     icon = _chevrons(t)
-    alpha = max(0.0, min(1.0, opacity / 100))
-    win = rgba(t["bg"], alpha)                 # window background: the see-through part
-    surf = rgba(t["surface"], (1 + alpha) / 2)  # cards and fields stay more solid than the window
+    win = rgba(t["bg"], GLASS_WINDOW_ALPHA if glass else 1.0)           # the see-through part
+    surf = rgba(t["surface"], GLASS_SURFACE_ALPHA if glass else 1.0)    # cards and fields: more solid
+    hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: {win}; }}
 QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
@@ -163,9 +172,12 @@ QSpinBox::down-arrow {{ image: url({icon['down']}); width: 12px; height: 12px; }
 QSpinBox::up-arrow:disabled, QSpinBox::up-arrow:off {{ image: url({icon['up-disabled']}); }}
 QSpinBox::down-arrow:disabled, QSpinBox::down-arrow:off {{ image: url({icon['down-disabled']}); }}
 QComboBox QAbstractItemView {{ background: {t['surface']}; border: 1px solid {t['border']};
-              border-radius: 8px; selection-background-color: {t['accent']};
-              selection-color: {t['on_accent']}; outline: none; padding: 4px; }}
-QComboBox QAbstractItemView::item {{ padding: 6px 10px; min-height: 22px; border-radius: 6px; }}
+              border-radius: 8px; selection-background-color: {hover};
+              selection-color: {t['text']}; color: {t['text']}; outline: none; padding: 4px; }}
+QComboBox QAbstractItemView::item {{ padding: 6px 10px; min-height: 22px; border-radius: 6px;
+              color: {t['text']}; }}
+QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected {{
+              background: {hover}; color: {t['text']}; }}
 
 QPlainTextEdit, QTextEdit, QTableWidget {{ background: {surf}; color: {t['text']};
               border: 1px solid {t['border']}; border-radius: 10px; padding: 4px;
@@ -190,10 +202,12 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QMenu {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
         border-radius: 10px; padding: 5px; }}
 QMenu::item {{ padding: {d['item']}; border-radius: 6px; }}
-QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}
+QMenu::item {{ color: {t['text']}; }}
+QMenu::item:selected {{ background: {hover}; color: {t['text']}; }}
+QMenu::item:disabled {{ color: {t['disabled']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
-QLabel[heading="true"] {{ font-weight: 700; }}
+QLabel[heading="true"] {{ color: {t['muted']}; }}
 QLabel[note="true"] {{ font-size: {max(font_size - 2, 7)}pt; font-style: italic; color: {t['muted']}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}
@@ -202,11 +216,17 @@ QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t[
 QSlider::handle:horizontal {{ width: 16px; height: 16px; margin: -6px 0; border-radius: 8px;
               background: {t['accent']}; border: 2px solid {t['surface']}; }}
 QLabel#termPrompt {{ font-size: {font_size + 3}pt; font-weight: 500; }}
-QToolButton[heading="true"] {{ border: none; background: transparent; font-weight: 700; padding: 2px 0;
+QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2px 0;
               font-size: {font_size}pt;
-              color: {t['text']}; }}
+              color: {t['muted']}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
-QCheckBox {{ spacing: 8px; }}
+QCheckBox {{ spacing: 10px; }}
+QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid {t['muted']};
+              background: {surf}; }}
+QCheckBox::indicator:hover {{ border-color: {t['accent']}; }}
+QCheckBox::indicator:checked {{ background: {t['accent']}; border-color: {t['accent']};
+              image: url({icon['check']}); }}
+QCheckBox::indicator:disabled {{ border-color: {t['disabled']}; background: {win}; }}
 """
 
 
@@ -223,21 +243,21 @@ def _restyle(app: QApplication) -> None:
     accent = str(app.property("quillAccent") or DEFAULT_ACCENT)
     spacing = str(app.property("quillSpacing") or DEFAULT_SPACING)
     size = int(app.property("quillFontSize") or DEFAULT_FONT_SIZE)
-    opacity = int(app.property("quillOpacity") or 100)
-    key = f"{dark}/{accent}/{spacing}/{size}/{opacity}"
+    glass = bool(app.property("quillGlass"))
+    key = f"{dark}/{accent}/{spacing}/{size}/{glass}"
     if app.property("quillThemeKey") == key:
         return                      # unchanged: re-polishing every widget is slow
     app.setProperty("quillThemeKey", key)
     font = app.font()
     font.setPointSize(size)
     app.setFont(font)
-    app.setPalette(palette_for(dark, accent, opacity))
-    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size, opacity))
+    app.setPalette(palette_for(dark, accent, glass))
+    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size, glass))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
                 spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE,
-                opacity: int = 100) -> None:
+                blur: bool = False) -> None:
     """Set the colour scheme, accent and spacing, and apply Quill's look.
 
     Args:
@@ -248,7 +268,8 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
         spacing: ``"compact"`` or ``"comfortable"``. Layout margins and gaps
             are applied separately by :func:`apply_spacing`.
         font_size: Base text size in points (the Needs-sorting questions are 3 larger).
-        opacity: Window background opacity in percent; text stays solid. Needs windows
+        blur: True for the "glass" look: a see-through window background (so a blur
+            behind the window shows) with cards that stay more solid. Needs windows
             created with ``WA_TranslucentBackground`` (Quill's are).
     """
     if not app.property("quillFusion"):      # once: re-setting the style re-polishes everything
@@ -259,11 +280,16 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
     app.setProperty("quillAccent", accent if accent in ACCENTS else DEFAULT_ACCENT)
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
     app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
-    app.setProperty("quillOpacity", max(0, min(100, int(opacity))))
+    app.setProperty("quillGlass", bool(blur))
     _restyle(app)
     if not app.property("quillThemeHooked"):
         app.styleHints().colorSchemeChanged.connect(lambda *_: _restyle(app))
         app.setProperty("quillThemeHooked", True)
+
+
+def apply_opacity(widget: QWidget, percent: int) -> None:
+    """Fade a whole window, text and controls included, to *percent* (55 to 100)."""
+    widget.setWindowOpacity(max(0.0, min(1.0, percent / 100)))
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:

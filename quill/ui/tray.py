@@ -9,15 +9,16 @@ Menu items:
   Quit
 
 Active light: a green dot while listening, a grey ring when stopped.
-On Windows a left click toggles listening. On macOS a click opens the menu
-(a Qt/AppKit convention when a menu is attached), so use the menu item.
+A click on the icon opens this menu (a left click pops it up on Windows too);
+listening is only ever started or stopped from the menu item or the window.
 """
 from __future__ import annotations
 import pathlib
+import sys
 from typing import Callable
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from quill.ui.main_window import COLOR_ACTIVE, COLOR_IDLE
@@ -218,5 +219,10 @@ class TrayIcon:
             self._tray.setToolTip("Quill — listening" if active else "Quill — not listening")
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self.toggle()
+        """A click on the icon only ever *opens the menu*; it never starts or stops listening.
+
+        macOS shows the attached menu by itself. Windows shows it only on a
+        right click, so a left click pops it up there too.
+        """
+        if reason == QSystemTrayIcon.ActivationReason.Trigger and sys.platform == "win32":
+            self._menu.popup(QCursor.pos())

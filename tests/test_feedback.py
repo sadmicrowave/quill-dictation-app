@@ -316,16 +316,13 @@ class TestAppFeedback(DemoCase):
         self.hear("t-shirt next row")
         self.assertEqual((self.cues(), self.spoken), ([], []))
 
-    def test_preview_plays_the_four_cues(self):
-        shown = []
-        self.app.feedback.cue = lambda *a: shown.append(a)
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot = staticmethod(lambda ms, fn: fn())
-        try:
-            self.app.preview_feedback("sounds", "glass", "okay")
-        finally:
-            del QTimer.singleShot
-        self.assertEqual([a[0] for a in shown], ["success", "sort", "dismiss", "error"])
+    def test_play_sample_plays_only_the_selected_sound(self):
+        self.app.preview_feedback("sounds", "glass", "okay")
+        self.assertEqual([(p.parent.name, p.stem) for p in self.played], [("glass", "success")])
+
+    def test_play_sample_in_spoken_mode_says_only_the_selected_word(self):
+        self.app.preview_feedback("echo", "glass", "done")
+        self.assertEqual((self.played, self.spoken), ([], ["Done"]))
 
     def test_spoken_question_waits_for_the_sort_cue(self):
         self.assertGreater(self.app.controller.lead_in_s, 0.3)

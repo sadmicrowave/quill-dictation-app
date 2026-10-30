@@ -22,6 +22,8 @@ from typing import Callable
 # DwmSetWindowAttribute attribute ids (Windows 10 build 19041+ / Windows 11).
 DWMWA_USE_IMMERSIVE_DARK_MODE = 20
 DWMWA_WINDOW_CORNER_PREFERENCE = 33
+DWMWA_SYSTEMBACKDROP_TYPE = 38
+BACKDROP_NONE, BACKDROP_ACRYLIC = 1, 3
 DWMWA_BORDER_COLOR = 34
 DWMWA_CAPTION_COLOR = 35
 DWMWA_TEXT_COLOR = 36
@@ -38,14 +40,15 @@ def colorref(hex_color: str) -> int:
 
 
 def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | None = None,
-                 opacity: int = 100) -> str | None:
+                 opacity: int = 100, blur: bool = False) -> str | None:
     """Tint *widget*'s native title bar to match the theme.
 
     Args:
         widget: A top-level QWidget (its native window is created if needed).
         dark: Whether the dark theme is active.
         colors: The theme colours (``bg``, ``text``, ``border``).
-        opacity: Window background opacity in percent (macOS only: the title bar follows it).
+        opacity: Window opacity in percent (macOS: lets the window be see-through).
+        blur: Blur what is behind the window (macOS vibrancy, Windows 11 acrylic).
         platform: Override ``sys.platform`` (tests).
 
     Returns:
@@ -57,9 +60,9 @@ def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | Non
             return None      # headless / offscreen: winId() is not a real OS window
         handle = int(widget.winId())
         if platform == "win32":
-            return "windows" if windows_chrome(handle, dark, colors) else None
+            return "windows" if windows_chrome(handle, dark, colors, blur=blur) else None
         if platform == "darwin":
-            return "macos" if mac_chrome(handle, dark, colors, opacity=opacity) else None
+            return "macos" if mac_chrome(handle, dark, colors, opacity=opacity, blur=blur) else None
     except Exception:
         return None
     return None
@@ -76,8 +79,14 @@ def _native_platform(platform: str) -> bool:
 
 
 def windows_chrome(hwnd: int, dark: bool, colors: dict[str, str],
-                   set_attribute: DwmSetter | None = None) -> bool:
-    """Apply the Windows 11 title bar look through DWM; True if the calls were made."""
+                   set_attribute: DwmSetter | None = None, blur: bool = False,
+                   extend_frame: Callable[[int], None] | None = None) -> bool:
+    """Apply the Windows 11 title bar look (and acrylic blur) through DWM.
+
+    Returns:
+        True if the calls were made. The acrylic backdrop needs Windows 11 22H2 or
+        later; on an older build it is silently skipped.
+    """
     if set_attribute is None:
         set_attribute = _dwm_setter()
         if set_attribute is None:
@@ -87,7 +96,20 @@ def windows_chrome(hwnd: int, dark: bool, colors: dict[str, str],
                            (DWMWA_BORDER_COLOR, "border")):
         _quietly(set_attribute, hwnd, attribute, colorref(colors[key]))   # Windows 11 only
     _quietly(set_attribute, hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND)
+    _quietly(set_attribute, hwnd, DWMWA_SYSTEMBACKDROP_TYPE, BACKDROP_ACRYLIC if blur else BACKDROP_NONE)
+    if blur:                          # the backdrop shows only where the frame is extended into the window
+        _quietly(extend_frame or _extend_frame, hwnd)
     return True
+
+
+def _extend_frame(hwnd: int) -> None:
+    import ctypes
+
+    class Margins(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_int) for name in ("left", "right", "top", "bottom")]
+
+    margins = Margins(-1, -1, -1, -1)
+    ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(ctypes.c_void_p(hwnd), ctypes.byref(margins))
 
 
 def _quietly(set_attribute: DwmSetter, *args) -> None:
@@ -113,7 +135,17 @@ def _dwm_setter() -> DwmSetter | None:
         return None
 
 
-def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, opacity: int = 100) -> bool:
+#: Identifier of the blur view Quill adds, so it can be found and removed again.
+BLUR_ID = "quillBlur"
+
+#: NSVisualEffectView settings: Sidebar material, blend with what is behind the window, always active.
+_MATERIAL_SIDEBAR, _BEHIND_WINDOW, _STATE_ACTIVE = 7, 0, 1
+_NS_WINDOW_BELOW = -1
+_NS_VIEW_SIZABLE = 2 | 16                  # width and height
+
+
+def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, opacity: int = 100,
+               blur: bool = False) -> bool:
     """Make the title bar transparent and match the appearance; True if applied.
 
     Args:
@@ -134,10 +166,35 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
         return False
     r, g, b = (int(colors["bg"][i:i + 2], 16) / 255 for i in (1, 3, 5))
     window.setTitlebarAppearsTransparent_(True)
-    alpha = max(0.0, min(1.0, opacity / 100))
-    window.setOpaque_(alpha >= 1.0)         # a see-through window must not be marked opaque
+    see_through = blur or opacity < 100
+    window.setOpaque_(not see_through)      # a see-through window must not be marked opaque
+    # With blur the window colour is a light tint over the blur; otherwise it is solid
+    # (window-wide opacity is applied with setWindowOpacity, not here).
+    alpha = 0.72 if blur else 1.0
     window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
+    _set_blur(view, appkit, blur)
     window.invalidateShadow()               # the shadow follows the visible shape
     return True
+
+
+def _set_blur(view, appkit, on: bool) -> None:
+    """Add (or remove) a vibrancy view behind Qt's content view."""
+    holder = view.superview()
+    if holder is None:
+        return
+    existing = [v for v in holder.subviews() if v.identifier() == BLUR_ID]
+    if not on:
+        for v in existing:
+            v.removeFromSuperview()
+        return
+    if existing:
+        return
+    effect = appkit.NSVisualEffectView.alloc().initWithFrame_(view.frame())
+    effect.setIdentifier_(BLUR_ID)
+    effect.setMaterial_(_MATERIAL_SIDEBAR)
+    effect.setBlendingMode_(_BEHIND_WINDOW)
+    effect.setState_(_STATE_ACTIVE)
+    effect.setAutoresizingMask_(_NS_VIEW_SIZABLE)
+    holder.addSubview_positioned_relativeTo_(effect, _NS_WINDOW_BELOW, view)

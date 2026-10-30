@@ -72,6 +72,7 @@ class MainWindow:
         self._window: QMainWindow | None = None
         self._listening = False
         self._on_accent = "#FFFFFF"
+        self._open_height = 520            # window height to return to when the log reopens
 
     # ------------------------------------------------------------------ #
     # Construction                                                         #
@@ -173,6 +174,7 @@ class MainWindow:
         # --- footer
         self.footer = QLabel()
         self.footer.setWordWrap(True)
+        self.footer.setVisible(False)
         self.download_button = QPushButton("Download speech model")
         self.download_button.clicked.connect(lambda: self._on_download_model())
         self.download_button.setVisible(False)
@@ -202,8 +204,18 @@ class MainWindow:
 
     def set_log_collapsed(self, collapsed: bool, notify: bool = False) -> None:
         """Hide or show the log; the heading's arrow points down when collapsed, up when open."""
+        was_collapsed = self._log_collapsed
+        window = self._window
+        if collapsed and not was_collapsed and window is not None and window.isVisible():
+            self._open_height = window.height()      # to restore when the log is shown again
         self._log_collapsed = collapsed
         self.log.setVisible(not collapsed)
+        if window is not None:
+            window.centralWidget().layout().activate()
+            if collapsed:                             # no empty gap where the log was
+                window.resize(window.width(), window.sizeHint().height())
+            elif was_collapsed:
+                window.resize(window.width(), max(self._open_height, window.sizeHint().height()))
         self.log_toggle.setText(f"Log  {'▾' if collapsed else '▴'}")
         self.log_toggle.setToolTip("Show the log" if collapsed else "Hide the log")
         if notify:
@@ -314,6 +326,7 @@ class MainWindow:
     def set_footer(self, text: str, offer_download: bool = False) -> None:
         """Show a status message; optionally reveal the model-download button."""
         self.footer.setText(text)
+        self.footer.setVisible(bool(text))      # an empty footer would leave a blank strip
         self.download_button.setVisible(offer_download)
         self.download_button.setEnabled(True)
 

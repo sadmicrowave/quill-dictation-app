@@ -56,7 +56,8 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "spacing": "compact",     # "compact" | "comfortable"
     "font_size": 12,          # base text size in points
     "log_collapsed": False,   # the main window's log starts hidden
-    "opacity": 100,           # window background opacity in percent (text stays solid)
+    "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
+    "blur": True,             # blur behind the windows (macOS / Windows 11)
 }
 
 #: Allowed range for ``opacity`` (percent). Below this the text becomes hard to read.

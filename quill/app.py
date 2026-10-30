@@ -29,7 +29,7 @@ from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
 from quill.ui.chrome import apply_chrome
-from quill.ui.theme import apply_spacing, apply_theme, colors_for, is_dark
+from quill.ui.theme import apply_opacity, apply_spacing, apply_theme, colors_for, is_dark
 from quill.ui.tray import TrayIcon
 
 
@@ -299,13 +299,14 @@ class QuillApp:
         """Apply theme, accent and spacing from the settings to the app and its windows."""
         prefs = self.settings.preferences
         apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]),
-                    int(prefs["font_size"]), int(prefs["opacity"]))
+                    int(prefs["font_size"]), bool(prefs["blur"]))
         dark = is_dark(self.qapp)
         colors = colors_for(dark, str(prefs["accent"]))
         for window in (self.window.widget, self.sorting.widget):
             if window is not None:
                 apply_spacing(window, str(prefs["spacing"]))
-                apply_chrome(window, dark, colors, opacity=int(prefs["opacity"]))
+                apply_chrome(window, dark, colors, opacity=int(prefs["opacity"]), blur=bool(prefs["blur"]))
+                apply_opacity(window, int(prefs["opacity"]))
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         self.tray.set_badge(self.tray.badge, colors["accent"])
 
@@ -395,10 +396,8 @@ class QuillApp:
         self.tray.set_listening(active)
 
     def preview_feedback(self, mode: str, pack: str, echo: str) -> None:
-        """Play each cue once, a moment apart, using the (unsaved) choices in Settings."""
-        for i, (cue, word) in enumerate((("success", ""), ("sort", ""), ("dismiss", "Ignored"),
-                                         ("error", ""))):
-            QTimer.singleShot(i * 900, lambda c=cue, w=word: self.feedback.cue(c, w, mode, pack, echo))
+        """Play just the chosen sound (or say just the chosen word) from the (unsaved) Settings."""
+        self.feedback.cue("success", "", mode, pack, echo)
 
     def _speak_word(self, word: str) -> None:
         self.echo_speaker.say(word)

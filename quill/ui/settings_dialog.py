@@ -20,7 +20,7 @@ from quill.config.settings import (
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
-from quill.ui.theme import ACCENTS, DENSITIES, apply_spacing
+from quill.ui.theme import ACCENTS, DENSITIES, apply_opacity, apply_spacing
 
 if TYPE_CHECKING:
     from quill.config.settings import Settings
@@ -87,7 +87,9 @@ class SettingsDialog:
         if app is not None:
             apply_chrome(self._dialog, is_dark(app),
                          colors_for(is_dark(app), str(self._settings.preferences["accent"])),
-                         opacity=int(self._settings.preferences["opacity"]))
+                         opacity=int(self._settings.preferences["opacity"]),
+                         blur=bool(self._settings.preferences["blur"]))
+            apply_opacity(self._dialog, int(self._settings.preferences["opacity"]))
         return self._dialog.exec() == QDialog.DialogCode.Accepted
 
     def build(self) -> QDialog:
@@ -139,13 +141,16 @@ class SettingsDialog:
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(*OPACITY_RANGE)
         self.opacity_slider.setValue(int(self._settings.preferences["opacity"]))
-        self.opacity_slider.setToolTip("How see-through the window background is (text stays solid)")
+        self.opacity_slider.setToolTip("How see-through the whole window is, text and controls included")
         self.opacity_label = QLabel(f"{self.opacity_slider.value()}%")
         self.opacity_slider.valueChanged.connect(lambda v: self.opacity_label.setText(f"{v}%"))
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self.opacity_slider, 1)
         opacity_row.addWidget(self.opacity_label)
         form.addRow("Window opacity", opacity_row)
+        self.blur_check = QCheckBox("Blur behind windows (macOS and Windows 11)")
+        self.blur_check.setChecked(bool(self._settings.preferences["blur"]))
+        form.addRow("", self.blur_check)
         self.speak_check = QCheckBox("Read questions aloud")
         self.speak_check.setChecked(bool(self._settings.preferences["speak_prompts"]))
         form.addRow("", self.speak_check)
@@ -178,7 +183,9 @@ class SettingsDialog:
         self.feedback_combo.currentIndexChanged.connect(self._update_feedback_choices)
         self._update_feedback_choices()
         sample = QPushButton("Play sample")
-        sample.setToolTip("Hear a success, a needs-sorting, an ignore/undo and an error cue")
+        sample.setToolTip("Hear the sound set (or word) selected above")
+        self.pack_combo.activated.connect(lambda _=0: self.play_sample())    # picking one plays it
+        self.echo_combo.activated.connect(lambda _=0: self.play_sample())
         sample.clicked.connect(self.play_sample)
         form.addRow("", sample)
         layout.addLayout(form)
@@ -200,7 +207,7 @@ class SettingsDialog:
         self.echo_combo.setEnabled(mode == "echo")
 
     def play_sample(self) -> None:
-        """Preview the current (unsaved) choices."""
+        """Play only the selected sound set's chime, or say only the selected word."""
         self._on_preview(self.feedback_combo.currentData(), self.pack_combo.currentData(),
                          self.echo_combo.currentData())
 
@@ -262,6 +269,7 @@ class SettingsDialog:
         self._settings.preferences["spacing"] = self.spacing_combo.currentData()
         self._settings.preferences["font_size"] = self.font_spin.value()
         self._settings.preferences["opacity"] = self.opacity_slider.value()
+        self._settings.preferences["blur"] = self.blur_check.isChecked()
         self._settings.preferences["history_limit"] = self.history_spin.value()
         self._settings.preferences["feedback"] = self.feedback_combo.currentData()
         self._settings.preferences["sound_pack"] = self.pack_combo.currentData()
