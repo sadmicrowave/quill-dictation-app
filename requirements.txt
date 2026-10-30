@@ -1,0 +1,19 @@
+# UI
+PySide6>=6.7
+
+# Speech recognition (offline)
+vosk>=0.3.45
+sounddevice>=0.4.6
+
+# Text-to-speech (platform-specific; both installed, only one used at runtime)
+pyttsx3>=2.90
+
+# Excel bridge
+openpyxl>=3.1          # used for file-based fallback and validation reads
+xlwings>=0.31          # macOS AppleScript bridge + Windows COM
+
+# Cross-platform config directory
+platformdirs>=4.2
+
+# Packaging (dev only)
+pyinstaller>=6.6

@@ -1,0 +1,19 @@
+{
+  "_comment": "Default keyword-to-action map shipped with Quill. User overrides are written to keywords.toml in the OS config dir and take precedence.",
+  "keywords": {
+    "start listening": "START_LISTENING",
+    "stop listening": "STOP_LISTENING",
+    "next row": "NEXT_ROW",
+    "new record": "NEXT_ROW",
+    "delete row": "DELETE_ROW",
+    "cancel": "DELETE_ROW",
+    "search for": "SEARCH_FOR"
+  },
+  "actions": {
+    "START_LISTENING": "Open the listening gate; begin capturing spoken input",
+    "STOP_LISTENING": "Close the listening gate",
+    "NEXT_ROW": "Commit the current record to the workbook and start a new one",
+    "DELETE_ROW": "Discard the current in-progress record without writing it",
+    "SEARCH_FOR": "Set a text filter on the active sheet (future)"
+  }
+}

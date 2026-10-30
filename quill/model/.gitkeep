@@ -1,0 +1,4 @@
+# Place the Vosk model folder here, e.g.:
+#   quill/model/vosk-model-small-en-us-0.15/
+# Download from https://alphacephei.com/vosk/models
+# The folder is excluded from git (see .gitignore).
