@@ -1,0 +1,283 @@
+"""Application wiring: connects the bridge, listener, controller and UI.
+
+:class:`QuillApp` is the only place that knows about all the pieces. It turns
+Session events into window/tray updates and carries user actions (tray click,
+settings, workbook picker) back to the controller.
+
+Threading: the Vosk listener and the model download run on background
+threads. They talk to the GUI only through :class:`Relay` signals, which Qt
+delivers on the GUI thread, so no widget is touched off-thread.
+"""
+
+from __future__ import annotations
+import pathlib
+import threading
+from typing import Callable
+
+from PySide6.QtCore import QObject, QTimer, Signal
+
+from quill.bridge.base import BridgeError, WorkbookBridge
+from quill.config.settings import Settings
+from quill.controller import Controller
+from quill.listener.listener import Listener
+from quill.listener.model import download_model, find_model, user_model_dir
+from quill.session import Event
+from quill.speaker.speaker import Speaker
+from quill.ui.main_window import MainWindow
+from quill.ui.settings_dialog import SettingsDialog
+from quill.ui.theme import apply_theme
+from quill.ui.tray import TrayIcon
+
+
+class Relay(QObject):
+    """Signals used to hop from background threads onto the GUI thread."""
+
+    transcript = Signal(str)
+    error = Signal(str)
+    progress = Signal(int, int)
+    model_ready = Signal(object)   # pathlib.Path on success, None on failure
+
+
+class QuillApp:
+    """Owns every component and runs the app.
+
+    Args:
+        qapp: The QApplication.
+        settings: Loaded settings.
+        bridge: Workbook bridge (live Excel, or a file bridge).
+        listener_factory: ``(model_path, on_transcript, on_error) -> listener``;
+            tests inject a fake so no microphone is needed.
+        model_finder: ``(configured_path) -> Path | None``.
+        model_downloader: ``(dest_dir, progress) -> Path``; tests inject a fake.
+        speaker: Speaker to use (default: platform TTS honouring settings).
+    """
+
+    def __init__(
+        self,
+        qapp,
+        settings: Settings,
+        bridge: WorkbookBridge,
+        listener_factory: Callable | None = None,
+        model_finder: Callable[[str], pathlib.Path | None] = find_model,
+        model_downloader: Callable = download_model,
+        speaker: Speaker | None = None,
+    ) -> None:
+        self.qapp = qapp
+        self.settings = settings
+        self.relay = Relay()
+        self.speaker = speaker or Speaker(enabled=bool(settings.preferences["speak_prompts"]))
+        self.controller = Controller(
+            bridge, settings, self.speaker,
+            on_event=self.handle_event, on_speech=self._on_speech,
+        )
+        self.window = MainWindow(
+            on_toggle=self.toggle_listening, on_settings=self.open_settings,
+            on_refresh=self.refresh, on_workbook=self.select_workbook,
+            on_download_model=self.download_model,
+        )
+        self.tray = TrayIcon(
+            qapp, self.window,
+            on_start=lambda: self.toggle_listening(True),
+            on_stop=lambda: self.toggle_listening(False),
+        )
+        self.listener = None
+        self.connected = False
+        self._listener_factory = listener_factory or self._default_listener
+        self._model_finder = model_finder
+        self._model_downloader = model_downloader
+        self._expiry = QTimer()
+        self._expiry.setSingleShot(True)
+        self._expiry.timeout.connect(self.controller.expire_prompt)
+
+        self.relay.transcript.connect(self.controller.handle_transcript)
+        self.relay.error.connect(self._on_error)
+        self.relay.progress.connect(self._on_progress)
+        self.relay.model_ready.connect(self._on_model_ready)
+
+    # ------------------------------------------------------------------ #
+    # Startup                                                              #
+    # ------------------------------------------------------------------ #
+
+    def start(self) -> None:
+        """Build the UI, connect to the workbook, and start listening for speech."""
+        apply_theme(self.qapp, str(self.settings.preferences["theme"]))
+        self.window.setup()
+        self.tray.setup()
+        self.window.show()
+        self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
+        self._start_listener()
+
+    def connect_workbook(self, name: str | None = None) -> None:
+        """Connect (or reconnect) to a workbook and refresh the UI; never raises."""
+        bridge = self.controller.bridge
+        try:
+            names = bridge.open_workbooks()
+            if name and names and name not in names:
+                name = None   # last-used workbook is no longer open
+            self.controller.connect(name)
+        except BridgeError as exc:
+            self.connected = False
+            self.window.append_log(f"Not connected: {exc}")
+            self.window.set_footer("Open a workbook in Excel, then press Refresh.")
+            return
+        self.connected = True
+        self.window.update_workbooks(names, bridge.workbook_name)
+        self.window.update_sheet(bridge.active_sheet_name())
+        count = sum(len(v) for v in bridge.get_lists().values())
+        self.window.append_log(
+            f"Connected to {bridge.workbook_name}: {len(bridge.get_lists())} lists, {count} values"
+        )
+        warning = getattr(bridge, "discovery_warning", None)
+        if warning:
+            self.window.append_log(warning)
+        self.window.set_footer("")
+        self.settings.preferences["last_workbook"] = bridge.workbook_name
+        self.settings.save()
+
+    def _start_listener(self) -> None:
+        model = self._model_finder(str(self.settings.preferences["model_path"]))
+        if model is None:
+            self.window.set_footer(
+                "No speech model found. Download one (about 40 MB) to start dictating.",
+                offer_download=True,
+            )
+            return
+        self.listener = self._listener_factory(model, self.relay.transcript.emit, self.relay.error.emit)
+        self.listener.start()
+        self.window.append_log("Microphone ready. Say \"start listening\".")
+
+    @staticmethod
+    def _default_listener(model: pathlib.Path, on_transcript, on_error) -> Listener:
+        return Listener(model, on_transcript, on_error=on_error)
+
+    # ------------------------------------------------------------------ #
+    # User actions                                                         #
+    # ------------------------------------------------------------------ #
+
+    def toggle_listening(self, active: bool) -> None:
+        """Open or close the listening gate (button, tray, or menu)."""
+        if active and not self.connected:
+            self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
+            if not self.connected:
+                return
+        self.controller.set_listening(active)
+
+    def refresh(self) -> None:
+        """Re-read the workbook (or connect, if not yet connected)."""
+        if not self.connected:
+            self.connect_workbook()
+            return
+        try:
+            self.controller.refresh()
+        except BridgeError as exc:
+            self.connected = False
+            self.window.append_log(f"Lost the workbook: {exc}")
+            return
+        self.window.update_workbooks(self.controller.bridge.open_workbooks(),
+                                     self.controller.bridge.workbook_name)
+        self.window.update_sheet(self.controller.bridge.active_sheet_name())
+        self.window.append_log("Workbook re-read")
+
+    def select_workbook(self, name: str) -> None:
+        self.connect_workbook(name)
+
+    def open_settings(self) -> None:
+        """Show the settings dialog; apply the result if saved."""
+        if SettingsDialog(self.settings, self.window.widget).exec():
+            self.apply_settings()
+
+    def apply_settings(self) -> None:
+        """Push changed settings into the running app."""
+        apply_theme(self.qapp, str(self.settings.preferences["theme"]))
+        self.speaker.enabled = bool(self.settings.preferences["speak_prompts"])
+        self.controller.apply_settings()
+        self.window.append_log("Settings saved")
+
+    # ------------------------------------------------------------------ #
+    # Events from the controller                                           #
+    # ------------------------------------------------------------------ #
+
+    def handle_event(self, event: Event) -> None:
+        """Reflect a Session/Controller event in the window and tray."""
+        kind = event.kind
+        if kind == "started":
+            self._set_listening(True)
+        elif kind == "stopped":
+            self._set_listening(False)
+        elif kind == "committed":
+            summary = ", ".join(f"{k}: {v}" for k, v in event.record.items())
+            self.window.set_last_saved(f"{event.detail} — {summary}" if event.detail else summary)
+        elif kind == "confirm":
+            self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)
+        elif kind == "add_values":
+            names = ", ".join(f"{v} → {c}" for c, v in event.values)
+            self.window.append_log(f"Added to lists: {names}")
+            return
+        self.window.update_current_row(self.controller.session.record)
+        if kind == "updated" and not event.detail:
+            return
+        self.window.append_log(self._describe(event))
+        if self.controller.bridge is not None and self.connected:
+            self.window.update_sheet(self._safe_sheet())
+
+    @staticmethod
+    def _describe(event: Event) -> str:
+        labels = {
+            "started": "Listening started", "stopped": "Listening stopped",
+            "committed": "Saved row", "discarded": "Row discarded",
+            "updated": "Heard", "confirm": "Question", "error": "Error",
+        }
+        label = labels.get(event.kind)
+        return f"{label}: {event.detail}".rstrip(": ") if label else event.detail
+
+    def _safe_sheet(self) -> str:
+        try:
+            return self.controller.bridge.active_sheet_name()
+        except BridgeError:
+            return "–"
+
+    def _set_listening(self, active: bool) -> None:
+        self.window.set_listening_indicator(active)
+        self.tray.set_listening(active)
+
+    def _on_speech(self, speaking: bool) -> None:
+        """Mute the microphone while Quill talks so it doesn't hear itself."""
+        if self.listener is None:
+            return
+        (self.listener.mute if speaking else self.listener.unmute)()
+
+    # ------------------------------------------------------------------ #
+    # Background-thread results                                            #
+    # ------------------------------------------------------------------ #
+
+    def _on_error(self, message: str) -> None:
+        self.window.append_log(message)
+        self.window.set_footer(message)
+
+    def download_model(self) -> None:
+        """Download the speech model on a background thread."""
+        self.window.download_button.setEnabled(False)
+        self.window.set_footer("Downloading speech model…")
+
+        def work() -> None:
+            try:
+                path = self._model_downloader(user_model_dir(), self.relay.progress.emit)
+            except Exception as exc:   # network, disk, bad archive
+                self.relay.error.emit(f"Model download failed: {exc}")
+                self.relay.model_ready.emit(None)
+                return
+            self.relay.model_ready.emit(path)
+
+        threading.Thread(target=work, name="quill-model-download", daemon=True).start()
+
+    def _on_progress(self, done: int, total: int) -> None:
+        if total:
+            self.window.set_footer(f"Downloading speech model… {100 * done // total}%")
+
+    def _on_model_ready(self, path) -> None:
+        if path is None:
+            self.window.set_footer("Model download failed. Check your connection and try again.",
+                                   offer_download=True)
+            return
+        self.window.set_footer("")
+        self._start_listener()
