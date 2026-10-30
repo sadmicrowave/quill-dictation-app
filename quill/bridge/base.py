@@ -1,8 +1,10 @@
 """WorkbookBridge: abstract interface for talking to an open Excel workbook.
 
 Concrete implementations:
-  win_bridge.py  — Windows COM via xlwings / pywin32
-  mac_bridge.py  — macOS via xlwings + AppleScript
+  win_bridge.py   — Windows, live Excel via xlwings COM
+  mac_bridge.py   — macOS, live Excel via xlwings + AppleScript
+  xlsx_bridge.py  — file-based (openpyxl); no Excel needed, used for
+                    testing and as a fallback when Excel is unavailable
 
 Use bridge.factory.get_bridge() to obtain the right one at runtime.
 """
@@ -19,8 +21,12 @@ class WorkbookBridge(ABC):
     # ------------------------------------------------------------------ #
 
     @abstractmethod
-    def connect(self) -> None:
-        """Connect to the currently active Excel workbook.
+    def connect(self, workbook: str | None = None) -> None:
+        """Connect to an open Excel workbook.
+
+        Args:
+            workbook: Name of the workbook to target. When omitted, the
+                active workbook is used.
 
         Raises:
             BridgeError: if no workbook is open or Excel is not running.
@@ -34,6 +40,13 @@ class WorkbookBridge(ABC):
     @abstractmethod
     def workbook_name(self) -> str:
         """Display name of the connected workbook (filename without path)."""
+
+    def open_workbooks(self) -> list[str]:
+        """Names of every workbook that can be targeted (for a picker).
+
+        The default reports nothing; live bridges override it.
+        """
+        return []
 
     # ------------------------------------------------------------------ #
     # Introspection                                                        #
@@ -51,6 +64,18 @@ class WorkbookBridge(ABC):
     @abstractmethod
     def active_sheet_name(self) -> str:
         """Name of the sheet that is currently visible / active."""
+
+    @abstractmethod
+    def get_headers(self, sheet_name: str | None = None) -> list[str]:
+        """Return the column headers of *sheet_name* (default: active sheet).
+
+        The parser uses these as spoken field words, so a column that has
+        no drop-down list (a price, a date, notes) can still be dictated.
+        """
+
+    @abstractmethod
+    def refresh(self) -> None:
+        """Re-read the workbook structure after the user edited it."""
 
     # ------------------------------------------------------------------ #
     # Writing                                                              #

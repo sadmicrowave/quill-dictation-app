@@ -1,16 +1,24 @@
 """Return the correct WorkbookBridge for the current platform."""
 
 from __future__ import annotations
+import pathlib
 import sys
 from quill.bridge.base import WorkbookBridge
 
 
-def get_bridge() -> WorkbookBridge:
-    """Instantiate and return the platform-appropriate bridge.
+def get_bridge(xlsx_path: str | pathlib.Path | None = None) -> WorkbookBridge:
+    """Instantiate and return the appropriate bridge.
+
+    Args:
+        xlsx_path: When given, return a file-based bridge for that workbook
+            instead of driving a live Excel (no Excel needed).
 
     Raises:
-        NotImplementedError: on an unsupported platform.
+        NotImplementedError: on an unsupported platform (live Excel only).
     """
+    if xlsx_path is not None:
+        from quill.bridge.xlsx_bridge import XlsxBridge
+        return XlsxBridge(xlsx_path)
     if sys.platform == "win32":
         from quill.bridge.win_bridge import WinBridge
         return WinBridge()
