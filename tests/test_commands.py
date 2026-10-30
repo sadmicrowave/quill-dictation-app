@@ -1,0 +1,82 @@
+"""Keyword matcher tests (S5, part): token-based matching and splitting."""
+import unittest
+
+from quill.parser.commands import Action, CommandEvent, CommandMatcher
+
+KEYWORDS = {
+    "start listening": Action.START_LISTENING,
+    "stop listening": Action.STOP_LISTENING,
+    "next row": Action.NEXT_ROW,
+    "new record": Action.NEXT_ROW,
+    "cancel": Action.DELETE_ROW,
+    "search for": Action.SEARCH_FOR,
+}
+
+
+class TestMatch(unittest.TestCase):
+    def setUp(self):
+        self.m = CommandMatcher(KEYWORDS)
+
+    def test_keyword_at_start(self):
+        ev = self.m.match("next row fern")
+        self.assertEqual((ev.action, ev.remainder), (Action.NEXT_ROW, "fern"))
+
+    def test_keyword_in_middle(self):
+        self.assertEqual(self.m.match("fern next row").action, Action.NEXT_ROW)
+
+    def test_case_and_punctuation_ignored(self):
+        self.assertEqual(self.m.match("Next, Row!").action, Action.NEXT_ROW)
+
+    def test_no_match(self):
+        ev = self.m.match("fern bright")
+        self.assertEqual((ev.action, ev.remainder), (Action.NONE, "fern bright"))
+
+    def test_keyword_inside_another_word_does_not_fire(self):
+        self.assertEqual(self.m.match("cancellation").action, Action.NONE)
+
+    def test_longest_phrase_wins(self):
+        m = CommandMatcher({"stop": Action.NEXT_ROW, "stop listening": Action.STOP_LISTENING})
+        self.assertEqual(m.match("stop listening").action, Action.STOP_LISTENING)
+
+    def test_blank_phrase_ignored(self):
+        m = CommandMatcher({"": Action.NEXT_ROW, "  ": Action.NEXT_ROW})
+        self.assertEqual(m.match("anything").action, Action.NONE)
+
+
+class TestSplit(unittest.TestCase):
+    def setUp(self):
+        self.m = CommandMatcher(KEYWORDS)
+
+    def test_text_command_text(self):
+        segs = self.m.split("fern small next row bright")
+        self.assertEqual(segs, ["fern small", CommandEvent(Action.NEXT_ROW), "bright"])
+
+    def test_command_only(self):
+        self.assertEqual(self.m.split("start listening"), [CommandEvent(Action.START_LISTENING)])
+
+    def test_consecutive_commands(self):
+        segs = self.m.split("next row stop listening")
+        self.assertEqual([s.action for s in segs], [Action.NEXT_ROW, Action.STOP_LISTENING])
+
+    def test_plain_text(self):
+        self.assertEqual(self.m.split("fern small"), ["fern small"])
+
+    def test_empty(self):
+        self.assertEqual(self.m.split(""), [])
+
+    def test_argument_action_swallows_following_words(self):
+        segs = self.m.split("search for blue fern next row")
+        self.assertEqual(segs, [CommandEvent(Action.SEARCH_FOR, "blue fern"),
+                                CommandEvent(Action.NEXT_ROW)])
+
+
+class TestFromDefaults(unittest.TestCase):
+    def test_shipped_defaults_work(self):
+        m = CommandMatcher.from_defaults()
+        self.assertEqual(m.match("start listening").action, Action.START_LISTENING)
+        self.assertEqual(m.match("new record").action, Action.NEXT_ROW)
+        self.assertEqual(m.match("cancel").action, Action.DELETE_ROW)
+
+
+if __name__ == "__main__":
+    unittest.main()

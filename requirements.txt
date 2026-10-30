@@ -14,6 +14,7 @@ xlwings>=0.31          # macOS AppleScript bridge + Windows COM
 
 # Cross-platform config directory
 platformdirs>=4.2
+tomli>=2.0; python_version < "3.11"   # TOML reader backport
 
 # Packaging (dev only)
 pyinstaller>=6.6
