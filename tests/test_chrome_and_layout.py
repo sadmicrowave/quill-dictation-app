@@ -56,13 +56,15 @@ class FakeWindow:
     def setTitlebarAppearsTransparent_(self, v): self.calls.append(("transparent", v))
     def setBackgroundColor_(self, c): self.calls.append(("bg", c))
     def setAppearance_(self, a): self.calls.append(("appearance", a))
+    def setOpaque_(self, v): self.calls.append(("opaque", v))
+    def invalidateShadow(self): self.calls.append(("shadow",))
 
 
 class FakeAppKit:
     def __init__(self, window):
         self._window = window
         self.NSColor = type("C", (), {"colorWithSRGBRed_green_blue_alpha_":
-                                      staticmethod(lambda r, g, b, a: (round(r, 2), round(g, 2), round(b, 2)))})
+                                      staticmethod(lambda r, g, b, a: (round(r, 2), round(g, 2), round(b, 2), round(a, 2)))})
         self.NSAppearance = type("A", (), {"appearanceNamed_": staticmethod(lambda n: n)})
 
     def view_for(self, view_id):
@@ -74,13 +76,20 @@ class TestMacChrome(unittest.TestCase):
     def test_transparent_title_bar_with_theme_colour_and_appearance(self):
         window = FakeWindow()
         self.assertTrue(chrome.mac_chrome(5, True, COLORS, appkit=FakeAppKit(window)))
-        self.assertEqual(window.calls, [("transparent", True), ("bg", (0.98, 0.98, 0.96)),
-                                        ("appearance", "NSAppearanceNameDarkAqua")])
+        self.assertEqual(window.calls, [("transparent", True), ("opaque", True),
+                                        ("bg", (0.98, 0.98, 0.96, 1.0)),
+                                        ("appearance", "NSAppearanceNameDarkAqua"), ("shadow",)])
+
+    def test_opacity_makes_the_window_see_through(self):
+        window = FakeWindow()
+        chrome.mac_chrome(5, False, COLORS, appkit=FakeAppKit(window), opacity=70)
+        self.assertIn(("opaque", False), window.calls)
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.7)), window.calls)
 
     def test_light_appearance(self):
         window = FakeWindow()
         chrome.mac_chrome(5, False, COLORS, appkit=FakeAppKit(window))
-        self.assertEqual(window.calls[-1], ("appearance", "NSAppearanceNameAqua"))
+        self.assertIn(("appearance", "NSAppearanceNameAqua"), window.calls)
 
     def test_a_view_without_a_window_is_left_alone(self):
         self.assertFalse(chrome.mac_chrome(5, True, COLORS, appkit=FakeAppKit(None)))

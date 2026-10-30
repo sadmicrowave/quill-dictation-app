@@ -95,7 +95,7 @@ class QuillApp:
             qapp, self.window,
             on_start=lambda: self.toggle_listening(True),
             on_stop=lambda: self.toggle_listening(False),
-            on_open_workbook=self.show_workbook,
+            on_open_workbook=self.show_workbook, on_open_sorting=self.show_sorting,
         )
         self.listener = None
         self.connected = False
@@ -260,6 +260,7 @@ class QuillApp:
         pending = self.controller.pending_terms()
         self.sorting.set_items(pending)
         self.window.set_sorting_count(len(pending))
+        self.tray.set_badge(len(pending))
         undoable = len(self.controller.history)
         self.sorting.set_undo_available(undoable)
         self.window.set_undo_count(undoable)
@@ -298,13 +299,15 @@ class QuillApp:
         """Apply theme, accent and spacing from the settings to the app and its windows."""
         prefs = self.settings.preferences
         apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]),
-                    int(prefs["font_size"]))
+                    int(prefs["font_size"]), int(prefs["opacity"]))
         dark = is_dark(self.qapp)
         colors = colors_for(dark, str(prefs["accent"]))
         for window in (self.window.widget, self.sorting.widget):
             if window is not None:
                 apply_spacing(window, str(prefs["spacing"]))
-                apply_chrome(window, dark, colors)
+                apply_chrome(window, dark, colors, opacity=int(prefs["opacity"]))
+        self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
+        self.tray.set_badge(self.tray.badge, colors["accent"])
 
     def apply_settings(self) -> None:
         """Push changed settings into the running app."""

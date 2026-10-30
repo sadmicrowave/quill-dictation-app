@@ -37,13 +37,15 @@ def colorref(hex_color: str) -> int:
     return r | (g << 8) | (b << 16)
 
 
-def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | None = None) -> str | None:
+def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | None = None,
+                 opacity: int = 100) -> str | None:
     """Tint *widget*'s native title bar to match the theme.
 
     Args:
         widget: A top-level QWidget (its native window is created if needed).
         dark: Whether the dark theme is active.
         colors: The theme colours (``bg``, ``text``, ``border``).
+        opacity: Window background opacity in percent (macOS only: the title bar follows it).
         platform: Override ``sys.platform`` (tests).
 
     Returns:
@@ -57,7 +59,7 @@ def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | Non
         if platform == "win32":
             return "windows" if windows_chrome(handle, dark, colors) else None
         if platform == "darwin":
-            return "macos" if mac_chrome(handle, dark, colors) else None
+            return "macos" if mac_chrome(handle, dark, colors, opacity=opacity) else None
     except Exception:
         return None
     return None
@@ -111,7 +113,7 @@ def _dwm_setter() -> DwmSetter | None:
         return None
 
 
-def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None) -> bool:
+def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, opacity: int = 100) -> bool:
     """Make the title bar transparent and match the appearance; True if applied.
 
     Args:
@@ -132,7 +134,10 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None) ->
         return False
     r, g, b = (int(colors["bg"][i:i + 2], 16) / 255 for i in (1, 3, 5))
     window.setTitlebarAppearsTransparent_(True)
-    window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1.0))
+    alpha = max(0.0, min(1.0, opacity / 100))
+    window.setOpaque_(alpha >= 1.0)         # a see-through window must not be marked opaque
+    window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
+    window.invalidateShadow()               # the shadow follows the visible shape
     return True

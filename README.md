@@ -175,11 +175,19 @@ A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a pa
 - **Text size** in Settings (9 to 20 pt, default 12). The "You said ‘teal’ — which column is that?" question is shown 3 pt larger than body text.
 - **Drop-downs and number boxes** use custom chevrons drawn in the theme's colours (generated SVGs, light/dark and disabled variants), padding for the arrow, and a list that opens below the box with roomy, rounded items.
 
+### Count badges, icon buttons and see-through windows
+
+- **Menu bar / tray badge.** While terms wait, the icon carries a round badge with the count ("9+" past nine) in the **accent colour**, like the unread count on other menu bar apps. The tray menu also gets a **Needs sorting (n)…** line that opens the list. Both vanish at zero.
+- **Needs sorting button.** Filled with the accent colour (like Start/Stop) while terms wait, with the count as an inline **pill** in the sentence: `Needs sorting (3)`. The pill is painted by hand (`ui/widgets.Pill`) because a style-sheet radius was square on macOS.
+- **Icons.** Start/Stop show a play or stop glyph; Settings is an icon-only (sliders) button with a tooltip and accessible name. The icons are SVG redrawn in the theme's colours (`ui/icons.py`).
+- **Last saved** is a smaller italic supporting note (2 pt under the text size, muted colour).
+- **Window opacity** (Settings, 55 to 100 %, default 100). Lowers the opacity of the *background* only: text, icons and accent colours stay solid, and cards and fields stay more solid than the window (halfway to opaque) so they remain legible. The windows are created translucent (`WA_TranslucentBackground`); on macOS the title bar follows (`NSWindow.setOpaque_`), on Windows the title bar stays opaque. There is no blur behind the window yet (a macOS vibrancy view or Windows acrylic would add it).
+
 ## The window, the tray icon and settings
 
 - **Main window**: status light, Start/Stop, Settings, workbook picker and Refresh, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).
 - **Tray / menu bar icon**: green dot when listening, grey ring when not. Menu: Start/Stop Listening, Open Quill, Quit. While listening it begins with `Editing: <workbook>` and the workbook's folder (`~` for home, long paths shortened); click either line to bring the workbook to the front. On Windows a left click toggles listening; on macOS use the menu.
-- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), accent colour, spacing (compact / comfortable), text size, "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
+- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), accent colour, spacing (compact / comfortable), text size, window opacity, "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
 
 Quill mutes the microphone while it speaks so it can't hear itself.
 

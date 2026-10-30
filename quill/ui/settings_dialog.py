@@ -7,13 +7,16 @@ dialog open with the reasons shown.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
-    QHeaderView, QMessageBox, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
+    QHeaderView, QMessageBox, QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
-from quill.config.settings import FONT_SIZE_RANGE, HISTORY_LIMIT_RANGE, SPACINGS, THEMES
+from quill.config.settings import (
+    FONT_SIZE_RANGE, HISTORY_LIMIT_RANGE, OPACITY_RANGE, SPACINGS, THEMES,
+)
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
@@ -65,6 +68,7 @@ class SettingsDialog:
         self.accent_combo: QComboBox | None = None
         self.spacing_combo: QComboBox | None = None
         self.font_spin: QSpinBox | None = None
+        self.opacity_slider: QSlider | None = None
         self.feedback_combo: QComboBox | None = None
         self.pack_combo: QComboBox | None = None
         self.echo_combo: QComboBox | None = None
@@ -82,12 +86,14 @@ class SettingsDialog:
         app = QApplication.instance()
         if app is not None:
             apply_chrome(self._dialog, is_dark(app),
-                         colors_for(is_dark(app), str(self._settings.preferences["accent"])))
+                         colors_for(is_dark(app), str(self._settings.preferences["accent"])),
+                         opacity=int(self._settings.preferences["opacity"]))
         return self._dialog.exec() == QDialog.DialogCode.Accepted
 
     def build(self) -> QDialog:
         """Construct the dialog widgets (separate from exec for testing)."""
         dialog = QDialog(self._parent)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         dialog.setWindowTitle("Quill Settings")
         dialog.resize(440, 440)
         layout = QVBoxLayout(dialog)
@@ -130,6 +136,16 @@ class SettingsDialog:
         self.font_spin.setSuffix(" pt")
         self.font_spin.setToolTip("Text size throughout Quill (default 12)")
         form.addRow("Text size", self.font_spin)
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setRange(*OPACITY_RANGE)
+        self.opacity_slider.setValue(int(self._settings.preferences["opacity"]))
+        self.opacity_slider.setToolTip("How see-through the window background is (text stays solid)")
+        self.opacity_label = QLabel(f"{self.opacity_slider.value()}%")
+        self.opacity_slider.valueChanged.connect(lambda v: self.opacity_label.setText(f"{v}%"))
+        opacity_row = QHBoxLayout()
+        opacity_row.addWidget(self.opacity_slider, 1)
+        opacity_row.addWidget(self.opacity_label)
+        form.addRow("Window opacity", opacity_row)
         self.speak_check = QCheckBox("Read questions aloud")
         self.speak_check.setChecked(bool(self._settings.preferences["speak_prompts"]))
         form.addRow("", self.speak_check)
@@ -245,6 +261,7 @@ class SettingsDialog:
         self._settings.preferences["accent"] = self.accent_combo.currentData()
         self._settings.preferences["spacing"] = self.spacing_combo.currentData()
         self._settings.preferences["font_size"] = self.font_spin.value()
+        self._settings.preferences["opacity"] = self.opacity_slider.value()
         self._settings.preferences["history_limit"] = self.history_spin.value()
         self._settings.preferences["feedback"] = self.feedback_combo.currentData()
         self._settings.preferences["sound_pack"] = self.pack_combo.currentData()

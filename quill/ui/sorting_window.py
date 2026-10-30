@@ -168,6 +168,9 @@ class SortingWindow:
     def setup(self) -> None:
         """Build the window (call once, after the QApplication exists)."""
         window = QWidget(None, Qt.WindowType.Tool)
+        window.setObjectName("sortingWindow")
+        window.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         window.setWindowTitle("Needs sorting")
         window.resize(460, 300)
         window.setMinimumSize(320, 160)

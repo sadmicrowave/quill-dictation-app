@@ -333,7 +333,7 @@ class TestAppSorting(unittest.TestCase):
         self.assertFalse(self.quill.window.sorting_button.isVisible() or self.quill.sorting.rows)
         self.hear("next row")
         self.assertEqual(len(self.quill.sorting.rows), 3)
-        self.assertEqual(self.quill.window.sorting_button.text(), "Needs sorting (3)…")
+        self.assertEqual(self.quill.window.badge_label.text(), "3")
         self.assertFalse(self.quill.window.sorting_button.isHidden())
 
     def test_deciding_in_the_window_updates_list_workbook_and_log(self):
@@ -342,7 +342,7 @@ class TestAppSorting(unittest.TestCase):
         teal.combo.setCurrentIndex(teal.combo.findData("Color"))
         teal.add_button.click()
         self.assertEqual(len(self.quill.sorting.rows), 2)
-        self.assertEqual(self.quill.window.sorting_button.text(), "Needs sorting (2)…")
+        self.assertEqual(self.quill.window.badge_label.text(), "2")
         self.assertIn("Added Teal to Color", self.quill.window.log.toPlainText())
         ws = openpyxl.load_workbook(self.path)["Inventory"]
         self.assertEqual(ws["E6"].value, "Teal")

@@ -1,6 +1,7 @@
 """System tray / menu bar icon via PySide6 QSystemTrayIcon.
 
 Menu items:
+  Needs sorting (n)…    (only while terms wait; also a count badge on the icon)
   Editing: <workbook>   (these two lines appear only while listening;
   <folder it lives in>   click either to bring the workbook to the front)
   Start Listening / Stop Listening  (label flips with state)
@@ -49,8 +50,12 @@ def folder_for_display(path: str) -> str:
     return "~" + folder[len(home):] if folder.startswith(home) else folder
 
 
-def make_icon(listening: bool) -> QIcon:
-    """Draw the tray icon: a filled green dot when listening, else a grey ring."""
+def make_icon(listening: bool, badge: int = 0, badge_color: str = "#C9623F") -> QIcon:
+    """Draw the tray icon: a filled green dot when listening, else a grey ring.
+
+    With *badge* > 0 a coloured circle holding the count sits at the top right
+    ("9+" past nine), like the unread count on other menu bar apps.
+    """
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -62,6 +67,20 @@ def make_icon(listening: bool) -> QIcon:
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QPen(QColor(COLOR_IDLE), 8))
     painter.drawEllipse(QPoint(ICON_SIZE // 2, ICON_SIZE // 2), 22, 22)
+    if badge > 0:
+        text = str(badge) if badge < 10 else "9+"
+        radius = 19
+        center = QPoint(ICON_SIZE - radius - 1, radius + 1)
+        painter.setBrush(QColor(badge_color))
+        painter.setPen(QPen(QColor("white"), 3))
+        painter.drawEllipse(center, radius, radius)
+        font = painter.font()
+        font.setBold(True)
+        font.setPixelSize(26 if len(text) == 1 else 22)
+        painter.setFont(font)
+        painter.setPen(QColor("white"))
+        painter.drawText(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius,
+                         Qt.AlignmentFlag.AlignCenter, text)
     painter.end()
     return QIcon(pixmap)
 
@@ -78,12 +97,15 @@ class TrayIcon:
     """
 
     def __init__(self, app, main_window, on_start: Callable, on_stop: Callable,
-                 on_open_workbook: Callable | None = None) -> None:
+                 on_open_workbook: Callable | None = None,
+                 on_open_sorting: Callable | None = None) -> None:
         self._app = app
         self._main_window = main_window
         self._on_start = on_start
         self._on_stop = on_stop
         self._on_open_workbook = on_open_workbook or (lambda: None)
+        self._on_open_sorting = on_open_sorting or (lambda: None)
+        self._sorting_action: QAction | None = None
         self._workbook_name = ""
         self._workbook_path = ""
         self._title_action: QAction | None = None
@@ -92,6 +114,27 @@ class TrayIcon:
         self._toggle_action: QAction | None = None
         self._menu: QMenu | None = None
         self._listening = False
+        self._badge = 0
+        self._badge_color = "#C9623F"
+
+    @property
+    def badge(self) -> int:
+        """The count shown on the icon (0 = none)."""
+        return self._badge
+
+    def set_badge(self, count: int, color: str | None = None) -> None:
+        """Show *count* terms needing sorting as a badge on the icon (0 removes it)."""
+        self._badge = max(0, count)
+        if color:
+            self._badge_color = color
+        self._redraw()
+        if self._sorting_action is not None:
+            self._sorting_action.setVisible(self._badge > 0)
+            self._sorting_action.setText(f"Needs sorting ({self._badge})…")
+
+    def _redraw(self) -> None:
+        if self._tray is not None:
+            self._tray.setIcon(make_icon(self._listening, self._badge, self._badge_color))
 
     @property
     def listening(self) -> bool:
@@ -115,12 +158,14 @@ class TrayIcon:
         self._menu.addSeparator()
         self._toggle_action = self._menu.addAction("Start Listening", self.toggle)
         self._menu.addAction("Open Quill", self._main_window.show)
+        self._sorting_action = self._menu.addAction("", lambda: self._on_open_sorting())
+        self._sorting_action.setVisible(False)
         self._menu.addSeparator()
         self._menu.addAction("Quit", self._app.quit)
         self._refresh_workbook_items()
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return False
-        self._tray = QSystemTrayIcon(make_icon(False))
+        self._tray = QSystemTrayIcon(make_icon(self._listening, self._badge, self._badge_color))
         self._tray.setContextMenu(self._menu)
         self._tray.activated.connect(self._on_activated)
         self._tray.setToolTip("Quill — not listening")
@@ -169,7 +214,7 @@ class TrayIcon:
         if self._toggle_action is not None:
             self._toggle_action.setText("Stop Listening" if active else "Start Listening")
         if self._tray is not None:
-            self._tray.setIcon(make_icon(active))
+            self._redraw()
             self._tray.setToolTip("Quill — listening" if active else "Quill — not listening")
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:

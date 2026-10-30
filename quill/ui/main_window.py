@@ -21,7 +21,8 @@ from PySide6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
 
-from quill.ui.widgets import ElidedLabel, tooltip_lines
+from quill.ui.icons import make_icon
+from quill.ui.widgets import ElidedLabel, Pill, tooltip_lines
 
 #: Active-light colours (the same hues are used by the tray icon).
 COLOR_ACTIVE = "#34c759"
@@ -70,6 +71,7 @@ class MainWindow:
         self._log_collapsed = log_collapsed
         self._window: QMainWindow | None = None
         self._listening = False
+        self._on_accent = "#FFFFFF"
 
     # ------------------------------------------------------------------ #
     # Construction                                                         #
@@ -89,14 +91,18 @@ class MainWindow:
         self.toggle_button = QPushButton()
         self.toggle_button.setProperty("accent", True)
         self.toggle_button.clicked.connect(lambda: self._on_toggle(not self._listening))
-        settings_button = QPushButton("Settings…")
-        settings_button.clicked.connect(lambda: self._on_settings())
+        self.settings_button = QPushButton()            # icon only; refresh_icons() draws it
+        self.settings_button.setProperty("iconOnly", True)
+        self.settings_button.setToolTip("Settings")
+        self.settings_button.setAccessibleName("Settings")
+        self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_button.clicked.connect(lambda: self._on_settings())
         row = QHBoxLayout()
         for widget in (self.dot, self.state_label):
             row.addWidget(widget)
         row.addStretch(1)
         row.addWidget(self.toggle_button)
-        row.addWidget(settings_button)
+        row.addWidget(self.settings_button)
         layout.addLayout(row)
 
         # --- workbook row
@@ -126,9 +132,23 @@ class MainWindow:
         self.row_table.setMaximumHeight(150)
         layout.addWidget(self.row_table)
         self.last_label = ElidedLabel("Last saved: –")      # one line however much was saved
+        self.last_label.setProperty("note", True)          # smaller italic supporting text
         layout.addWidget(self.last_label)
 
+        # "Needs sorting (3)": filled in the accent colour, the count as an inline pill.
         self.sorting_button = QPushButton()
+        self.sorting_button.setProperty("accent", True)
+        self.sorting_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sorting_button.setMinimumHeight(self.sorting_button.fontMetrics().height() * 2 + 4)
+        inner = QHBoxLayout(self.sorting_button)
+        inner.setContentsMargins(12, 0, 12, 0)
+        inner.addStretch(1)
+        title = QLabel("Needs sorting")
+        self.badge_label = Pill("0")
+        for part in (title, self.badge_label):
+            part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)   # clicks reach the button
+            inner.addWidget(part, 0, Qt.AlignmentFlag.AlignVCenter)   # the pill hugs its text
+        inner.addStretch(1)
         self.sorting_button.clicked.connect(lambda: self._on_sorting())
         self.sorting_button.setVisible(False)
         layout.addWidget(self.sorting_button)
@@ -160,7 +180,9 @@ class MainWindow:
         layout.addWidget(self.download_button)
 
         window.setCentralWidget(central)
+        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)   # lets opacity < 100 show through
         self._window = window
+        self.refresh_icons()
         self.set_log_collapsed(self._log_collapsed)
         self.set_listening_indicator(False)
 
@@ -263,6 +285,20 @@ class MainWindow:
         self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
         self.state_label.setText("Listening" if active else "Not listening")
         self.toggle_button.setText("Stop" if active else "Start")
+        self.toggle_button.setIcon(self._icon("stop" if active else "play", self._on_accent))
+
+    def _icon(self, name: str, color: str):
+        return make_icon(name, color)
+
+    def refresh_icons(self, text_color: str = "#1F1E1D", on_accent: str = "#FFFFFF",
+                      accent: str = "#C9623F") -> None:
+        """Redraw the button icons and the count pill for the current theme colours."""
+        self._on_accent = on_accent
+        if self._window is None:
+            return                      # not built yet; setup() draws them
+        self.badge_label.set_colors(on_accent, accent)
+        self.settings_button.setIcon(make_icon("settings", text_color, 18))
+        self.toggle_button.setIcon(make_icon("stop" if self._listening else "play", on_accent, 16))
 
     def set_undo_count(self, count: int) -> None:
         """Show "Undo (n)" while there is a sorting answer to take back."""
@@ -270,9 +306,10 @@ class MainWindow:
         self.undo_button.setText(f"↶ Undo ({count})")
 
     def set_sorting_count(self, count: int) -> None:
-        """Show a "Needs sorting (n)" button while terms are waiting."""
+        """Show the accent-coloured "Needs sorting" button, with *count* as a pill, while terms wait."""
         self.sorting_button.setVisible(count > 0)
-        self.sorting_button.setText(f"Needs sorting ({count})…")
+        self.badge_label.setText(str(count))
+        self.sorting_button.setAccessibleName(f"Needs sorting ({count})")
 
     def set_footer(self, text: str, offer_download: bool = False) -> None:
         """Show a status message; optionally reveal the model-download button."""

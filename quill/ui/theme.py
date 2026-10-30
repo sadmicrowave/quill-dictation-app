@@ -66,7 +66,13 @@ def colors_for(dark: bool, accent: str = DEFAULT_ACCENT) -> dict[str, str]:
     return t
 
 
-def palette_for(dark: bool, accent: str = DEFAULT_ACCENT) -> QPalette:
+def rgba(hex_color: str, alpha: float) -> str:
+    """``"#RRGGBB"`` as a style-sheet ``rgba(...)`` colour (alpha 0 to 1)."""
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({r}, {g}, {b}, {round(max(0.0, min(1.0, alpha)) * 255)})"
+
+
+def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, opacity: int = 100) -> QPalette:
     """A palette built from the tokens (so native-drawn bits match the style sheet)."""
     t = colors_for(dark, accent)
     palette = QPalette()
@@ -80,6 +86,9 @@ def palette_for(dark: bool, accent: str = DEFAULT_ACCENT) -> QPalette:
         (QPalette.ColorRole.Link, "accent"),
     ):
         palette.setColor(role, QColor(t[key]))
+    window = QColor(t["bg"])
+    window.setAlphaF(max(0.0, min(1.0, opacity / 100)))
+    palette.setColor(QPalette.ColorRole.Window, window)
     for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
         palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(t["disabled"]))
     return palette
@@ -111,27 +120,30 @@ _ICON_CACHE: dict[tuple[str, str], dict[str, str]] = {}
 
 
 def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING,
-                   font_size: int = DEFAULT_FONT_SIZE) -> str:
+                   font_size: int = DEFAULT_FONT_SIZE, opacity: int = 100) -> str:
     """The style sheet: rounded controls, hairline borders, an accent for the main action."""
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     icon = _chevrons(t)
+    alpha = max(0.0, min(1.0, opacity / 100))
+    win = rgba(t["bg"], alpha)                 # window background: the see-through part
+    surf = rgba(t["surface"], (1 + alpha) / 2)  # cards and fields stay more solid than the window
     return f"""
-QMainWindow, QDialog {{ background: {t['bg']}; }}
+QMainWindow, QDialog, QWidget#sortingWindow {{ background: {win}; }}
 QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
            border-radius: 6px; padding: 4px 8px; }}
 
-QPushButton {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
+QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['border']};
               border-radius: 8px; padding: {d['button']}; }}
 QPushButton:hover {{ background: {t['hover']}; }}
 QPushButton:pressed {{ background: {t['pressed']}; }}
-QPushButton:disabled {{ color: {t['disabled']}; background: {t['bg']}; }}
+QPushButton:disabled {{ color: {t['disabled']}; background: {win}; }}
 QPushButton:checked, QPushButton[accent="true"] {{ background: {t['accent']}; color: {t['on_accent']};
               border-color: {t['accent']}; font-weight: 600; }}
 QPushButton:checked:hover, QPushButton[accent="true"]:hover {{ background: {t['accent_hover']}; }}
 QPushButton::menu-indicator {{ width: 0; }}
 
-QLineEdit, QSpinBox, QComboBox {{ background: {t['surface']}; color: {t['text']};
+QLineEdit, QSpinBox, QComboBox {{ background: {surf}; color: {t['text']};
               border: 1px solid {t['border']}; border-radius: 8px; padding: {d['field']};
               selection-background-color: {t['accent']}; selection-color: {t['on_accent']}; }}
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{ border: 1px solid {t['accent']}; }}
@@ -155,15 +167,15 @@ QComboBox QAbstractItemView {{ background: {t['surface']}; border: 1px solid {t[
               selection-color: {t['on_accent']}; outline: none; padding: 4px; }}
 QComboBox QAbstractItemView::item {{ padding: 6px 10px; min-height: 22px; border-radius: 6px; }}
 
-QPlainTextEdit, QTextEdit, QTableWidget {{ background: {t['surface']}; color: {t['text']};
+QPlainTextEdit, QTextEdit, QTableWidget {{ background: {surf}; color: {t['text']};
               border: 1px solid {t['border']}; border-radius: 10px; padding: 4px;
               gridline-color: {t['border']}; selection-background-color: {t['accent']};
               selection-color: {t['on_accent']}; }}
-QHeaderView::section {{ background: {t['bg']}; color: {t['muted']}; border: none;
+QHeaderView::section {{ background: {win}; color: {t['muted']}; border: none;
               border-bottom: 1px solid {t['border']}; padding: {d['header']}; font-weight: 600; }}
 QTableWidget::item {{ padding: {d['cell']}; }}
 
-QFrame#termRow {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: {d['radius']}px; }}
+QFrame#termRow {{ background: {surf}; border: 1px solid {t['border']}; border-radius: {d['radius']}px; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
 
@@ -182,6 +194,13 @@ QMenu::item:selected {{ background: {t['accent']}; color: {t['on_accent']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
 QLabel[heading="true"] {{ font-weight: 700; }}
+QLabel[note="true"] {{ font-size: {max(font_size - 2, 7)}pt; font-style: italic; color: {t['muted']}; }}
+QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
+QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}
+QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
+QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}
+QSlider::handle:horizontal {{ width: 16px; height: 16px; margin: -6px 0; border-radius: 8px;
+              background: {t['accent']}; border: 2px solid {t['surface']}; }}
 QLabel#termPrompt {{ font-size: {font_size + 3}pt; font-weight: 500; }}
 QToolButton[heading="true"] {{ border: none; background: transparent; font-weight: 700; padding: 2px 0;
               font-size: {font_size}pt;
@@ -204,19 +223,21 @@ def _restyle(app: QApplication) -> None:
     accent = str(app.property("quillAccent") or DEFAULT_ACCENT)
     spacing = str(app.property("quillSpacing") or DEFAULT_SPACING)
     size = int(app.property("quillFontSize") or DEFAULT_FONT_SIZE)
-    key = f"{dark}/{accent}/{spacing}/{size}"
+    opacity = int(app.property("quillOpacity") or 100)
+    key = f"{dark}/{accent}/{spacing}/{size}/{opacity}"
     if app.property("quillThemeKey") == key:
         return                      # unchanged: re-polishing every widget is slow
     app.setProperty("quillThemeKey", key)
     font = app.font()
     font.setPointSize(size)
     app.setFont(font)
-    app.setPalette(palette_for(dark, accent))
-    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size))
+    app.setPalette(palette_for(dark, accent, opacity))
+    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size, opacity))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
-                spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE) -> None:
+                spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE,
+                opacity: int = 100) -> None:
     """Set the colour scheme, accent and spacing, and apply Quill's look.
 
     Args:
@@ -227,6 +248,8 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
         spacing: ``"compact"`` or ``"comfortable"``. Layout margins and gaps
             are applied separately by :func:`apply_spacing`.
         font_size: Base text size in points (the Needs-sorting questions are 3 larger).
+        opacity: Window background opacity in percent; text stays solid. Needs windows
+            created with ``WA_TranslucentBackground`` (Quill's are).
     """
     if not app.property("quillFusion"):      # once: re-setting the style re-polishes everything
         app.setStyle("Fusion")
@@ -236,6 +259,7 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
     app.setProperty("quillAccent", accent if accent in ACCENTS else DEFAULT_ACCENT)
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
     app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
+    app.setProperty("quillOpacity", max(0, min(100, int(opacity))))
     _restyle(app)
     if not app.property("quillThemeHooked"):
         app.styleHints().colorSchemeChanged.connect(lambda *_: _restyle(app))

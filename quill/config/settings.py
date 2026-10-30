@@ -56,7 +56,11 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "spacing": "compact",     # "compact" | "comfortable"
     "font_size": 12,          # base text size in points
     "log_collapsed": False,   # the main window's log starts hidden
+    "opacity": 100,           # window background opacity in percent (text stays solid)
 }
+
+#: Allowed range for ``opacity`` (percent). Below this the text becomes hard to read.
+OPACITY_RANGE = (55, 100)
 
 #: Allowed range for ``font_size`` (points).
 FONT_SIZE_RANGE = (9, 20)
@@ -173,6 +177,8 @@ class Settings:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]
         low, high = HISTORY_LIMIT_RANGE
         settings.preferences["history_limit"] = max(low, min(high, int(settings.preferences["history_limit"])))
+        low, high = OPACITY_RANGE
+        settings.preferences["opacity"] = max(low, min(high, int(settings.preferences["opacity"])))
         low, high = FONT_SIZE_RANGE
         settings.preferences["font_size"] = max(low, min(high, int(settings.preferences["font_size"])))
         if settings.preferences["theme"] not in THEMES:
