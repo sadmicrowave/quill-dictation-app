@@ -8,7 +8,7 @@ a = Analysis(
     ["main.py"], pathex=["."],
     binaries=[*vosk_b, *sd_b],
     datas=[("quill/config/defaults.json","quill/config"),("quill/sounds","quill/sounds"),*vosk_d,*sd_d],
-    hiddenimports=[*vosk_h, *sd_h, *collect_submodules("quill"), "xlwings"],
+    hiddenimports=[*vosk_h, *sd_h, *collect_submodules("quill"), "xlwings", "AppKit", "objc"],
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Quill", console=False)
