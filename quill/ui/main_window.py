@@ -39,6 +39,7 @@ class MainWindow:
         on_refresh: Called when the user presses Refresh.
         on_workbook: Called with a workbook name picked in the combo box.
         on_download_model: Called when the user asks to download the speech model.
+        on_sorting: Called when the user opens the Needs-sorting list.
     """
 
     def __init__(
@@ -48,12 +49,14 @@ class MainWindow:
         on_refresh: Callable[[], None] | None = None,
         on_workbook: Callable[[str], None] | None = None,
         on_download_model: Callable[[], None] | None = None,
+        on_sorting: Callable[[], None] | None = None,
     ) -> None:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
         self._on_refresh = on_refresh or (lambda: None)
         self._on_workbook = on_workbook or (lambda name: None)
         self._on_download_model = on_download_model or (lambda: None)
+        self._on_sorting = on_sorting or (lambda: None)
         self._window: QMainWindow | None = None
         self._listening = False
 
@@ -112,6 +115,11 @@ class MainWindow:
         layout.addWidget(self.row_table)
         self.last_label = QLabel("Last saved: –")
         layout.addWidget(self.last_label)
+
+        self.sorting_button = QPushButton()
+        self.sorting_button.clicked.connect(lambda: self._on_sorting())
+        self.sorting_button.setVisible(False)
+        layout.addWidget(self.sorting_button)
 
         # --- log
         layout.addWidget(self._heading("Log"))
@@ -204,6 +212,11 @@ class MainWindow:
         self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
         self.state_label.setText("Listening" if active else "Not listening")
         self.toggle_button.setText("Stop" if active else "Start")
+
+    def set_sorting_count(self, count: int) -> None:
+        """Show a "Needs sorting (n)" button while terms are waiting."""
+        self.sorting_button.setVisible(count > 0)
+        self.sorting_button.setText(f"Needs sorting ({count})…")
 
     def set_footer(self, text: str, offer_download: bool = False) -> None:
         """Show a status message; optionally reveal the model-download button."""

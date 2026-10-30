@@ -12,6 +12,9 @@ File format (``keywords.toml``)::
     [preferences]
     theme = "auto"
 
+    [aliases."Size"]
+    "extra large" = "XL"
+
 If the file has a ``[keywords]`` table it *replaces* the defaults, so keywords
 the user deleted stay deleted. Without one, the defaults apply.
 
@@ -90,6 +93,8 @@ class Settings:
         keywords: phrase -> Action.
         preferences: Overrides for ``DEFAULT_PREFERENCES``.
         config_dir: Where ``keywords.toml`` lives (default: the OS config dir).
+        aliases: ``{column: {spoken phrase: existing list value}}`` taught by the
+            user in the Needs-sorting window ("extra large" means "XL").
     """
 
     KEYWORDS_FILE = "keywords.toml"
@@ -99,8 +104,10 @@ class Settings:
         keywords: dict[str, Action],
         preferences: dict[str, object] | None = None,
         config_dir: pathlib.Path | None = None,
+        aliases: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self.keywords = keywords          # phrase -> Action
+        self.aliases: dict[str, dict[str, str]] = aliases or {}
         self.preferences: dict[str, object] = {**DEFAULT_PREFERENCES, **(preferences or {})}
         self._config_dir = config_dir
 
@@ -135,6 +142,13 @@ class Settings:
                 # Keep a value only if it has the same type as the default (bool is not int).
                 if value is not None and type(value) is type(default):
                     settings.preferences[key] = value
+        raw_aliases = data.get("aliases")
+        if isinstance(raw_aliases, dict):
+            for column, mapping in raw_aliases.items():
+                if isinstance(mapping, dict):
+                    settings.aliases[column] = {
+                        str(k).lower(): str(v) for k, v in mapping.items() if isinstance(v, str)
+                    }
         if settings.preferences["theme"] not in THEMES:
             settings.preferences["theme"] = DEFAULT_PREFERENCES["theme"]
         return settings
@@ -206,6 +220,10 @@ class Settings:
             raise ValueError("\n".join(errors))
         self.keywords = {phrase.strip().lower(): action for phrase, action in rows}
 
+    def add_alias(self, column: str, phrase: str, canonical: str) -> None:
+        """Remember that spoken *phrase* means *canonical* in *column* (not yet saved)."""
+        self.aliases.setdefault(column, {})[phrase.strip().lower()] = canonical
+
     def reset_keywords(self) -> None:
         """Restore the shipped default keywords (preferences are untouched)."""
         self.keywords = self.defaults().keywords
@@ -222,4 +240,9 @@ class Settings:
         lines.append("\n[preferences]\n")
         for key in DEFAULT_PREFERENCES:
             lines.append(f"{key} = {_toml_value(self.preferences[key])}\n")
+        for column, mapping in sorted(self.aliases.items()):
+            if mapping:
+                lines.append(f"\n[aliases.{json.dumps(column)}]\n")
+                for phrase, canonical in sorted(mapping.items()):
+                    lines.append(f"{json.dumps(phrase)} = {json.dumps(canonical)}\n")
         (self._dir() / self.KEYWORDS_FILE).write_text("".join(lines), encoding="utf-8")

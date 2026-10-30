@@ -21,10 +21,11 @@ from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.listener.listener import Listener
 from quill.listener.model import download_model, find_model, user_model_dir
-from quill.session import Event
+from quill.session import Decision, Event, TermKey
 from quill.speaker.speaker import Speaker
 from quill.ui.main_window import MainWindow
 from quill.ui.settings_dialog import SettingsDialog
+from quill.ui.sorting_window import SortingWindow
 from quill.ui.theme import apply_theme
 from quill.ui.tray import TrayIcon
 
@@ -78,8 +79,9 @@ class QuillApp:
         self.window = MainWindow(
             on_toggle=self.toggle_listening, on_settings=self.open_settings,
             on_refresh=self.refresh, on_workbook=self.select_workbook,
-            on_download_model=self.download_model,
+            on_download_model=self.download_model, on_sorting=self.show_sorting,
         )
+        self.sorting = SortingWindow(self.controller.vocab, self.resolve_term)
         self.tray = TrayIcon(
             qapp, self.window,
             on_start=lambda: self.toggle_listening(True),
@@ -111,6 +113,7 @@ class QuillApp:
         """Build the UI, connect to the workbook, and start listening for speech."""
         apply_theme(self.qapp, str(self.settings.preferences["theme"]))
         self.window.setup()
+        self.sorting.setup()
         self.tray.setup()
         self.window.show()
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
@@ -229,6 +232,22 @@ class QuillApp:
         self.window.update_sheet(self.controller.bridge.active_sheet_name())
         self.window.append_log("Workbook re-read")
 
+    def resolve_term(self, key: TermKey, decision: Decision, term: str) -> None:
+        """The user decided what to do with an unrecognised term."""
+        self.controller.resolve_term(key, decision, term)
+        self.refresh_sorting()
+
+    def refresh_sorting(self, reveal: bool = False) -> None:
+        """Sync the Needs-sorting list and button with the pending terms."""
+        pending = self.controller.pending_terms()
+        self.sorting.set_items(pending)
+        self.window.set_sorting_count(len(pending))
+        if reveal and pending:
+            self.sorting.show()
+
+    def show_sorting(self) -> None:
+        self.refresh_sorting(reveal=True)
+
     def select_workbook(self, name: str) -> None:
         self.connect_workbook(name)
 
@@ -263,9 +282,10 @@ class QuillApp:
             self.window.set_last_saved(f"{event.detail} — {summary}" if event.detail else summary)
         elif kind == "confirm":
             self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)
-        elif kind == "add_values":
-            names = ", ".join(f"{v} → {c}" for c, v in event.values)
-            self.window.append_log(f"Added to lists: {names}")
+            self.refresh_sorting(reveal=True)
+        elif kind in ("add_values", "alias_added", "skipped"):
+            self.window.append_log(event.detail)
+            self.refresh_sorting()
             return
         self.window.update_current_row(self.controller.session.record)
         if kind == "updated" and not event.detail:

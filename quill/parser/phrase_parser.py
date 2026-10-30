@@ -34,7 +34,13 @@ COMMON_WORDS = frozenset({
     "nice", "okay", "ok", "yeah", "yes", "no", "um", "uh", "like", "just", "really", "pretty",
     "cool", "great", "fine", "thing", "stuff", "called", "name", "item", "also", "has", "have",
     "had", "about", "looks", "look", "very", "little", "big", "lot", "more", "less",
+    "mainly", "mostly", "maybe", "probably", "around", "roughly", "approximately", "made",
+    "make", "sell", "sells", "sold", "could", "would", "should", "will", "can", "next", "worth",
+    "which", "who", "what", "when", "where", "then", "they", "them", "their", "these", "those",
 })
+
+#: Unit words that mark a spoken number as money ("thirty five dollars").
+CURRENCY_WORDS = frozenset({"dollar", "dollars", "buck", "bucks", "cent", "cents"})
 
 #: Words that may sit between a field word and its value ("cost of 25").
 FILLERS = frozenset({"of", "is", "was", "at", "for", "a", "an", "the", "to", "as"})
@@ -42,6 +48,12 @@ FILLERS = frozenset({"of", "is", "was", "at", "for", "a", "an", "the", "to", "as
 #: Header words that mean "free text" even when the first word is a number.
 TEXT_HINTS = frozenset({
     "note", "notes", "comment", "comments", "description", "remarks", "details",
+})
+
+#: Words that, right before a free-text header, show it is just a noun in a
+#: sentence ("this next *item* is…") rather than a field word ("item vintage tee").
+DETERMINERS = frozenset({
+    "this", "that", "next", "the", "a", "an", "new", "another", "each", "every", "my", "our",
 })
 
 #: Longest run of unknown words read as a single new value ("hugo boss").
@@ -123,6 +135,11 @@ class _Parser:
         n = len(self.tokens)
         while self.i < n:
             field_hit = self.vocab.field_at(self.tokens, self.i)
+            if field_hit and self._is_prose_use(field_hit[0]):
+                self._flush()
+                self.result.unmatched.append(self.tokens[self.i])
+                self.i += field_hit[1]
+                continue
             if field_hit:
                 self._flush()
                 column, length = field_hit
@@ -137,6 +154,9 @@ class _Parser:
                 self._take_value(matches)
                 continue
 
+            if self._take_bare_amount():
+                continue
+
             word = self.tokens[self.i]
             if word in COMMON_WORDS or parse_number(self.tokens, self.i)[0] is not None:
                 self._flush()
@@ -148,6 +168,29 @@ class _Parser:
         self._flush()
         self._assign_guesses()
         return self.result
+
+    def _is_prose_use(self, column: str) -> bool:
+        """True when a free-text header word is just a noun after "this", "the", ..."""
+        if self.vocab.is_list_column(column) or self.i == 0:
+            return False
+        last = tokenize(column)[-1] if tokenize(column) else ""
+        return last not in TEXT_HINTS and self.tokens[self.i - 1] in DETERMINERS
+
+    def _take_bare_amount(self) -> bool:
+        """Read "thirty five dollars" with no field word into the default amount column."""
+        amount, used = parse_amount(self.tokens, self.i)
+        if amount is None or not CURRENCY_WORDS & set(self.tokens[self.i:self.i + used]):
+            return False
+        self._flush()
+        column, note = self.vocab.default_amount_column()
+        if column is None:
+            self.result.unmatched.append(" ".join(self.tokens[self.i:self.i + used]))
+        else:
+            self._set(column, amount)
+            if note:
+                self.result.assumptions.append(note)
+        self.i += used
+        return True
 
     # ------------------------------------------------------------------ #
     # Known values                                                         #

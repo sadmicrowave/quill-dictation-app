@@ -163,3 +163,40 @@ class TestEdges(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestProseUseOfHeaderWords(unittest.TestCase):
+    """A free-text header such as "Item" is a noun in running speech, not a field word."""
+
+    def parse(self, text):
+        vocab = Vocabulary()
+        vocab.load({"Type": ["T-Shirt"]}, ["Item", "Type", "Notes", "Appraisal"])
+        vocab.numeric_columns = ["Appraisal"]
+        return parse(text, vocab, TODAY)
+
+    def test_item_after_determiner_is_just_a_word(self):
+        result = self.parse("this next item is a t-shirt")
+        self.assertEqual(result.updates, {"Type": "T-Shirt"})
+
+    def test_item_at_start_is_still_a_field_word(self):
+        self.assertEqual(self.parse("item vintage tee").updates, {"Item": "vintage tee"})
+
+    def test_notes_after_determiner_still_a_field_word(self):
+        self.assertEqual(self.parse("the notes faded").updates, {"Notes": "faded"})
+
+    def test_list_column_word_after_determiner_still_a_field_word(self):
+        self.assertEqual(self.parse("the type t-shirt").updates, {"Type": "T-Shirt"})
+
+    def test_filler_adverbs_are_not_values(self):
+        result = self.parse("mainly mostly probably roughly t-shirt")
+        self.assertEqual(result.candidates, [])
+
+    def test_bare_dollar_amount_goes_to_amount_column(self):
+        self.assertEqual(self.parse("could sell for thirty five dollars").updates,
+                         {"Appraisal": 35.0})
+
+    def test_bare_dollar_amount_with_no_amount_column_is_unmatched(self):
+        vocab = Vocabulary()
+        vocab.load({"Type": ["T-Shirt"]}, ["Type"])
+        result = parse("ten dollars", vocab, TODAY)
+        self.assertEqual((result.updates, result.unmatched), ({}, ["ten dollars"]))

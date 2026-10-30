@@ -138,6 +138,22 @@ class GridBridge(WorkbookBridge):
         self._after_write()
         return row
 
+    def set_value(self, sheet_name: str, row: int, column: str, value: object) -> bool:
+        grid = self._require()
+        if sheet_name not in grid.sheet_names():
+            return False
+        header_row = self._header_row(grid, sheet_name)
+        width = grid.last_col(sheet_name)
+        headers = grid.read(sheet_name, header_row, 1, 1, max(width, 1))[0]
+        wanted = normalize_header(column)
+        index = next((i for i, h in enumerate(headers, 1)
+                      if not is_blank(h) and normalize_header(h) == wanted), None)
+        if index is None or not is_blank(grid.read(sheet_name, row, index, 1, 1)[0][0]):
+            return False
+        grid.write(sheet_name, row, index, value)
+        self._after_write()
+        return True
+
     @staticmethod
     def _next_free_row(grid: Grid, sheet: str, header_row: int, columns: list[int]) -> int:
         """First row below the header whose *columns* cells are all empty or computed.

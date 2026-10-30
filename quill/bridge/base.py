@@ -119,6 +119,15 @@ class WorkbookBridge(ABC):
         """
 
 
+    def set_value(self, sheet_name: str, row: int, column: str, value: object) -> bool:
+        """Fill one cell of an existing row, only if it is currently empty.
+
+        Used to back-fill a value the user taught Quill after the row was
+        already saved. Returns True if written, False if the column is missing
+        or the cell already holds something (never overwrites).
+        """
+        return False
+
     # ------------------------------------------------------------------ #
     # Search (optional capability)                                         #
     # ------------------------------------------------------------------ #

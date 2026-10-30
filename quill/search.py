@@ -36,9 +36,6 @@ COMPARATORS: list[tuple[tuple[str, ...], str]] = sorted(
     key=lambda c: len(c[0]), reverse=True,
 )
 
-#: Header words that suggest an amount of money (used to pick a default column).
-MONEY_WORDS = frozenset({"price", "cost", "amount", "total", "paid", "value", "fee", "msrp"})
-
 #: Longest value (in words) tried when matching a plural in a search.
 _MAX_VALUE_WORDS = 4
 
@@ -67,10 +64,6 @@ def _singulars(word: str) -> list[str]:
     return out
 
 
-def _money_header(column: str) -> bool:
-    return any(t in MONEY_WORDS for t in tokenize(column))
-
-
 def _match_value(vocab: Vocabulary, tokens: list[str], i: int):
     """Longest vocabulary match at *i*, retrying with a singularised last word.
 
@@ -95,19 +88,6 @@ def _comparator_at(tokens: list[str], i: int):
     return None
 
 
-def _default_numeric_column(vocab: Vocabulary, numeric: list[str]):
-    """Pick the column a bare "under 50" refers to; returns (column, assumption)."""
-    cands = [c for c in vocab.headers()
-             if not vocab.is_list_column(c) and (c in numeric or _money_header(c))]
-    pool = [c for c in cands if _money_header(c)] or cands
-    if not pool:
-        return None, None
-    if len(pool) == 1:
-        return pool[0], None
-    others = ", ".join(pool[1:])
-    return pool[0], f"'{pool[0]}' used for the amount; say a column name to use another ({others})"
-
-
 def parse_search(text: str, vocab: Vocabulary, numeric_columns: list[str]) -> SearchQuery:
     """Parse spoken search words into per-column filters.
 
@@ -116,6 +96,7 @@ def parse_search(text: str, vocab: Vocabulary, numeric_columns: list[str]) -> Se
         vocab: Vocabulary of the active sheet.
         numeric_columns: Headers whose data is numeric (from the bridge).
     """
+    vocab.numeric_columns = list(numeric_columns)
     tokens = tokenize(text)
     query = SearchQuery()
     values: dict[str, list[str]] = {}
@@ -143,7 +124,7 @@ def parse_search(text: str, vocab: Vocabulary, numeric_columns: list[str]) -> Se
                 continue
             column = named if named and not vocab.is_list_column(named) else None
             if column is None:
-                column, note = _default_numeric_column(vocab, numeric_columns)
+                column, note = vocab.default_amount_column()
                 if note:
                     query.assumptions.append(note)
             if column is None:

@@ -15,7 +15,7 @@ from quill.config.settings import Settings
 from quill.parser.commands import Action, CommandMatcher
 from quill.parser.vocab import Vocabulary
 from quill.search import parse_search
-from quill.session import Event, Session
+from quill.session import Decision, Event, Session, TermKey
 
 EventCallback = Callable[[Event], None]
 
@@ -97,7 +97,15 @@ class Controller:
     def reload_vocab(self) -> None:
         """Re-read lists and headers (after a refresh or a sheet change)."""
         self.vocab.load(self.bridge.get_lists(), self.bridge.get_headers())
+        self.vocab.numeric_columns = self.bridge.numeric_columns()
+        self._apply_aliases()
         self._sheet = self.bridge.active_sheet_name()
+
+    def _apply_aliases(self) -> None:
+        """Re-teach the vocabulary the user's saved synonyms (e.g. "extra large" = XL)."""
+        for column, mapping in self.settings.aliases.items():
+            for phrase, canonical in mapping.items():
+                self.vocab.add_alias(column, phrase, canonical)
 
     def refresh(self) -> None:
         """Re-read the workbook structure, then rebuild the vocabulary."""
@@ -142,6 +150,16 @@ class Controller:
             self._carry_out(event)
             self._on_event(event)
 
+    def pending_terms(self) -> list[TermKey]:
+        """Terms waiting to be sorted: ``(suggested column or None, words)``."""
+        return list(self.session.pending or [])
+
+    def resolve_term(self, key: TermKey, decision: Decision, term: str | None = None) -> None:
+        """Apply the user's decision about one unrecognised term."""
+        for event in self.session.resolve(key, decision, term):
+            self._carry_out(event)
+            self._on_event(event)
+
     def expire_prompt(self) -> None:
         """Give up waiting for a yes/no answer."""
         for event in self.session.expire_prompt():
@@ -162,6 +180,8 @@ class Controller:
             self._write_row(event)
         elif event.kind == "add_values":
             self._write_values(event)
+        elif event.kind == "alias_added":
+            self._save_alias(event)
         elif event.kind == "search":
             self._search(event)
         elif event.kind == "clear_search":
@@ -211,15 +231,38 @@ class Controller:
 
     def _write_row(self, event: Event) -> None:
         try:
-            row = self.bridge.append_row(self.bridge.active_sheet_name(), event.record)
+            sheet = self.bridge.active_sheet_name()
+            row = self.bridge.append_row(sheet, event.record)
             event.detail = f"Row {row}"
+            self.session.tag_origin(event.terms or [], sheet, row)
         except BridgeError as exc:
             self.session.restore(event.record)
             self._on_event(Event("error", detail=f"Could not save the row: {exc}"))
 
     def _write_values(self, event: Event) -> None:
+        """Add taught values to the workbook's lists, then back-fill the saved row."""
+        added = True
         for column, value in event.values:
             try:
                 self.bridge.add_to_list(column, value)
             except BridgeError as exc:
+                added = False
                 self._on_event(Event("error", detail=f"Could not add '{value}': {exc}"))
+        if added:
+            self._backfill(event)
+
+    def _save_alias(self, event: Event) -> None:
+        """Remember the synonym for future sessions, then back-fill the saved row."""
+        for column, phrase, canonical in event.values:
+            self.settings.add_alias(column, phrase, canonical)
+        self.settings.save()
+        self._backfill(event)
+
+    def _backfill(self, event: Event) -> None:
+        """Fill the empty cell of the row the term was heard in (never overwrites)."""
+        for sheet, row, column, value in event.cells or []:
+            try:
+                if self.bridge.set_value(sheet, row, column, value):
+                    event.detail += f"; filled {column} on row {row}"
+            except BridgeError as exc:
+                self._on_event(Event("error", detail=f"Could not fill {column} on row {row}: {exc}"))

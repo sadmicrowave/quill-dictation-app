@@ -125,7 +125,7 @@ class TestDictationThroughUi(AppCase):
         self.assertTrue(self.quill._expiry.isActive())
         self.hear("yes")
         self.assertEqual(self.sheet("Config")["A6"].value, "Snake Plant")
-        self.assertIn("Added to lists: Snake Plant → Species", self.log())
+        self.assertIn("Added Snake Plant to Species", self.log())
 
     def test_error_event_is_logged(self):
         self.hear("start listening", "light dim", "next row", "yes")

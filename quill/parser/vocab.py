@@ -11,6 +11,18 @@ from dataclasses import dataclass, field
 from quill.parser.tokens import tokenize
 
 
+#: Header words that suggest an amount of money (picks a default amount column).
+MONEY_WORDS = frozenset({
+    "price", "cost", "amount", "total", "paid", "value", "fee", "msrp",
+    "appraisal", "worth", "estimate",
+})
+
+
+def money_header(column: str) -> bool:
+    """True if any word of *column*'s header suggests an amount of money."""
+    return any(t in MONEY_WORDS for t in tokenize(column))
+
+
 @dataclass
 class VocabEntry:
     """One recognised value in the vocabulary pool."""
@@ -35,6 +47,8 @@ class Vocabulary:
         # (tokens, column header) for every spoken field word, longest first
         self._fields: list[tuple[tuple[str, ...], str]] = []
         self._headers: list[str] = []   # every field word's column, in load order
+        self.numeric_columns: list[str] = []
+        """Headers whose data is numeric; set by the controller from the bridge."""
 
     # ------------------------------------------------------------------ #
     # Loading                                                              #
@@ -102,6 +116,42 @@ class Vocabulary:
     def values_for(self, column: str) -> list[str]:
         """Return canonical values for a column (empty list if unknown)."""
         return list(self._by_column.get(column, []))
+
+    def add_alias(self, column: str, phrase: str, canonical: str) -> bool:
+        """Teach that spoken *phrase* means the existing value *canonical*.
+
+        Example: ``add_alias("Size", "extra large", "XL")``. Does nothing (and
+        returns False) if *canonical* isn't a value of *column*.
+        """
+        known = {v.lower(): v for v in self._by_column.get(column, [])}
+        actual = known.get(canonical.strip().lower())
+        tokens = _tokenize(phrase)
+        if actual is None or not tokens:
+            return False
+        if not any(e.column == column and e.canonical == actual and e.tokens == tokens
+                   for e in self._entries):
+            self._entries.append(VocabEntry(actual, column, tokens))
+        return True
+
+    def default_amount_column(self) -> tuple[str | None, str | None]:
+        """The column a bare amount ("under 50", "thirty dollars") belongs to.
+
+        Candidates are non-list columns that hold numbers or have a money-like
+        header; money-like headers win, and the leftmost is used.
+
+        Returns:
+            ``(column_or_None, note_or_None)``; the note says when other
+            candidates existed so the user can choose another by name.
+        """
+        cands = [c for c in self.headers()
+                 if not self.is_list_column(c) and (c in self.numeric_columns or money_header(c))]
+        pool = [c for c in cands if money_header(c)] or cands
+        if not pool:
+            return None, None
+        if len(pool) == 1:
+            return pool[0], None
+        return pool[0], (f"'{pool[0]}' used for the amount; say a column name to use "
+                         f"another ({', '.join(pool[1:])})")
 
     def headers(self) -> list[str]:
         """Every known column: sheet headers in sheet order, then list-only columns."""

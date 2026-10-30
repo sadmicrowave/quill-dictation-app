@@ -128,6 +128,7 @@ class TestQuestionFlow(unittest.TestCase):
         self.assertEqual(kinds(events), ["committed", "confirm"])
         self.assertEqual(events[1].values, [("Light", "dim")])
         self.assertIn("Dim isn't in the Light list", events[1].detail)
+        self.assertTrue(self.s._voice_open)
 
     def test_question_asked_at_stop(self):
         self.s.feed("light dim")
@@ -199,11 +200,20 @@ class TestQuestionFlow(unittest.TestCase):
         self.assertEqual(len(confirm.values), 2)
         self.assertIn("new values", confirm.detail)
 
-    def test_unhinted_unknown_with_unclear_column_is_reported_not_pooled(self):
+    def test_unhinted_unknown_with_unclear_column_is_pooled_without_a_suggestion(self):
         events = self.s.feed("zorblax")
-        self.assertEqual(kinds(events), ["updated", "unsure"])
-        self.assertIn("couldn't tell", events[1].detail)
-        self.assertEqual(self.s.pool, {})
+        self.assertEqual(kinds(events), ["updated"])
+        self.assertIn("to sort: 'zorblax'", events[0].detail)
+        confirm = self.s.feed("next row")[-1]
+        self.assertEqual(confirm.values, [(None, "zorblax")])
+        self.assertIn("I need help sorting 1 term", confirm.detail)
+        self.assertFalse(self.s._voice_open)     # a spoken yes can't answer this
+
+    def test_spoken_yes_cannot_resolve_terms_without_a_column(self):
+        self.s.feed("zorblax")
+        self.s.feed("next row")
+        self.assertEqual(self.s.feed("yes"), [])
+        self.assertEqual(self.s.pending, [(None, "zorblax")])
 
 
 class TestPromptText(unittest.TestCase):
