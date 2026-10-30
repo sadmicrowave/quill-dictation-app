@@ -8,6 +8,8 @@ from __future__ import annotations
 import difflib
 from dataclasses import dataclass, field
 
+from quill.parser.tokens import tokenize
+
 
 @dataclass
 class VocabEntry:
@@ -30,18 +32,30 @@ class Vocabulary:
         self._entries: list[VocabEntry] = []
         # column_name -> list of canonical values (preserves insert order)
         self._by_column: dict[str, list[str]] = {}
+        # (tokens, column header) for every spoken field word, longest first
+        self._fields: list[tuple[tuple[str, ...], str]] = []
 
     # ------------------------------------------------------------------ #
     # Loading                                                              #
     # ------------------------------------------------------------------ #
 
-    def load(self, lists: dict[str, list[str]]) -> None:
+    def load(self, lists: dict[str, list[str]], headers: list[str] | None = None) -> None:
         """Populate the vocabulary from a column → values mapping.
 
         Clears any previously loaded entries first.
+
+        Args:
+            lists: Column header -> valid values (from ``bridge.get_lists()``).
+            headers: Every header of the target sheet (from
+                ``bridge.get_headers()``). These become spoken *field words*,
+                so columns without a drop-down (a price, notes) can be
+                dictated too. List columns are always field words as well.
         """
         self._entries.clear()
         self._by_column.clear()
+        self._fields = []
+        for name in [*lists.keys(), *(headers or [])]:
+            self._add_field(name)
         for column, values in lists.items():
             col_list: list[str] = []
             for value in values:
@@ -58,9 +72,21 @@ class Vocabulary:
         canonical = value.strip()
         if not canonical:
             return
+        existing = self._by_column.get(column, [])
+        if canonical.lower() in (v.lower() for v in existing):
+            return
         tokens = _tokenize(canonical.lower())
         self._entries.append(VocabEntry(canonical, column, tokens))
         self._by_column.setdefault(column, []).append(canonical)
+        self._add_field(column)
+
+    def _add_field(self, column: str) -> None:
+        """Register *column*'s header as a spoken field word (once)."""
+        tokens = tuple(_tokenize(column))
+        if not tokens or any(f == (tokens, column) for f in self._fields):
+            return
+        self._fields.append((tokens, column))
+        self._fields.sort(key=lambda f: len(f[0]), reverse=True)
 
     # ------------------------------------------------------------------ #
     # Querying                                                             #
@@ -73,6 +99,54 @@ class Vocabulary:
     def values_for(self, column: str) -> list[str]:
         """Return canonical values for a column (empty list if unknown)."""
         return list(self._by_column.get(column, []))
+
+    def is_list_column(self, column: str) -> bool:
+        """True if *column* has a drop-down list of known values."""
+        return column in self._by_column
+
+    def field_at(self, tokens: list[str], i: int) -> tuple[str, int] | None:
+        """Return ``(column, length)`` if a field word starts at ``tokens[i]``."""
+        for toks, column in self._fields:
+            n = len(toks)
+            if tuple(tokens[i:i + n]) == toks:
+                return column, n
+        return None
+
+    def matches_at(self, tokens: list[str], i: int) -> list[tuple[str, str, int]]:
+        """Return ``[(column, canonical, length)]`` for values matching at ``tokens[i]``.
+
+        A leading "the" is optional, so "north face" matches "The North Face".
+        """
+        found = []
+        for entry in self._entries:
+            variants = [entry.tokens]
+            if len(entry.tokens) > 1 and entry.tokens[0] == "the":
+                variants.append(entry.tokens[1:])
+            for toks in variants:
+                n = len(toks)
+                if n and tokens[i:i + n] == toks:
+                    found.append((entry.column, entry.canonical, n))
+                    break
+        return found
+
+    def fuzzy(self, term: str) -> tuple[str, str] | None:
+        """Close-spelling match to a known value, e.g. ``"levi"`` for ``"Levi's"``.
+
+        Returns ``(column, canonical)`` or None. Needs at least
+        ``_FUZZY_MIN_LEN`` letters so short words must match exactly.
+        """
+        text = " ".join(_tokenize(term))
+        if len(text) < self._FUZZY_MIN_LEN:
+            return None
+        best: tuple[float, str, str] | None = None
+        for entry in self._entries:
+            cand = " ".join(entry.tokens)
+            if len(cand) < self._FUZZY_MIN_LEN:
+                continue
+            ratio = difflib.SequenceMatcher(None, text, cand).ratio()
+            if ratio >= self._FUZZY_THRESHOLD and (best is None or ratio > best[0]):
+                best = (ratio, entry.column, entry.canonical)
+        return (best[1], best[2]) if best else None
 
     def match(self, term: str) -> VocabEntry | None:
         """Find the best vocabulary entry for a spoken term.
@@ -125,6 +199,5 @@ class Vocabulary:
 # ------------------------------------------------------------------ #
 
 def _tokenize(text: str) -> list[str]:
-    """Split text into lowercase alpha/digit tokens, dropping punctuation."""
-    import re
-    return re.findall(r"[a-z0-9]+", text.lower())
+    """Split text into lowercase word/number tokens (see ``tokens.tokenize``)."""
+    return tokenize(text)
