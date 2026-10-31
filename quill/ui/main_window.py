@@ -214,6 +214,10 @@ class MainWindow:
         # starts or stops listening; it fills with the accent colour while listening.
         self.dot = QLabel("●")
         self.state_label = QLabel()
+        self.countdown_label = QLabel()               # "Stops in 7s": the quiet timer counting down (hidden when not running)
+        self.countdown_label.setProperty("countdown", True)
+        self.countdown_label.setVisible(False)
+        self._countdown_seconds: int | None = None
         self.toggle_icon = QLabel()
         self.toggle_button = QPushButton()
         self.toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -222,7 +226,7 @@ class MainWindow:
         inner = QHBoxLayout(self.toggle_button)
         inner.setContentsMargins(14, 0, 14, 0)
         inner.setSpacing(8)
-        for part, stretch in ((self.toggle_icon, 0), (None, 1), (self.dot, 0), (self.state_label, 0)):
+        for part, stretch in ((self.toggle_icon, 0), (None, 1), (self.countdown_label, 0), (self.dot, 0), (self.state_label, 0)):
             if part is None:
                 inner.addStretch(stretch)
                 continue
@@ -698,6 +702,7 @@ class MainWindow:
             return
         full = not self._view_mini
         self.state_label.setVisible(True)                                   # "Listening" / "Not Listening" shows in both views
+        self._render_countdown()
         self.sheet_label.setVisible(full and not self._not_connected)
         self.connection_chip.setVisible(full and self._not_connected)       # inside the workbook picker ...
         self.mini_chip.setVisible(self._view_mini and self._not_connected)  # ... or alone in the mini view
@@ -1092,6 +1097,17 @@ class MainWindow:
         style.unpolish(self.toggle_button)
         style.polish(self.toggle_button)
         self._draw_toggle_icon()
+
+    def set_quiet_countdown(self, seconds: int | None) -> None:
+        """Show how many seconds are left before Quill stops listening because it is quiet (None hides it)."""
+        self._countdown_seconds = seconds
+        self._render_countdown()
+
+    def _render_countdown(self) -> None:
+        seconds = self._countdown_seconds
+        self.countdown_label.setVisible(seconds is not None)
+        if seconds is not None:
+            self.countdown_label.setText(f"{seconds}s" if self._view_mini else f"Stops in {seconds}s")
 
     def _icon(self, name: str, color: str):
         return make_icon(name, color)

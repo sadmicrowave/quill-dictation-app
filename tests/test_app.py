@@ -371,3 +371,57 @@ class TestNextItemAsTheLastWords(unittest.TestCase):
             app.controller.handle_transcript("fern small next item")
             self.assertEqual(app.window.stream_text(), "fern small")
             self.assertEqual(app.controller.session.committed, 1)
+
+
+class TestQuietCountdownLabel(unittest.TestCase):
+    def setUp(self):
+        import pathlib, tempfile
+        from quill.bridge.xlsx_bridge import XlsxBridge
+        from quill.config.settings import Settings
+        from tests.fixtures import make_workbook
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        d = pathlib.Path(self._tmp.name)
+        self.settings = Settings.load(d / "cfg")
+        self.app = QuillApp(_app, self.settings, XlsxBridge(make_workbook(d / "p.xlsx")),
+                            listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: d,
+                            speaker=FakeSpeaker(), sound_player=lambda p: None)
+        self.app.start()
+        self.label = self.app.window.countdown_label
+
+    def test_hidden_until_listening_then_it_counts_from_the_setting(self):
+        self.assertFalse(self.label.isVisibleTo(self.app.window.widget))
+        self.app.controller.handle_transcript("start listening")
+        self.assertTrue(self.label.isVisibleTo(self.app.window.widget))
+        self.assertEqual(self.label.text(), "Stops in 10s")
+
+    def test_it_follows_the_timer_and_restarts_when_something_is_heard(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app._quiet_timer.start(4200)
+        self.app._show_countdown()
+        self.assertEqual(self.label.text(), "Stops in 5s")                  # rounded up
+        self.app._on_partial_heard("black")
+        self.assertEqual(self.label.text(), "Stops in 10s")                 # back to the full setting
+
+    def test_it_uses_the_users_seconds_and_a_short_form_in_the_mini_view(self):
+        self.settings.preferences["auto_stop_seconds"] = 25
+        self.app.controller.handle_transcript("start listening")
+        self.assertEqual(self.label.text(), "Stops in 25s")
+        self.app.window.set_mini(True)
+        self.assertEqual(self.label.text(), "25s")
+
+    def test_it_disappears_when_listening_stops_or_the_setting_is_off(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app.controller.handle_transcript("stop listening")
+        self.assertFalse(self.label.isVisibleTo(self.app.window.widget))
+        self.settings.preferences["auto_stop"] = False
+        self.app.controller.handle_transcript("start listening")
+        self.assertFalse(self.label.isVisibleTo(self.app.window.widget))
+
+    def test_it_is_small_muted_and_italic(self):
+        from quill.ui.theme import stylesheet_for
+        sheet = stylesheet_for(True)
+        rule = sheet[sheet.index('QLabel[countdown="true"]'):].split("}")[0]
+        self.assertIn("font-style: italic", rule)
+        self.assertIn("font-size:", rule)
+        self.assertIn("color:", rule)

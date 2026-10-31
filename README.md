@@ -409,3 +409,7 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Quiet timer** now covers every reason the microphone is open for Quill: listening, a spoken answer being awaited, voice sorting. On expiry it stops listening, ends voice sorting and the wait (questions stay on the Term Helper list), in that order so nothing reopens the wait. The "keep the microphone open" setting is the user's choice and has no countdown.
 - Language model plan: see `Language Model Plan.md` in the outer folder.
 
+### Phase 42 notes (quiet countdown; learned links designed, not built)
+- **Countdown:** `MainWindow.countdown_label` (property `countdown`, styled small, muted, italic in `theme.py`) sits left of the light inside the Start / Stop button and reads "Stops in 7s" (just "7s" in the mini view). `QuillApp._show_countdown` redraws it four times a second from the quiet timer's remaining time (rounded up) while the timer runs; it is hidden when the timer is not running.
+- **Learned links:** design only, in `Learned Links Design.md` (outer folder).
+

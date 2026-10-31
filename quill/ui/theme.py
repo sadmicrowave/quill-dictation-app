@@ -230,6 +230,8 @@ QLabel[placeholder="true"] {{ font-style: italic; color: {t['muted']}; }}
 QTextEdit, QPlainTextEdit {{ placeholder-text-color: {t['muted']}; }}
 QLabel[note="true"] {{ font-size: {max(font_size - 2, 7)}pt; font-style: italic; color: {t['muted']}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
+QLabel[countdown="true"] {{ background: transparent; color: {t['muted']}; font-size: {max(font_size - 3, 7)}pt; font-style: italic; font-weight: 400; }}
+QPushButton[accent="true"] QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.72)}; font-weight: 400; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
 QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}

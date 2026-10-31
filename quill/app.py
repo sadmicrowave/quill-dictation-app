@@ -124,6 +124,9 @@ class QuillApp:
         self._quiet_timer = QTimer()                  # stops listening after a spell of silence (see "auto_stop")
         self._quiet_timer.setSingleShot(True)
         self._quiet_timer.timeout.connect(self._quiet_for_too_long)
+        self._countdown_timer = QTimer()              # redraws the seconds left, four times a second
+        self._countdown_timer.setInterval(250)
+        self._countdown_timer.timeout.connect(self._show_countdown)
         qapp.setWindowIcon(app_icon())               # the Dock / taskbar / window icon
         self.settings = settings
         self.relay = Relay()
@@ -669,6 +672,7 @@ class QuillApp:
         self._watcher.stop()
         self._host_reload.stop()
         self._quiet_timer.stop()
+        self._countdown_timer.stop()
         if self.listener is not None:
             self.listener.stop()
             self._mic_open = False
@@ -858,10 +862,27 @@ class QuillApp:
         """
         if not self.settings.preferences["auto_stop"] or not self._dictation_mic_needed():
             self._quiet_timer.stop()
+            self._show_countdown()
             return
         if keep_running and self._quiet_timer.isActive():
             return
         self._quiet_timer.start(int(self.settings.preferences["auto_stop_seconds"]) * 1000)
+        self._show_countdown()
+
+    def _show_countdown(self) -> None:
+        """Show the seconds left on the quiet timer in the window (and keep the redraw timer running only while it counts)."""
+        if self.window.widget is None or not shiboken6.isValid(self.window.widget):
+            self._quiet_timer.stop()                   # (the window is gone, as in a test that has finished)
+            self._countdown_timer.stop()
+            return
+        if self._quiet_timer.isActive():
+            seconds = max(-(-self._quiet_timer.remainingTime() // 1000), 0)      # rounded up: 10 ... 1, never "0s" early
+            self.window.set_quiet_countdown(seconds)
+            if not self._countdown_timer.isActive():
+                self._countdown_timer.start()
+        else:
+            self._countdown_timer.stop()
+            self.window.set_quiet_countdown(None)
 
     def _quiet_for_too_long(self) -> None:
         """Nothing was said for the set time: the user has forgotten the microphone or been called away.
