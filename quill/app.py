@@ -19,6 +19,8 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
+from quill.bridge.factory import get_bridge
+from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.feedback import Feedback
@@ -74,8 +76,12 @@ class QuillApp:
         poll_interval_ms: int = POLL_INTERVAL_MS,
         sound_player: Callable | None = None,
         echo_speaker=None,
+        file_chooser: Callable[[], str | None] | None = None,
+        live_bridge_factory: Callable[[], WorkbookBridge] = get_bridge,
     ) -> None:
         self.qapp = qapp
+        self._file_chooser = file_chooser or self._ask_for_file
+        self._live_bridge_factory = live_bridge_factory
         qapp.setWindowIcon(app_icon())               # the Dock / taskbar / window icon
         self.settings = settings
         self.relay = Relay()
@@ -86,7 +92,8 @@ class QuillApp:
         )
         self.window = MainWindow(
             on_toggle=self.toggle_listening, on_settings=self.open_settings,
-            on_workbook=self.select_workbook,
+            on_workbook=self.select_workbook, on_open_file=self.choose_spreadsheet_file,
+            on_use_excel=self.use_live_excel,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
             on_undo=self.undo, on_log_toggled=self._log_toggled,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
@@ -102,6 +109,7 @@ class QuillApp:
             on_start=lambda: self.toggle_listening(True),
             on_stop=lambda: self.toggle_listening(False),
             on_open_workbook=self.show_workbook, on_open_sorting=self.show_sorting,
+            on_open_file=self.choose_spreadsheet_file,
         )
         self.listener = None
         self.connected = False
@@ -147,6 +155,7 @@ class QuillApp:
         self.window.show()
         self._apply_dock()
         self._install_titlebar_button()
+        self.window.set_file_mode(isinstance(self.controller.bridge, XlsxBridge))
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
         self._start_listener()
         self._watcher.start()
@@ -366,6 +375,76 @@ class QuillApp:
 
     def show_sorting(self) -> None:
         self.refresh_sorting(reveal=True)
+
+    # ------------------------------------------------------------------ #
+    # Working on a file instead of live Excel                              #
+    # ------------------------------------------------------------------ #
+
+    def _ask_for_file(self) -> str | None:
+        """Show the standard file picker for an .xlsx workbook; None if the user cancels."""
+        from PySide6.QtWidgets import QFileDialog
+        remembered = str(self.settings.preferences["workbook_file"])
+        start = str(pathlib.Path(remembered).parent) if remembered else str(pathlib.Path.home() / "Documents")
+        path, _ = QFileDialog.getOpenFileName(self.window.widget, "Open Spreadsheet File", start,
+                                              "Excel Workbooks (*.xlsx)")
+        return path or None
+
+    def choose_spreadsheet_file(self) -> None:
+        """File > Open Spreadsheet File…: pick an .xlsx and work on it directly (no Excel needed)."""
+        path = self._file_chooser()
+        if path:
+            self.open_workbook_file(path)
+
+    def open_workbook_file(self, path: str | pathlib.Path) -> bool:
+        """Switch to working on the .xlsx at *path* through the file bridge.
+
+        The file is edited in place and saved after every change, so close it in other
+        programs while dictating (or reopen it afterwards to see the new rows). An old
+        macro-enabled .xlsm is not accepted, because saving it this way would drop its macros.
+
+        Returns:
+            True if Quill is now working on the file; otherwise the previous workbook is kept.
+        """
+        path = pathlib.Path(path)
+        if path.suffix.lower() != ".xlsx" or not path.is_file():
+            self.window.append_log(f"Can't open '{path.name}': choose an Excel workbook (.xlsx).")
+            self.window.set_footer(f"Can't open '{path.name}'. Choose an Excel workbook (.xlsx).")
+            return False
+        previous, was_connected = self.controller.bridge, self.connected
+        if was_connected:
+            self.controller.detach()                     # closes the listening gate on the old workbook
+            self.connected = False
+            self._set_listening(False)
+        self.controller.bridge = XlsxBridge(path)
+        self.connect_workbook()
+        if not self.connected:                           # unreadable file: go back to what we had
+            self.controller.bridge = previous
+            if was_connected:
+                self.connect_workbook(quiet=True)
+            return False
+        self.settings.preferences["workbook_file"] = str(path)
+        self.settings.save()
+        self.window.set_file_mode(True)
+        self.window.append_log(f"Working directly on the file {path.name} (no Excel needed)")
+        return True
+
+    def use_live_excel(self) -> None:
+        """Go back to whichever workbook is open in Excel."""
+        try:
+            bridge = self._live_bridge_factory()
+        except NotImplementedError as exc:
+            self.window.append_log(str(exc))
+            return
+        if self.connected:
+            self.controller.detach()
+            self.connected = False
+            self._set_listening(False)
+        self.controller.bridge = bridge
+        self.settings.preferences["workbook_file"] = ""
+        self.settings.save()
+        self.window.set_file_mode(False)
+        self.window.append_log("Using the workbook open in Excel")
+        self.connect_workbook(quiet=True)
 
     def select_workbook(self, name: str) -> None:
         self.connect_workbook(name)

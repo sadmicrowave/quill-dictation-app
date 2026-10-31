@@ -23,8 +23,8 @@ EventCallback = Callable[[Event], None]
 
 #: Shown and spoken whenever Quill is asked to listen with no spreadsheet to listen to.
 NO_WORKBOOK_HELP = (
-    "I can't find an open spreadsheet. Open one in Excel and I'll attach to it "
-    "automatically, then say start listening."
+    "I can't find a spreadsheet. Open one in Excel and I'll attach to it, or choose "
+    "Open Spreadsheet File in the File menu. Then say start listening."
 )
 
 

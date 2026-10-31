@@ -27,9 +27,9 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Quill")
     app.setQuitOnLastWindowClosed(False)  # lives in tray after window closes
 
-    from quill.bridge.factory import get_bridge
+    from quill.bridge.factory import startup_bridge
     try:
-        bridge = get_bridge(args.workbook)
+        bridge = startup_bridge(settings, args.workbook)
     except NotImplementedError as exc:
         QMessageBox.critical(None, "Quill", str(exc))
         return 1

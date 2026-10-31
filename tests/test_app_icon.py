@@ -144,10 +144,10 @@ class TestPackaging(unittest.TestCase):
     def test_both_specs_use_the_icons_and_ship_the_assets(self):
         mac = (ROOT / "packaging" / "quill_mac.spec").read_text()
         win = (ROOT / "packaging" / "quill_win.spec").read_text()
-        self.assertIn('icon="quill/assets/Quill.icns"', mac)
-        self.assertIn('icon="quill/assets/Quill.ico"', win)
+        self.assertIn('icon=r("quill", "assets", "Quill.icns")', mac)
+        self.assertIn('icon=r("quill", "assets", "Quill.ico")', win)
         for spec in (mac, win):
-            self.assertIn('("quill/assets","quill/assets")', spec)
+            self.assertIn('(r("quill", "assets"), "quill/assets")', spec)
 
     def test_the_icon_files_are_not_git_ignored(self):
         import subprocess

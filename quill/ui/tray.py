@@ -6,6 +6,7 @@ Menu items:
   <folder it lives in>   click either to bring the workbook to the front)
   Start Listening / Stop Listening  (label flips with state)
   Open Quill
+  Open Spreadsheet File…  (work on an .xlsx directly, no Excel needed)
   Quit
 
 Icon: the small rounded square of the app icon with its sound lines: an outline when idle, solid when listening.
@@ -126,7 +127,8 @@ class TrayIcon:
 
     def __init__(self, app, main_window, on_start: Callable, on_stop: Callable,
                  on_open_workbook: Callable | None = None,
-                 on_open_sorting: Callable | None = None) -> None:
+                 on_open_sorting: Callable | None = None,
+                 on_open_file: Callable | None = None) -> None:
         self._app = app
         self._main_window = main_window
         self._on_start = on_start
@@ -134,6 +136,7 @@ class TrayIcon:
         self._on_open_workbook = on_open_workbook or (lambda: None)
         self._on_open_sorting = on_open_sorting or (lambda: None)
         self._dark = False
+        self._on_open_file = on_open_file or (lambda: None)
         self._sorting_action: QAction | None = None
         self._workbook_name = ""
         self._workbook_path = ""
@@ -193,6 +196,7 @@ class TrayIcon:
         self._menu.addSeparator()
         self._toggle_action = self._menu.addAction("Start Listening", self.toggle)
         self._menu.addAction("Open Quill", self._main_window.show)
+        self._menu.addAction("Open Spreadsheet File…", lambda: self._on_open_file())
         self._sorting_action = self._menu.addAction("", lambda: self._on_open_sorting())
         self._sorting_action.setVisible(False)
         self._menu.addSeparator()

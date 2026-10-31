@@ -49,6 +49,8 @@ class MainWindow:
         on_log_toggled: Called with True/False when the user collapses/expands the log.
         on_row_toggled: Same, for the Current row section.
         on_mini_toggled: Called with True/False when the user enters/leaves the mini view.
+        on_open_file: Called when the user chooses Open Spreadsheet File (button or File menu).
+        on_use_excel: Called when the user chooses to go back to the open Excel workbook.
         mini: Start in the mini view. mini_on_top: keep the mini view above other windows.
         log_collapsed: Start with the log collapsed.
     """
@@ -66,6 +68,8 @@ class MainWindow:
         on_row_toggled: Callable[[bool], None] | None = None,
         row_collapsed: bool = False,
         on_mini_toggled: Callable[[bool], None] | None = None,
+        on_open_file: Callable[[], None] | None = None,
+        on_use_excel: Callable[[], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
     ) -> None:
@@ -80,6 +84,8 @@ class MainWindow:
         self._on_row_toggled = on_row_toggled or (lambda collapsed: None)
         self._row_collapsed = row_collapsed
         self._on_mini_toggled = on_mini_toggled or (lambda mini: None)
+        self._on_open_file = on_open_file or (lambda: None)
+        self._on_use_excel = on_use_excel or (lambda: None)
         self._mini = mini                          # the state asked for (may still be animating there)
         self._view_mini = False                    # what is actually on screen (set by _apply_view)
         self._native_mini_button = False           # True once the title bar has its own resize icon
@@ -152,10 +158,15 @@ class MainWindow:
             lambda index: self._on_workbook(self.workbook_combo.itemText(index))
         )
         self.sheet_label = QLabel("Sheet: –")
+        self.open_file_button = QPushButton("Open File…")
+        self.open_file_button.setToolTip("Work on an .xlsx file directly (no Excel needed)")
+        self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.open_file_button.clicked.connect(lambda: self._on_open_file())
         self.workbook_row = QWidget()                   # one widget so the mini view can hide the row whole
         row = QHBoxLayout(self.workbook_row)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.workbook_combo, 1)
+        row.addWidget(self.open_file_button)
         layout.addWidget(self.workbook_row)
         layout.addWidget(self.sheet_label)
 
@@ -219,6 +230,12 @@ class MainWindow:
         layout.addWidget(self.footer)
         layout.addWidget(self.download_button)
 
+        # File menu (the global menu bar on macOS): Open Spreadsheet File, and back to live Excel.
+        file_menu = window.menuBar().addMenu("File")
+        self.open_file_action = file_menu.addAction("Open Spreadsheet File…", lambda: self._on_open_file())
+        self.open_file_action.setShortcut("Ctrl+O")
+        self.use_excel_action = file_menu.addAction("Use Open Excel Workbook", lambda: self._on_use_excel())
+        self.use_excel_action.setEnabled(False)
         window.setCentralWidget(central)
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)   # lets opacity < 100 show through
         self._window = window
@@ -520,6 +537,10 @@ class MainWindow:
             self.workbook_combo.addItem(name)
             index = self.workbook_combo.count() - 1
         self.workbook_combo.setCurrentIndex(index)
+
+    def set_file_mode(self, file_mode: bool) -> None:
+        """Say whether Quill is working on a file (not live Excel): enables the way back to Excel."""
+        self.use_excel_action.setEnabled(file_mode)
 
     def update_workbooks(self, names: list[str], current: str = "") -> None:
         """Replace the picker's choices; select *current* if given."""

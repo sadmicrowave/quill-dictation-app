@@ -297,7 +297,8 @@ class TestBundledModel(unittest.TestCase):
     def test_packaging_includes_it(self):
         for spec in ("quill_mac.spec", "quill_win.spec"):
             text = (self.ROOT.parents[1] / "packaging" / spec).read_text()
-            self.assertIn('("quill/model","quill/model")', text)
+            self.assertIn('(r("quill", "model"), "quill/model")', text)
+            self.assertIn("ROOT = os.path.abspath(os.path.join(SPECPATH", text)       # paths anchored to the repo root
 
     def test_the_app_unpacks_through_its_default_finder(self):
         from quill.listener.model import ensure_model
