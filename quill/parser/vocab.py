@@ -5,6 +5,7 @@ via WorkbookBridge.get_lists(). No domain-specific terms are hard-coded here.
 """
 
 from __future__ import annotations
+
 import difflib
 import re
 from dataclasses import dataclass
@@ -12,7 +13,6 @@ from dataclasses import dataclass
 from quill.parser.fillers import is_filler
 from quill.parser.sounds import initials_match, sounds_like
 from quill.parser.tokens import tokenize
-
 
 #: Header words that suggest an amount of money (picks a default amount column).
 MONEY_WORDS = frozenset({
@@ -42,6 +42,16 @@ def value_kind(text: str) -> str:
         if tokens[0] in ("today", "yesterday") and len(tokens) == 1:
             return "date"
     return "text"
+
+
+#: Spoken verbs that say which date is meant ("bought it yesterday", "sold it friday") and the header words
+#: that go with them. These are ordinary English verbs, not terms of any one business.
+ACQUIRE_VERBS = frozenset({"bought", "buy", "buying", "purchase", "purchased", "got", "get", "acquired", "acquire",
+                            "picked", "found", "received", "ordered", "grabbed", "scored", "thrifted", "paid"})
+_ACQUIRE_HEADERS = frozenset({"purchase", "purchased", "bought", "buy", "acquired", "acquisition", "received",
+                              "added", "entered", "ordered", "order"})
+SELL_VERBS = frozenset({"sold", "sell", "selling", "sells", "sale", "listed", "shipped", "delivered", "closed"})
+_SELL_HEADERS = frozenset({"sale", "sold", "sell", "shipped", "delivered", "closed", "listed"})
 
 
 def money_header(column: str) -> bool:
@@ -75,6 +85,8 @@ class Vocabulary:
         self._headers: list[str] = []   # every field word's column, in load order
         self.numeric_columns: list[str] = []
         """Headers whose data is numeric; set by the controller from the bridge."""
+        self.date_columns: list[str] = []
+        """Headers whose data is dates, in sheet order; set by the controller from the bridge."""
 
     # ------------------------------------------------------------------ #
     # Loading                                                              #
@@ -209,6 +221,41 @@ class Vocabulary:
             return pool[0], None
         return pool[0], (f"'{pool[0]}' used for the amount; say a column name to use "
                          f"another ({', '.join(pool[1:])})")
+
+    def date_column_for(self, tokens: list[str], i: int, filled: set[str]) -> tuple[str | None, str | None]:
+        """The date column a spoken date at ``tokens[i]`` belongs to when no column name was said.
+
+        The nearest verb before it (a few words back, else just after) decides: "bought / got / picked up"
+        point at a purchase-like date column, "sold / listed" at a sale-like one. With no verb, the first
+        date column that is still empty and not sale-like is used. A column the speaker has already filled
+        in this row is passed over unless a verb names it.
+
+        Returns:
+            ``(column_or_None, note_or_None)``; the note says when other date columns existed so the
+            user can choose another by naming it.
+        """
+        if not self.date_columns:
+            return None, None
+        family = None
+        for j in [*range(i - 1, max(i - 6, -1), -1), *range(i + 1, min(i + 4, len(tokens)))]:
+            if tokens[j] in ACQUIRE_VERBS:
+                family = _ACQUIRE_HEADERS
+                break
+            if tokens[j] in SELL_VERBS:
+                family = _SELL_HEADERS
+                break
+        words = {c: set(tokenize(c)) for c in self.date_columns}
+        if family is not None:
+            matching = [c for c in self.date_columns if words[c] & family]
+            if matching:
+                return matching[0], None
+        open_columns = [c for c in self.date_columns if c not in filled]
+        not_sale = [c for c in open_columns if not words[c] & _SELL_HEADERS] or open_columns
+        column = (not_sale or self.date_columns)[0]
+        others = [c for c in self.date_columns if c != column]
+        note = (f"'{column}' used for the date; say a column name to use another ({', '.join(others)})"
+                if others else None)
+        return column, note
 
     def headers(self) -> list[str]:
         """Every known column: sheet headers in sheet order, then list-only columns."""

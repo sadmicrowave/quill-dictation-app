@@ -10,18 +10,19 @@ delivers on the GUI thread, so no widget is touched off-thread.
 """
 
 from __future__ import annotations
-import os
+
 import logging
+import os
 import pathlib
 import threading
 from typing import Callable
 
+import shiboken6
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
-from quill.stream import match_words
 from quill.bridge.hosts import HostApp, SpreadsheetHosts
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
@@ -31,13 +32,27 @@ from quill.listener.listener import Listener
 from quill.listener.model import download_model, ensure_model, user_model_dir
 from quill.session import Decision, Event, TermKey
 from quill.speaker.speaker import Speaker
+from quill.stream import match_words
+from quill.ui.chrome import (
+    SYMBOL_HELP,
+    SYMBOL_SETTINGS,
+    SYMBOL_UNDO,
+    add_titlebar_button,
+    apply_chrome,
+    set_dock_icon_visible,
+)
 from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.chrome import SYMBOL_HELP, SYMBOL_SETTINGS, SYMBOL_UNDO, add_titlebar_button, apply_chrome, set_dock_icon_visible
-from quill.ui.theme import apply_opacity, apply_spacing, apply_theme, colors_for, is_dark
+from quill.ui.theme import (
+    apply_opacity,
+    apply_spacing,
+    apply_theme,
+    colors_for,
+    is_dark,
+)
 from quill.ui.tray import TrayIcon
 
 
@@ -106,6 +121,9 @@ class QuillApp:
         self._host_reload.setSingleShot(True)
         self._host_reload.setInterval(HOST_RELOAD_MS)
         self._host_reload.timeout.connect(self._reload_host)
+        self._quiet_timer = QTimer()                  # stops listening after a spell of silence (see "auto_stop")
+        self._quiet_timer.setSingleShot(True)
+        self._quiet_timer.timeout.connect(self._quiet_for_too_long)
         qapp.setWindowIcon(app_icon())               # the Dock / taskbar / window icon
         self.settings = settings
         self.relay = Relay()
@@ -649,6 +667,7 @@ class QuillApp:
         log.info("shutting down")
         self._watcher.stop()
         self._host_reload.stop()
+        self._quiet_timer.stop()
         if self.listener is not None:
             self.listener.stop()
             self._mic_open = False
@@ -667,11 +686,13 @@ class QuillApp:
         """A finished phrase: add it to the Voice Stream while Quill is listening."""
         if self.window.listening:
             self.window.add_stream_text(text)
+            self._restart_quiet_timer()
 
     def _on_partial_heard(self, text: str) -> None:
         """A phrase still being spoken: show it in the Voice Stream."""
         if self.window.listening:
             self.window.set_stream_partial(text)
+            self._restart_quiet_timer()
 
     def _mini_window_resized(self, width: int, height: int) -> None:
         """Remember the mini view's size, separately from the full window's."""
@@ -721,6 +742,7 @@ class QuillApp:
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
         self._apply_dock()
         self._sync_mic()
+        self._restart_quiet_timer()
         self.controller.lead_in_s = self.feedback.lead_in_s()
         self.refresh_sorting()
         if not quiet:
@@ -750,11 +772,13 @@ class QuillApp:
             self._set_listening(True)
         elif kind == "stopped":
             self._set_listening(False)
+        elif kind == "error" and event.terms:                      # a Term Helper answer that could not be carried out
+            self.sorting.note_outcome(event.terms[0], "error")
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
         elif kind == "committed":
-            self.window.set_last_saved(event.detail or "Row saved", event.record)
+            self.window.set_last_saved(event.detail, event.record)
         elif kind == "confirm":
             self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)
             self.refresh_sorting(reveal=True)
@@ -780,10 +804,14 @@ class QuillApp:
             self.refresh_sorting(reveal=True)
             return
         elif kind in ("add_values", "alias_added", "skipped"):
+            if event.resolved:
+                self.sorting.note_outcome(event.resolved["key"], "ignored" if kind == "skipped" else "accepted")
             self.window.append_log(event.detail)
             self.refresh_sorting()
             return
         self.window.update_current_row(self.controller.session.record)
+        if kind == "updated":
+            self.refresh_sorting()                    # a word that was not understood is on the Term Helper's button at once
         if kind == "updated" and not event.detail:
             return
         self.window.append_log(self._describe(event))
@@ -811,6 +839,33 @@ class QuillApp:
     def _set_listening(self, active: bool) -> None:
         self.window.set_listening_indicator(active)
         self.tray.set_listening(active)
+        self._restart_quiet_timer()
+
+    def _restart_quiet_timer(self) -> None:
+        """(Re)start the silence countdown while listening; stop it otherwise or when the setting is off.
+
+        Called whenever something is heard, when Quill finishes speaking, when listening starts and when the
+        settings change. Not counted while a spoken answer is awaited or voice sorting is on (those have
+        their own end).
+        """
+        prefs = self.settings.preferences
+        if not prefs["auto_stop"] or not self.window.listening:
+            self._quiet_timer.stop()
+            return
+        self._quiet_timer.start(int(prefs["auto_stop_seconds"]) * 1000)
+
+    def _quiet_for_too_long(self) -> None:
+        """Nothing was said for the set time: stop listening (the microphone closes with it)."""
+        session = self.controller.session
+        if self.window.widget is None or not shiboken6.isValid(self.window.widget) or not self.window.listening:
+            return                                    # (the window is gone, as in a test that has finished)
+        if self.controller.voice_sorter is not None or session.awaiting_answer:
+            self._restart_quiet_timer()               # in the middle of answering: keep waiting
+            return
+        seconds = int(self.settings.preferences["auto_stop_seconds"])
+        log.info("no speech for %d s: stopping", seconds)
+        self.window.append_log(f"Stopped listening: nothing was said for {seconds} seconds")
+        self.controller.set_listening(False)
 
     def preview_feedback(self, mode: str, pack: str, echo: str) -> None:
         """Play just the chosen sound (or say just the chosen word) from the (unsaved) Settings."""
@@ -831,6 +886,8 @@ class QuillApp:
         if self.listener is None:
             return
         (self.listener.mute if speaking else self.listener.unmute)()
+        if not speaking:
+            self._restart_quiet_timer()                   # Quill's own voice is not "quiet" time
 
     # ------------------------------------------------------------------ #
     # Background-thread results                                            #

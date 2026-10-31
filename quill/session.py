@@ -20,12 +20,17 @@ Flow:
 """
 
 from __future__ import annotations
+
 import datetime as dt
 from dataclasses import dataclass, field
 from typing import Callable
 
 from quill.parser.commands import (
-    NO_WORDS, YES_WORDS, Action, CommandEvent, CommandMatcher,
+    NO_WORDS,
+    YES_WORDS,
+    Action,
+    CommandEvent,
+    CommandMatcher,
 )
 from quill.parser.phrase_parser import parse
 from quill.parser.tokens import display_name, tokenize
@@ -235,25 +240,34 @@ class Session:
         info = {"key": key, "index": index, "origin": origin, "words": words,
                 "column": decision.column}
         if decision.kind == "ignore":
+            self._forget_heard(key)
             return [Event("skipped", detail=f"Ignored '{words}'", resolved=info)]
 
         column = decision.column
         if decision.kind == "alias":
             if not self.vocab.add_alias(column, words, decision.value):
-                return [Event("error", detail=f"'{decision.value}' is not a {column} value")]
+                return [Event("error", detail=f"'{decision.value}' is not a {column} value", terms=[key])]
             value, kind = decision.value, "alias_added"
             info["value"] = value
             values = [(column, words, decision.value)]
             detail = f"'{words}' now means {decision.value} in {column}"
         else:
-            value, kind = decision.value or display_name(words), "add_values"
+            value, kind = display_name(decision.value or words), "add_values"       # always capitalised, even if typed small
             info["value"] = value
             info["existed"] = value.lower() in (v.lower() for v in self.vocab.values_for(column))
             self.vocab.add(column, value)
             values = [(column, value)]
             detail = f"Added {value} to {column}"
         cells = [(origin[0], origin[1], column, self._canonical(column, value))] if origin else []
+        if key in self.row_terms:                                   # answered before the row was saved: put it in the row
+            self.record[column] = self._canonical(column, value)
+        self._forget_heard(key)
         return [Event(kind, detail=detail, values=values, cells=cells, resolved=info)]
+
+    def _forget_heard(self, key: TermKey) -> None:
+        """*key* was answered (or its row thrown away): it is no longer waiting to be announced or saved with the row."""
+        self.pool.pop(key, None)
+        self.row_terms.discard(key)
 
     def _canonical(self, column: str, value: str) -> str:
         known = {v.lower(): v for v in self.vocab.values_for(column)}
@@ -276,6 +290,8 @@ class Session:
             key = (cand.column, cand.term)
             self.pool[key] = self.pool.get(key, 0) + 1
             self.row_terms.add(key)
+            if key not in (self.pending or []):                    # on the Term Helper's list at once, announced later
+                self.pending = [*(self.pending or []), key]
             if cand.alias_of:
                 self.alias_hints[key] = cand.alias_of[1]
         events: list[Event] = []
@@ -330,8 +346,12 @@ class Session:
     def _discard(self) -> list[Event]:
         if not self.record and not self.row_terms:
             return [Event("ignored", detail="Nothing to discard")]
-        for key in self.row_terms:
-            self.pool.pop(key, None)
+        for key in list(self.row_terms):
+            self._forget_heard(key)
+            if key in (self.pending or []):                         # a term heard in this row, never announced
+                self.pending.remove(key)
+        if self.pending == []:
+            self.pending = None
         self.row_terms.clear()
         row, self.record = dict(self.record), {}
         return [Event("discarded", record=row, detail="Row discarded")]
@@ -340,8 +360,8 @@ class Session:
         """Move newly heard terms to pending and announce them."""
         if not self.pool and not self._reask:
             return []
-        pending = list(self.pending or [])
-        pending += [k for k in sorted(self.pool, key=lambda k: (k[0] or "", k[1])) if k not in pending]
+        pending = [k for k in (self.pending or []) if k not in self.pool]        # already announced earlier
+        pending += sorted(self.pool, key=lambda k: (k[0] or "", k[1]))            # the new ones, in order
         self.pool, self._reask = {}, False
         if not pending:
             return []

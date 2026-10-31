@@ -469,11 +469,24 @@ class TestAppSorting(unittest.TestCase):
 
     def test_terms_appear_in_window_and_button_after_row_ends(self):
         self.hear("start listening", SENTENCE)
-        self.assertFalse(self.quill.window.sorting_button.isVisible() or self.quill.sorting.rows)
+        self.assertEqual(self.quill.window.badge_label.text(), "3")           # on the button as soon as it was heard
+        self.assertFalse(self.quill.window.sorting_button.isHidden())
+        self.assertFalse(self.quill.sorting.widget.isVisible())               # the window itself waits for the row to end
         self.hear("next row")
         self.assertEqual(len(self.quill.sorting.rows), 3)
+        self.assertTrue(self.quill.sorting.widget.isVisible())
         self.assertEqual(self.quill.window.badge_label.text(), "3")
         self.assertFalse(self.quill.window.sorting_button.isHidden())
+
+    def test_a_term_answered_before_the_row_ends_goes_into_that_row(self):
+        self.hear("start listening", SENTENCE)
+        teal = next(r for r in self.quill.sorting.rows if r.key == (None, "teal"))
+        teal.combo.setCurrentIndex(teal.combo.findData("Color"))
+        teal.add_button.click()
+        self.assertEqual(self.quill.controller.session.record["Color"], "Teal")
+        self.hear("next row")
+        ws = openpyxl.load_workbook(self.path)["Inventory"]
+        self.assertIn("Teal", [c.value for c in ws[ws.max_row]])
 
     def test_deciding_in_the_window_updates_list_workbook_and_log(self):
         self.hear("start listening", SENTENCE, "next row")

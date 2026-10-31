@@ -282,3 +282,60 @@ class TestVoiceStreamInTheApp(unittest.TestCase):
         self.assertEqual(self.app.window.row_table.rowCount(), 0)
         self.assertNotIn("fern", self.app.window.stream.toHtml().split("background-color")[-1:][0][:5])   # no pill left
         self.assertIn("Removed Type", self.app.window.log.toPlainText())
+
+
+class TestAutoStopWhenQuiet(unittest.TestCase):
+    def setUp(self):
+        import pathlib, tempfile
+        from quill.bridge.xlsx_bridge import XlsxBridge
+        from quill.config.settings import Settings
+        from tests.fixtures import make_workbook
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        d = pathlib.Path(self._tmp.name)
+        self.settings = Settings.load(d / "cfg")
+        self.app = QuillApp(_app, self.settings, XlsxBridge(make_workbook(d / "p.xlsx")),
+                            listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: d,
+                            speaker=FakeSpeaker(), sound_player=lambda p: None)
+        self.app.start()
+
+    def test_it_is_on_by_default_with_ten_seconds(self):
+        self.assertTrue(self.settings.preferences["auto_stop"])
+        self.assertEqual(self.settings.preferences["auto_stop_seconds"], 10)
+
+    def test_the_countdown_runs_only_while_listening(self):
+        self.assertFalse(self.app._quiet_timer.isActive())
+        self.app.controller.handle_transcript("start listening")
+        self.assertTrue(self.app._quiet_timer.isActive())
+        self.assertEqual(self.app._quiet_timer.interval(), 10_000)
+        self.app.controller.handle_transcript("stop listening")
+        self.assertFalse(self.app._quiet_timer.isActive())
+
+    def test_after_the_quiet_time_listening_stops_and_says_why(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app._quiet_for_too_long()
+        self.assertFalse(self.app.controller.session.listening)
+        self.assertFalse(self.app.window.listening)
+        self.assertIn("nothing was said for 10 seconds", self.app.window.log.toPlainText())
+
+    def test_hearing_something_restarts_the_countdown(self):
+        self.settings.preferences["auto_stop_seconds"] = 30
+        self.app.controller.handle_transcript("start listening")
+        self.app._on_partial_heard("black")
+        self.assertEqual(self.app._quiet_timer.interval(), 30_000)
+        self.assertTrue(self.app._quiet_timer.isActive())
+
+    def test_the_setting_can_turn_it_off_entirely(self):
+        self.settings.preferences["auto_stop"] = False
+        self.app.controller.handle_transcript("start listening")
+        self.assertFalse(self.app._quiet_timer.isActive())
+        self.app._on_phrase_heard("black")
+        self.assertFalse(self.app._quiet_timer.isActive())
+
+    def test_it_keeps_waiting_while_a_spoken_answer_is_expected(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app.controller.session.pending = [("Color", "teal")]
+        self.app.controller.session._voice_open = True
+        self.app._quiet_for_too_long()
+        self.assertTrue(self.app.controller.session.listening)
+        self.assertTrue(self.app._quiet_timer.isActive())

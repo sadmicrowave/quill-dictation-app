@@ -17,13 +17,24 @@ command resolves the top term, it leaves the list and the next one moves up
 while the stream continues; see :mod:`quill.sorting_voice`.
 """
 from __future__ import annotations
+
 import contextlib
 from typing import Callable
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import (
-    QGraphicsOpacityEffect, QLayout, QToolButton, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QFrame,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QScrollArea,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from quill.parser.tokens import display_name
@@ -91,7 +102,7 @@ class TermRow(QFrame):
         self.prompt.setTextFormat(Qt.TextFormat.RichText)
         self.prompt.setObjectName("termPrompt")      # larger than body text (see theme)
         self.prompt.setWordWrap(True)
-        self.edit = QLineEdit(term)
+        self.edit = QLineEdit(display_name(term))          # words are capitalised as they are placed here
         self.edit.setToolTip("Correct the words if Quill heard too much")
         self.hint = QLabel()                          # what to say, while the voice stream is answering this row
         self.hint.setProperty("note", True)
@@ -162,9 +173,17 @@ class TermRow(QFrame):
         return (f"🎤 Say: {pill('yes')} ({meaning}) {pill('same as …')} {pill('ignore')} "
                 f"{pill('later')}")
 
-    def flash(self) -> None:
-        """Light the row's border (and tint it) green: the answer was heard and accepted."""
-        self.setStyleSheet("#termRow { border: 2px solid #34C759; background: rgba(52, 199, 89, 0.14); }")
+    #: Border and tint of the blink that confirms an answer: (border colour, tint) per outcome.
+    FLASH_STYLES = {
+        "accepted": ("#34C759", "rgba(52, 199, 89, 0.14)"),      # green: the term was added or made an alias
+        "ignored": ("#8E8E93", "rgba(142, 142, 147, 0.16)"),     # grey: a deliberate "no", nothing was added
+        "error": ("#FF3B30", "rgba(255, 59, 48, 0.14)"),         # red: the answer could not be carried out
+    }
+
+    def flash(self, outcome: str = "accepted") -> None:
+        """Blink the row's border and tint it: green when accepted, grey when ignored, red on an error."""
+        border, tint = self.FLASH_STYLES.get(outcome, self.FLASH_STYLES["accepted"])
+        self.setStyleSheet(f"#termRow {{ border: 2px solid {border}; background: {tint}; }}")
 
     def mousePressEvent(self, event) -> None:
         """Clicking the (first) row starts answering it by voice."""
@@ -244,6 +263,7 @@ class SortingWindow:
         self._on_voice = on_voice or (lambda: None)
         self._voice_active = False
         self._queue: list[TermRow] = []                    # answered rows waiting their turn to leave
+        self._outcomes: dict[TermKey, str] = {}            # how each answered term was answered (picks the blink colour)
         self._retiring = False
         self._titlebar = None
         self._window: QWidget | None = None
@@ -391,6 +411,18 @@ class SortingWindow:
             if not items and not self._retiring:
                 self._window.hide()
 
+    def note_outcome(self, key: TermKey, outcome: str) -> None:
+        """Say how *key* was answered: ``"accepted"``, ``"ignored"`` or ``"error"``.
+
+        The row blinks in the matching colour as it leaves; an error blinks red at once and the row stays.
+        """
+        if outcome == "error":
+            for row in self.rows:
+                if row.key == key:
+                    row.flash("error")
+            return
+        self._outcomes[key] = outcome
+
     # -- answered rows leaving ---------------------------------------------
 
     def _retire(self, rows: list[TermRow]) -> None:
@@ -407,7 +439,7 @@ class SortingWindow:
             return
         self._retiring = True
         row = self._queue.pop(0)
-        row.flash()
+        row.flash(self._outcomes.pop(row.key, "accepted"))
         QTimer.singleShot(self.FLASH_MS, lambda: self._collapse(row))
 
     def _collapse(self, row: TermRow) -> None:

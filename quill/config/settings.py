@@ -25,20 +25,21 @@ Usage:
 """
 
 from __future__ import annotations
+
 import contextlib
 import json
 import pathlib
 
 try:
-    import tomllib          # stdlib Python 3.11+
+    import tomllib  # stdlib Python 3.11+
 except ImportError:
     try:
-        import tomli as tomllib   # backport for 3.9/3.10
+        import tomli as tomllib  # backport for 3.9/3.10
     except ImportError:
         tomllib = None  # type: ignore[assignment]
 
-from quill.licensing import DEFAULT_ACCOUNT, clean_account
 from quill.feedback import ECHO_WORDS, MODES, PACKS
+from quill.licensing import DEFAULT_ACCOUNT, clean_account
 from quill.parser.commands import RESERVED_ANSWER_WORDS, Action
 from quill.parser.tokens import tokenize
 
@@ -67,6 +68,8 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "mini_height": 0,
     "mini_mode": False,       # the main window starts as the small overlay
     "mini_on_top": True,      # the mini view floats above other windows
+    "auto_stop": True,        # stop listening by itself when nothing has been said for a while
+    "auto_stop_seconds": 10,  # ... for this many seconds of quiet
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
@@ -80,6 +83,9 @@ BLUR_RANGE = (0, 100)
 
 #: Allowed range for ``font_size`` (points).
 FONT_SIZE_RANGE = (9, 20)
+
+#: Allowed range for ``auto_stop_seconds``.
+AUTO_STOP_RANGE = (3, 3600)
 
 #: Allowed range for ``history_limit``.
 HISTORY_LIMIT_RANGE = (5, 500)
@@ -201,6 +207,8 @@ class Settings:
                              ("accent", ACCENTS), ("spacing", SPACINGS)):
             if settings.preferences[key] not in allowed:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]
+        low, high = AUTO_STOP_RANGE
+        settings.preferences["auto_stop_seconds"] = max(low, min(high, int(settings.preferences["auto_stop_seconds"])))
         low, high = HISTORY_LIMIT_RANGE
         settings.preferences["history_limit"] = max(low, min(high, int(settings.preferences["history_limit"])))
         low, high = OPACITY_RANGE

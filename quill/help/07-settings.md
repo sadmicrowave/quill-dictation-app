@@ -10,7 +10,7 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 
 | Group | What's in it |
 |---|---|
-| **General** | Spoken questions, automatic voice sorting, microphone, Dock icon, Undo memory |
+| **General** | Spoken questions, automatic voice sorting, microphone, **stop when quiet**, Dock icon, Undo memory |
 | **Appearance** | Theme, accent colour, spacing, text size, opacity, blur |
 | **Sounds** | Sound set, spoken word, sample |
 | **Keywords** | The phrases you say and what they do |
@@ -30,6 +30,8 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, and always keeps one for **Start** and **Stop**.
 
 ## 🎙️ Microphone
+
+- **Stop Listening When Quiet** (on by default): if nothing is said for **10 seconds**, listening stops by itself, so the microphone is never left open by accident. Change the seconds (3 to 3600) or turn it off in **General**. It never stops while Quill is waiting for your spoken answer.
 
 - **Off** until you press Start, and off again when you stop.
 - Want to say **"start listening"**? Turn on **Keep the Microphone Open When Not Listening**. Your Mac's orange mic dot will show.

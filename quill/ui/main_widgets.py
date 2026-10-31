@@ -11,12 +11,35 @@ Kept apart from :mod:`quill.ui.main_window` so that file holds the window's beha
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QObject,
+    QPoint,
+    QPointF,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QComboBox, QLabel, QSizePolicy, QStyle, QTableWidget, QTextEdit, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QLabel,
+    QSizePolicy,
+    QStyle,
+    QTableWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 #: Height (px) of the "File stream not connected" chip.
 CHIP_HEIGHT = 22
+
+#: Where the hint text of an empty Voice Stream box and an empty row grid starts: (left, top, right, bottom) inside the box.
+PLACEHOLDER_MARGINS = (6, 4, 4, 0)
 
 #: Height (px) of the row grid when empty (the Voice Stream box is as tall), and of the stream's growth limit.
 ROW_EMPTY_HEIGHT = 42
@@ -64,7 +87,15 @@ class StreamBox(QTextEdit):
         self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setPlaceholderText("Words you say appear here as they are heard")
+        # The hint is a label, exactly like the row grid's, so both are drawn by the same code and match.
+        self.hint = QLabel("Words you say appear here as they are heard", self.viewport())
+        self.hint.setProperty("placeholder", True)
+        self.hint.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.viewport().setProperty("keepMargins", True)      # the spacing setting must not resize this layout's margins
+        holder = QVBoxLayout(self.viewport())
+        holder.setContentsMargins(*PLACEHOLDER_MARGINS)
+        holder.addWidget(self.hint)
         font = self.font()
         font.setItalic(True)
         self.setFont(font)
@@ -73,6 +104,7 @@ class StreamBox(QTextEdit):
     def fit(self) -> None:
         """Make the box as tall as its text needs (between one line and :data:`STREAM_MAX_LINES`)."""
         doc = self.document()
+        self.hint.setVisible(doc.isEmpty())
         doc.setTextWidth(max(self.viewport().width(), 40))
         line = self.fontMetrics().lineSpacing()
         extra = 2 * self.frameWidth() + 14                         # border and the style sheet's padding
@@ -142,6 +174,8 @@ class RowTable(QTableWidget):
 
     DELETE_SIZE = 16          # px, the round delete button
     DELETE_MARGIN = 9         # px from the right edge (the button sits in the right-most cell)
+    DELETE_HOT_FILL = "#E5484D"   # the button turns red while the pointer is over it: it removes something
+    DELETE_TIP = "Remove this line from the row\nQuill will not write it, and its words turn grey again"
 
     def __init__(self, rows: int, columns: int) -> None:
         super().__init__(rows, columns)
@@ -151,6 +185,7 @@ class RowTable(QTableWidget):
         self.setShowGrid(False)                  # drawn in paintEvent, so there is no line at the far right
         self.setMouseTracking(True)
         self._hovered_row = -1
+        self._button_hot = False                 # the pointer is over the delete button itself
         self._button_fill = QColor("#7A55C2")    # the theme colour; set with :meth:`set_delete_colors`
         self._button_glyph = QColor("#FFFFFF")
 
@@ -182,13 +217,18 @@ class RowTable(QTableWidget):
         if row != self._hovered_row:
             self._hovered_row = row
             self.viewport().update()
-        self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if self._over_button(point)
-                                  else Qt.CursorShape.ArrowCursor)
+        hot = self._over_button(point)
+        if hot != self._button_hot:
+            self._button_hot = hot
+            self.viewport().update()
+        self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if hot else Qt.CursorShape.ArrowCursor)
+        self.viewport().setToolTip(self.DELETE_TIP if hot else "")
 
     def leaveEvent(self, event) -> None:                             # noqa: N802
         super().leaveEvent(event)
         if self._hovered_row != -1:
-            self._hovered_row = -1
+            self._hovered_row, self._button_hot = -1, False
+            self.viewport().setToolTip("")
             self.viewport().update()
 
     def mousePressEvent(self, event) -> None:                        # noqa: N802
@@ -196,7 +236,8 @@ class RowTable(QTableWidget):
         row = self._row_at(point)
         if (event.button() == Qt.MouseButton.LeftButton and row >= 0
                 and self.delete_button_rect(row).contains(point)):
-            self._hovered_row = -1
+            self._hovered_row, self._button_hot = -1, False
+            self.viewport().setToolTip("")
             self.row_remove_requested.emit(self.item(row, 0).text())
             return
         super().mousePressEvent(event)
@@ -219,14 +260,15 @@ class RowTable(QTableWidget):
                 y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
                 painter.drawLine(0, y, self.viewport().width() - 1, y)
         if self._hovered_row >= 0:
-            box = self.delete_button_rect(self._hovered_row)
+            box = QRectF(self.delete_button_rect(self._hovered_row))
+            centre = box.center()                      # the exact middle, so the "x" is centred in the circle
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(self._button_fill)
+            painter.setBrush(QColor(self.DELETE_HOT_FILL) if self._button_hot else self._button_fill)
             painter.drawEllipse(box)
-            painter.setPen(QPen(self._button_glyph, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            inset = self.DELETE_SIZE * 0.31
-            painter.drawLine(box.left() + inset, box.top() + inset, box.right() - inset + 1, box.bottom() - inset + 1)
-            painter.drawLine(box.right() - inset + 1, box.top() + inset, box.left() + inset, box.bottom() - inset + 1)
+            painter.setPen(QPen(self._button_glyph, 1.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            reach = self.DELETE_SIZE * 0.2625          # half the length of each stroke of the "x"
+            painter.drawLine(QPointF(centre.x() - reach, centre.y() - reach), QPointF(centre.x() + reach, centre.y() + reach))
+            painter.drawLine(QPointF(centre.x() + reach, centre.y() - reach), QPointF(centre.x() - reach, centre.y() + reach))
         painter.end()
 
     def sizeHint(self) -> QSize:                                    # noqa: N802 (Qt name)

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication                              # noqa: 
 
 from quill.config.settings import Settings                              # noqa: E402
 from quill.parser.vocab import Vocabulary                               # noqa: E402
+from quill.stream import WordMatch                                      # noqa: E402
 from quill.ui.main_window import MainWindow                             # noqa: E402
 from quill.ui.settings_dialog import SettingsDialog                     # noqa: E402
 from quill.ui.sorting_window import SortingWindow                       # noqa: E402
@@ -54,7 +55,7 @@ def main() -> None:
     main_window.set_listening_indicator(True)
     colors = colors_for(True, "violet")
     main_window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
-    main_window.set_stream_classifier(lambda words: [w in ('black', 't-shirt', 'large', 'good', 'appraisal', 'thirty', 'five') for w in words])
+    main_window.set_stream_classifier(lambda words: [WordMatch(w in ('black', 't-shirt', 'large', 'good', 'appraisal', 'thirty', 'five'), 'Color') for w in words])
     main_window.add_stream_text('this next one is a black t-shirt large good appraisal thirty five')
     main_window.update_current_row(row)
     main_window.set_last_saved("Row 6", {"Type": "Blouse", "Color": "Navy", "Size": "M"})

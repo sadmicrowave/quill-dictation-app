@@ -7,6 +7,7 @@ file-based bridge.
 """
 
 from __future__ import annotations
+
 import contextlib
 import datetime as dt
 import logging
@@ -18,8 +19,8 @@ from quill.history import History
 from quill.parser.commands import Action, CommandMatcher
 from quill.parser.vocab import Vocabulary
 from quill.search import parse_search
-from quill.sorting_voice import VoiceSorter
 from quill.session import Decision, Event, Session, TermKey
+from quill.sorting_voice import VoiceSorter
 
 log = logging.getLogger("quill.controller")
 
@@ -109,6 +110,7 @@ class Controller:
         """Re-read lists and headers (after a refresh or a sheet change)."""
         self.vocab.load(self.bridge.get_lists(), self.bridge.get_headers())
         self.vocab.numeric_columns = self.bridge.numeric_columns()
+        self.vocab.date_columns = self.bridge.date_columns()
         self._apply_aliases()
         self._sheet = self.bridge.active_sheet_name()
 

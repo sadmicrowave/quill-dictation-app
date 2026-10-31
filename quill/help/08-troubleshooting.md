@@ -11,6 +11,7 @@
 
 | Problem | Try |
 |---|---|
+| Listening stopped by itself | Nothing was said for 10 seconds. Say **"start listening"** again, or change **Stop Listening When Quiet** in **Settings > General** |
 | Nothing happens when I talk | Say **"start listening"**; check microphone permission in your computer's privacy settings |
 | *File stream not connected* | Open your spreadsheet. Quill finds it in a few seconds |
 | Mac asks about controlling Excel | Choose **OK**. To undo: *System Settings > Privacy & Security > Automation* |

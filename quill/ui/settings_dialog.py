@@ -16,26 +16,56 @@ Nothing is saved until the user confirms with OK, and a keyword table that
 fails validation keeps the window open with the reasons shown.
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING
+
 import copy
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSlider,
-    QSpinBox, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QSpinBox,
+    QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from quill.config.settings import (
-    BLUR_RANGE, FONT_SIZE_RANGE, HISTORY_LIMIT_RANGE, OPACITY_RANGE, SPACINGS, THEMES,
+    AUTO_STOP_RANGE,
+    BLUR_RANGE,
+    FONT_SIZE_RANGE,
+    HISTORY_LIMIT_RANGE,
+    OPACITY_RANGE,
+    SPACINGS,
+    THEMES,
 )
-from quill.licensing import LicenseService
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
+from quill.licensing import LicenseService
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
 from quill.ui.settings_widgets import (
-    FlatCombo, GuardedCombo, GuardedSlider, GuardedSpinBox, SegmentedControl, SettingRow, ToggleSwitch,
+    FlatCombo,
+    GuardedCombo,
+    GuardedSlider,
+    GuardedSpinBox,
+    SegmentedControl,
+    SettingRow,
+    ToggleSwitch,
 )
 from quill.ui.theme import ACCENTS, DENSITIES, apply_opacity
 
@@ -140,6 +170,8 @@ class SettingsDialog:
         self.speak_check: ToggleSwitch | None = None
         self.auto_sort_check: ToggleSwitch | None = None
         self.mic_check: ToggleSwitch | None = None
+        self.auto_stop_check: ToggleSwitch | None = None
+        self.auto_stop_spin: QSpinBox | None = None
         self.mini_top_check: ToggleSwitch | None = None
         self.dock_check: ToggleSwitch | None = None
 
@@ -169,6 +201,7 @@ class SettingsDialog:
             self._on_help(topic)
             return
         from PySide6.QtWidgets import QApplication
+
         from quill.ui.help_window import HelpWindow
         if getattr(self, "_help", None) is None:
             self._help = HelpWindow(parent=self._dialog)
@@ -179,6 +212,7 @@ class SettingsDialog:
     def _apply_dialog_look(self) -> None:
         """Give this window the OS title-bar styling, blur and (floored) opacity."""
         from PySide6.QtWidgets import QApplication
+
         from quill.ui.theme import colors_for, is_dark
         app = QApplication.instance()
         if app is None or self._dialog is None:
@@ -242,12 +276,13 @@ class SettingsDialog:
         self.nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
         self._original = copy.deepcopy(self._settings.preferences)
         for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
-                        self.dock_check):
+                        self.dock_check, self.auto_stop_check):
             control.toggled.connect(self._live)
+        self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
                         self.pack_combo, self.echo_combo):
             control.currentIndexChanged.connect(self._live)
-        for control in (self.font_spin, self.history_spin, self.opacity_slider, self.blur_slider):
+        for control in (self.font_spin, self.history_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin):
             control.valueChanged.connect(self._live)
         dialog.rejected.connect(self.revert)
 
@@ -271,6 +306,8 @@ class SettingsDialog:
         prefs["speak_prompts"] = self.speak_check.isChecked()
         prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
         prefs["mic_always_on"] = self.mic_check.isChecked()
+        prefs["auto_stop"] = self.auto_stop_check.isChecked()
+        prefs["auto_stop_seconds"] = self.auto_stop_spin.value()
         prefs["mini_on_top"] = self.mini_top_check.isChecked()
         prefs["hide_dock_icon"] = self.dock_check.isChecked()
         prefs["accent"] = self.accent_combo.currentData()
@@ -427,6 +464,21 @@ class SettingsDialog:
         self._add("General", page, "Keep the Microphone Open When Not Listening",
                   "Lets you say “start listening”. Off (the default): the microphone is only on while "
                   "Quill is listening, so nothing is heard otherwise.", self.mic_check, "privacy mic always on")
+        self.auto_stop_check = ToggleSwitch()
+        self.auto_stop_check.setChecked(bool(prefs["auto_stop"]))
+        self._add("General", page, "Stop Listening When Quiet",
+                  "Quill stops listening by itself when nothing has been said for a while, so the microphone "
+                  "is never left open by accident. Turn it off to listen until you stop it.",
+                  self.auto_stop_check, "auto off timer idle silence shut off timeout")
+        self.auto_stop_spin = GuardedSpinBox()
+        self.auto_stop_spin.setRange(*AUTO_STOP_RANGE)
+        self.auto_stop_spin.setValue(int(prefs["auto_stop_seconds"]))
+        self.auto_stop_spin.setSuffix(" seconds")
+        self.auto_stop_spin.setEnabled(self.auto_stop_check.isChecked())
+        self.auto_stop_spin.setToolTip("How long it can be quiet before Quill stops listening")
+        self._add("General", page, "Quiet Time Before Stopping",
+                  "Seconds of silence after which listening stops (3 to 3600).", self.auto_stop_spin,
+                  "auto off timer idle silence shut off timeout seconds")
         logs = QPushButton("Open Log Folder")
         logs.setToolTip("Quill writes what it does, and any error, to a log file here")
         logs.clicked.connect(lambda: self._on_open_logs())
@@ -573,6 +625,7 @@ class SettingsDialog:
         """Show the folder holding quill.log in Finder / Explorer."""
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
+
         from quill.diagnostics import log_dir
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir())))
 

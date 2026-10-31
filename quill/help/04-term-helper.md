@@ -6,15 +6,15 @@ Opens when Quill hears a word it can't place, such as *"…teal, from the 90s…
 
 ## 🔔 How you know
 
-- A **special sound** after you finish speaking.
-- A **count badge** on the Term Helper button and on the menu bar icon.
-- The **Term Helper** window opens by itself.
+- The **Term Helper** button and the badge on the menu bar icon show the count **the moment** Quill hears a word it doesn't know.
+- When you finish the row, a **special sound** plays and the **Term Helper** window opens by itself.
+- You can answer a word before the row ends: it goes into the row you are saying.
 
 Everything Quill understood is already saved. Term Helper only handles the leftovers.
 
 ## 🖱️ Answer with the mouse
 
-For each word choose:
+The word is already capitalised for you, and whatever you type is capitalised when it is added. For each word choose:
 
 | Button | Means |
 |---|---|
@@ -44,7 +44,7 @@ Press **🎤 Sort by Voice** (or say **"sort terms"**), then talk. Quill answers
 
 ## ✨ What you'll see
 
-1. The row **flashes** a green border.
+1. The row **blinks**: **green** when the word was added, **grey** when you ignored it, **red** if the answer couldn't be carried out.
 2. It **fades and closes**, then the next row moves up.
 3. The window **closes** when none are left.
 

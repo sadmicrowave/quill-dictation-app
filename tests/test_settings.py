@@ -152,3 +152,20 @@ class TestSettingsFileSafety(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             Settings.load(pathlib.Path(tmp)).save()
             self.assertEqual(sorted(p.name for p in pathlib.Path(tmp).iterdir()), ["keywords.toml"])
+
+
+class TestAutoStopPreferences(unittest.TestCase):
+    def test_the_seconds_are_kept_within_a_sane_range(self):
+        import tempfile, pathlib
+        from quill.config.settings import Settings
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings.load(pathlib.Path(tmp))
+            settings.preferences["auto_stop_seconds"] = 1
+            settings.save()
+            self.assertEqual(Settings.load(pathlib.Path(tmp)).preferences["auto_stop_seconds"], 3)
+            settings.preferences["auto_stop_seconds"] = 99999
+            settings.preferences["auto_stop"] = False
+            settings.save()
+            again = Settings.load(pathlib.Path(tmp))
+            self.assertEqual(again.preferences["auto_stop_seconds"], 3600)
+            self.assertFalse(again.preferences["auto_stop"])

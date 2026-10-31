@@ -10,6 +10,7 @@ Use bridge.factory.get_bridge() to obtain the right one at runtime.
 """
 
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 from quill.bridge.filters import ColumnFilter
@@ -149,6 +150,10 @@ class WorkbookBridge(ABC):
 
     def numeric_columns(self, sheet_name: str | None = None) -> list[str]:
         """Headers whose data is mostly numbers (candidates for "under 50")."""
+        return []
+
+    def date_columns(self, sheet_name: str | None = None) -> list[str]:
+        """Headers that hold dates, in sheet order (so a spoken date can go into the right column)."""
         return []
 
     def apply_filters(self, sheet_name: str, filters: list[ColumnFilter]) -> int | None:

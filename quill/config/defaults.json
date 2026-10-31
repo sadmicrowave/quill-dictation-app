@@ -4,6 +4,8 @@
     "start listening": "START_LISTENING",
     "stop listening": "STOP_LISTENING",
     "next row": "NEXT_ROW",
+    "next": "NEXT_ROW",
+    "stop": "NEXT_ROW",
     "new record": "NEXT_ROW",
     "delete row": "DELETE_ROW",
     "cancel": "DELETE_ROW",

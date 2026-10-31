@@ -4,6 +4,7 @@ import re
 import tempfile
 import unittest
 
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication
 
 import quill.ui.chrome as chrome
@@ -165,8 +166,11 @@ class TestLogAtTheBottom(unittest.TestCase):
     def test_status_messages_sit_above_the_log(self):
         w = window()
         layout = w.root.layout()
-        self.assertLess(layout.indexOf(w.footer), layout.indexOf(w.log_toggle))
-        self.assertLess(layout.indexOf(w.download_button), layout.indexOf(w.log_toggle))
+        w.set_footer("Some status", offer_download=True)
+        _app.processEvents()
+        top = lambda widget: widget.mapTo(w.root, widget.rect().topLeft()).y()        # noqa: E731
+        self.assertLess(top(w.footer), top(w.log_toggle))
+        self.assertLess(top(w.download_button), top(w.log_toggle))
         self.assertEqual(layout.indexOf(w.log), layout.count() - 1)
 
     def test_opening_the_log_restores_the_normal_margin_and_closing_shrinks_it_again(self):
@@ -374,8 +378,18 @@ class TestAlignment(unittest.TestCase):
         for spacing in ("compact", "comfortable"):
             self.w.apply_density(spacing)
             _app.processEvents()
-            self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.sheet_label, self.w.root), spacing)
             self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.toggle_button, self.w.root), spacing)
+
+    def test_the_sheet_name_is_right_aligned_under_the_file_box_and_open_file_button(self):
+        for spacing in ("compact", "comfortable"):
+            self.w.apply_density(spacing)
+            self.w.update_sheet("Inventory")
+            _app.processEvents()
+            right_edge = self.w.open_file_button.mapTo(self.w.root, QPoint(0, 0)).x() + self.w.open_file_button.width()
+            label = self.w.sheet_label
+            label_right = label.mapTo(self.w.root, QPoint(0, 0)).x() + label.width()
+            self.assertAlmostEqual(label_right, right_edge, delta=3, msg=spacing)
+            self.assertTrue(bool(label.alignment() & Qt.AlignmentFlag.AlignRight))
 
     def test_open_file_ends_where_start_ends(self):
         for spacing in ("compact", "comfortable"):
@@ -480,11 +494,26 @@ class TestResizingKeepsAlignment(unittest.TestCase):
 
     def test_the_sections_above_stay_put_when_the_window_grows(self):
         w = window(log_collapsed=False)
-        before = [self.top(w, n) for n in ("toggle_button", "workbook_row", "row_heading")]
+        before = [self.top(w, n) for n in ("toggle_button", "workbook_row", "stream")]
         w.widget.resize(360, 1000)
         _app.processEvents()
-        self.assertEqual(before, [self.top(w, n) for n in ("toggle_button", "workbook_row", "row_heading")])
+        self.assertEqual(before, [self.top(w, n) for n in ("toggle_button", "workbook_row", "stream")])
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLastSavedSitsAtTheRight(unittest.TestCase):
+    def test_it_shares_the_log_heading_line_right_aligned_and_has_no_generic_prefix(self):
+        w = window(log_collapsed=True)
+        w.set_last_saved("Row saved", {"Type": "Fern"})
+        w.set_native_mini_button(True)
+        _app.processEvents()
+        self.assertTrue(w.last_label.isVisibleTo(w.root))
+        self.assertTrue(bool(w.last_label.alignment() & Qt.AlignmentFlag.AlignRight))
+        top = lambda widget: widget.mapTo(w.root, widget.rect().topLeft()).y()        # noqa: E731
+        self.assertAlmostEqual(top(w.last_label) + w.last_label.height() / 2,
+                               top(w.log_toggle) + w.log_toggle.height() / 2, delta=3)   # the same line
+        self.assertGreater(w.last_label.x(), w.log_toggle.x() + w.log_toggle.width() - 1)
+        self.assertEqual(w.last_label.full_text, "Last Saved: 1 field · Type: Fern")

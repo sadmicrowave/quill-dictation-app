@@ -7,12 +7,20 @@ values to a list. Subclasses supply the connection (``connect``) and a
 """
 
 from __future__ import annotations
+
 import dataclasses
+import datetime as dt
+import re
 
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.filters import ColumnFilter
 from quill.bridge.grid import Grid, cell_text, is_blank
-from quill.bridge.introspect import HEADER_SCAN_ROWS, Discovery, ListSource, guess_header_row
+from quill.bridge.introspect import (
+    HEADER_SCAN_ROWS,
+    Discovery,
+    ListSource,
+    guess_header_row,
+)
 
 
 def normalize_header(text: object) -> str:
@@ -232,6 +240,31 @@ class GridBridge(WorkbookBridge):
             numbers = [v for v in entries
                        if isinstance(v, (int, float)) and not isinstance(v, bool)]
             if entries and len(numbers) / len(entries) >= self._NUMERIC_SHARE:
+                found.append(str(header).strip())
+        return found
+
+    #: Header words that make an empty column a date column.
+    _DATE_HEADER_WORDS = frozenset({"date", "dated"})
+
+    def date_columns(self, sheet_name: str | None = None) -> list[str]:
+        """Headers holding dates: most entries are dates, or (for an empty column) the header says "date"."""
+        grid = self._require()
+        sheet = sheet_name or grid.active_sheet()
+        header_row = self._header_row(grid, sheet)
+        width = grid.last_col(sheet)
+        rows = min(grid.last_row(sheet) - header_row, self._SAMPLE_ROWS)
+        if width == 0:
+            return []
+        headers = grid.read(sheet, header_row, 1, 1, width)[0]
+        data = grid.read(sheet, header_row + 1, 1, max(rows, 0), width) if rows > 0 else []
+        found = []
+        for index, header in enumerate(headers):
+            if is_blank(header):
+                continue
+            entries = [r[index] for r in data if not is_blank(r[index])]
+            dates = [v for v in entries if isinstance(v, (dt.date, dt.datetime))]
+            words = set(re.findall(r"[a-z]+", str(header).lower()))
+            if (entries and len(dates) / len(entries) >= self._NUMERIC_SHARE) or (not entries and words & self._DATE_HEADER_WORDS):
                 found.append(str(header).strip())
         return found
 

@@ -16,7 +16,7 @@ from tests.test_sorting import SENTENCE, DemoCase
 
 _app = QApplication.instance() or QApplication([])
 
-HIDDEN_IN_MINI = ("settings_button", "workbook_row", "sheet_label", "row_heading",
+HIDDEN_IN_MINI = ("settings_button", "workbook_row", "sheet_label",
                   "last_label", "log_toggle", "log", "footer", "download_button", "undo_button")
 
 
@@ -463,8 +463,9 @@ class TestVoiceStream(unittest.TestCase):
             lambda words: [WordMatch(word in ("black", "large"), "Color" if word == "black" else None) for word in words])
         _app.processEvents()
 
-    def test_the_heading_and_the_box_are_there(self):
-        self.assertEqual(self.w.row_heading.text(), "Voice Stream")
+    def test_the_box_is_there_with_no_title_above_it(self):
+        self.assertFalse(hasattr(self.w, "row_heading"))
+        self.assertEqual(self.w.stream.hint.text(), "Words you say appear here as they are heard")
         self.assertTrue(self.w.stream.isReadOnly())
         self.assertTrue(self.w.stream.font().italic())
 
@@ -603,7 +604,7 @@ class TestDeletableRows(unittest.TestCase):
 
 
 class TestPlaceholdersMatchToThePixel(unittest.TestCase):
-    """The two empty boxes under "Voice Stream" must show their hints identically placed and styled."""
+    """The two empty boxes under the file picker must show their hints identically placed and styled."""
 
     def inked_box(self, window, widget, image):
         from PySide6.QtCore import QPoint
@@ -611,26 +612,45 @@ class TestPlaceholdersMatchToThePixel(unittest.TestCase):
         x0, y0, width, height = top_left.x(), top_left.y(), widget.width(), widget.height()
         background = image.pixelColor(x0 + width // 2, y0 + height - 4)
         xs, ys = [], []
-        for y in range(y0 + 3, y0 + height - 3):
-            for x in range(x0 + 3, x0 + width - 3):
+        for y in range(y0 + 6, y0 + height - 6):                  # inside the border and the rounded corners
+            for x in range(x0 + 6, x0 + width - 6):
                 pixel = image.pixelColor(x, y)
                 if (abs(pixel.red() - background.red()) + abs(pixel.green() - background.green())
                         + abs(pixel.blue() - background.blue())) > 60:
                     xs.append(x - x0)
                     ys.append(y - y0)
-        return min(xs), min(ys), max(ys)
+        return min(xs), max(xs), min(ys), max(ys)
 
-    def test_text_starts_and_ends_at_the_same_offsets_in_both_spacings(self):
-        from quill.ui.theme import apply_spacing
+    def windows(self):
+        from PySide6.QtTest import QTest
+        from quill.ui.theme import apply_spacing, apply_theme
         for spacing in ("compact", "comfortable"):
+            apply_theme(_app, "dark", "violet", spacing)                # the same look whatever ran before
             window = MainWindow()
             window.setup()
             window.refresh_icons("#EDEDED", "#FFFFFF", "#7A55C2")
             apply_spacing(window.widget, spacing)
             window.widget.resize(380, 420)
             window.widget.show()
-            _app.processEvents()
+            QTest.qWait(80)                                             # let the layout and the hints settle
+            yield spacing, window
+
+    def test_the_hints_use_the_same_font_colour_and_position_in_their_boxes(self):
+        from PySide6.QtCore import QPoint
+        for spacing, window in self.windows():
+            stream_hint, grid_hint = window.stream.hint, window.row_placeholder
+            self.assertEqual(stream_hint.font(), grid_hint.font(), spacing)
+            self.assertEqual(stream_hint.palette().windowText().color(), grid_hint.palette().windowText().color(), spacing)
+            self.assertEqual(stream_hint.mapTo(window.stream, QPoint(0, 0)),
+                             grid_hint.mapTo(window.row_table, QPoint(0, 0)), spacing)
+
+    def test_the_same_words_are_drawn_to_the_same_pixels_in_both_boxes(self):
+        for spacing, window in self.windows():
+            text = "Hamburgefonstiv sample hint"
+            window.stream.hint.setText(text)
+            window.row_placeholder.setText(text)
+            from PySide6.QtTest import QTest
+            QTest.qWait(40)
             image = window.widget.grab().toImage()
-            stream = self.inked_box(window, window.stream, image)
-            grid = self.inked_box(window, window.row_table, image)
-            self.assertEqual(stream, grid, spacing)
+            self.assertEqual(self.inked_box(window, window.stream, image),
+                             self.inked_box(window, window.row_table, image), spacing)

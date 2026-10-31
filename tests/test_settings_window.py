@@ -62,7 +62,8 @@ class TestLayout(DialogCase):
                          {"Read Questions Aloud", "Sort by Voice Automatically", "Undo Remembers", "Theme",
                           "Keep the Microphone Open When Not Listening", "Keep the Mini View on Top", "Hide the Dock Icon", "Troubleshooting",
                           "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur",
-                          "Confirm With", "Sound Set", "Spoken Word", "Preview"})
+                          "Confirm With", "Sound Set", "Spoken Word", "Preview", "Stop Listening When Quiet",
+                          "Quiet Time Before Stopping"})
 
     def test_the_keyword_table_gets_the_spare_height(self):
         self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))
@@ -230,8 +231,8 @@ class TestCurrentRowAlwaysVisible(unittest.TestCase):
         self.w.widget.show()
         _app.processEvents()
 
-    def test_the_heading_is_plain_text_without_an_arrow(self):
-        self.assertEqual(self.w.row_heading.text(), "Voice Stream")
+    def test_there_is_no_heading_or_arrow_above_the_row_grid(self):
+        self.assertFalse(hasattr(self.w, "row_heading"))
         self.assertFalse(hasattr(self.w, "row_toggle"))
         self.assertFalse(hasattr(self.w, "set_row_collapsed"))
 
@@ -311,3 +312,18 @@ class TestAccountPageWireframe(unittest.TestCase):
         self.assertEqual(dialog.account_label.text(), "Not signed in")
         self.assertFalse(dialog.sign_in_button.isEnabled())           # no service to sign in to yet
         self.assertFalse(dialog.plan_button.isEnabled())
+
+
+class TestAutoStopSettings(unittest.TestCase):
+    def test_a_toggle_and_a_seconds_box_in_general_and_the_box_follows_the_toggle(self):
+        dialog = SettingsDialog(Settings.defaults())
+        dialog.build()
+        self.assertTrue(dialog.auto_stop_check.isChecked())
+        self.assertEqual(dialog.auto_stop_spin.value(), 10)
+        self.assertTrue(dialog.auto_stop_spin.isEnabled())
+        dialog.auto_stop_check.setChecked(False)
+        self.assertFalse(dialog.auto_stop_spin.isEnabled())
+        dialog.auto_stop_check.setChecked(True)
+        dialog.auto_stop_spin.setValue(25)
+        self.assertEqual((dialog._settings.preferences["auto_stop"], dialog._settings.preferences["auto_stop_seconds"]),
+                         (True, 25))

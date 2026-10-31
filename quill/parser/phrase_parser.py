@@ -19,6 +19,7 @@ Spoken grammar:
 """
 
 from __future__ import annotations
+
 import datetime as dt
 import re
 from dataclasses import dataclass, field
@@ -26,7 +27,7 @@ from dataclasses import dataclass, field
 from quill.parser.fillers import FILLER_WORDS
 from quill.parser.numbers import parse_amount, parse_date, parse_number
 from quill.parser.tokens import tokenize
-from quill.parser.vocab import Vocabulary
+from quill.parser.vocab import ACQUIRE_VERBS, SELL_VERBS, Vocabulary
 
 #: Words that are never values. A run of unknown words stops at one of these.
 COMMON_WORDS = frozenset({
@@ -42,6 +43,9 @@ COMMON_WORDS = frozenset({
 
 #: Everything above plus the broad list of everyday words (see :mod:`quill.parser.fillers`).
 COMMON_WORDS = COMMON_WORDS | FILLER_WORDS
+
+#: Words that lead into a date ("bought it yesterday"): left out of a free-text value that the date interrupts.
+DATE_LEAD_WORDS = ACQUIRE_VERBS | SELL_VERBS | frozenset({"it", "and", "then", "on", "in", "at", "last", "was", "i", "we"})
 
 #: Unit words that mark a spoken number as money ("thirty five dollars").
 CURRENCY_WORDS = frozenset({"dollar", "dollars", "buck", "bucks", "cent", "cents"})
@@ -171,6 +175,9 @@ class _Parser:
             if self._take_bare_amount():
                 continue
 
+            if self._take_bare_date():
+                continue
+
             if self._take_sound_alike():
                 continue
 
@@ -194,6 +201,26 @@ class _Parser:
         self._read_field_value(column, field_start)
         if self._set_count > before:
             self.result.spans.append((field_start, self.i, column))
+
+    def _take_bare_date(self) -> bool:
+        """Read a date said with no column name ("… and I bought it yesterday") into the date column it suits.
+
+        The real date is written, not the words. Without any date column in the sheet the words are just
+        skipped (they are never a list value to sort).
+        """
+        date, used = parse_date(self.tokens, self.i, self.today)
+        if date is None:
+            return False
+        self._flush()
+        column, note = self.vocab.date_column_for(self.tokens, self.i, self.filled)
+        if column is None:
+            self.result.unmatched.append(" ".join(self.tokens[self.i:self.i + used]))
+        else:
+            self._set(column, date, self.i, self.i + used)
+            if note:
+                self.result.assumptions.append(note)
+        self.i += used
+        return True
 
     def _take_sound_alike(self) -> bool:
         """Take the word at the cursor as a similar-sounding column name or value ("waste" for "waist")."""
@@ -317,13 +344,23 @@ class _Parser:
                 return
 
         end = self.i
-        while end < len(self.tokens) and self.vocab.field_at(self.tokens, end) is None:
+        while (end < len(self.tokens) and self.vocab.field_at(self.tokens, end) is None
+               and not self._starts_date(end)):                  # a date ends the text: it goes in a date column
             end += 1
-        if end == self.i:
-            self.result.unmatched.append(" ".join(self.tokens[start:self.i]))
+        text_end = end
+        while text_end > self.i and (self.tokens[text_end - 1] in DATE_LEAD_WORDS):
+            text_end -= 1                                         # "… bought it" belongs to the date, not the text
+        if text_end == self.i:
+            if end == self.i:
+                self.result.unmatched.append(" ".join(self.tokens[start:self.i]))
+            self.i = end
             return
-        self._set(column, " ".join(self.tokens[self.i:end]))
+        self._set(column, " ".join(self.tokens[self.i:text_end]))
         self.i = end
+
+    def _starts_date(self, j: int) -> bool:
+        """True where a spoken date begins at ``tokens[j]`` and the sheet has a date column to put it in."""
+        return bool(self.vocab.date_columns) and parse_date(self.tokens, j, self.today)[0] is not None
 
     def _collect_unknown_words(self) -> list[str]:
         """Take up to ``MAX_VALUE_WORDS`` words that are not a boundary."""

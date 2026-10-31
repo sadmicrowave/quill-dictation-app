@@ -36,10 +36,11 @@ purchase purchased acquire acquired sell sells selling add added adding mean mea
 liked love loved hate wear wears wore feel feels felt leave leaves become becomes became send sent write wrote read reads can could may might must shall should will would
 """.split()
 
-#: Time and place words that say nothing about the item itself.
+#: Time and place words that say nothing about the item itself. Words that name a *date* (yesterday, today,
+#: tomorrow, weekdays, months, "ago", week / month / year) are deliberately not here: the date parser reads
+#: them and the value goes into a date column (see :func:`quill.parser.numbers.parse_date`).
 _TIME_AND_PLACE = """
-now today tonight yesterday tomorrow morning afternoon evening night week weekend month year ago later
-soon recently earlier lately here there somewhere anywhere everywhere
+now morning afternoon evening night later soon recently earlier lately here there somewhere anywhere everywhere
 """.split()
 
 #: Conversation noise.

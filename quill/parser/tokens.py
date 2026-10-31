@@ -1,6 +1,7 @@
 """Tokenisation shared by the vocabulary, parser and keyword matcher."""
 
 from __future__ import annotations
+
 import re
 
 _TOKEN = re.compile(r"\d+(?:\.\d+)?s?|[^\W\d_]+")
@@ -21,5 +22,8 @@ def tokenize(text: str) -> list[str]:
 
 
 def display_name(term: str) -> str:
-    """Spoken lowercase term -> list value: ``"hugo boss"`` -> ``"Hugo Boss"``."""
-    return " ".join(word.capitalize() for word in term.split())
+    """A term -> list value with every word capitalised: ``"hugo boss"`` -> ``"Hugo Boss"``.
+
+    A word that already has a capital ("XL", "iPhone", "McKinley") is left exactly as typed.
+    """
+    return " ".join(word if not word.islower() else word[:1].upper() + word[1:] for word in term.split())

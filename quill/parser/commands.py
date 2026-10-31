@@ -10,6 +10,7 @@ word, apostrophes and punctuation are ignored, and the longest phrase wins
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -72,10 +73,21 @@ class CommandMatcher:
             [p for p in pairs if p[0]], key=lambda p: len(p[0]), reverse=True
         )
 
+    @staticmethod
+    def _ends_speech_only(words: tuple[str, ...], action: Action) -> bool:
+        """A one-word "next row" keyword ("next", "stop") counts only as the last word of what was said.
+
+        Those words are everywhere in ordinary speech ("this next item is…"), so in the middle of a
+        sentence they are just words; at the end, after the item was described, they mean "next row".
+        """
+        return action is Action.NEXT_ROW and len(words) == 1
+
     def _keyword_at(self, tokens: list[str], i: int) -> tuple[Action, int] | None:
         for words, action in self._keywords:
             n = len(words)
             if tuple(tokens[i:i + n]) == words:
+                if self._ends_speech_only(words, action) and i + n != len(tokens):
+                    continue
                 return action, n
         return None
 

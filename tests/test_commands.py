@@ -80,3 +80,23 @@ class TestFromDefaults(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEndOfSpeechKeywords(unittest.TestCase):
+    """"next" and "stop" mean "next row", but only as the last word said (they are everywhere in ordinary speech)."""
+
+    def setUp(self):
+        self.matcher = CommandMatcher.from_defaults()
+
+    def test_the_last_word_next_or_stop_ends_the_row(self):
+        for text in ("navy shirt large next", "navy shirt large stop"):
+            segments = self.matcher.split(text)
+            self.assertEqual(segments[0], "navy shirt large")
+            self.assertEqual(segments[-1].action, Action.NEXT_ROW)
+
+    def test_in_the_middle_of_a_sentence_they_are_just_words(self):
+        self.assertEqual(self.matcher.split("this next item is a navy shirt"), ["this next item is a navy shirt"])
+        self.assertEqual(self.matcher.split("stop the presses navy"), ["stop the presses navy"])
+
+    def test_stop_listening_still_stops_listening(self):
+        self.assertEqual(self.matcher.split("stop listening")[0].action, Action.STOP_LISTENING)

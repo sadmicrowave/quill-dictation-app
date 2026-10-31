@@ -12,25 +12,59 @@ The window only displays state and reports user intent through the callbacks
 passed to the constructor; it holds no dictation logic.
 """
 from __future__ import annotations
+
 import datetime as dt
+import html
 import logging
 from typing import Callable
 
-import html
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, QVariantAnimation
+from PySide6.QtCore import (
+    QEasingCurve,
+    QPropertyAnimation,
+    QSize,
+    Qt,
+    QTimer,
+    QVariantAnimation,
+)
 from PySide6.QtWidgets import (
-    QGraphicsOpacityEffect, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
-    QPushButton, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
+    QComboBox,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLayout,
+    QMainWindow,
+    QPlainTextEdit,
+    QPushButton,
+    QSizePolicy,
+    QTableWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from quill.ui.chrome import set_always_on_top
 from quill.stream import WordMatch
+from quill.ui.chrome import set_always_on_top
 from quill.ui.icons import make_icon
 from quill.ui.main_widgets import (
-    CHIP_HEIGHT, ROW_EMPTY_HEIGHT, STREAM_MIN_HEIGHT, ChipPlacer, ResizeWatcher, RowTable, StreamBox, WorkbookCombo,
+    CHIP_HEIGHT,
+    PLACEHOLDER_MARGINS,
+    ROW_EMPTY_HEIGHT,
+    STREAM_MIN_HEIGHT,
+    ChipPlacer,
+    ResizeWatcher,
+    RowTable,
+    StreamBox,
+    WorkbookCombo,
 )
 from quill.ui.theme import apply_spacing
-from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, connection_tip, tooltip_lines
+from quill.ui.widgets import (
+    ElidedLabel,
+    HeadingToggle,
+    Pill,
+    connection_tip,
+    tooltip_lines,
+)
 
 #: Active-light colours (the same hues are used by the tray icon).
 COLOR_ACTIVE = "#34c759"
@@ -238,7 +272,8 @@ class MainWindow:
         )
         self.sheet_label = QLabel("Sheet: –")
         self.sheet_label.setProperty("note", True)               # small, italic, muted: it sits under the file box
-        self.sheet_label.setContentsMargins(8, 0, 0, 0)
+        self.sheet_label.setContentsMargins(0, 0, 2, 0)
+        self.sheet_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         # Shown instead of the sheet name while no spreadsheet is connected: a technical warning chip.
         # (It sits inside the empty workbook picker; the mini view, which has no picker, has its own.)
         self.workbook_row = QWidget()                   # the picker row and the sheet name under it; the mini view hides it whole
@@ -261,16 +296,14 @@ class MainWindow:
         self._workbook_block = QVBoxLayout(self.workbook_row)
         self._workbook_block.setContentsMargins(0, 0, 0, 0)
         self._workbook_block.addWidget(self.picker_row)
-        self._workbook_block.addWidget(self.sheet_label)
+        self._workbook_block.addWidget(self.sheet_label, 0, Qt.AlignmentFlag.AlignRight)   # under the right end of the file box
         self._tighten_sheet_label()
         layout.addWidget(self.workbook_row)
         layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
         # --- current row
         # (Not collapsible: the row being built is the point of every spoken turn, so it is always in view.)
-        self.row_heading = QLabel("Voice Stream")
-        self.row_heading.setProperty("staticHeading", True)
-        layout.addWidget(self.row_heading, 0, Qt.AlignmentFlag.AlignLeft)
+        # (No title: each box says what it is for in its own hint text.)
         self.stream = StreamBox(self._stream_height_changed)
         layout.addWidget(self.stream)
         self.row_table = RowTable(0, 2)
@@ -286,14 +319,15 @@ class MainWindow:
         self.row_placeholder.setProperty("placeholder", True)        # same look as the Voice Stream box's placeholder
         self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.row_table.viewport().setProperty("keepMargins", True)     # the spacing setting must not resize this layout's margins
         holder = QVBoxLayout(self.row_table.viewport())
-        holder.setContentsMargins(6, 4, 4, 0)             # the text starts where the Voice Stream box's text does
+        holder.setContentsMargins(*PLACEHOLDER_MARGINS)   # the same place the Voice Stream box's hint starts
         holder.addWidget(self.row_placeholder)
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
         self._has_last_saved = False                       # the line shows only once a row has been saved
         self.last_label = ElidedLabel("")                  # one line however much was saved
         self.last_label.setProperty("note", True)          # smaller italic supporting text
-        layout.addWidget(self.last_label)
+        self.last_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         # "Needs sorting (3)": filled in the accent colour, the count as an inline pill.
         self.sorting_button = QPushButton()
@@ -331,7 +365,10 @@ class MainWindow:
         # --- log (last). The Current Row box takes extra height when the window grows (and shares it with
         # the log while that is open), so no gaps open between sections and "Log" stays at the bottom.
         self.log_toggle = self._section_toggle("Show or hide the log")
-        layout.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        footer_row = QHBoxLayout()                          # "Log" on the left, the last saved row on the right
+        footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        footer_row.addWidget(self.last_label, 1)
+        layout.addLayout(footer_row)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(MAX_LOG_LINES)
@@ -671,7 +708,7 @@ class MainWindow:
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
-        for widget in (self.workbook_row, self.row_heading, self.log_toggle):
+        for widget in (self.workbook_row, self.log_toggle):
             widget.setVisible(full)
         detail = full or self._mini_detail                                   # the mini view shows them only when tall
         self.stream.setVisible(detail)
@@ -1022,7 +1059,7 @@ class MainWindow:
         However much was saved the line stays one line (it is shortened to fit);
         the tooltip lists every field, capped at a screenful.
         """
-        parts = [row]
+        parts = [row] if row and row != "Row saved" else []        # (the label already says "Last Saved")
         tip = row
         if record:
             items = [(k, v.isoformat() if isinstance(v, dt.date) else str(v)) for k, v in record.items()]
