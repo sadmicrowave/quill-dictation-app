@@ -18,6 +18,11 @@ SHAPES = {
            'M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></g>',
     "moon": '<path d="M20 14.2A8.2 8.2 0 1 1 9.8 4a6.6 6.6 0 0 0 10.2 10.2Z" fill="none" stroke="COLOR" '
             'stroke-width="1.8" stroke-linejoin="round"/>',
+    # Lucide-style "minimize" / "maximize": arrows pointing in / out
+    "minimize": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></g>',
+    "maximize": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></g>',
     "search": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round">'
               '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g>',
     # Three sliders: the usual "settings" glyph, simple enough to stay crisp when small.

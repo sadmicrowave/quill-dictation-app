@@ -60,7 +60,7 @@ class TestLayout(DialogCase):
     def test_every_setting_lives_on_one_page_as_a_titled_row(self):
         self.assertEqual({r.title for r in self.d.rows},
                          {"Read questions aloud", "Sort by voice automatically", "Undo remembers", "Theme",
-                          "Keep the microphone open when not listening",
+                          "Keep the microphone open when not listening", "Keep the mini view on top",
                           "Accent colour", "Spacing", "Text size", "Window opacity", "Window blur",
                           "Confirm with", "Sound set", "Spoken word", "Preview"})
 

@@ -129,6 +129,7 @@ class SettingsDialog:
         self.speak_check: ToggleSwitch | None = None
         self.auto_sort_check: ToggleSwitch | None = None
         self.mic_check: ToggleSwitch | None = None
+        self.mini_top_check: ToggleSwitch | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -208,7 +209,7 @@ class SettingsDialog:
             button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
         self._original = copy.deepcopy(self._settings.preferences)
-        for control in (self.speak_check, self.auto_sort_check, self.mic_check):
+        for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check):
             control.toggled.connect(self._live)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
                         self.pack_combo, self.echo_combo):
@@ -237,6 +238,7 @@ class SettingsDialog:
         prefs["speak_prompts"] = self.speak_check.isChecked()
         prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
         prefs["mic_always_on"] = self.mic_check.isChecked()
+        prefs["mini_on_top"] = self.mini_top_check.isChecked()
         prefs["accent"] = self.accent_combo.currentData()
         prefs["spacing"] = self.spacing_combo.currentData()
         prefs["font_size"] = self.font_spin.value()
@@ -375,6 +377,11 @@ class SettingsDialog:
         self._add("General", page, "Sort by voice automatically",
                   "Start answering the Needs-sorting list by voice as soon as terms need sorting.",
                   self.auto_sort_check, "voice sorting")
+        self.mini_top_check = ToggleSwitch()
+        self.mini_top_check.setChecked(bool(prefs["mini_on_top"]))
+        self._add("General", page, "Keep the mini view on top",
+                  "The mini view floats above other windows so it can sit over your spreadsheet.",
+                  self.mini_top_check, "overlay always on top float")
         self.mic_check = ToggleSwitch()
         self.mic_check.setChecked(bool(prefs["mic_always_on"]))
         self._add("General", page, "Keep the microphone open when not listening",

@@ -121,44 +121,27 @@ def shade(color: str, amount: float) -> str:
 
 
 def app_icon(color: str, draw) -> str:
-    """A dock-style icon: lit gradient body, bevelled rim, soft shadows, an embossed glyph and a gloss.
+    """A dock-style icon in the modern macOS manner: a flat colour with only a *hint* of depth.
 
-    *draw* is the idea's ``lambda fg, bg: svg`` glyph. Only gradients, opacity and
-    plain shapes are used, so any SVG renderer draws it the same way.
+    Like the Mail or Arduino icons: a barely-there light-to-dark shift in the body,
+    a hairline highlight on the top edge, a faint shade on the bottom edge, a flat
+    white glyph and a very soft shadow under it. *draw* is the idea's ``lambda fg, bg: svg``.
     """
-    top, bottom, deep = shade(color, 0.22), shade(color, -0.20), shade(color, -0.45)
-    body = draw("url(#glyph)", color)
-    shadow = draw("#000000", "none")
-    emboss = draw("#FFFFFF", "none")
+    top, bottom = shade(color, 0.10), shade(color, -0.10)
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
         f'<linearGradient id="base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/>'
-        f'<stop offset=".55" stop-color="{color}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
-        '<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".85"/>'
-        '<stop offset=".5" stop-color="#FFFFFF" stop-opacity=".05"/><stop offset="1" stop-color="#000000" stop-opacity=".45"/></linearGradient>'
-        '<linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".62"/>'
-        '<stop offset="1" stop-color="#FFFFFF" stop-opacity=".02"/></linearGradient>'
-        '<linearGradient id="glyph" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/>'
-        '<stop offset="1" stop-color="#E9E4DE"/></linearGradient>'
-        f'<radialGradient id="glow" cx=".5" cy=".95" r=".7"><stop offset="0" stop-color="{shade(color, 0.45)}" stop-opacity=".55"/>'
-        f'<stop offset="1" stop-color="{shade(color, 0.45)}" stop-opacity="0"/></radialGradient></defs>'
-        # soft ground shadow (stacked, getting fainter and wider)
-        '<rect x="9" y="12" width="110" height="112" rx="30" fill="#000" opacity=".10"/>'
-        '<rect x="7" y="9" width="114" height="114" rx="30" fill="#000" opacity=".12"/>'
-        '<rect x="6" y="7" width="116" height="116" rx="29" fill="#000" opacity=".16"/>'
-        # body, light from the top, warm bounce light at the bottom
+        f'<stop offset="1" stop-color="{bottom}"/></linearGradient>'
+        '<linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".32"/>'
+        '<stop offset=".18" stop-color="#FFFFFF" stop-opacity="0"/><stop offset=".85" stop-color="#000000" stop-opacity="0"/>'
+        '<stop offset="1" stop-color="#000000" stop-opacity=".14"/></linearGradient></defs>'
+        # one soft shadow under the icon
+        '<rect x="6" y="8" width="116" height="116" rx="29" fill="#000" opacity=".10"/>'
         '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#base)"/>'
-        '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#glow)"/>'
-        # bevelled rim: bright on top, dark underneath
-        '<rect x="5.5" y="5.5" width="117" height="117" rx="26.5" fill="none" stroke="url(#rim)" stroke-width="3"/>'
-        f'<rect x="4" y="4" width="120" height="120" rx="28" fill="none" stroke="{deep}" stroke-opacity=".55" stroke-width="1"/>'
-        # embossed glyph: dark shadow below, a thin highlight above, then the glyph itself
-        f'<g transform="translate(0 5)" opacity=".16">{shadow}</g><g transform="translate(0 3.2)" opacity=".26">{shadow}</g>'
-        f'<g transform="translate(0 1.6)" opacity=".35">{shadow}</g>'
-        f'<g transform="translate(0 -1.2)" opacity=".5">{emboss}</g>{body}'
-        # glossy highlight over the top half, with a curved lower edge
-        '<path d="M5 62V32A27 27 0 0 1 32 5H96A27 27 0 0 1 123 32V62Q64 84 5 62Z" fill="url(#gloss)"/>'
-        '<path d="M14 12H114" stroke="#FFFFFF" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/>'
+        '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
+        # the glyph: flat white, with the faintest drop shadow so it sits slightly above the surface
+        f'<g transform="translate(0 2)" opacity=".12">{draw("#000000", "none")}</g>'
+        f'{draw("#FFFFFF", color)}'
         '</svg>')
 
 

@@ -6,6 +6,7 @@ Menu items:
   <folder it lives in>   click either to bring the workbook to the front)
   Start Listening / Stop Listening  (label flips with state)
   Open Quill
+  Mini view            (checkable: the small always-handy overlay)
   Quit
 
 Active light: a green dot while listening, a grey ring when stopped.
@@ -99,13 +100,16 @@ class TrayIcon:
 
     def __init__(self, app, main_window, on_start: Callable, on_stop: Callable,
                  on_open_workbook: Callable | None = None,
-                 on_open_sorting: Callable | None = None) -> None:
+                 on_open_sorting: Callable | None = None,
+                 on_mini: Callable[[bool], None] | None = None) -> None:
         self._app = app
         self._main_window = main_window
         self._on_start = on_start
         self._on_stop = on_stop
         self._on_open_workbook = on_open_workbook or (lambda: None)
         self._on_open_sorting = on_open_sorting or (lambda: None)
+        self._on_mini = on_mini or (lambda mini: None)
+        self._mini_action: QAction | None = None
         self._sorting_action: QAction | None = None
         self._workbook_name = ""
         self._workbook_path = ""
@@ -117,6 +121,18 @@ class TrayIcon:
         self._listening = False
         self._badge = 0
         self._badge_color = "#C9623F"
+
+    @property
+    def mini_action(self) -> QAction | None:
+        """The checkable "Mini view" menu entry (exposed for tests)."""
+        return self._mini_action
+
+    def set_mini(self, mini: bool) -> None:
+        """Tick or untick the menu entry without triggering it."""
+        if self._mini_action is not None and self._mini_action.isChecked() != mini:
+            self._mini_action.blockSignals(True)
+            self._mini_action.setChecked(mini)
+            self._mini_action.blockSignals(False)
 
     @property
     def badge(self) -> int:
@@ -159,6 +175,9 @@ class TrayIcon:
         self._menu.addSeparator()
         self._toggle_action = self._menu.addAction("Start Listening", self.toggle)
         self._menu.addAction("Open Quill", self._main_window.show)
+        self._mini_action = self._menu.addAction("Mini view")
+        self._mini_action.setCheckable(True)
+        self._mini_action.toggled.connect(lambda checked: self._on_mini(checked))
         self._sorting_action = self._menu.addAction("", lambda: self._on_open_sorting())
         self._sorting_action.setVisible(False)
         self._menu.addSeparator()

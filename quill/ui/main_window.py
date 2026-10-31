@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QPlainTextEdit,
     QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
@@ -46,6 +46,8 @@ class MainWindow:
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
         on_log_toggled: Called with True/False when the user collapses/expands the log.
         on_row_toggled: Same, for the Current row section.
+        on_mini_toggled: Called with True/False when the user enters/leaves the mini view.
+        mini: Start in the mini view. mini_on_top: keep the mini view above other windows.
         log_collapsed: Start with the log collapsed.
     """
 
@@ -62,6 +64,9 @@ class MainWindow:
         log_collapsed: bool = False,
         on_row_toggled: Callable[[bool], None] | None = None,
         row_collapsed: bool = False,
+        on_mini_toggled: Callable[[bool], None] | None = None,
+        mini: bool = False,
+        mini_on_top: bool = True,
     ) -> None:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
@@ -74,6 +79,17 @@ class MainWindow:
         self._log_collapsed = log_collapsed
         self._on_row_toggled = on_row_toggled or (lambda collapsed: None)
         self._row_collapsed = row_collapsed
+        self._on_mini_toggled = on_mini_toggled or (lambda mini: None)
+        self._mini = mini
+        self._mini_on_top = mini_on_top
+        self._full_size = QSize(360, 520)        # the size to return to when leaving the mini view
+        self._undo_count = 0
+        self._sorting_count = 0
+        self._footer_text = ""
+        self._offer_download = False
+        self._mini_applied = False
+        self._text_color = "#1F1E1D"
+        self._accent = "#C9623F"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
         self._freed: dict[str, int] = {}     # window height each collapsed section gave back
         self._window: QMainWindow | None = None
@@ -108,12 +124,17 @@ class MainWindow:
         self.settings_button.setAccessibleName("Settings")
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.settings_button.clicked.connect(lambda: self._on_settings())
+        self.mini_button = QPushButton()                # icon only: shrinks to / restores from the mini view
+        self.mini_button.setProperty("iconOnly", True)
+        self.mini_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mini_button.clicked.connect(lambda: self.set_mini(not self._mini, notify=True))
         row = QHBoxLayout()
         for widget in (self.dot, self.state_label):
             row.addWidget(widget)
         row.addStretch(1)
         row.addWidget(self.toggle_button)
         row.addWidget(self.settings_button)
+        row.addWidget(self.mini_button)
         layout.addLayout(row)
 
         # --- workbook row
@@ -126,10 +147,12 @@ class MainWindow:
         refresh.setToolTip("Re-read the workbook's lists and columns")
         refresh.clicked.connect(lambda: self._on_refresh())
         self.sheet_label = QLabel("Sheet: –")
-        row = QHBoxLayout()
+        self.workbook_row = QWidget()                   # one widget so the mini view can hide the row whole
+        row = QHBoxLayout(self.workbook_row)
+        row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.workbook_combo, 1)
         row.addWidget(refresh)
-        layout.addLayout(row)
+        layout.addWidget(self.workbook_row)
         layout.addWidget(self.sheet_label)
 
         # --- current row
@@ -156,6 +179,7 @@ class MainWindow:
         inner.setContentsMargins(12, 0, 12, 0)
         inner.addStretch(1)
         title = QLabel("Needs sorting")
+        self.sorting_title = title
         self.badge_label = Pill("0")
         for part in (title, self.badge_label):
             part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)   # clicks reach the button
@@ -194,6 +218,10 @@ class MainWindow:
         self.refresh_icons()
         self._set_collapsed("row", self._row_collapsed)
         self._set_collapsed("log", self._log_collapsed)
+        if self._mini:
+            self.set_mini(True)
+        else:
+            self._refresh_visibility()
         self.set_listening_indicator(False)
 
     @staticmethod
@@ -221,6 +249,89 @@ class MainWindow:
     def set_row_collapsed(self, collapsed: bool, notify: bool = False) -> None:
         """Hide or show the Current row table, like the log."""
         self._set_collapsed("row", collapsed, notify)
+
+    # ------------------------------------------------------------------ #
+    # Mini view                                                            #
+    # ------------------------------------------------------------------ #
+
+    #: Width of the mini view.
+    MINI_WIDTH = 320
+
+    @property
+    def mini(self) -> bool:
+        return self._mini
+
+    def set_mini(self, mini: bool, notify: bool = False) -> None:
+        """Switch between the full window and a small always-handy overlay.
+
+        The mini view keeps only the row being built, a start / stop button, the
+        Needs-sorting button and a way back; the log, the saved-row line, the
+        workbook details and the settings button are hidden. It floats above other
+        windows (unless turned off) so it can sit over a spreadsheet.
+        """
+        window = self._window
+        was = self._mini_applied
+        if window is not None and mini and not was and window.isVisible():
+            self._full_size = window.size()               # to come back to
+        self._mini = mini
+        self._mini_applied = mini
+        self.toggle_button.setText("" if mini else ("Stop" if self._listening else "Start"))
+        self._refresh_visibility()
+        self.refresh_icons(self._text_color, self._on_accent, self._accent)
+        if window is not None:
+            self._apply_stay_on_top()
+            window.centralWidget().layout().activate()
+            if mini:
+                window.resize(self.MINI_WIDTH, self._fit_height())
+            elif was:
+                window.resize(self._full_size)
+        if notify:
+            self._on_mini_toggled(mini)
+
+    def _fit_height(self) -> int:
+        """The height the window needs right now (the layout is recomputed first, as Qt only does that lazily)."""
+        layout = self._window.centralWidget().layout()
+        layout.invalidate()
+        layout.activate()
+        self._window.setMinimumSize(layout.minimumSize())     # the old (taller) minimum would stop it shrinking
+        return layout.sizeHint().height()
+
+    def set_mini_on_top(self, on_top: bool) -> None:
+        """Choose whether the mini view floats above other windows."""
+        self._mini_on_top = on_top
+        self._apply_stay_on_top()
+
+    def _apply_stay_on_top(self) -> None:
+        window = self._window
+        if window is None:
+            return
+        want = self._mini and self._mini_on_top
+        if bool(window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) != want:
+            was_visible = window.isVisible()
+            window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, want)   # recreates the native window
+            if was_visible:
+                window.show()
+
+    def _refresh_visibility(self) -> None:
+        """Show each widget only if both the view (full / mini) and its own state call for it."""
+        if self._window is None:
+            return
+        full = not self._mini
+        for widget in (self.state_label, self.settings_button, self.workbook_row, self.sheet_label,
+                       self.row_toggle, self.last_label, self.log_toggle):
+            widget.setVisible(full)
+        self.undo_button.setVisible(full and self._undo_count > 0)
+        self.log.setVisible(full and not self._log_collapsed)
+        self.row_table.setVisible(self._mini or not self._row_collapsed)    # the mini view always shows the row
+        self.footer.setVisible(full and bool(self._footer_text))
+        self.download_button.setVisible(full and self._offer_download)
+        self.sorting_button.setVisible(self._sorting_count > 0)
+        self.sorting_title.setVisible(full)                               # just the count pill when mini
+        self.row_table.setMaximumHeight(110 if self._mini else 150)
+        self.row_table.setMinimumHeight(64 if self._mini else 0)
+        self.sorting_button.setMinimumHeight((self.sorting_button.fontMetrics().height() + 16) if self._mini
+                                             else (self.sorting_button.fontMetrics().height() * 2 + 4))
+        self.sorting_button.setToolTip("Needs sorting" if self._mini else "")
 
     def _section_toggle(self, name: str, tip: str) -> QToolButton:
         button = QToolButton()
@@ -252,15 +363,15 @@ class MainWindow:
         else:
             self._row_collapsed = collapsed
         self._applied[name] = collapsed
-        body.setVisible(not collapsed)
-        if window is not None:
+        self._refresh_visibility()
+        if window is not None and not self._mini:      # (the mini view hides sections whatever their state)
             window.centralWidget().layout().activate()
             if collapsed and not was:
-                target = max(window.sizeHint().height(), height - used) if shown else window.sizeHint().height()
+                target = max(self._fit_height(), height - used) if shown else self._fit_height()
                 window.resize(window.width(), target)
                 self._freed[name] = max(height - window.height(), 0) if shown else 0   # what it really gave back
             elif was and not collapsed:
-                window.resize(window.width(), max(height + self._freed.pop(name, 0), window.sizeHint().height()))
+                window.resize(window.width(), max(height + self._freed.pop(name, 0), self._fit_height()))
         toggle.setText(f"{title}  {'▾' if collapsed else '▴'}")
         toggle.setToolTip(f"Show the {title.lower()}" if collapsed else f"Hide the {title.lower()}")
         if notify:
@@ -341,7 +452,9 @@ class MainWindow:
         self._listening = active
         self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
         self.state_label.setText("Listening" if active else "Not listening")
-        self.toggle_button.setText("Stop" if active else "Start")
+        self.toggle_button.setText("" if self._mini else ("Stop" if active else "Start"))
+        self.toggle_button.setToolTip("Stop listening" if active else "Start listening")
+        self.toggle_button.setAccessibleName("Stop listening" if active else "Start listening")
         self.toggle_button.setIcon(self._icon("stop" if active else "play", self._on_accent))
 
     def _icon(self, name: str, color: str):
@@ -350,29 +463,34 @@ class MainWindow:
     def refresh_icons(self, text_color: str = "#1F1E1D", on_accent: str = "#FFFFFF",
                       accent: str = "#C9623F") -> None:
         """Redraw the button icons and the count pill for the current theme colours."""
-        self._on_accent = on_accent
+        self._on_accent, self._text_color, self._accent = on_accent, text_color, accent
         if self._window is None:
             return                      # not built yet; setup() draws them
+        self.mini_button.setIcon(make_icon("maximize" if self._mini else "minimize", text_color, 16))
+        self.mini_button.setToolTip("Back to the full window" if self._mini else "Mini view")
+        self.mini_button.setAccessibleName("Back to the full window" if self._mini else "Mini view")
         self.badge_label.set_colors(on_accent, accent)
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self.toggle_button.setIcon(make_icon("stop" if self._listening else "play", on_accent, 16))
 
     def set_undo_count(self, count: int) -> None:
         """Show "Undo (n)" while there is a sorting answer to take back."""
-        self.undo_button.setVisible(count > 0)
+        self._undo_count = count
+        self._refresh_visibility()
         self.undo_button.setText(f"↶ Undo ({count})")
 
     def set_sorting_count(self, count: int) -> None:
         """Show the accent-coloured "Needs sorting" button, with *count* as a pill, while terms wait."""
-        self.sorting_button.setVisible(count > 0)
+        self._sorting_count = count
+        self._refresh_visibility()
         self.badge_label.setText(str(count))
         self.sorting_button.setAccessibleName(f"Needs sorting ({count})")
 
     def set_footer(self, text: str, offer_download: bool = False) -> None:
         """Show a status message; optionally reveal the model-download button."""
         self.footer.setText(text)
-        self.footer.setVisible(bool(text))      # an empty footer would leave a blank strip
-        self.download_button.setVisible(offer_download)
+        self._footer_text, self._offer_download = text, offer_download
+        self._refresh_visibility()              # an empty footer would leave a blank strip
         self.download_button.setEnabled(True)
 
     @property

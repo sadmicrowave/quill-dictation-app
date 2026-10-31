@@ -207,7 +207,11 @@ The five sets now differ in instrument *and* melody, not just pitch: **Chime** (
 
 ### App icon ideas
 
-`tools/make_icon_ideas.py` draws twenty concepts (`--more` for ideas 11 to 20) into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
+`tools/make_icon_ideas.py` draws twenty concepts (`--more` for ideas 11 to 20, `--all` for one sheet of all twenty) in the modern macOS manner: a flat colour with only a hint of depth (a faint light-to-dark shift, a hairline top highlight, a faint shade on the bottom edge, a flat white glyph with a very soft shadow), like the Mail or Arduino icons in the Dock. An earlier, heavily embossed version was too much. They are written into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
+
+### Mini view
+
+Press the arrows button beside Settings (or tick **Mini view** in the tray / menu bar menu) to shrink Quill to a small overlay: a status light, an icon-only **Start / Stop** button, the **row being built** in a small box, and the **Needs sorting** button reduced to its count. The log, the saved-row line, the workbook picker, the sheet name, Undo, the footer and Settings are hidden. The window drops to 320 px wide and about 160 px tall and **floats above other windows** (Settings has a switch, *Keep the mini view on top*) so it can sit beside or over a spreadsheet. The arrows button turns into the way back and restores the previous size, and which view you left it in is remembered. Collapsed sections keep their state across a round trip. Dictation, the microphone and the tray all work from the mini view. (Changing a window's stay-on-top flag recreates its native window, so the title-bar styling is re-applied each time.)
 
 ### Speech model
 

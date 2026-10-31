@@ -88,6 +88,8 @@ class QuillApp:
             on_undo=self.undo, on_log_toggled=self._log_toggled,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
             on_row_toggled=self._row_toggled, row_collapsed=bool(settings.preferences["row_collapsed"]),
+            on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
+            mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
                                      on_voice=self.toggle_voice_sorting,
@@ -97,6 +99,7 @@ class QuillApp:
             on_start=lambda: self.toggle_listening(True),
             on_stop=lambda: self.toggle_listening(False),
             on_open_workbook=self.show_workbook, on_open_sorting=self.show_sorting,
+            on_mini=lambda mini: self.window.set_mini(mini, notify=True),
         )
         self.listener = None
         self.connected = False
@@ -136,6 +139,7 @@ class QuillApp:
         self.sorting.setup()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
+        self.tray.set_mini(self.window.mini)
         self.window.show()
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
         self._start_listener()
@@ -328,6 +332,17 @@ class QuillApp:
         if dialog.exec():
             self.apply_settings()
 
+    def _mini_toggled(self, mini: bool) -> None:
+        """Remember the view, keep the tray menu in step, and redo the window styling.
+
+        Changing a window's "stay on top" flag recreates its native window, which loses
+        the title-bar and blur styling, so the look is applied again.
+        """
+        self.settings.preferences["mini_mode"] = mini
+        self.settings.save()
+        self.tray.set_mini(mini)
+        self._apply_look()
+
     def _row_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the Current row section."""
         self.settings.preferences["row_collapsed"] = collapsed
@@ -364,6 +379,7 @@ class QuillApp:
         self._apply_look()
         self.speaker.enabled = bool(self.settings.preferences["speak_prompts"])
         self.controller.apply_settings()
+        self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
         self._sync_mic()
         self.controller.lead_in_s = self.feedback.lead_in_s()
         self.refresh_sorting()

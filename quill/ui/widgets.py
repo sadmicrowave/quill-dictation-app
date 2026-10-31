@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QEvent, QRectF, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
 from PySide6.QtWidgets import QLabel, QSizePolicy
 
@@ -63,6 +63,7 @@ class Pill(QLabel):
         self.fill = QColor("#FFFFFF")
         self.ink = QColor("#C9623F")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         font = self.font()
         font.setBold(True)
         self.setFont(font)
@@ -74,22 +75,30 @@ class Pill(QLabel):
 
     def sizeHint(self):                                          # noqa: N802 (Qt name)
         metrics = self.fontMetrics()
-        height = metrics.height() + 4
+        height = metrics.height() + 6
         return super().sizeHint().expandedTo(self._size(max(height, metrics.horizontalAdvance(self.text()) + 18), height))
+
+    def minimumSizeHint(self):                                   # noqa: N802
+        return self.sizeHint()                                  # never squeezed below its natural size
 
     @staticmethod
     def _size(width: int, height: int):
         from PySide6.QtCore import QSize
         return QSize(width, height)
 
+    def changeEvent(self, event) -> None:                        # noqa: N802
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self.updateGeometry()                               # a style sheet may change the font after the first hint
+        super().changeEvent(event)
+
     def paintEvent(self, event) -> None:                         # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        height = self.fontMetrics().height() + 4
-        rect = QRectF(0, (self.height() - height) / 2, self.width(), height)
+        rect = QRectF(self.rect())                              # the whole widget is the pill, so it can never be clipped
+        radius = min(rect.height(), rect.width()) / 2
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self.fill)
-        painter.drawRoundedRect(rect, height / 2, height / 2)
+        painter.drawRoundedRect(rect, radius, radius)
         painter.setPen(self.ink)
         painter.setFont(self.font())
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
