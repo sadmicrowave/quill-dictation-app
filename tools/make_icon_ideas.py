@@ -3,7 +3,8 @@
     python tools/make_icon_ideas.py [contact-sheet.png]            # ideas 01-10
     python tools/make_icon_ideas.py --more [contact-sheet.png]     # ideas 11-20
     python tools/make_icon_ideas.py --new [contact-sheet.png]      # a third round: 21-40 (all new symbols)
-    python tools/make_icon_ideas.py --all [contact-sheet.png]      # everything, one sheet
+    python tools/make_icon_ideas.py --mix [contact-sheet.png]      # a fourth round: 41-50, recombining the liked parts
+    python tools/make_icon_ideas.py --all [contact-sheet.png]      # the first forty, one sheet
 
 Writes ``assets/icon-ideas/NN-name.svg`` (the full-colour app icon) and
 ``NN-name-menubar.svg`` (the same idea as a plain black glyph, which macOS can
@@ -195,6 +196,57 @@ IDEAS_NEW = [
 ]
 
 
+def up_bars(xs, heights, fg, floor, width=7):
+    """Bars standing on a floor line (bottom-aligned), like an equaliser."""
+    return "".join(f'<rect x="{x}" y="{floor - h}" width="{width}" height="{h}" rx="{width / 2}" fill="{fg}"/>'
+                   for x, h in zip(xs, heights))
+
+
+PAGE = lambda fg, bg: (f'<path d="M30 14H78L102 38V114H30Z" fill="{fg}"/>'
+                       f'<path d="M78 14V38H102" fill="{bg}" opacity=".35"/>')
+
+#: Round four: the parts that were liked (the audio lines of 24 and 36, the stack of 35, the page of 37) recombined.
+IDEAS_MIX = [
+    ("page-bars", "The page with audio lines on it", "#7A55C2",
+     lambda fg, bg: PAGE(fg, bg) + bars([42, 53, 64, 75, 86], [14, 30, 48, 26, 12], bg, 78, 7)),
+    ("page-bars-rows", "The page: audio lines on top, two rows below", "#C0446B",
+     lambda fg, bg: PAGE(fg, bg) + bars([44, 55, 66, 77, 88], [10, 22, 34, 18, 8], bg, 58, 6)
+     + f'<path d="M42 86h44M42 102h30" stroke="{bg}" stroke-width="6" stroke-linecap="round"/>'),
+    ("stack-top-bars", "A stack of rows; the top row carries the audio lines", "#2F6FB5",
+     lambda fg, bg: f'<rect x="14" y="20" width="100" height="36" rx="11" fill="{fg}"/>'
+     + bars([36, 47, 58, 69, 80, 91], [10, 20, 28, 18, 24, 8], bg, 38, 6)
+     + f'<rect x="14" y="62" width="100" height="22" rx="8" fill="{fg}" opacity=".8"/><rect x="14" y="90" width="100" height="22" rx="8" fill="{fg}" opacity=".6"/>'
+     f'<circle cx="28" cy="73" r="5" fill="{bg}"/><circle cx="28" cy="101" r="5" fill="{bg}"/>'),
+    ("ring-stack", "A record ring around a stack of rows", "#C9623F",
+     lambda fg, bg: f'<circle cx="64" cy="64" r="48" stroke="{fg}" stroke-width="9" fill="none"/>'
+     f'<g stroke="{fg}" stroke-width="9" stroke-linecap="round"><path d="M40 46h48"/><path d="M40 64h48" opacity=".8"/><path d="M40 82h30" opacity=".6"/></g>'),
+    ("two-pages", "Two pages: the front one carries the audio lines", "#3E7D4F",
+     lambda fg, bg: f'<path d="M36 8H84L108 32V96H36Z" fill="{fg}" opacity=".5"/>'
+     f'<path d="M20 26H68L92 50V120H20Z" fill="{fg}"/><path d="M68 26V50H92" fill="{bg}" opacity=".35"/>'
+     + bars([34, 45, 56, 67], [14, 30, 44, 24], bg, 88, 7)),
+    ("rows-with-bars", "Three rows, each ending in audio lines", "#1F2A44",
+     lambda fg, bg: "".join(
+         f'<rect x="14" y="{y}" width="100" height="24" rx="9" fill="{fg}" opacity="{o}"/><circle cx="29" cy="{y + 12}" r="5" fill="{bg}"/>'
+         + bars([70, 80, 90, 100], hs, bg, y + 12, 5)
+         for y, o, hs in ((20, 1, [8, 16, 10, 14]), (52, .85, [12, 8, 16, 10]), (84, .7, [6, 14, 8, 12])))),
+    ("clipboard-rows", "A clipboard: audio lines above, rows below", "#C9623F",
+     lambda fg, bg: f'<rect x="26" y="22" width="76" height="92" rx="12" fill="{fg}"/><rect x="48" y="14" width="32" height="18" rx="8" fill="{fg}" stroke="{bg}" stroke-width="5"/>'
+     + bars([42, 53, 64, 75, 86], [10, 20, 30, 16, 8], bg, 54, 6)
+     + f'<path d="M42 82h44M42 98h30" stroke="{bg}" stroke-width="6" stroke-linecap="round"/>'),
+    ("page-voice-to-rows", "A page: audio lines on the left becoming rows on the right", "#2F6FB5",
+     lambda fg, bg: PAGE(fg, bg) + bars([40, 49, 58], [14, 32, 20], bg, 76, 6)
+     + f'<path d="M68 58h24M68 76h24M68 94h16" stroke="{bg}" stroke-width="6" stroke-linecap="round"/>'),
+    ("ring-page", "A record ring holding a small page with audio lines", "#7A55C2",
+     lambda fg, bg: f'<circle cx="64" cy="64" r="50" stroke="{fg}" stroke-width="8" fill="none"/>'
+     f'<path d="M46 34H74L90 50V94H46Z" fill="{fg}"/><path d="M74 34V50H90" fill="{bg}" opacity=".35"/>'
+     + bars([54, 63, 72], [12, 26, 16], bg, 74, 5)),
+    ("equaliser-on-stack", "Audio lines standing on a stack of rows", "#C0446B",
+     lambda fg, bg: up_bars([18, 30, 42, 54, 66, 78, 90, 102], [14, 28, 44, 32, 22, 36, 18, 10], fg, 54, 8)
+     + f'<rect x="14" y="62" width="100" height="16" rx="7" fill="{fg}"/><rect x="14" y="84" width="100" height="16" rx="7" fill="{fg}" opacity=".75"/>'
+     f'<rect x="14" y="106" width="100" height="16" rx="7" fill="{fg}" opacity=".5"/>'),
+]
+
+
 def app_icon(color: str, draw) -> str:
     """A dock-style icon in the modern macOS manner: a flat colour with only a *hint* of depth.
 
@@ -232,10 +284,11 @@ def write_everything() -> list[tuple[str, str, str, str]]:
 
 
 def write_all(more: bool = False, batch: str = "") -> list[tuple[str, str, str, str]]:
-    """Write one batch of ideas: the first ten (01-10), *more* (11-20) or ``batch="new"`` (21-40)."""
+    """Write one batch of ideas: 01-10, *more* (11-20), ``batch="new"`` (21-40) or ``batch="mix"`` (41-50)."""
     OUT.mkdir(parents=True, exist_ok=True)
     made = []
-    ideas, first = (IDEAS_NEW, 21) if batch == "new" else ((IDEAS_MORE, 11) if more else (IDEAS, 1))
+    ideas, first = ((IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
+                    else (IDEAS_MORE, 11) if more else (IDEAS, 1))
     for i, (slug, title, color, draw) in enumerate(ideas, first):
         big = app_icon(color, draw)
         mono = menubar(draw("#000000", "#FFFFFF"))
@@ -273,7 +326,7 @@ def contact_sheet(path: str, made) -> None:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    made = (write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
+    made = (write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
             else write_all(more="--more" in sys.argv))
     print(f"Wrote {len(made) * 2} icons to {OUT}")
     if args:
