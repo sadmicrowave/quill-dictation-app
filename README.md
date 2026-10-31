@@ -207,7 +207,7 @@ The five sets now differ in instrument *and* melody, not just pitch: **Chime** (
 
 ### App icon ideas
 
-`tools/make_icon_ideas.py` draws twenty concepts (`--more` for ideas 11 to 20, `--new` for 21 to 40, `--mix` for 41 to 50: the parts that were liked, recombined; `--all` for one sheet of the first forty) in the modern macOS manner: a flat colour with only a hint of depth (a faint light-to-dark shift, a hairline top highlight, a faint shade on the bottom edge, a flat white glyph at 72 % of the box with a very soft shadow), like the Mail or Arduino icons in the Dock. An earlier, heavily embossed version was too much. They are written into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
+`tools/make_icon_ideas.py` draws twenty concepts (`--more` for ideas 11 to 20, `--new` for 21 to 40, `--mix` for 41 to 50: the parts that were liked, recombined; `--ring` for 51 to 56: the record ring with vertical sound lines in purples; `--all` for one sheet of the first forty) in the modern macOS manner: a flat colour with only a hint of depth (a faint light-to-dark shift, a hairline top highlight, a faint shade on the bottom edge, a flat white glyph at 72 % of the box with a very soft shadow), like the Mail or Arduino icons in the Dock. An earlier, heavily embossed version was too much. They are written into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
 
 ### Auto-refresh
 

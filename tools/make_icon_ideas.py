@@ -4,6 +4,7 @@
     python tools/make_icon_ideas.py --more [contact-sheet.png]     # ideas 11-20
     python tools/make_icon_ideas.py --new [contact-sheet.png]      # a third round: 21-40 (all new symbols)
     python tools/make_icon_ideas.py --mix [contact-sheet.png]      # a fourth round: 41-50, recombining the liked parts
+    python tools/make_icon_ideas.py --ring [contact-sheet.png]     # a fifth round: 51-56, the ring with vertical sound lines in purples
     python tools/make_icon_ideas.py --all [contact-sheet.png]      # the first forty, one sheet
 
 Writes ``assets/icon-ideas/NN-name.svg`` (the full-colour app icon) and
@@ -247,6 +248,25 @@ IDEAS_MIX = [
 ]
 
 
+def ring_bars(heights, ring=9, r=48, width=7, gap=11):
+    """A record ring with vertical sound lines inside (round five: the ring of 44 with the lines of 36)."""
+    n = len(heights)
+    xs = [64 - (n * width + (n - 1) * (gap - width)) / 2 + i * gap for i in range(n)]
+    return lambda fg, bg: (f'<circle cx="64" cy="64" r="{r}" stroke="{fg}" stroke-width="{ring}" fill="none"/>'
+                           + bars([round(x, 1) for x in xs], heights, fg, 64, width))
+
+
+#: Round five: the ring with vertical sound lines, in purples (not orange).
+IDEAS_RING = [
+    ("ring-violet", "Ring with sound lines, violet", "#7A55C2", ring_bars([14, 30, 46, 30, 14])),
+    ("ring-indigo", "Ring with sound lines, indigo", "#5B4BC4", ring_bars([14, 30, 46, 30, 14])),
+    ("ring-plum", "Ring with sound lines, plum", "#9446B8", ring_bars([14, 30, 46, 30, 14])),
+    ("ring-violet-seven", "Seven lines, violet", "#7A55C2", ring_bars([10, 22, 36, 48, 30, 18, 8], width=6, gap=9)),
+    ("ring-indigo-bold", "Bold ring, five lines, indigo", "#5B4BC4", ring_bars([16, 34, 52, 34, 16], ring=11, r=47, width=8, gap=12)),
+    ("ring-plum-irregular", "Irregular lines (like speech), plum", "#9446B8", ring_bars([12, 40, 22, 50, 18, 34], width=6, gap=10)),
+]
+
+
 def app_icon(color: str, draw) -> str:
     """A dock-style icon in the modern macOS manner: a flat colour with only a *hint* of depth.
 
@@ -287,7 +307,7 @@ def write_all(more: bool = False, batch: str = "") -> list[tuple[str, str, str, 
     """Write one batch of ideas: 01-10, *more* (11-20), ``batch="new"`` (21-40) or ``batch="mix"`` (41-50)."""
     OUT.mkdir(parents=True, exist_ok=True)
     made = []
-    ideas, first = ((IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
+    ideas, first = ((IDEAS_RING, 51) if batch == "ring" else (IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
                     else (IDEAS_MORE, 11) if more else (IDEAS, 1))
     for i, (slug, title, color, draw) in enumerate(ideas, first):
         big = app_icon(color, draw)
@@ -324,11 +344,28 @@ def contact_sheet(path: str, made) -> None:
     image.save(path)
 
 
+def render_png(svg: str, path: str, size: int = 1024) -> None:
+    """Draw one icon at full size (for reviewing details)."""
+    from PySide6.QtCore import QByteArray, QRectF
+    from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter
+    from PySide6.QtSvg import QSvgRenderer
+    QGuiApplication.instance() or QGuiApplication(sys.argv[:1])
+    image = QImage(size, size, QImage.Format.Format_ARGB32)
+    image.fill(QColor(0, 0, 0, 0))
+    p = QPainter(image)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    QSvgRenderer(QByteArray(svg.encode())).render(p, QRectF(0, 0, size, size))
+    p.end()
+    image.save(path)
+
+
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    made = (write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
+    made = (write_all(batch="ring") if "--ring" in sys.argv else write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
             else write_all(more="--more" in sys.argv))
     print(f"Wrote {len(made) * 2} icons to {OUT}")
+    if "--ring" in sys.argv and len(args) > 1:
+        render_png(made[0][2], args[1])                 # the first ring at 1024 px
     if args:
         contact_sheet(args[0], made)
         print("Contact sheet:", args[0])
