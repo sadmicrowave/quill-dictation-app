@@ -32,7 +32,7 @@ from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.chrome import add_titlebar_button, apply_chrome, set_dock_icon_visible
+from quill.ui.chrome import SYMBOL_SETTINGS, add_titlebar_button, apply_chrome, set_dock_icon_visible
 from quill.ui.theme import apply_opacity, apply_spacing, apply_theme, colors_for, is_dark
 from quill.ui.tray import TrayIcon
 
@@ -177,7 +177,7 @@ class QuillApp:
             self.connected = False
             if not quiet:
                 self.window.append_log(f"Not connected: {exc}")
-            self.window.set_footer(NO_WORKBOOK_HELP)
+            self.window.set_not_connected(True, NO_WORKBOOK_HELP)
             return
         self.connected = True
         self.window.update_workbooks(names, bridge.workbook_name)
@@ -190,6 +190,7 @@ class QuillApp:
         if warning:
             self.window.append_log(warning)
         self.window.set_footer("")
+        self.window.set_not_connected(False)
         self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
         self.settings.preferences["last_workbook"] = bridge.workbook_name
         self.settings.save()
@@ -217,7 +218,7 @@ class QuillApp:
             self.tray.set_workbook("", "")
             self.window.update_workbooks([])
             self.window.append_log(f"'{closed}' was closed.")
-            self.window.set_footer(NO_WORKBOOK_HELP)
+            self.window.set_not_connected(True, NO_WORKBOOK_HELP)
         if names and not self.connected:
             preferred = str(self.settings.preferences["last_workbook"])
             self.connect_workbook(preferred if preferred in names else None, quiet=True)
@@ -462,8 +463,10 @@ class QuillApp:
             return
         self._titlebar = add_titlebar_button(
             self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
-            mini=self.window.mini)
-        self.window.set_native_mini_button(self._titlebar is not None)
+            mini=self.window.mini, extra=[(SYMBOL_SETTINGS, "Settings", self.open_settings)])
+        native = self._titlebar is not None
+        self.window.set_native_mini_button(native)
+        self.window.set_native_settings_button(native)        # Settings and resize both live in the title bar
 
     def _mini_toggled(self, mini: bool) -> None:
         """Remember the view and keep the tray menu and the title-bar icon in step.
@@ -560,7 +563,7 @@ class QuillApp:
         elif kind == "stopped":
             self._set_listening(False)
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
-            self.window.set_footer(NO_WORKBOOK_HELP)
+            self.window.set_not_connected(True, NO_WORKBOOK_HELP)
             self.tray.notify(NO_WORKBOOK_HELP)
         elif kind == "committed":
             self.window.set_last_saved(event.detail or "Row saved", event.record)

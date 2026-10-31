@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QRectF, Qt
+from PySide6.QtCore import QEvent, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
 from PySide6.QtWidgets import QLabel, QSizePolicy
 
@@ -103,3 +103,29 @@ class Pill(QLabel):
         painter.setFont(self.font())
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
         painter.end()
+
+
+class HeadingToggle(QLabel):
+    """A clickable heading ("Log  v"): plain text that starts exactly at the content's left edge.
+
+    A QToolButton centres its text inside extra margins, which pushed these headings about 8 px in
+    from the edge everything else lines up with; a label has none.
+    """
+
+    clicked = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setProperty("headingToggle", True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMargin(0)
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def click(self) -> None:
+        """Act as if the heading had been clicked (also used by tests)."""
+        self.clicked.emit()
+
+    def mousePressEvent(self, event) -> None:                    # noqa: N802 (Qt name)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)

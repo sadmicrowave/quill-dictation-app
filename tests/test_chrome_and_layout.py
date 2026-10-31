@@ -364,13 +364,14 @@ class TestAppRemembersLog(DemoCase):
         app = QuillApp(_app, self.settings, XlsxBridge(self.path), listener_factory=lambda *a: None,
                        model_finder=lambda c: None, sound_player=lambda p: None)
         app.start()
-        app.window.log_toggle.click()
-        self.assertTrue(Settings.load(self.dir / "cfg").preferences["log_collapsed"])
+        self.assertTrue(app.window.log_collapsed)                      # minimized by default
+        app.window.log_toggle.click()                                  # open it
+        self.assertFalse(Settings.load(self.dir / "cfg").preferences["log_collapsed"])
         again = QuillApp(_app, Settings.load(self.dir / "cfg"), XlsxBridge(self.path),
                          listener_factory=lambda *a: None, model_finder=lambda c: None,
                          sound_player=lambda p: None)
         again.start()
-        self.assertTrue(again.window.log_collapsed)
+        self.assertFalse(again.window.log_collapsed)                   # the user's choice is remembered
 
     def test_saved_row_shows_the_count(self):
         app = QuillApp(_app, self.settings, XlsxBridge(self.path), listener_factory=lambda *a: None,

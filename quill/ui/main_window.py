@@ -25,11 +25,28 @@ from PySide6.QtWidgets import (
 from quill.ui.chrome import set_always_on_top
 from quill.ui.icons import make_icon
 from quill.ui.theme import apply_spacing
-from quill.ui.widgets import ElidedLabel, Pill, tooltip_lines
+from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, tooltip_lines
 
 #: Active-light colours (the same hues are used by the tray icon).
 COLOR_ACTIVE = "#34c759"
 COLOR_IDLE = "#8e8e93"
+
+#: The chip that replaces the sheet name while no spreadsheet is connected, and its tooltip.
+NOT_CONNECTED_TEXT = "File stream not connected."
+NOT_CONNECTED_HINT = (
+    "No spreadsheet is connected, so there is nothing to read lists from or write rows to.\n"
+    "Quill works through a workbook open in Excel (it attaches automatically within a few seconds of "
+    "the workbook opening) or through an .xlsx file chosen with File > Open Spreadsheet File.\n"
+    "Open a workbook or choose a file; listening can start once the connection is made."
+)
+
+#: Heights (px) of the Current Row box: when empty, and the most it grows to before it scrolls inside itself.
+ROW_EMPTY_HEIGHT = 42
+ROW_MAX_FULL = 150
+ROW_MAX_MINI = 66
+
+#: Space left below the "Log" heading when the log is minimized, in pixels.
+LOG_BOTTOM_MARGIN = 12
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
@@ -96,6 +113,8 @@ class MainWindow:
         self._sorting_count = 0
         self._footer_text = ""
         self._offer_download = False
+        self._not_connected = False
+        self._native_settings_button = False
         self._text_color = "#1F1E1D"
         self._accent = "#C9623F"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
@@ -158,17 +177,24 @@ class MainWindow:
             lambda index: self._on_workbook(self.workbook_combo.itemText(index))
         )
         self.sheet_label = QLabel("Sheet: –")
+        # Shown instead of the sheet name while no spreadsheet is connected: a technical warning chip.
+        self.connection_chip = QLabel(NOT_CONNECTED_TEXT)
+        self.connection_chip.setProperty("chip", "warn")
+        self.connection_chip.setToolTip(NOT_CONNECTED_HINT)
+        self.connection_chip.setVisible(False)
         self.open_file_button = QPushButton("Open File…")
         self.open_file_button.setToolTip("Work on an .xlsx file directly (no Excel needed)")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self._on_open_file())
         self.workbook_row = QWidget()                   # one widget so the mini view can hide the row whole
+        self.workbook_row.setProperty("keepMargins", True)    # flush with the content above and below
         row = QHBoxLayout(self.workbook_row)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.workbook_combo, 1)
         row.addWidget(self.open_file_button)
         layout.addWidget(self.workbook_row)
         layout.addWidget(self.sheet_label)
+        layout.addWidget(self.connection_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
         # --- current row
         self.row_toggle = self._section_toggle("row", "Show or hide the row being built")
@@ -179,8 +205,17 @@ class MainWindow:
         self.row_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.row_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.row_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self.row_table.setMaximumHeight(150)
         self._row_height = self.row_table.verticalHeader().defaultSectionSize()
+        self.row_table.setFixedHeight(ROW_EMPTY_HEIGHT)             # starts small; grows with the fields heard
+        self._row_target = ROW_EMPTY_HEIGHT
+        # a hint shown while no fields have been heard yet
+        self.row_placeholder = QLabel("Fields appear here as they are heard", self.row_table.viewport())
+        self.row_placeholder.setProperty("note", True)
+        self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        holder = QVBoxLayout(self.row_table.viewport())
+        holder.setContentsMargins(4, 0, 4, 0)
+        holder.addWidget(self.row_placeholder)
         layout.addWidget(self.row_table)
         self.last_label = ElidedLabel("Last Saved: –")      # one line however much was saved
         self.last_label.setProperty("note", True)          # smaller italic supporting text
@@ -191,6 +226,7 @@ class MainWindow:
         self.sorting_button.setProperty("accent", True)
         self.sorting_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sorting_button.setMinimumHeight(self.sorting_button.fontMetrics().height() * 2 + 4)
+        self.sorting_button.setProperty("keepMargins", True)
         inner = QHBoxLayout(self.sorting_button)
         inner.setContentsMargins(12, 0, 12, 0)
         inner.addStretch(1)
@@ -212,15 +248,8 @@ class MainWindow:
         self.undo_button.setVisible(False)
         layout.addWidget(self.undo_button)
 
-        # --- log
-        self.log_toggle = self._section_toggle("log", "Show or hide the log")
-        layout.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(MAX_LOG_LINES)
-        layout.addWidget(self.log, 1)
-
-        # --- footer
+        # --- status messages (the model download, and so on) sit above the log, so that
+        # nothing is ever below "Log" when it is minimized
         self.footer = QLabel()
         self.footer.setWordWrap(True)
         self.footer.setVisible(False)
@@ -229,6 +258,14 @@ class MainWindow:
         self.download_button.setVisible(False)
         layout.addWidget(self.footer)
         layout.addWidget(self.download_button)
+
+        # --- log (last)
+        self.log_toggle = self._section_toggle("log", "Show or hide the log")
+        layout.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setMaximumBlockCount(MAX_LOG_LINES)
+        layout.addWidget(self.log, 1)
 
         # File menu (the global menu bar on macOS): Open Spreadsheet File, and back to live Excel.
         file_menu = window.menuBar().addMenu("File")
@@ -345,6 +382,18 @@ class MainWindow:
         self._refresh_visibility()
         self.refresh_icons(self._text_color, self._on_accent, self._accent)
 
+    def set_not_connected(self, not_connected: bool, hint: str | None = None) -> None:
+        """Show the "File stream not connected." chip (instead of the sheet name) while there is no spreadsheet."""
+        self._not_connected = not_connected
+        if hint:
+            self.connection_chip.setToolTip(hint)
+        self._refresh_visibility()
+
+    def set_native_settings_button(self, native: bool) -> None:
+        """The title bar now has its own Settings icon, so the one inside the window is hidden."""
+        self._native_settings_button = native
+        self._refresh_visibility()
+
     def set_native_mini_button(self, native: bool) -> None:
         """The title bar now has its own resize icon, so the one inside the window is hidden."""
         self._native_mini_button = native
@@ -357,6 +406,8 @@ class MainWindow:
         apply_spacing(self._window, spacing)
         if self._view_mini:
             self._set_margins(True)
+        else:
+            self._log_bottom_margin()
 
     def _set_margins(self, mini: bool) -> None:
         if mini:
@@ -364,6 +415,13 @@ class MainWindow:
             self._layout.setSpacing(6)
         else:
             apply_spacing(self._window)
+            self._log_bottom_margin()
+
+    def _log_bottom_margin(self) -> None:
+        """With the log minimized "Log" is the last thing in the window: only a small margin may follow it."""
+        if self._log_collapsed and not self._view_mini and self._window is not None:
+            m = self._layout.contentsMargins()
+            self._layout.setContentsMargins(m.left(), m.top(), m.right(), LOG_BOTTOM_MARGIN)
 
     def _place_sorting_button(self, mini: bool) -> None:
         """In the mini view the Needs-sorting count sits in the status row; otherwise on its own row."""
@@ -449,8 +507,11 @@ class MainWindow:
             return
         full = not self._view_mini
         self.state_label.setVisible(True)                                   # "Listening" / "Not Listening" shows in both views
+        self.sheet_label.setVisible(full and not self._not_connected)
+        self.connection_chip.setVisible(self._not_connected)                # a missing connection matters in both views
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
-        for widget in (self.settings_button, self.workbook_row, self.sheet_label,
+        self.settings_button.setVisible(full and not self._native_settings_button)
+        for widget in (self.workbook_row,
                        self.row_toggle, self.last_label, self.log_toggle):
             widget.setVisible(full)
         self.undo_button.setVisible(full and self._undo_count > 0)
@@ -460,17 +521,14 @@ class MainWindow:
         self.download_button.setVisible(full and self._offer_download)
         self.sorting_button.setVisible(self._sorting_count > 0)
         self.sorting_title.setVisible(full)                               # just the count pill when mini
-        self.row_table.setMaximumHeight(66 if self._view_mini else 150)
-        self.row_table.setMinimumHeight(48 if self._view_mini else 0)
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
+        self._fit_row_table(animate=False)
         self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini
                                              else (self.sorting_button.fontMetrics().height() * 2 + 4))
         self.sorting_button.setToolTip("Needs Sorting" if self._view_mini else "")
 
-    def _section_toggle(self, name: str, tip: str) -> QToolButton:
-        button = QToolButton()
-        button.setProperty("heading", True)
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
+    def _section_toggle(self, name: str, tip: str) -> HeadingToggle:
+        button = HeadingToggle()
         button.setToolTip(tip)
         button.clicked.connect(lambda: self._set_collapsed(name, not self._collapsed(name), notify=True))
         return button
@@ -498,6 +556,8 @@ class MainWindow:
             self._row_collapsed = collapsed
         self._applied[name] = collapsed
         self._refresh_visibility()
+        if name == "log" and window is not None and not self._view_mini:
+            self._set_margins(False)           # a minimized log leaves only a small margin beneath it
         if window is not None and not self._view_mini:   # (the mini view hides sections whatever their state)
             window.centralWidget().layout().activate()
             if collapsed and not was:
@@ -554,9 +614,32 @@ class MainWindow:
     def update_sheet(self, name: str) -> None:
         self.sheet_label.setText(f"Sheet: {name}")
 
+    def _row_table_height(self) -> int:
+        """How tall the Current Row box should be: small when empty, growing with its rows up to a cap."""
+        rows = self.row_table.rowCount()
+        if rows == 0:
+            return ROW_EMPTY_HEIGHT
+        cap = ROW_MAX_MINI if self._view_mini else ROW_MAX_FULL
+        cell = self.row_table.verticalHeader().defaultSectionSize()
+        return max(ROW_EMPTY_HEIGHT, min(cap, rows * cell + 2 * self.row_table.frameWidth() + 6))
+
+    def _fit_row_table(self, animate: bool = True) -> None:
+        """Resize the Current Row box to its content and, on screen, let the window follow by the same amount.
+
+        Past the cap the box stops growing and scrolls inside itself.
+        """
+        new = self._row_table_height()
+        old, self._row_target = self._row_target, new
+        self.row_table.setFixedHeight(new)
+        window = self._window
+        if (animate and window is not None and window.isVisible() and new != old
+                and self.row_table.isVisibleTo(window)):
+            self._resize_to(window.width(), max(self._height_now() + (new - old), 0))
+
     def update_current_row(self, fields: dict[str, object]) -> None:
-        """Show the record being built, one column per line."""
+        """Show the record being built, one column per line (the box grows with the fields, then scrolls)."""
         self.row_table.setRowCount(len(fields))
+        self.row_placeholder.setVisible(not fields)
         for r, (column, value) in enumerate(fields.items()):
             text = value.isoformat() if isinstance(value, dt.date) else str(value)
             for c, content in enumerate((column, text)):
@@ -564,6 +647,7 @@ class MainWindow:
                 if c == 0:
                     item.setForeground(self.row_table.palette().placeholderText())
                 self.row_table.setItem(r, c, item)
+        self._fit_row_table()
 
     def set_last_saved(self, row: str, record: dict[str, object] | None = None) -> None:
         """Show the last saved row as one line: ``Row 6 · 12 fields · Type: T-Shirt, …``.

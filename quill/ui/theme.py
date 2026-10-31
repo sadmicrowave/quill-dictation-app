@@ -28,9 +28,9 @@ _SCHEMES = {
 #: Colour tokens per scheme. Warm neutrals with one accent.
 TOKENS = {
     "light": dict(bg="#FAF9F5", surface="#FFFFFF", hover="#F1EFE8", pressed="#E8E5DC",
-                  border="#E3E0D6", text="#1F1E1D", muted="#6F6D66", disabled="#B4B1A8"),
+                  border="#E3E0D6", text="#1F1E1D", muted="#6F6D66", disabled="#B4B1A8", warn="#A8610C"),
     "dark":  dict(bg="#262624", surface="#30302E", hover="#3A3A37", pressed="#444441",
-                  border="#44443F", text="#ECEBE6", muted="#A19F98", disabled="#6B6A64"),
+                  border="#44443F", text="#ECEBE6", muted="#A19F98", disabled="#6B6A64", warn="#F0B957"),
 }
 
 #: Accent colours: name -> (label, light scheme (accent, hover), dark scheme (accent, hover)).
@@ -202,6 +202,8 @@ QMenu::item:disabled {{ color: {t['disabled']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
 QLabel[heading="true"] {{ color: {t['muted']}; }}
+QLabel[chip="warn"] {{ background: {rgba(t['warn'], 0.14)}; color: {t['warn']}; border: 1px solid {rgba(t['warn'], 0.42)};
+              border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
 QLabel[note="true"] {{ font-size: {max(font_size - 2, 7)}pt; font-style: italic; color: {t['muted']}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}
@@ -210,12 +212,14 @@ QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t[
 QSlider::handle:horizontal {{ width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;
               background: {t['accent']}; border: 2px solid {t['surface']}; }}
 QLabel#termPrompt {{ font-size: {font_size + 3}pt; font-weight: 500; }}
-QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2px 0;
+QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2px 0; margin: 0; min-width: 0;
               font-size: {font_size}pt;
               color: {t['muted']}; }}
 QToolButton[flatIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[flatIcon="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
+QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; }}
+QLabel[headingToggle="true"]:hover {{ color: {t['accent']}; }}
 QWidget#settingsSidebar {{ border-right: 1px solid {t['border']}; }}
 QListWidget#settingsNav {{ background: transparent; border: none; outline: none; padding: 0; }}
 QListWidget#settingsNav::item {{ padding: 8px 12px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}
@@ -337,6 +341,7 @@ def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:
     layouts = ([widget.layout()] if widget.layout() else []) + widget.findChildren(QLayout)
     for layout in layouts:
         layout.setSpacing(d["gap"])
-        if isinstance(layout.parent(), QWidget):      # a widget's own layout, not a nested one
+        parent = layout.parent()
+        if isinstance(parent, QWidget) and not parent.property("keepMargins"):   # a widget's own layout, not a nested one
             m = d["margin"]
             layout.setContentsMargins(m, m, m, m)

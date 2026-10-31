@@ -28,6 +28,7 @@ class SettingRow(QWidget):
     def __init__(self, title: str, description: str, control: QWidget, keywords: str = "") -> None:
         super().__init__()
         self.title = title
+        self.setProperty("keepMargins", True)       # its inner layout is set explicitly; spacing must not move it
         self.search_text = f"{title} {description} {keywords}".lower()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)

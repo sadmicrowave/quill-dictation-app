@@ -21,10 +21,10 @@ from quill.session import Decision, Event, Session, TermKey
 
 EventCallback = Callable[[Event], None]
 
-#: Shown and spoken whenever Quill is asked to listen with no spreadsheet to listen to.
+#: Shown (in the not-connected chip's tooltip) and spoken whenever Quill is asked to listen with no spreadsheet.
 NO_WORKBOOK_HELP = (
-    "I can't find a spreadsheet. Open one in Excel and I'll attach to it, or choose "
-    "Open Spreadsheet File in the File menu. Then say start listening."
+    "No spreadsheet is connected. Open a workbook in Excel and Quill attaches to it automatically, "
+    "or choose Open Spreadsheet File in the File menu. Then start listening."
 )
 
 

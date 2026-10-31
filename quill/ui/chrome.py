@@ -259,6 +259,7 @@ def set_always_on_top(widget, on: bool, platform: str | None = None,
 #: SF Symbol names for "shrink to the mini view" / "back to the full window".
 SYMBOL_MINI = "arrow.down.right.and.arrow.up.left"
 SYMBOL_FULL = "arrow.up.left.and.arrow.down.right"
+SYMBOL_SETTINGS = "slider.horizontal.3"
 _NS_LAYOUT_RIGHT = 2
 
 
@@ -269,8 +270,9 @@ class TitlebarButton:
     swaps the icon with :meth:`set_mini`.
     """
 
-    def __init__(self, button, controller, target, appkit) -> None:
+    def __init__(self, button, controller, target, appkit, extras=()) -> None:
         self._button, self._controller, self._target, self._appkit = button, controller, target, appkit
+        self._extras = list(extras)                # (button, target) pairs kept alive beside the main one
 
     def set_mini(self, mini: bool) -> None:
         """Show the "back to full" icon while in the mini view, "shrink" otherwise."""
@@ -290,13 +292,16 @@ class TitlebarButton:
 
 
 def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False,
-                        platform: str | None = None, appkit=None) -> TitlebarButton | None:
-    """Add a resize icon to the right of the window's native title bar (macOS).
+                        platform: str | None = None, appkit=None,
+                        extra: list[tuple[str, str, Callable[[], None]]] | None = None) -> TitlebarButton | None:
+    """Add the resize icon (and optionally more icons to its left) at the right of the native title bar (macOS).
 
     Args:
         widget: The top-level window.
-        callback: Called, with no arguments, when the icon is clicked.
+        callback: Called, with no arguments, when the resize icon is clicked.
         mini: Whether the window is currently the mini view (chooses the icon).
+        extra: More icons to place to the *left* of the resize icon, as
+            ``(SF Symbol name, tooltip, callback)`` (for example the Settings icon).
 
     Returns:
         The button, or None where this is not possible (other platforms, headless
@@ -318,16 +323,35 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         window = view.window()
         if window is None:
             return None
-        target = target_class.alloc().initWithCallback_(callback)
-        button = appkit.NSButton.alloc().initWithFrame_(((0, 0), (34, 24)))
-        button.setBordered_(False)
-        button.setTarget_(target)
-        button.setAction_("toggle:")
+        def make_button(action):
+            target = target_class.alloc().initWithCallback_(action)
+            button = appkit.NSButton.alloc().initWithFrame_(((0, 0), (34, 24)))
+            button.setBordered_(False)
+            button.setTarget_(target)
+            button.setAction_("toggle:")
+            return button, target
+
+        button, target = make_button(callback)
+        extras = []
+        for symbol, tip, action in extra or []:
+            extra_button, extra_target = make_button(action)
+            image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, tip)
+            if image is not None:
+                extra_button.setImage_(image)
+            extra_button.setToolTip_(tip)
+            extras.append((extra_button, extra_target))
         controller = appkit.NSTitlebarAccessoryViewController.alloc().init()
-        controller.setView_(button)
+        if extras:                                    # extra icons first (left), the resize icon last (right)
+            views = [e[0] for e in extras] + [button]
+            row = appkit.NSStackView.stackViewWithViews_(views)
+            row.setSpacing_(2)
+            row.setFrame_(((0, 0), (36 * len(views), 24)))    # an accessory view needs a size of its own
+            controller.setView_(row)
+        else:
+            controller.setView_(button)
         controller.setLayoutAttribute_(_NS_LAYOUT_RIGHT)
         window.addTitlebarAccessoryViewController_(controller)
-        result = TitlebarButton(button, controller, target, appkit)
+        result = TitlebarButton(button, controller, target, appkit, extras)
         result.set_mini(mini)
         return result
     except Exception:

@@ -63,8 +63,9 @@ class TestControllerWithoutWorkbook(PresenceCase):
         self.assertEqual(self.speaker.said, [NO_WORKBOOK_HELP])
 
     def test_help_text_says_how_to_proceed(self):
-        self.assertIn("Open one in Excel", NO_WORKBOOK_HELP)
-        self.assertIn("start listening", NO_WORKBOOK_HELP)
+        self.assertIn("Open a workbook in Excel", NO_WORKBOOK_HELP)
+        self.assertIn("Open Spreadsheet File", NO_WORKBOOK_HELP)
+        self.assertIn("start listening", NO_WORKBOOK_HELP.lower())
 
     def test_workbook_opened_later_is_picked_up_by_next_phrase(self):
         make_workbook(self.path)
@@ -108,14 +109,16 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
     def test_window_explains_what_to_do(self):
         quill = self.make_app()
         self.assertFalse(quill.connected)
-        self.assertEqual(quill.window.footer.text(), NO_WORKBOOK_HELP)
+        self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
+        self.assertEqual(quill.window.connection_chip.toolTip(), NO_WORKBOOK_HELP)
+        self.assertEqual(quill.window.footer.text(), "")                   # not repeated at the bottom of the window
 
     def test_start_button_informs_user_everywhere(self):
         quill = self.make_app()
         quill.window.toggle_button.click()
         self.assertFalse(quill.controller.session.listening)
         self.assertFalse(quill.window.listening)
-        self.assertEqual(quill.window.footer.text(), NO_WORKBOOK_HELP)
+        self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
         quill.tray.notify.assert_called_with(NO_WORKBOOK_HELP)
         self.assertEqual(self.speaker.said[-1], NO_WORKBOOK_HELP)
 
@@ -154,7 +157,7 @@ class TestWatcher(AppPresenceCase):
         self.assertFalse(quill.window.listening)
         self.assertFalse(quill.tray.listening)
         self.assertIn("was closed", quill.window.log.toPlainText())
-        self.assertEqual(quill.window.footer.text(), NO_WORKBOOK_HELP)
+        self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
 
     def test_reattaches_when_it_returns(self):
         make_workbook(self.path)

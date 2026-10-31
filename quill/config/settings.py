@@ -56,7 +56,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "accent": "terracotta",   # one of ACCENTS (ui/theme.py)
     "spacing": "compact",     # "compact" | "comfortable"
     "font_size": 12,          # base text size in points
-    "log_collapsed": False,   # the main window's log starts hidden
+    "log_collapsed": True,    # the main window's log starts hidden (a click on "Log" opens it)
     "row_collapsed": False,   # the main window's Current row section starts hidden
     "hide_dock_icon": False,  # macOS: keep Quill out of the Dock (it stays in the menu bar)
     "mini_mode": False,       # the main window starts as the small overlay
