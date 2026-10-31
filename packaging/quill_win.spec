@@ -7,8 +7,8 @@ sd_d, sd_b, sd_h = collect_all("sounddevice")
 a = Analysis(
     ["main.py"], pathex=["."],
     binaries=[*vosk_b, *sd_b],
-    datas=[("quill/config/defaults.json","quill/config"),("quill/sounds","quill/sounds"),("quill/model","quill/model"),*vosk_d,*sd_d],
+    datas=[("quill/config/defaults.json","quill/config"),("quill/sounds","quill/sounds"),("quill/model","quill/model"),("quill/assets","quill/assets"),*vosk_d,*sd_d],
     hiddenimports=[*vosk_h, *sd_h, *collect_submodules("quill"), "xlwings","win32com.client","pyttsx3.drivers.sapi5"],
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="Quill", console=False, icon=None)
+exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="Quill", console=False, icon="quill/assets/Quill.ico")

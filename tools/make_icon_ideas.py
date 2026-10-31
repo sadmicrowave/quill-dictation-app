@@ -304,13 +304,18 @@ def tiled_sheet(color: str, x: float, y: float, w: float, h: float, radius: floa
     return "".join(out)
 
 
-def sound_lines(cx: float, cy: float, scale: float = 1.0) -> str:
-    """The white waveform overlay, with a soft shadow beneath it."""
-    xs = [-33, -22, -11, 0, 11, 22, 33]
-    hs = [14, 30, 46, 60, 40, 24, 12]
+def sound_lines(cx: float, cy: float, scale: float = 1.0, simple: bool = False) -> str:
+    """The white waveform overlay, with a soft shadow beneath it.
+
+    *simple* draws five thicker lines instead of seven thin ones, for icons of 48 px and under,
+    where seven lines blur into a smudge."""
+    if simple:
+        xs, hs, half = [-26, -13, 0, 13, 26], [24, 46, 66, 40, 20], 5.0
+    else:
+        xs, hs, half = [-33, -22, -11, 0, 11, 22, 33], [14, 30, 46, 60, 40, 24, 12], 3.5
     def one(fill, dy=0, opacity=1):
-        return "".join(f'<rect x="{cx + (x - 3.5) * scale:.1f}" y="{cy + (dy - h / 2) * scale:.1f}" width="{7 * scale:.1f}" '
-                       f'height="{h * scale:.1f}" rx="{3.5 * scale:.1f}" fill="{fill}" opacity="{opacity}"/>' for x, h in zip(xs, hs))
+        return "".join(f'<rect x="{cx + (x - half) * scale:.1f}" y="{cy + (dy - h / 2) * scale:.1f}" width="{2 * half * scale:.1f}" '
+                       f'height="{h * scale:.1f}" rx="{half * scale:.1f}" fill="{fill}" opacity="{opacity}"/>' for x, h in zip(xs, hs))
     return f'<g>{one("#000", 3.5, .16)}{one("#000", 2, .2)}{one("#FFFFFF")}</g>'
 
 
@@ -349,13 +354,13 @@ IDEAS_SHEET = [
 ]
 
 
-def offset_box(color: str, x=16.0, y=39.0, size=50.0) -> str:
+def offset_box(color: str, x=16.0, y=39.0, size=50.0, simple: bool = False) -> str:
     """The small front box (Excel's X box) holding the white sound lines."""
     deep = shade(color, -0.22)
     return (f'<rect x="{x}" y="{y + 3}" width="{size}" height="{size}" rx="11" fill="#000" opacity=".22"/>'
             f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="11" fill="{deep}"/>'
             f'<rect x="{x + .6}" y="{y + .6}" width="{size - 1.2}" height="{size - 1.2}" rx="10.4" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="1.2"/>'
-            + sound_lines(x + size / 2, y + size / 2, 0.44))
+            + sound_lines(x + size / 2, y + size / 2, 0.44 if not simple else 0.52, simple))
 
 
 def sheet_offset_plate(color: str) -> str:
@@ -373,7 +378,7 @@ def sheet_offset_plate(color: str) -> str:
             + offset_box(color, 16, 39, 50) + '</svg>')
 
 
-def sheet_offset_body(color: str) -> str:
+def sheet_offset_body(color: str, simple: bool = False) -> str:
     """The same layout on a purple icon body: pale tiles, a deep small box, white sound lines."""
     top, bottom = shade(color, 0.10), shade(color, -0.12)
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
@@ -386,7 +391,7 @@ def sheet_offset_body(color: str) -> str:
             '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
             '<rect x="42" y="21" width="68" height="86" rx="10" fill="#000" opacity=".16" transform="translate(0 3)"/>'
             + tiled_sheet(color, 42, 21, 68, 86, 10, light=True)
-            + offset_box(color, 16, 39, 50) + '</svg>')
+            + offset_box(color, 16, 39, 50, simple) + '</svg>')
 
 
 #: Round eight: the Excel layout (an offset sheet behind a small front box that holds the sound lines).

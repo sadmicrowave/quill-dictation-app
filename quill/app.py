@@ -17,6 +17,7 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
@@ -75,6 +76,7 @@ class QuillApp:
         echo_speaker=None,
     ) -> None:
         self.qapp = qapp
+        qapp.setWindowIcon(app_icon())               # the Dock / taskbar / window icon
         self.settings = settings
         self.relay = Relay()
         self.speaker = speaker or Speaker(enabled=bool(settings.preferences["speak_prompts"]))

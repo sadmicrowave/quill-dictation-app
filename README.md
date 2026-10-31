@@ -213,6 +213,10 @@ The five sets now differ in instrument *and* melody, not just pitch: **Chime** (
 
 There is no Refresh button. Every 3 seconds Quill compares the workbook file's modification time with the last one it saw and, if you have saved a change in Excel (a new column, a new drop-down value), re-reads the lists and columns. Quill's own writes (rows, taught values, filters) record the new time straight away so they are never mistaken for outside changes, and a file caught mid-save is simply retried on the next tick. The log says "Workbook changed: lists and columns re-read".
 
+### App icon
+
+The chosen design (idea 66: a violet icon, a pale tiled sheet set to the right, a deep small box on the left holding the white sound lines, centred vertically) is built by `tools/make_app_icon.py` into `quill/assets/`: `icon.svg`, `icon-small.svg`, `icon-16` to `icon-1024.png`, `Quill.icns` (macOS, through `iconutil`) and `Quill.ico` (Windows, seven PNG sizes written directly). At 48 px and below the sound lines are drawn as five bold lines instead of seven thin ones, which would blur into a smudge. `QuillApp` sets it as the application icon (this is the Dock icon on macOS, verified on a real run) and both PyInstaller specs use it and ship `quill/assets`. The menu bar icon is separate: the small box on its own (see above). Note that the packaged macOS build is marked `LSUIElement` (a menu bar app with no Dock icon); remove that line from `packaging/quill_mac.spec` if it should also appear in the Dock.
+
 ### Capitalisation
 
 Titles, labels, buttons, menu items, setting names and the like use Title Case throughout: two-word titles have both words capitalised (**Last Saved**, **Current Row**, **Not Listening**, **Needs Sorting**, **Sound Set**), and longer ones capitalise every word except small joining words (**Sort by Voice Automatically**, **Keep the Mini View on Top**). Descriptions, tooltips and log sentences stay sentence case.
