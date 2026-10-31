@@ -223,6 +223,30 @@ class TestSortingWindow(unittest.TestCase):
         self.win = SortingWindow(self.vocab, lambda k, d, t: self.calls.append((k, d, t)))
         self.win.setup()
 
+    def test_it_is_a_normal_window_that_stays_when_focus_leaves(self):
+        from PySide6.QtCore import Qt
+        flags = self.win.widget.windowFlags()
+        self.assertFalse(flags & Qt.WindowType.Tool == Qt.WindowType.Tool)     # tool windows vanish when the app is inactive
+        self.assertEqual(flags & Qt.WindowType.WindowType_Mask, Qt.WindowType.Window)
+
+    def test_guidance_text(self):
+        self.assertEqual(self.win.intro.text(),
+                         "These terms were heard but couldn't be placed. Decide what to do for each one.")
+
+    def test_it_opens_wide_enough_for_a_whole_row(self):
+        self.win.set_items([("Era", "90s")])
+        self.win.widget.resize(320, 300)
+        self.win.show()
+        need = self.win.rows[0].sizeHint().width() + 2 * SortingWindow.MARGIN
+        self.assertGreaterEqual(self.win.widget.width(), min(need, 1000))
+
+    def test_the_list_has_small_margins_and_no_frame(self):
+        from PySide6.QtWidgets import QFrame
+        self.win.set_items([("Era", "90s")])
+        self.assertEqual(self.win.scroll.frameShape(), QFrame.Shape.NoFrame)
+        m = self.win.root.layout().contentsMargins()
+        self.assertEqual((m.left(), m.right()), (SortingWindow.MARGIN, SortingWindow.MARGIN))
+
     def test_prompts_match_the_experience(self):
         self.assertEqual(question_for("Era", "90s"), "You said ‘90s’ — is that an Era?")
         self.assertEqual(question_for("Color", "teal"), "You said ‘teal’ — is that a Color?")

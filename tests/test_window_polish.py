@@ -70,8 +70,13 @@ class TestConnectionChip(unittest.TestCase):
         self.assertIn(".xlsx", hint)
         self.assertIn("File > Open Spreadsheet File", hint)
         tip = window().connection_chip.toolTip()
-        self.assertEqual(tip.replace("\n", " "), hint.replace("\n", " "))
-        self.assertLessEqual(max(len(line) for line in tip.splitlines()), 56)     # wrapped: never a screen-wide strip
+        self.assertFalse(FIRST_PERSON.search(tip), FIRST_PERSON.search(tip))
+        for part in ("Not connected", "Excel", ".xlsx", "File ▸ Open Spreadsheet File", "Start"):
+            self.assertIn(part, tip)
+        self.assertIn("<b>", tip)                                                  # bold, italics and spacing
+        self.assertIn("<i>", tip)
+        self.assertIn("line-height", tip)
+        self.assertIn("letter-spacing", tip)
 
     def test_the_app_supplied_hint_has_no_first_person_either(self):
         from quill.controller import NO_WORKBOOK_HELP
@@ -80,7 +85,8 @@ class TestConnectionChip(unittest.TestCase):
     def test_a_custom_hint_replaces_the_tooltip(self):
         w = window()
         w.set_not_connected(True, "Custom hint")
-        self.assertEqual((w.connection_chip.toolTip(), w.mini_chip.toolTip()), ("Custom hint",) * 2)
+        for chip in (w.connection_chip, w.mini_chip):
+            self.assertIn("Custom hint", chip.toolTip())
 
     def test_still_shown_in_the_mini_view_where_the_sheet_name_is_not(self):
         w = window()
@@ -269,7 +275,7 @@ class TestCurrentRowSizing(unittest.TestCase):
         return {f"Column {i}": f"value {i}" for i in range(n)}
 
     def test_starts_small_with_a_hint(self):
-        self.assertEqual(self.w.row_table.height(), ROW_EMPTY_HEIGHT)
+        self.assertEqual(self.w.row_table.minimumHeight(), ROW_EMPTY_HEIGHT)
         self.assertTrue(self.w.row_placeholder.isVisibleTo(self.w.widget))
         self.assertLess(ROW_EMPTY_HEIGHT, 60)
 
@@ -277,7 +283,7 @@ class TestCurrentRowSizing(unittest.TestCase):
         heights = []
         for n in range(1, 12):
             self.w.update_current_row(self.fields(n))
-            heights.append(self.w.row_table.height())
+            heights.append(self.w.row_table.minimumHeight())
         self.assertEqual(heights, sorted(heights))
         self.assertGreater(heights[3], heights[0])
         self.assertEqual(heights[-1], ROW_MAX_FULL)
@@ -286,7 +292,7 @@ class TestCurrentRowSizing(unittest.TestCase):
     def test_past_the_cap_it_scrolls_inside_itself(self):
         self.w.update_current_row(self.fields(20))
         _app.processEvents()
-        self.assertEqual(self.w.row_table.height(), ROW_MAX_FULL)
+        self.assertEqual(self.w.row_table.minimumHeight(), ROW_MAX_FULL)
         self.assertGreater(self.w.row_table.verticalScrollBar().maximum(), 0)
 
     def test_a_few_fields_do_not_scroll(self):
@@ -297,19 +303,27 @@ class TestCurrentRowSizing(unittest.TestCase):
     def test_shrinks_back_and_shows_the_hint_after_the_row_is_saved(self):
         self.w.update_current_row(self.fields(6))
         self.w.update_current_row({})
-        self.assertEqual(self.w.row_table.height(), ROW_EMPTY_HEIGHT)
+        self.assertEqual(self.w.row_table.minimumHeight(), ROW_EMPTY_HEIGHT)
         self.assertTrue(self.w.row_placeholder.isVisibleTo(self.w.widget))
 
     def test_the_hint_goes_away_while_there_are_fields(self):
         self.w.update_current_row(self.fields(1))
         self.assertFalse(self.w.row_placeholder.isVisibleTo(self.w.widget))
 
-    def test_the_window_follows_by_the_same_amount(self):
+    def test_a_tight_window_grows_to_fit_the_fields(self):
+        self.w.widget.resize(360, self.w._fit_height())          # no spare room
+        _app.processEvents()
         before = self.w.widget.height()
         self.w.update_current_row(self.fields(4))
-        grown = self.w.widget.height() - before
-        self.assertEqual(grown, self.w.row_table.height() - ROW_EMPTY_HEIGHT)
-        self.w.update_current_row({})
+        _app.processEvents()
+        self.assertGreater(self.w.widget.height(), before)
+        self.assertGreaterEqual(self.w.row_table.height(), self.w.row_table.minimumHeight())
+
+    def test_a_roomy_window_does_not_grow(self):
+        self.w.widget.resize(360, 900)
+        _app.processEvents()
+        before = self.w.widget.height()
+        self.w.update_current_row(self.fields(4))
         self.assertEqual(self.w.widget.height(), before)
 
     def test_the_window_stops_growing_when_the_box_stops(self):
@@ -318,17 +332,10 @@ class TestCurrentRowSizing(unittest.TestCase):
         self.w.update_current_row(self.fields(15))
         self.assertEqual(self.w.widget.height(), height)
 
-    def test_a_collapsed_current_row_does_not_move_the_window(self):
-        self.w.set_row_collapsed(True)
-        _app.processEvents()
-        height = self.w.widget.height()
-        self.w.update_current_row(self.fields(5))
-        self.assertEqual(self.w.widget.height(), height)
-
     def test_the_mini_view_has_a_smaller_cap(self):
         self.w.set_mini(True)
         self.w.update_current_row(self.fields(10))
-        self.assertEqual(self.w.row_table.height(), ROW_MAX_MINI)
+        self.assertEqual(self.w.row_table.minimumHeight(), ROW_MAX_MINI)
         self.assertLess(ROW_MAX_MINI, ROW_MAX_FULL)
 
     def test_the_mini_view_grows_with_its_rows_up_to_the_cap(self):
@@ -395,34 +402,39 @@ class TestAlignment(unittest.TestCase):
 
 
 class TestResizingKeepsAlignment(unittest.TestCase):
-    """Making the window taller must not open gaps between sections or stretch any of them."""
+    """Making the window taller gives the height to the Current Row box; nothing else gaps or stretches."""
 
-    def positions(self, w):
-        root = w.root
-        names = ("toggle_button", "workbook_row", "row_toggle", "row_table", "last_label", "log_toggle")
-        return {n: (getattr(w, n).mapTo(root, getattr(w, n).rect().topLeft()).y(), getattr(w, n).height())
-                for n in names}
+    def top(self, w, name):
+        widget = getattr(w, name)
+        return widget.mapTo(w.root, widget.rect().topLeft()).y()
 
-    def test_sections_keep_their_places_and_sizes_and_log_stays_at_the_bottom(self):
+    def test_the_row_box_takes_the_height_and_log_stays_at_the_bottom(self):
         w = window(log_collapsed=True)
         w.set_not_connected(True)
         _app.processEvents()
-        before = self.positions(w)
+        small = w.row_table.height()
         w.widget.resize(360, 1000)
         _app.processEvents()
-        after = self.positions(w)
-        for name in ("toggle_button", "workbook_row", "row_toggle", "row_table", "last_label"):
-            self.assertEqual(before[name], after[name], name)                   # same place, same size
+        self.assertGreater(w.row_table.height(), small + 200)                 # the watched box grows
         bottom = w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y()
         self.assertEqual(w.root.height() - bottom - 1, LOG_BOTTOM_MARGIN)       # Log hugs the bottom edge
+        self.assertEqual(w.connection_chip.height(), CHIP_HEIGHT)
 
-    def test_an_open_log_takes_the_extra_height(self):
+    def test_the_log_heading_stays_with_its_box_when_open(self):
         w = window(log_collapsed=False)
-        before = self.positions(w)
         w.widget.resize(360, 1000)
         _app.processEvents()
-        self.assertEqual(before["row_table"], self.positions(w)["row_table"])
-        self.assertGreater(w.log.height(), 300)
+        heading_bottom = w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y()
+        log_top = w.log.mapTo(w.root, w.log.rect().topLeft()).y()
+        self.assertLess(log_top - heading_bottom, 12)
+        self.assertLess(w.root.height() - (w.log.mapTo(w.root, w.log.rect().bottomLeft()).y() + 1), 20)
+
+    def test_the_sections_above_stay_put_when_the_window_grows(self):
+        w = window(log_collapsed=False)
+        before = [self.top(w, n) for n in ("toggle_button", "workbook_row", "row_heading")]
+        w.widget.resize(360, 1000)
+        _app.processEvents()
+        self.assertEqual(before, [self.top(w, n) for n in ("toggle_button", "workbook_row", "row_heading")])
 
 
 if __name__ == "__main__":

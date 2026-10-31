@@ -264,7 +264,8 @@ class TestAppVoiceSorting(AppVoiceCase):
         self.assertTrue(s.voice_active)
         self.assertTrue(s.voice_button.isChecked())
         self.assertIn("Listening", s.voice_button.text())
-        self.assertIn(s.VOICE_HINT, s.voice_status.text())
+        self.assertFalse(s.voice_status.isVisibleTo(s.widget))        # no stray text beside the button
+        self.assertEqual(s.voice_button.toolTip(), s.VOICE_HINT)
         self.assertIn("highlight", s.rows[0].styleSheet())
         self.assertEqual(s.rows[1].styleSheet(), "")
 

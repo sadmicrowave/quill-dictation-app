@@ -288,19 +288,28 @@ def rrect(x, y, w, h, tl=0, tr=0, br=0, bl=0):
 
 
 def tiled_sheet(color: str, x: float, y: float, w: float, h: float, radius: float, rows: int = 4, cols: int = 3,
-                light: bool = False) -> str:
+                light: bool = False, banded: bool = False) -> str:
     """A rounded block of tiles in shades of *color*: lighter at the top, darker at the bottom, with a
     darker first column, like the sheet in the Excel icon."""
     out, tw, th = [], w / cols, h / rows
     for r in range(rows):
         for c in range(cols):
-            amount = ((0.80 - 0.09 * r - (0.05 if c == 0 else 0.0)) if light
-                      else (0.30 - 0.17 * r - (0.07 if c == 0 else 0.0)))
+            if banded:                       # strongly alternating rows, so it still reads as a grid when small
+                amount = (0.90 if r % 2 == 0 else 0.58) - (0.07 if c == 0 else 0.0)
+            else:
+                amount = ((0.80 - 0.09 * r - (0.05 if c == 0 else 0.0)) if light
+                          else (0.30 - 0.17 * r - (0.07 if c == 0 else 0.0)))
             tl = radius if (r == 0 and c == 0) else 0
             tr = radius if (r == 0 and c == cols - 1) else 0
             br = radius if (r == rows - 1 and c == cols - 1) else 0
             bl = radius if (r == rows - 1 and c == 0) else 0
             out.append(f'<path d="{rrect(x + c * tw, y + r * th, tw + .4, th + .4, tl, tr, br, bl)}" fill="{shade(color, amount)}"/>')
+    if banded:                               # grid lines between the cells
+        line = shade(color, 0.12)
+        for r in range(1, rows):
+            out.append(f'<rect x="{x}" y="{y + r * th - 0.9:.1f}" width="{w}" height="1.8" fill="{line}"/>')
+        for c in range(1, cols):
+            out.append(f'<rect x="{x + c * tw - 0.9:.1f}" y="{y}" width="1.8" height="{h}" fill="{line}"/>')
     return "".join(out)
 
 
@@ -354,12 +363,14 @@ IDEAS_SHEET = [
 ]
 
 
-def offset_box(color: str, x=16.0, y=39.0, size=50.0, simple: bool = False) -> str:
+def offset_box(color: str, x=16.0, y=39.0, size=50.0, simple: bool = False, border: bool = False) -> str:
     """The small front box (Excel's X box) holding the white sound lines."""
     deep = shade(color, -0.22)
     return (f'<rect x="{x}" y="{y + 3}" width="{size}" height="{size}" rx="11" fill="#000" opacity=".22"/>'
             f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="11" fill="{deep}"/>'
             f'<rect x="{x + .6}" y="{y + .6}" width="{size - 1.2}" height="{size - 1.2}" rx="10.4" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="1.2"/>'
+            + (f'<rect x="{x + 2.2}" y="{y + 2.2}" width="{size - 4.4}" height="{size - 4.4}" rx="9" fill="none" '
+               'stroke="#FFFFFF" stroke-opacity=".92" stroke-width="1.7"/>' if border else '')   # a white inlay all round
             + sound_lines(x + size / 2, y + size / 2, (0.44 if not simple else 0.52) * size / 50, simple))
 
 
@@ -393,8 +404,8 @@ def sheet_offset_body(color: str, simple: bool = False, box: tuple[int, int, int
             '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#base)"/>'
             '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
             '<rect x="42" y="21" width="68" height="86" rx="10" fill="#000" opacity=".16" transform="translate(0 3)"/>'
-            + tiled_sheet(color, 42, 21, 68, 86, 10, light=True)
-            + offset_box(color, *box, simple) + '</svg>')
+            + tiled_sheet(color, 42, 21, 68, 86, 10, light=True, banded=True)
+            + offset_box(color, *box, simple, border=True) + '</svg>')
 
 
 #: Round eight: the Excel layout (an offset sheet behind a small front box that holds the sound lines).

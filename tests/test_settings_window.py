@@ -220,59 +220,26 @@ class TestSaving(DialogCase):
         self.assertEqual(d._dialog.windowOpacity(), 1.0)
 
 
-class TestCurrentRowCollapse(unittest.TestCase):
+class TestCurrentRowAlwaysVisible(unittest.TestCase):
+    """The row being built is vital to every spoken turn, so it cannot be hidden."""
+
     def setUp(self):
-        self.toggled = []
-        self.w = MainWindow(on_row_toggled=self.toggled.append)
+        self.w = MainWindow()
         self.w.setup()
         self.w.widget.resize(360, 620)
         self.w.widget.show()
         _app.processEvents()
 
-    def test_heading_is_a_toggle_with_an_arrow(self):
-        self.assertTrue(self.w.row_toggle.text().startswith("Current Row"))
-        self.assertIn("▴", self.w.row_toggle.text())
+    def test_the_heading_is_plain_text_without_an_arrow(self):
+        self.assertEqual(self.w.row_heading.text(), "Current Row")
+        self.assertFalse(hasattr(self.w, "row_toggle"))
+        self.assertFalse(hasattr(self.w, "set_row_collapsed"))
 
-    def test_clicking_hides_the_table_and_the_window_follows(self):
-        full = self.w.widget.height()
-        self.w.row_toggle.click()
-        _app.processEvents()
-        self.assertTrue(self.w.row_collapsed)
-        self.assertFalse(self.w.row_table.isVisible())
-        self.assertIn("▾", self.w.row_toggle.text())
-        self.assertLess(self.w.widget.height(), full)
-        self.w.row_toggle.click()
+    def test_the_table_is_always_shown(self):
+        self.assertTrue(self.w.row_table.isVisible())
+        self.w.set_mini(True)
         _app.processEvents()
         self.assertTrue(self.w.row_table.isVisible())
-        self.assertEqual(self.w.widget.height(), full)
-        self.assertEqual(self.toggled, [True, False])
-
-    def test_it_keeps_collecting_while_hidden(self):
-        self.w.row_toggle.click()
-        self.w.update_current_row({"Type": "Fern"})
-        self.w.row_toggle.click()
-        self.assertEqual(self.w.row_table.rowCount(), 1)
-
-    def test_both_sections_collapse_independently_and_restore_exactly(self):
-        full = self.w.widget.height()
-        self.w.row_toggle.click()
-        self.w.log_toggle.click()
-        _app.processEvents()
-        both = self.w.widget.height()
-        self.assertLess(both, full - 200)
-        self.w.log_toggle.click()
-        self.w.row_toggle.click()
-        _app.processEvents()
-        self.assertEqual(self.w.widget.height(), full)
-
-    def test_starts_collapsed_when_remembered(self):
-        w = MainWindow(row_collapsed=True)
-        w.setup()
-        w.widget.show()
-        _app.processEvents()
-        self.assertFalse(w.row_table.isVisible())
-        self.assertIn("▾", w.row_toggle.text())
-        self.assertLess(w.widget.height(), 520)
 
 
 class TestSoundVariety(unittest.TestCase):

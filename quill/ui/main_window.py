@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from quill.ui.chrome import set_always_on_top
 from quill.ui.icons import make_icon
 from quill.ui.theme import apply_spacing
-from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, tooltip_lines, wrap_tip
+from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, connection_tip, tooltip_lines
 
 #: Active-light colours (the same hues are used by the tray icon).
 COLOR_ACTIVE = "#34c759"
@@ -78,6 +78,16 @@ class _ChipPlacer(QObject):
         self._chip.raise_()
 
 
+class _RowTable(QTableWidget):
+    """The Current Row box: it asks for just its minimum height, so it grows only when given room."""
+
+    def sizeHint(self) -> QSize:                                    # noqa: N802 (Qt name)
+        return QSize(super().sizeHint().width(), self.minimumHeight())
+
+    def minimumSizeHint(self) -> QSize:                             # noqa: N802
+        return QSize(super().minimumSizeHint().width(), self.minimumHeight())
+
+
 class MainWindow:
     """The compact status window.
 
@@ -90,7 +100,6 @@ class MainWindow:
         on_sorting: Called when the user opens the Needs-sorting list.
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
         on_log_toggled: Called with True/False when the user collapses/expands the log.
-        on_row_toggled: Same, for the Current row section.
         on_mini_toggled: Called with True/False when the user enters/leaves the mini view.
         on_open_file: Called when the user chooses Open Spreadsheet File (button or File menu).
         on_use_excel: Called when the user chooses to go back to the open Excel workbook.
@@ -108,8 +117,6 @@ class MainWindow:
         on_undo: Callable[[], None] | None = None,
         on_log_toggled: Callable[[bool], None] | None = None,
         log_collapsed: bool = False,
-        on_row_toggled: Callable[[bool], None] | None = None,
-        row_collapsed: bool = False,
         on_mini_toggled: Callable[[bool], None] | None = None,
         on_open_file: Callable[[], None] | None = None,
         on_use_excel: Callable[[], None] | None = None,
@@ -124,8 +131,6 @@ class MainWindow:
         self._on_undo = on_undo or (lambda: None)
         self._on_log_toggled = on_log_toggled or (lambda collapsed: None)
         self._log_collapsed = log_collapsed
-        self._on_row_toggled = on_row_toggled or (lambda collapsed: None)
-        self._row_collapsed = row_collapsed
         self._on_mini_toggled = on_mini_toggled or (lambda mini: None)
         self._on_open_file = on_open_file or (lambda: None)
         self._on_use_excel = on_use_excel or (lambda: None)
@@ -178,10 +183,11 @@ class MainWindow:
         self.toggle_button = QPushButton()
         self.toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.toggle_button.setProperty("keepMargins", True)
+        self.toggle_button.setProperty("outline", True)           # outlined in the accent colour until listening fills it
         inner = QHBoxLayout(self.toggle_button)
         inner.setContentsMargins(14, 0, 14, 0)
         inner.setSpacing(8)
-        for part, stretch in ((self.dot, 0), (self.state_label, 0), (None, 1), (self.toggle_icon, 0)):
+        for part, stretch in ((self.toggle_icon, 0), (None, 1), (self.dot, 0), (self.state_label, 0)):
             if part is None:
                 inner.addStretch(stretch)
                 continue
@@ -235,16 +241,18 @@ class MainWindow:
         layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
         # --- current row
-        self.row_toggle = self._section_toggle("row", "Show or hide the row being built")
-        layout.addWidget(self.row_toggle, 0, Qt.AlignmentFlag.AlignLeft)
-        self.row_table = QTableWidget(0, 2)
+        # (Not collapsible: the row being built is the point of every spoken turn, so it is always in view.)
+        self.row_heading = QLabel("Current Row")
+        self.row_heading.setProperty("staticHeading", True)
+        layout.addWidget(self.row_heading, 0, Qt.AlignmentFlag.AlignLeft)
+        self.row_table = _RowTable(0, 2)
         self.row_table.horizontalHeader().setVisible(False)
         self.row_table.verticalHeader().setVisible(False)
         self.row_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.row_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.row_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self._row_height = self.row_table.verticalHeader().defaultSectionSize()
-        self.row_table.setFixedHeight(ROW_EMPTY_HEIGHT)             # starts small; grows with the fields heard
+        self.row_table.setMinimumHeight(ROW_EMPTY_HEIGHT)           # starts small; grows with the fields heard
         self._row_target = ROW_EMPTY_HEIGHT
         # a hint shown while no fields have been heard yet
         self.row_placeholder = QLabel("Fields appear here as they are heard", self.row_table.viewport())
@@ -254,7 +262,7 @@ class MainWindow:
         holder = QVBoxLayout(self.row_table.viewport())
         holder.setContentsMargins(4, 0, 4, 0)
         holder.addWidget(self.row_placeholder)
-        layout.addWidget(self.row_table)
+        layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
         self.last_label = ElidedLabel("Last Saved: –")      # one line however much was saved
         self.last_label.setProperty("note", True)          # smaller italic supporting text
         layout.addWidget(self.last_label)
@@ -268,10 +276,11 @@ class MainWindow:
         inner = QHBoxLayout(self.sorting_button)
         inner.setContentsMargins(12, 0, 12, 0)
         inner.addStretch(1)
-        title = QLabel("Needs Sorting")
+        self.sorting_icon = QLabel()                                  # a question mark, drawn by refresh_icons()
+        title = QLabel("Terms")
         self.sorting_title = title
         self.badge_label = Pill("0")
-        for part in (title, self.badge_label):
+        for part in (self.sorting_icon, title, self.badge_label):
             part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)   # clicks reach the button
             inner.addWidget(part, 0, Qt.AlignmentFlag.AlignVCenter)   # the pill hugs its text
         inner.addStretch(1)
@@ -297,12 +306,9 @@ class MainWindow:
         layout.addWidget(self.footer)
         layout.addWidget(self.download_button)
 
-        # --- log (last). While it is minimized a spring above it takes any extra height, so resizing the
-        # window never opens gaps between the other sections: they keep their spacing and the Log
-        # heading stays at the bottom.
-        layout.addStretch(1)
-        self._spring_index = layout.count() - 1
-        self.log_toggle = self._section_toggle("log", "Show or hide the log")
+        # --- log (last). The Current Row box takes extra height when the window grows (and shares it with
+        # the log while that is open), so no gaps open between sections and "Log" stays at the bottom.
+        self.log_toggle = self._section_toggle("Show or hide the log")
         layout.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -319,7 +325,6 @@ class MainWindow:
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)   # lets opacity < 100 show through
         self._window = window
         self.refresh_icons()
-        self._set_collapsed("row", self._row_collapsed)
         self._set_collapsed("log", self._log_collapsed)
         if self._mini:
             self.set_mini(True)
@@ -332,7 +337,7 @@ class MainWindow:
         """The "File stream not connected" warning chip: a fixed-height pill that never stretches."""
         chip = QLabel(NOT_CONNECTED_TEXT, parent)
         chip.setProperty("chip", "warn")
-        chip.setToolTip(wrap_tip(NOT_CONNECTED_HINT))
+        chip.setToolTip(connection_tip())
         chip.setFixedHeight(CHIP_HEIGHT)
         chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         chip.setVisible(False)
@@ -355,14 +360,6 @@ class MainWindow:
     def set_log_collapsed(self, collapsed: bool, notify: bool = False) -> None:
         """Hide or show the log; the heading's arrow points down when collapsed, up when open."""
         self._set_collapsed("log", collapsed, notify)
-
-    @property
-    def row_collapsed(self) -> bool:
-        return self._row_collapsed
-
-    def set_row_collapsed(self, collapsed: bool, notify: bool = False) -> None:
-        """Hide or show the Current row table, like the log."""
-        self._set_collapsed("row", collapsed, notify)
 
     # ------------------------------------------------------------------ #
     # Mini view                                                            #
@@ -439,7 +436,7 @@ class MainWindow:
         self._not_connected = not_connected
         if hint:
             for chip in (self.connection_chip, self.mini_chip):
-                chip.setToolTip(wrap_tip(hint))
+                chip.setToolTip(connection_tip(hint))
         self._refresh_visibility()
 
     def set_native_settings_button(self, native: bool) -> None:
@@ -570,54 +567,47 @@ class MainWindow:
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
-        for widget in (self.workbook_row,
-                       self.row_toggle, self.last_label, self.log_toggle):
+        for widget in (self.workbook_row, self.row_heading, self.last_label, self.log_toggle):
             widget.setVisible(full)
         self.undo_button.setVisible(full and self._undo_count > 0)
         self.log.setVisible(full and not self._log_collapsed)
-        self.row_table.setVisible(self._view_mini or not self._row_collapsed)    # the mini view always shows the row
         self.footer.setVisible(full and bool(self._footer_text))
         self.download_button.setVisible(full and self._offer_download)
         self.sorting_button.setVisible(self._sorting_count > 0)
         self.sorting_title.setVisible(full)                               # just the count pill when mini
+        self.sorting_icon.setVisible(full)
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
         self._fit_row_table(animate=False)
         self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini else tall)
-        self._layout.setStretch(self._spring_index, 0 if (full and not self._log_collapsed) else 1)
-        self.sorting_button.setToolTip("Needs Sorting" if self._view_mini else "")
+        log_open = full and not self._log_collapsed
+        self._layout.setStretchFactor(self.row_table, 2 if log_open else 1)     # with the log open they share extra height
+        self._layout.setStretchFactor(self.log, 1)
+        self.sorting_button.setToolTip("Needs Sorting: terms that were heard but not placed yet")
 
-    def _section_toggle(self, name: str, tip: str) -> HeadingToggle:
+    def _section_toggle(self, tip: str) -> HeadingToggle:
         button = HeadingToggle()
         button.setToolTip(tip)
-        button.clicked.connect(lambda: self._set_collapsed(name, not self._collapsed(name), notify=True))
+        button.clicked.connect(lambda: self._set_collapsed("log", not self._log_collapsed, notify=True))
         return button
 
-    def _collapsed(self, name: str) -> bool:
-        return self._log_collapsed if name == "log" else self._row_collapsed
-
     def _set_collapsed(self, name: str, collapsed: bool, notify: bool = False) -> None:
-        """Collapse or expand a section, and resize the window so no blank gap is left.
+        """Collapse or expand the log, and resize the window so no blank gap is left.
 
-        The window gives back the height the section used when it collapses and
+        The window gives back the height the log used when it collapses and
         takes the same height again when it reopens.
         """
-        body, toggle, title = ((self.log, self.log_toggle, "Log") if name == "log"
-                               else (self.row_table, self.row_toggle, "Current Row"))
+        body, toggle, title = self.log, self.log_toggle, "Log"
         was = self._applied.get(name, False)      # what is on screen now (not the saved preference)
         window = self._window
         shown = window is not None and window.isVisible()
         height = self._height_now() if window is not None else 0
         spacing = window.centralWidget().layout().spacing() if window is not None else 0
         used = body.height() + max(spacing, 0)
-        if name == "log":
-            self._log_collapsed = collapsed
-        else:
-            self._row_collapsed = collapsed
+        self._log_collapsed = collapsed
         self._applied[name] = collapsed
         self._refresh_visibility()
-        if name == "log" and window is not None and not self._view_mini:
+        if window is not None and not self._view_mini:
             self._set_margins(False)           # a minimized log leaves only a small margin beneath it
-        if window is not None and not self._view_mini:   # (the mini view hides sections whatever their state)
             window.centralWidget().layout().activate()
             if collapsed and not was:
                 target = max(self._fit_height(), height - used) if shown else self._fit_height()
@@ -628,7 +618,7 @@ class MainWindow:
         toggle.setText(f"{title}  {'▾' if collapsed else '▴'}")
         toggle.setToolTip(f"Show the {title.lower()}" if collapsed else f"Hide the {title.lower()}")
         if notify:
-            (self._on_log_toggled if name == "log" else self._on_row_toggled)(collapsed)
+            self._on_log_toggled(collapsed)
 
     # ------------------------------------------------------------------ #
     # Window                                                               #
@@ -683,17 +673,19 @@ class MainWindow:
         return max(ROW_EMPTY_HEIGHT, min(cap, rows * cell + 2 * self.row_table.frameWidth() + 6))
 
     def _fit_row_table(self, animate: bool = True) -> None:
-        """Resize the Current Row box to its content and, on screen, let the window follow by the same amount.
+        """Give the Current Row box room for its content and, on screen, let the window grow to match.
 
-        Past the cap the box stops growing and scrolls inside itself.
+        That is its *minimum* height: a taller window gives it more. Past the cap it stops asking for
+        more and scrolls inside itself.
         """
         new = self._row_table_height()
         old, self._row_target = self._row_target, new
-        self.row_table.setFixedHeight(new)
+        shortfall = new - self.row_table.height()          # before the minimum is set: that resizes the box at once
+        self.row_table.setMinimumHeight(new)
         window = self._window
-        if (animate and window is not None and window.isVisible() and new != old
+        if (animate and window is not None and window.isVisible() and new > old and shortfall > 0
                 and self.row_table.isVisibleTo(window)):
-            self._resize_to(window.width(), max(self._height_now() + (new - old), 0))
+            self._resize_to(window.width(), self._height_now() + shortfall)
 
     def update_current_row(self, fields: dict[str, object]) -> None:
         """Show the record being built, one column per line (the box grows with the fields, then scrolls)."""
@@ -736,7 +728,8 @@ class MainWindow:
         self.state_label.setText("Listening" if active else "Not Listening")
         self.toggle_button.setToolTip("Stop Listening" if active else "Start Listening")
         self.toggle_button.setAccessibleName("Stop Listening" if active else "Start Listening")
-        self.toggle_button.setProperty("accent", active)          # filled with the accent while listening
+        self.toggle_button.setProperty("accent", active)          # filled with the accent while listening,
+        self.toggle_button.setProperty("outline", not active)     # outlined in it while idle (so it reads as clickable)
         style = self.toggle_button.style()
         style.unpolish(self.toggle_button)
         style.polish(self.toggle_button)
@@ -762,6 +755,7 @@ class MainWindow:
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
+        self.sorting_icon.setPixmap(make_icon("question", on_accent, 16).pixmap(16, 16))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self.open_file_button.setIcon(make_icon("folder", text_color, 18))
         self._draw_toggle_icon()

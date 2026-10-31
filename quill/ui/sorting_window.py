@@ -148,9 +148,13 @@ class SortingWindow:
             on the first term).
     """
 
-    #: Shown while voice sorting is on.
+    #: What can be said while voice sorting is on (the button's tooltip).
     VOICE_HINT = ("Say: yes · a column name · same as … · ignore · later · done   "
                   "(or ‘add all’, ‘ignore all’)")
+
+    #: Space (px) kept around the list, and the width the window may grow to when it opens.
+    MARGIN = 12
+    SIDE_ALLOWANCE = 36
 
     def __init__(self, vocab: Vocabulary, on_resolve: ResolveCallback,
                  on_voice: Callable[[], None] | None = None,
@@ -168,7 +172,9 @@ class SortingWindow:
 
     def setup(self) -> None:
         """Build the window (call once, after the QApplication exists)."""
-        window = QWidget(None, Qt.WindowType.Tool)
+        # A normal window, not a tool window: tool windows hide whenever the app is not frontmost,
+        # and their title bar buttons are drawn at a third of the usual size.
+        window = QWidget(None, Qt.WindowType.Window)
         window.setObjectName("sortingWindow")
         window.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -183,7 +189,9 @@ class SortingWindow:
         shell.addWidget(root)
         self.root = root
         layout = QVBoxLayout(root)
-        self.intro = QLabel("Quill heard these but couldn't place them. Tell it what each one is.")
+        root.setProperty("keepMargins", True)                  # the spacing setting must not widen these
+        layout.setContentsMargins(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
+        self.intro = QLabel("These terms were heard but couldn't be placed. Decide what to do for each one.")
         self.intro.setWordWrap(True)
         layout.addWidget(self.intro)
 
@@ -191,18 +199,23 @@ class SortingWindow:
         self.voice_button = QPushButton()
         self.voice_button.setCheckable(True)
         self.voice_button.clicked.connect(lambda: self._on_voice())
+        self.voice_button.setToolTip(self.VOICE_HINT)
         voice_row.addWidget(self.voice_button)
-        self.voice_status = QLabel()
+        self.voice_status = QLabel()                          # only what was just heard; empty (and hidden) otherwise
         self.voice_status.setWordWrap(True)
+        self.voice_status.setVisible(False)
         voice_row.addWidget(self.voice_status, 1)
         layout.addLayout(voice_row)
         self._render_voice()
 
         self._list = QVBoxLayout()
+        self._list.setContentsMargins(0, 0, 0, 0)
         self._list.addStretch(1)
         holder = QWidget()
+        holder.setProperty("keepMargins", True)
         holder.setLayout(self._list)
         scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.Shape.NoFrame)             # the rows run to the window's own margins
         scroll.setWidgetResizable(True)
         scroll.setWidget(holder)
         layout.addWidget(scroll, 1)
@@ -263,25 +276,37 @@ class SortingWindow:
         self._voice_active = active
         if not active:
             self.voice_status.setText("")
+            self.voice_status.setVisible(False)
         self._render_voice()
         self.set_items([r.key for r in self.rows])   # re-arm click and highlight
 
     def set_voice_status(self, heard: str, message: str) -> None:
         """Show what was heard and what Quill did with it."""
-        self.voice_status.setText(f"Heard ‘{heard}’ → {message}" if heard else message)
+        text = f"Heard ‘{heard}’ → {message}" if heard else message
+        self.voice_status.setText(text)
+        self.voice_status.setVisible(bool(text))
 
     def _render_voice(self) -> None:
         self.voice_button.setChecked(self._voice_active)
         self.voice_button.setText("🎤 Listening… (click to stop)" if self._voice_active
                                   else "🎤 Sort by Voice")
-        if self._voice_active and not self.voice_status.text():
-            self.voice_status.setText(self.VOICE_HINT)
 
     def show(self) -> None:
         if self._window is not None and self.rows:
+            self._fit_width()
             self._window.show()
             self._window.raise_()
             self._window.activateWindow()
+
+    def _fit_width(self) -> None:
+        """Widen the window, if needed, so a whole row fits without scrolling sideways (never beyond the screen)."""
+        window = self._window
+        need = max(row.sizeHint().width() for row in self.rows) + 2 * self.MARGIN + self.SIDE_ALLOWANCE
+        screen = window.screen()
+        if screen is not None:
+            need = min(need, screen.availableGeometry().width() - 40)
+        if window.width() < need:
+            window.resize(need, window.height())
 
     def add_all(self) -> None:
         """Add every row that already has a column chosen."""

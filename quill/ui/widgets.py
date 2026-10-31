@@ -131,6 +131,29 @@ class HeadingToggle(QLabel):
         super().mousePressEvent(event)
 
 
+def connection_tip(hint: str | None = None) -> str:
+    """The tooltip of the "File stream not connected" chip, as short lines with bold, italics and icons.
+
+    Spaced out (line height, letter spacing) so it can be taken in at a glance rather than read as a paragraph.
+    A plain *hint* replaces the default explanation.
+    """
+    import html
+    if hint:
+        body = "<br>".join(html.escape(line) for line in wrap_tip(hint).splitlines())
+        return f'<div style="line-height:150%; letter-spacing:0.3px">{body}</div>'
+    return (
+        '<div style="line-height:155%; letter-spacing:0.35px">'
+        '<b><span style="color:#E0A030">⚠&nbsp;&nbsp;Not connected</span></b><br>'
+        'Quill has no spreadsheet to <i>read lists from</i><br>or <i>write rows to</i>.'
+        '<br><br><b>Connect one:</b><br>'
+        '📗&nbsp;&nbsp;<b>Excel</b>: open a workbook, and Quill<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;attaches within a few seconds<br>'
+        '📁&nbsp;&nbsp;<b>File ▸ Open Spreadsheet File…</b><br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and pick an <i>.xlsx</i> file'
+        '<br><br>▶&nbsp;&nbsp;Then press <b>Start</b> to listen.'
+        '</div>')
+
+
 def wrap_tip(text: str, width: int = 52) -> str:
     """*text* with its lines wrapped at *width* characters, so a tooltip stays a readable block, not a long strip."""
     import textwrap

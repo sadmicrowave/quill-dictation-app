@@ -97,7 +97,6 @@ class QuillApp:
             on_download_model=self.download_model, on_sorting=self.show_sorting,
             on_undo=self.undo, on_log_toggled=self._log_toggled,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
-            on_row_toggled=self._row_toggled, row_collapsed=bool(settings.preferences["row_collapsed"]),
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
@@ -177,7 +176,7 @@ class QuillApp:
             self.connected = False
             if not quiet:
                 self.window.append_log(f"Not connected: {exc}")
-            self.window.set_not_connected(True, NO_WORKBOOK_HELP)
+            self.window.set_not_connected(True)
             return
         self.connected = True
         self.window.update_workbooks(names, bridge.workbook_name)
@@ -218,7 +217,7 @@ class QuillApp:
             self.tray.set_workbook("", "")
             self.window.update_workbooks([])
             self.window.append_log(f"'{closed}' was closed.")
-            self.window.set_not_connected(True, NO_WORKBOOK_HELP)
+            self.window.set_not_connected(True)
         if names and not self.connected:
             preferred = str(self.settings.preferences["last_workbook"])
             self.connect_workbook(preferred if preferred in names else None, quiet=True)
@@ -484,11 +483,6 @@ class QuillApp:
             self._apply_look()
             self._install_titlebar_button()
 
-    def _row_toggled(self, collapsed: bool) -> None:
-        """Remember whether the user collapsed the Current row section."""
-        self.settings.preferences["row_collapsed"] = collapsed
-        self.settings.save()
-
     def _system_scheme_changed(self, *_args) -> None:
         """The operating system switched between light and dark: follow it when set to Auto."""
         if str(self.settings.preferences["theme"]) == "auto":
@@ -563,7 +557,7 @@ class QuillApp:
         elif kind == "stopped":
             self._set_listening(False)
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
-            self.window.set_not_connected(True, NO_WORKBOOK_HELP)
+            self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
         elif kind == "committed":
             self.window.set_last_saved(event.detail or "Row saved", event.record)

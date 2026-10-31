@@ -16,7 +16,7 @@ from tests.test_sorting import SENTENCE, DemoCase
 
 _app = QApplication.instance() or QApplication([])
 
-HIDDEN_IN_MINI = ("settings_button", "workbook_row", "sheet_label", "row_toggle",
+HIDDEN_IN_MINI = ("settings_button", "workbook_row", "sheet_label", "row_heading",
                   "last_label", "log_toggle", "log", "footer", "download_button", "undo_button")
 
 
@@ -118,14 +118,13 @@ class TestMiniWindow(unittest.TestCase):
         self.assertIn("background: transparent", rule)
 
     def test_the_row_box_is_small_but_always_there(self):
-        self.w.set_row_collapsed(True)
         self.w.set_mini(True)
         _app.processEvents()
-        self.assertTrue(shown(self.w, "row_table"))                         # shown even if collapsed in the full view
-        self.assertLessEqual(self.w.row_table.maximumHeight(), 70)
+        self.assertTrue(shown(self.w, "row_table"))
+        self.assertLessEqual(self.w.row_table.minimumHeight(), 70)
         self.w.set_mini(False)
         _app.processEvents()
-        self.assertFalse(shown(self.w, "row_table"))                        # the full view remembers it was collapsed
+        self.assertTrue(shown(self.w, "row_table"))                         # and never hidden in the full view
 
     def test_sections_keep_their_state_through_a_round_trip(self):
         self.w.set_log_collapsed(True)

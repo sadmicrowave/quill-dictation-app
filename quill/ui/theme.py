@@ -36,7 +36,7 @@ TOKENS = {
 #: Accent colours: name -> (label, light scheme (accent, hover), dark scheme (accent, hover)).
 #: Text on the accent is white on the light variants and near-black on the dark ones.
 ACCENTS = {
-    "violet":     ("Violet",     ("#7A55C2", "#6644A8"), ("#A58BE0", "#B6A0E8")),
+    "violet":     ("Violet",     ("#7A55C2", "#6644A8"), ("#7A55C2", "#8C68D6")),
     "terracotta": ("Terracotta", ("#C9623F", "#B5552F"), ("#D97757", "#E58A6B")),
     "ocean":      ("Ocean",      ("#2F6FB5", "#255C9A"), ("#5B9BD5", "#75ADE0")),
     "forest":     ("Forest",     ("#3E7D4F", "#316A41"), ("#6BB383", "#82C197")),
@@ -62,8 +62,23 @@ def colors_for(dark: bool, accent: str = DEFAULT_ACCENT) -> dict[str, str]:
     t = dict(TOKENS["dark" if dark else "light"])
     _, light, night = ACCENTS.get(accent, ACCENTS[DEFAULT_ACCENT])
     t["accent"], t["accent_hover"] = night if dark else light
-    t["on_accent"] = "#1F1E1D" if dark else "#FFFFFF"
+    t["on_accent"] = _text_on(t["accent"]) if dark else "#FFFFFF"
     return t
+
+
+def _luminance(hex_color: str) -> float:
+    """Relative luminance (0 black to 1 white) of ``"#RRGGBB"``."""
+    def channel(i: int) -> float:
+        v = int(hex_color[i:i + 2], 16) / 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+
+
+def _text_on(fill: str) -> str:
+    """White or near-black text, whichever reads better on *fill* (used with the lighter dark-scheme accents)."""
+    lum = _luminance(fill)
+    white, dark = 1.05 / (lum + 0.05), (lum + 0.05) / (_luminance("#1F1E1D") + 0.05)
+    return "#FFFFFF" if white >= dark else "#1F1E1D"
 
 
 def mix(base: str, other: str, amount: float) -> str:
@@ -226,6 +241,9 @@ QToolButton[flatIcon="true"] {{ border: none; background: transparent; padding: 
 QToolButton[flatIcon="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
 QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; }}
+QLabel[staticHeading="true"] {{ color: {t['muted']}; padding: 2px 0; }}
+QPushButton[outline="true"] {{ border: 1px solid {t['accent']}; }}
+QPushButton[outline="true"]:hover {{ background: {rgba(t['accent'], 0.14)}; }}
 QLabel[headingToggle="true"]:hover {{ color: {t['accent']}; }}
 QWidget#settingsSidebar {{ border-right: 1px solid {t['border']}; }}
 QListWidget#settingsNav {{ background: transparent; border: none; outline: none; padding: 0; }}

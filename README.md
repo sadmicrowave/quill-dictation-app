@@ -331,3 +331,10 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **File stream not connected** is a fixed-height chip laid over the empty workbook picker (a sibling of the combo box, since a label inside a combo box ignores the style sheet); the mini view, which has no picker, shows its own copy. Its tooltip is wrapped to about 52 characters (`widgets.wrap_tip`).
 - **Resizing:** a spring above the Log heading (stretch 1 while the Log is minimized, 0 while it is open and takes the height itself) soaks up extra height, so sections keep their spacing and sizes and Log stays at the bottom with a 7 px margin.
 - **Tooltips** have rounded corners and a soft border: the tooltip window is made transparent by an app event filter (`theme._TooltipRounder`) so the style sheet's radius shows.
+
+### Phase 31 notes
+- **Start / Stop button:** outlined in the accent colour while idle, filled while listening; the play / stop glyph is at the left, the light and state text at the right. Violet's dark-scheme accent is the same darker `#7A55C2` (white text on it); the dark-scheme text colour on an accent is chosen by contrast (`theme._text_on`).
+- **Current Row** is not collapsible (the `row_collapsed` setting and `on_row_toggled` callback are gone). The box is the stretchy part of the main layout (stretch 1; 2 against the open log's 1), with its content height as its *minimum* (`_RowTable` reports that as its size hint), and the window only grows when a new field would not otherwise fit.
+- **Needs Sorting** button reads `? Terms (n)`. The pill's tooltip is rich text (`widgets.connection_tip`): bold, italics, icons, 155% line height, letter spacing.
+- **Sorting window** is a normal window (`Qt.Window`), not a tool window: tool windows hide when the app loses focus and have a third-size title bar. It opens wide enough for a whole row, has 12 px margins, no scroll-area frame, and the voice-status line only appears for what was just heard.
+- **Dock icon:** banded grid (alternating light / mid rows, grid lines) and a white inlay inside the front box (`make_icon_ideas.tiled_sheet(banded=True)`, `offset_box(border=True)`).

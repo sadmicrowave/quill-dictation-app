@@ -110,7 +110,7 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
         quill = self.make_app()
         self.assertFalse(quill.connected)
         self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
-        self.assertEqual(quill.window.connection_chip.toolTip().replace("\n", " "), NO_WORKBOOK_HELP)
+        self.assertIn("Not connected", quill.window.connection_chip.toolTip())
         self.assertEqual(quill.window.footer.text(), "")                   # not repeated at the bottom of the window
 
     def test_start_button_informs_user_everywhere(self):

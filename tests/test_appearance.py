@@ -36,7 +36,7 @@ class TestAccents(unittest.TestCase):
                 self.assertEqual(theme.palette_for(dark, key).color(QPalette.ColorRole.Highlight).name().upper(),
                                  t["accent"].upper())
                 seen.add(t["accent"])
-        self.assertEqual(len(seen), 10)                      # all distinct
+        self.assertEqual(len(seen), 9)                       # all distinct (violet is one colour in both schemes)
 
     def test_unknown_accent_falls_back(self):
         self.assertEqual(theme.colors_for(False, "nope"), theme.colors_for(False, "violet"))
