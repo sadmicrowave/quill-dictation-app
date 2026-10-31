@@ -46,7 +46,7 @@ BINDABLE_ACTIONS = [a for a in Action if a is not Action.NONE]
 
 #: Sidebar groups: (caption, [page titles]).
 GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
-          ("Voice and commands", ["Keywords"])]
+          ("Voice and Commands", ["Keywords"])]
 
 THEME_ICONS = {"auto": "monitor", "light": "sun", "dark": "moon"}
 
@@ -370,21 +370,21 @@ class SettingsDialog:
         page = self._page("General")
         self.speak_check = ToggleSwitch()
         self.speak_check.setChecked(bool(prefs["speak_prompts"]))
-        self._add("General", page, "Read questions aloud",
+        self._add("General", page, "Read Questions Aloud",
                   "Quill speaks its questions, such as “Add it to the list?”.", self.speak_check)
         self.auto_sort_check = ToggleSwitch()
         self.auto_sort_check.setChecked(bool(prefs["auto_voice_sort"]))
-        self._add("General", page, "Sort by voice automatically",
+        self._add("General", page, "Sort by Voice Automatically",
                   "Start answering the Needs-sorting list by voice as soon as terms need sorting.",
                   self.auto_sort_check, "voice sorting")
         self.mini_top_check = ToggleSwitch()
         self.mini_top_check.setChecked(bool(prefs["mini_on_top"]))
-        self._add("General", page, "Keep the mini view on top",
+        self._add("General", page, "Keep the Mini View on Top",
                   "The mini view floats above other windows so it can sit over your spreadsheet.",
                   self.mini_top_check, "overlay always on top float")
         self.mic_check = ToggleSwitch()
         self.mic_check.setChecked(bool(prefs["mic_always_on"]))
-        self._add("General", page, "Keep the microphone open when not listening",
+        self._add("General", page, "Keep the Microphone Open When Not Listening",
                   "Lets you say “start listening”. Off (the default): the microphone is only on while "
                   "Quill is listening, so nothing is heard otherwise.", self.mic_check, "privacy mic always on")
         self.history_spin = GuardedSpinBox()
@@ -392,7 +392,7 @@ class SettingsDialog:
         self.history_spin.setValue(int(prefs["history_limit"]))
         self.history_spin.setSuffix(" actions")
         self.history_spin.setToolTip("How many sorting answers Undo can step back through")
-        self._add("General", page, "Undo remembers",
+        self._add("General", page, "Undo Remembers",
                   "How many of your latest sorting answers can be taken back.", self.history_spin, "history")
         page.addStretch(1)
 
@@ -408,7 +408,7 @@ class SettingsDialog:
         for key, (label, (light, _), _night) in ACCENTS.items():
             self.accent_combo.addItem(_swatch(light), label, key)
         self.accent_combo.setCurrentIndex(self.accent_combo.findData(prefs["accent"]))
-        self._add("Appearance", page, "Accent colour", "Used for the main button, badges and highlights.",
+        self._add("Appearance", page, "Accent Colour", "Used for the main button, badges and highlights.",
                   self.accent_combo, "color")
         self.spacing_combo = FlatCombo()
         for key in SPACINGS:
@@ -420,17 +420,17 @@ class SettingsDialog:
         self.font_spin.setRange(*FONT_SIZE_RANGE)
         self.font_spin.setValue(int(prefs["font_size"]))
         self.font_spin.setSuffix(" pt")
-        self._add("Appearance", page, "Text size", "The size of text throughout Quill (default 12).",
+        self._add("Appearance", page, "Text Size", "The size of text throughout Quill (default 12).",
                   self.font_spin, "font")
         self.opacity_slider, self.opacity_label, box = _slider(
             *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included")
-        self._add("Appearance", page, "Window opacity",
+        self._add("Appearance", page, "Window Opacity",
                   "How solid the window is. 100% is completely solid; lower makes the whole window, text and "
                   "controls included, see-through. The lowest is 10%.", box,
                   "transparent transparency")
         self.blur_slider, self.blur_label, box = _slider(
             *BLUR_RANGE, int(prefs["blur"]), "How strongly the desktop behind the window is blurred")
-        self._add("Appearance", page, "Window blur",
+        self._add("Appearance", page, "Window Blur",
                   "Frosts what you see through the window (macOS and Windows 11). Only visible when opacity is "
                   "below 100%, since a solid window hides it. 0% is off.", box,
                   "glass vibrancy acrylic")
@@ -442,24 +442,24 @@ class SettingsDialog:
         for mode in MODES:
             self.feedback_combo.addItem(MODE_LABELS[mode], mode)
         self.feedback_combo.setCurrentIndex(MODES.index(prefs["feedback"]))
-        self._add("Sounds", page, "Confirm with", "How Quill tells you it has done something.",
+        self._add("Sounds", page, "Confirm With", "How Quill tells you it has done something.",
                   self.feedback_combo, "feedback audio sound echo")
         self.pack_combo = FlatCombo()
         for key, label in PACKS.items():
             self.pack_combo.addItem(label, key)
         self.pack_combo.setCurrentIndex(self.pack_combo.findData(prefs["sound_pack"]))
-        self._add("Sounds", page, "Sound set", "Choosing one plays it.", self.pack_combo, "chime marimba glass")
+        self._add("Sounds", page, "Sound Set", "Choosing one plays it.", self.pack_combo, "chime marimba glass")
         self.echo_combo = FlatCombo()
         for key, label in ECHO_WORDS.items():
             self.echo_combo.addItem(label, key)
         self.echo_combo.setCurrentIndex(self.echo_combo.findData(prefs["echo_style"]))
-        self._add("Sounds", page, "Spoken word", "What Quill says for a success when it speaks instead.",
+        self._add("Sounds", page, "Spoken Word", "What Quill says for a success when it speaks instead.",
                   self.echo_combo, "echo voice")
         self.feedback_combo.currentIndexChanged.connect(self._update_feedback_choices)
         self._update_feedback_choices()
         self.pack_combo.activated.connect(lambda _=0: self.play_sample())    # picking one plays it
         self.echo_combo.activated.connect(lambda _=0: self.play_sample())
-        sample = QPushButton("Play sample")
+        sample = QPushButton("Play Sample")
         sample.setToolTip("Hear the sound set (or word) selected above")
         sample.clicked.connect(self.play_sample)
         self._add("Sounds", page, "Preview", "Plays the selected sound, or says the selected word.", sample)
@@ -468,7 +468,7 @@ class SettingsDialog:
         # --- Keywords (the table gets all the height the window has)
         page = self._page("Keywords", "Say a phrase on the left and Quill does the action on the right.")
         self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["When you say…", "Quill does…"])
+        self.table.setHorizontalHeaderLabels(["When You Say…", "Quill Does…"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(48)
@@ -481,7 +481,7 @@ class SettingsDialog:
         inner.addWidget(self.table, 1)
         buttons = QHBoxLayout()
         for label, slot in (("Add", self.add_row), ("Remove", self.remove_selected),
-                            ("Restore defaults", self.restore_defaults)):
+                            ("Restore Defaults", self.restore_defaults)):
             button = QPushButton(label)
             button.clicked.connect(slot)
             buttons.addWidget(button)
@@ -563,7 +563,7 @@ class SettingsDialog:
 
     def show_errors(self, errors: list[str]) -> None:
         """Tell the user what is wrong (overridden in tests to avoid a modal box)."""
-        QMessageBox.warning(self._dialog, "Check your keywords", "\n".join(errors))
+        QMessageBox.warning(self._dialog, "Check Your Keywords", "\n".join(errors))
 
 
 class _KeywordSearch:

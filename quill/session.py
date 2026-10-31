@@ -281,7 +281,7 @@ class Session:
             return [Event("started", detail="Listening")]
         if action is Action.STOP_LISTENING:
             self.listening = False
-            return [Event("stopped", detail="Not listening")] + self._ask_if_needed()
+            return [Event("stopped", detail="Not Listening")] + self._ask_if_needed()
         if not self.listening:
             return [Event("ignored", detail=f"{action.name.replace('_', ' ').title()} heard while stopped")]
         if action is Action.NEXT_ROW:

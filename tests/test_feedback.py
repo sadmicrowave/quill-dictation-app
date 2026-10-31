@@ -119,12 +119,12 @@ class TestPlaying(unittest.TestCase):
                       Event("discarded"), Event("confirm"), Event("error")):
             rig.fb.request(event)
             rig.fb.flush()
-        self.assertEqual(rig.said, ["Got it", "Ignored", "Undone", "Deleted", "Please sort", "Problem"])
+        self.assertEqual(rig.said, ["Got It", "Ignored", "Undone", "Deleted", "Please Sort", "Problem"])
         self.assertEqual(rig.played, [])
 
     def test_each_echo_style_has_its_own_success_word(self):
         words = {fb.Feedback(Prefs(echo_style=key), print, print).word("success") for key in fb.ECHO_WORDS}
-        self.assertEqual(words, {"Okay", "Done", "Got it"})
+        self.assertEqual(words, {"Okay", "Done", "Got It"})
 
     def test_preview_overrides_the_settings(self):
         rig = Rig(feedback="off")

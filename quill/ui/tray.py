@@ -124,7 +124,7 @@ class TrayIcon:
 
     @property
     def mini_action(self) -> QAction | None:
-        """The checkable "Mini view" menu entry (exposed for tests)."""
+        """The checkable "Mini View" menu entry (exposed for tests)."""
         return self._mini_action
 
     def set_mini(self, mini: bool) -> None:
@@ -147,7 +147,7 @@ class TrayIcon:
         self._redraw()
         if self._sorting_action is not None:
             self._sorting_action.setVisible(self._badge > 0)
-            self._sorting_action.setText(f"Needs sorting ({self._badge})…")
+            self._sorting_action.setText(f"Needs Sorting ({self._badge})…")
 
     def _redraw(self) -> None:
         if self._tray is not None:
@@ -175,7 +175,7 @@ class TrayIcon:
         self._menu.addSeparator()
         self._toggle_action = self._menu.addAction("Start Listening", self.toggle)
         self._menu.addAction("Open Quill", self._main_window.show)
-        self._mini_action = self._menu.addAction("Mini view")
+        self._mini_action = self._menu.addAction("Mini View")
         self._mini_action.setCheckable(True)
         self._mini_action.toggled.connect(lambda checked: self._on_mini(checked))
         self._sorting_action = self._menu.addAction("", lambda: self._on_open_sorting())

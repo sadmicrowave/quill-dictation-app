@@ -112,6 +112,10 @@ IDEAS_MORE = [
 ]
 
 
+#: How big the white glyph is relative to the icon's own box (the box itself stays full size).
+GLYPH_SCALE = 0.72
+
+
 def shade(color: str, amount: float) -> str:
     """Lighten (amount > 0) or darken (amount < 0) a ``#RRGGBB`` colour."""
     r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
@@ -128,6 +132,8 @@ def app_icon(color: str, draw) -> str:
     white glyph and a very soft shadow under it. *draw* is the idea's ``lambda fg, bg: svg``.
     """
     top, bottom = shade(color, 0.10), shade(color, -0.10)
+    glyph = lambda fg, bg: (f'<g transform="translate(64 64) scale({GLYPH_SCALE}) translate(-64 -64)">'
+                            f'{draw(fg, bg)}</g>')
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
         f'<linearGradient id="base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/>'
@@ -140,8 +146,8 @@ def app_icon(color: str, draw) -> str:
         '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#base)"/>'
         '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
         # the glyph: flat white, with the faintest drop shadow so it sits slightly above the surface
-        f'<g transform="translate(0 2)" opacity=".12">{draw("#000000", "none")}</g>'
-        f'{draw("#FFFFFF", color)}'
+        f'<g transform="translate(0 2)" opacity=".12">{glyph("#000000", "none")}</g>'
+        f'{glyph("#FFFFFF", color)}'
         '</svg>')
 
 

@@ -30,3 +30,17 @@ def _close_windows_after_each_test():
     app.processEvents()
     from PySide6.QtCore import QCoreApplication, QEvent
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(autouse=True)
+def _no_window_animation():
+    """Resize instantly in tests (the animation has its own test)."""
+    try:
+        from quill.ui.main_window import MainWindow
+    except ImportError:
+        yield
+        return
+    saved = MainWindow.animation_ms
+    MainWindow.animation_ms = 0
+    yield
+    MainWindow.animation_ms = saved

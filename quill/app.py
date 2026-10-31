@@ -253,11 +253,11 @@ class QuillApp:
         if want and not self._mic_open:
             self.listener.start()
             self._mic_open = True
-            self.window.append_log("Microphone on")
+            self.window.append_log("Microphone On")
         elif not want and self._mic_open:
             self.listener.stop()
             self._mic_open = False
-            self.window.append_log("Microphone off")
+            self.window.append_log("Microphone Off")
 
     @staticmethod
     def _default_listener(model: pathlib.Path, on_transcript, on_error) -> Listener:
@@ -368,7 +368,10 @@ class QuillApp:
         opacity, blur = int(prefs["opacity"]), int(prefs["blur"])
         for window, root in ((self.window.widget, self.window.root), (self.sorting.widget, self.sorting.root)):
             if window is not None:
-                apply_spacing(window, str(prefs["spacing"]))
+                if window is self.window.widget:
+                    self.window.apply_density(str(prefs["spacing"]))
+                else:
+                    apply_spacing(window, str(prefs["spacing"]))
                 apply_chrome(window, dark, colors, opacity=opacity, blur=blur)
                 apply_opacity(root, opacity)
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
@@ -384,7 +387,7 @@ class QuillApp:
         self.controller.lead_in_s = self.feedback.lead_in_s()
         self.refresh_sorting()
         if not quiet:
-            self.window.append_log("Settings saved")
+            self.window.append_log("Settings Saved")
 
     # ------------------------------------------------------------------ #
     # Events from the controller                                           #
@@ -426,7 +429,7 @@ class QuillApp:
             return
         elif kind == "sorting":
             self.sorting.set_voice_status((event.record or {}).get("heard", ""), event.detail)
-            self.window.append_log(f"Voice sort: {event.detail}")
+            self.window.append_log(f"Voice Sort: {event.detail}")
             self.refresh_sorting()
             return
         elif kind == "undone":
@@ -447,10 +450,10 @@ class QuillApp:
     @staticmethod
     def _describe(event: Event) -> str:
         labels = {
-            "started": "Listening started", "stopped": "Listening stopped",
-            "committed": "Saved row", "discarded": "Row discarded",
+            "started": "Listening Started", "stopped": "Listening Stopped",
+            "committed": "Saved Row", "discarded": "Row Discarded",
             "updated": "Heard", "confirm": "Question", "error": "Error",
-            "searched": "Search", "cleared": "Search cleared", "unsure": "Unsure",
+            "searched": "Search", "cleared": "Search Cleared", "unsure": "Unsure",
             "undone": "Undo",
         }
         label = labels.get(event.kind)

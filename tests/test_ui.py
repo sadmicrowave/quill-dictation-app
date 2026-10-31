@@ -34,7 +34,7 @@ class TestMainWindow(unittest.TestCase):
         self.w.setup()
 
     def test_starts_not_listening(self):
-        self.assertEqual(self.w.state_label.text(), "Not listening")
+        self.assertEqual(self.w.state_label.text(), "Not Listening")
         self.assertEqual(self.w.toggle_button.text(), "Start")
         self.assertIn(COLOR_IDLE, self.w.dot.styleSheet())
 
@@ -86,7 +86,7 @@ class TestMainWindow(unittest.TestCase):
         self.w.set_last_saved("Row 4")
         self.w.set_footer("No model", offer_download=True)
         self.assertEqual(self.w.sheet_label.text(), "Sheet: Inventory")
-        self.assertEqual(self.w.last_label.text(), "Last saved: Row 4")
+        self.assertEqual(self.w.last_label.text(), "Last Saved: Row 4")
         self.assertFalse(self.w.download_button.isHidden())
         self.w.download_button.click()
         self.assertIn(("download",), self.calls)

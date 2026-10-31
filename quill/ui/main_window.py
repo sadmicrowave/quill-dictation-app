@@ -15,13 +15,14 @@ from __future__ import annotations
 import datetime as dt
 from typing import Callable
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QPlainTextEdit,
+    QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
     QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
 
 from quill.ui.icons import make_icon
+from quill.ui.theme import apply_spacing
 from quill.ui.widgets import ElidedLabel, Pill, tooltip_lines
 
 #: Active-light colours (the same hues are used by the tray icon).
@@ -111,6 +112,10 @@ class MainWindow:
         central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.root = central
         layout = QVBoxLayout(central)
+        # The window may be smaller than its content while it animates between sizes, so the layout
+        # must not force the window's minimum size (it is set once an animation has finished).
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        central.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
 
         # --- status row
         self.dot = QLabel("●")
@@ -124,8 +129,9 @@ class MainWindow:
         self.settings_button.setAccessibleName("Settings")
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.settings_button.clicked.connect(lambda: self._on_settings())
-        self.mini_button = QPushButton()                # icon only: shrinks to / restores from the mini view
-        self.mini_button.setProperty("iconOnly", True)
+        self.mini_button = QToolButton()                # just an icon (no box), like the Log heading
+        self.mini_button.setProperty("flatIcon", True)
+        self.mini_button.setAutoRaise(True)
         self.mini_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mini_button.clicked.connect(lambda: self.set_mini(not self._mini, notify=True))
         row = QHBoxLayout()
@@ -136,6 +142,7 @@ class MainWindow:
         row.addWidget(self.settings_button)
         row.addWidget(self.mini_button)
         layout.addLayout(row)
+        self._layout, self._status_row = layout, row
 
         # --- workbook row
         self.workbook_combo = QComboBox()
@@ -165,8 +172,9 @@ class MainWindow:
         self.row_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.row_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.row_table.setMaximumHeight(150)
+        self._row_height = self.row_table.verticalHeader().defaultSectionSize()
         layout.addWidget(self.row_table)
-        self.last_label = ElidedLabel("Last saved: –")      # one line however much was saved
+        self.last_label = ElidedLabel("Last Saved: –")      # one line however much was saved
         self.last_label.setProperty("note", True)          # smaller italic supporting text
         layout.addWidget(self.last_label)
 
@@ -178,7 +186,7 @@ class MainWindow:
         inner = QHBoxLayout(self.sorting_button)
         inner.setContentsMargins(12, 0, 12, 0)
         inner.addStretch(1)
-        title = QLabel("Needs sorting")
+        title = QLabel("Needs Sorting")
         self.sorting_title = title
         self.badge_label = Pill("0")
         for part in (title, self.badge_label):
@@ -186,8 +194,10 @@ class MainWindow:
             inner.addWidget(part, 0, Qt.AlignmentFlag.AlignVCenter)   # the pill hugs its text
         inner.addStretch(1)
         self.sorting_button.clicked.connect(lambda: self._on_sorting())
+        self._sorting_index = -1
         self.sorting_button.setVisible(False)
         layout.addWidget(self.sorting_button)
+        self._sorting_index = layout.indexOf(self.sorting_button)
         self.undo_button = QPushButton("↶ Undo")
         self.undo_button.setToolTip("Take back the last sorting answer; press again to keep stepping back")
         self.undo_button.clicked.connect(lambda: self._on_undo())
@@ -206,7 +216,7 @@ class MainWindow:
         self.footer = QLabel()
         self.footer.setWordWrap(True)
         self.footer.setVisible(False)
-        self.download_button = QPushButton("Download speech model")
+        self.download_button = QPushButton("Download Speech Model")
         self.download_button.clicked.connect(lambda: self._on_download_model())
         self.download_button.setVisible(False)
         layout.addWidget(self.footer)
@@ -254,8 +264,9 @@ class MainWindow:
     # Mini view                                                            #
     # ------------------------------------------------------------------ #
 
-    #: Width of the mini view.
-    MINI_WIDTH = 320
+    #: Width of the mini view, and how long a resize animation takes (ms; 0 = jump straight there).
+    MINI_WIDTH = 340
+    animation_ms = 180
 
     @property
     def mini(self) -> bool:
@@ -264,37 +275,97 @@ class MainWindow:
     def set_mini(self, mini: bool, notify: bool = False) -> None:
         """Switch between the full window and a small always-handy overlay.
 
-        The mini view keeps only the row being built, a start / stop button, the
-        Needs-sorting button and a way back; the log, the saved-row line, the
-        workbook details and the settings button are hidden. It floats above other
-        windows (unless turned off) so it can sit over a spreadsheet.
+        The mini view keeps only a status row (light, state text, the Needs-sorting
+        count, Start / Stop and a way back) and the row being built; the log, the
+        saved-row line, the workbook details, Undo and Settings are hidden. It floats
+        above other windows (unless turned off) so it can sit over a spreadsheet, and the
+        window animates between the two sizes.
         """
         window = self._window
         was = self._mini_applied
         if window is not None and mini and not was and window.isVisible():
-            self._full_size = window.size()               # to come back to
+            self._full_size = QSize(window.width(), self._height_now())   # to come back to
         self._mini = mini
         self._mini_applied = mini
         self.toggle_button.setText("" if mini else ("Stop" if self._listening else "Start"))
+        if window is not None and mini != was:
+            self._place_sorting_button(mini)
+            self._set_margins(mini)
         self._refresh_visibility()
         self.refresh_icons(self._text_color, self._on_accent, self._accent)
         if window is not None:
             self._apply_stay_on_top()
-            window.centralWidget().layout().activate()
             if mini:
-                window.resize(self.MINI_WIDTH, self._fit_height())
+                self._resize_to(self.MINI_WIDTH, self._fit_height())
             elif was:
-                window.resize(self._full_size)
+                self._fit_height()                           # lowers the minimum so the old size is allowed
+                self._resize_to(self._full_size.width(), self._full_size.height())
         if notify:
             self._on_mini_toggled(mini)
+
+    def apply_density(self, spacing: str | None = None) -> None:
+        """Apply the spacing setting to this window (the mini view keeps its own tight margins)."""
+        if self._window is None:
+            return
+        apply_spacing(self._window, spacing)
+        if self._mini:
+            self._set_margins(True)
+
+    def _set_margins(self, mini: bool) -> None:
+        if mini:
+            self._layout.setContentsMargins(10, 8, 10, 8)
+            self._layout.setSpacing(6)
+        else:
+            apply_spacing(self._window)
+
+    def _place_sorting_button(self, mini: bool) -> None:
+        """In the mini view the Needs-sorting count sits in the status row; otherwise on its own row."""
+        if mini:
+            self._layout.removeWidget(self.sorting_button)
+            self._status_row.insertWidget(self._status_row.indexOf(self.toggle_button), self.sorting_button)
+        else:
+            self._status_row.removeWidget(self.sorting_button)
+            self._layout.insertWidget(self._sorting_index, self.sorting_button)
+
+    # -- animated resizing ------------------------------------------------
+
+    def _height_now(self) -> int:
+        """The height the window has, or is heading for if an animation is running."""
+        animation = getattr(self, "_animation", None)
+        if animation is not None and animation.state() == QPropertyAnimation.State.Running:
+            return animation.endValue().height()
+        return self._window.height()
+
+    def _resize_to(self, width: int, height: int) -> None:
+        """Resize the window, easing to the new size unless animation is off or it is not on screen."""
+        window = self._window
+        previous = getattr(self, "_animation", None)
+        if previous is not None:
+            previous.stop()
+        window.setMinimumSize(0, 0)                  # so it can shrink (or start small) while animating
+        if self.animation_ms <= 0 or not window.isVisible():
+            window.resize(width, height)
+            self._settle_minimum()
+            return
+        animation = QPropertyAnimation(window, b"size", window)
+        animation.setDuration(self.animation_ms)
+        animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        animation.setStartValue(window.size())
+        animation.setEndValue(QSize(width, height))
+        self._animation = animation
+        animation.finished.connect(self._settle_minimum)
+        animation.start()
 
     def _fit_height(self) -> int:
         """The height the window needs right now (the layout is recomputed first, as Qt only does that lazily)."""
         layout = self._window.centralWidget().layout()
         layout.invalidate()
         layout.activate()
-        self._window.setMinimumSize(layout.minimumSize())     # the old (taller) minimum would stop it shrinking
         return layout.sizeHint().height()
+
+    def _settle_minimum(self) -> None:
+        """Stop the user dragging the window smaller than its content (applied once a resize is done)."""
+        self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize())
 
     def set_mini_on_top(self, on_top: bool) -> None:
         """Choose whether the mini view floats above other windows."""
@@ -317,7 +388,8 @@ class MainWindow:
         if self._window is None:
             return
         full = not self._mini
-        for widget in (self.state_label, self.settings_button, self.workbook_row, self.sheet_label,
+        self.state_label.setVisible(True)                                   # "Listening" / "Not Listening" shows in both views
+        for widget in (self.settings_button, self.workbook_row, self.sheet_label,
                        self.row_toggle, self.last_label, self.log_toggle):
             widget.setVisible(full)
         self.undo_button.setVisible(full and self._undo_count > 0)
@@ -327,11 +399,12 @@ class MainWindow:
         self.download_button.setVisible(full and self._offer_download)
         self.sorting_button.setVisible(self._sorting_count > 0)
         self.sorting_title.setVisible(full)                               # just the count pill when mini
-        self.row_table.setMaximumHeight(110 if self._mini else 150)
-        self.row_table.setMinimumHeight(64 if self._mini else 0)
-        self.sorting_button.setMinimumHeight((self.sorting_button.fontMetrics().height() + 16) if self._mini
+        self.row_table.setMaximumHeight(66 if self._mini else 150)
+        self.row_table.setMinimumHeight(48 if self._mini else 0)
+        self.row_table.verticalHeader().setDefaultSectionSize(22 if self._mini else self._row_height)
+        self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._mini
                                              else (self.sorting_button.fontMetrics().height() * 2 + 4))
-        self.sorting_button.setToolTip("Needs sorting" if self._mini else "")
+        self.sorting_button.setToolTip("Needs Sorting" if self._mini else "")
 
     def _section_toggle(self, name: str, tip: str) -> QToolButton:
         button = QToolButton()
@@ -351,11 +424,11 @@ class MainWindow:
         takes the same height again when it reopens.
         """
         body, toggle, title = ((self.log, self.log_toggle, "Log") if name == "log"
-                               else (self.row_table, self.row_toggle, "Current row"))
+                               else (self.row_table, self.row_toggle, "Current Row"))
         was = self._applied.get(name, False)      # what is on screen now (not the saved preference)
         window = self._window
         shown = window is not None and window.isVisible()
-        height = window.height() if window is not None else 0
+        height = self._height_now() if window is not None else 0
         spacing = window.centralWidget().layout().spacing() if window is not None else 0
         used = body.height() + max(spacing, 0)
         if name == "log":
@@ -368,10 +441,10 @@ class MainWindow:
             window.centralWidget().layout().activate()
             if collapsed and not was:
                 target = max(self._fit_height(), height - used) if shown else self._fit_height()
-                window.resize(window.width(), target)
-                self._freed[name] = max(height - window.height(), 0) if shown else 0   # what it really gave back
+                self._resize_to(window.width(), target)
+                self._freed[name] = max(height - target, 0) if shown else 0   # what it gave back
             elif was and not collapsed:
-                window.resize(window.width(), max(height + self._freed.pop(name, 0), self._fit_height()))
+                self._resize_to(window.width(), max(height + self._freed.pop(name, 0), self._fit_height()))
         toggle.setText(f"{title}  {'▾' if collapsed else '▴'}")
         toggle.setToolTip(f"Show the {title.lower()}" if collapsed else f"Hide the {title.lower()}")
         if notify:
@@ -441,7 +514,7 @@ class MainWindow:
             parts.append(f"{count} field{'s' if count != 1 else ''}")
             parts.append(", ".join(f"{k}: {v}" for k, v in items))
             tip = f"{row}\n{tooltip_lines(items)}"
-        self.last_label.setFullText("Last saved: " + " · ".join(p for p in parts if p), tip)
+        self.last_label.setFullText("Last Saved: " + " · ".join(p for p in parts if p), tip)
 
     def append_log(self, text: str) -> None:
         """Add a timestamped line to the log."""
@@ -451,10 +524,10 @@ class MainWindow:
         """Update the active light, label and button."""
         self._listening = active
         self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
-        self.state_label.setText("Listening" if active else "Not listening")
+        self.state_label.setText("Listening" if active else "Not Listening")
         self.toggle_button.setText("" if self._mini else ("Stop" if active else "Start"))
-        self.toggle_button.setToolTip("Stop listening" if active else "Start listening")
-        self.toggle_button.setAccessibleName("Stop listening" if active else "Start listening")
+        self.toggle_button.setToolTip("Stop Listening" if active else "Start Listening")
+        self.toggle_button.setAccessibleName("Stop Listening" if active else "Start Listening")
         self.toggle_button.setIcon(self._icon("stop" if active else "play", self._on_accent))
 
     def _icon(self, name: str, color: str):
@@ -467,8 +540,8 @@ class MainWindow:
         if self._window is None:
             return                      # not built yet; setup() draws them
         self.mini_button.setIcon(make_icon("maximize" if self._mini else "minimize", text_color, 16))
-        self.mini_button.setToolTip("Back to the full window" if self._mini else "Mini view")
-        self.mini_button.setAccessibleName("Back to the full window" if self._mini else "Mini view")
+        self.mini_button.setToolTip("Back to the Full Window" if self._mini else "Mini View")
+        self.mini_button.setAccessibleName("Back to the Full Window" if self._mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self.toggle_button.setIcon(make_icon("stop" if self._listening else "play", on_accent, 16))
@@ -484,7 +557,7 @@ class MainWindow:
         self._sorting_count = count
         self._refresh_visibility()
         self.badge_label.setText(str(count))
-        self.sorting_button.setAccessibleName(f"Needs sorting ({count})")
+        self.sorting_button.setAccessibleName(f"Needs Sorting ({count})")
 
     def set_footer(self, text: str, offer_download: bool = False) -> None:
         """Show a status message; optionally reveal the model-download button."""

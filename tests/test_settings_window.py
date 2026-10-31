@@ -42,7 +42,7 @@ class TestLayout(DialogCase):
         self.assertEqual(self.d.search.placeholderText(), "Search")
         names = [self.d.nav.item(i).text() for i in range(self.d.nav.count())]
         self.assertEqual(names, ["Preferences", "General", "Appearance", "Sounds",
-                                 "Voice and commands", "Keywords"])
+                                 "Voice and Commands", "Keywords"])
         self.assertEqual([t for _, titles in GROUPS for t in titles], list(self.d._nav_items))
 
     def test_captions_cannot_be_selected(self):
@@ -59,10 +59,10 @@ class TestLayout(DialogCase):
 
     def test_every_setting_lives_on_one_page_as_a_titled_row(self):
         self.assertEqual({r.title for r in self.d.rows},
-                         {"Read questions aloud", "Sort by voice automatically", "Undo remembers", "Theme",
-                          "Keep the microphone open when not listening", "Keep the mini view on top",
-                          "Accent colour", "Spacing", "Text size", "Window opacity", "Window blur",
-                          "Confirm with", "Sound set", "Spoken word", "Preview"})
+                         {"Read Questions Aloud", "Sort by Voice Automatically", "Undo Remembers", "Theme",
+                          "Keep the Microphone Open When Not Listening", "Keep the Mini View on Top",
+                          "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur",
+                          "Confirm With", "Sound Set", "Spoken Word", "Preview"})
 
     def test_the_keyword_table_gets_the_spare_height(self):
         self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))
@@ -82,14 +82,14 @@ class TestSearch(DialogCase):
         self.assertEqual(self.visible_pages(), ["Appearance"])
         self.assertEqual(self.d.nav.currentItem().text(), "Appearance")      # jumps to a page with matches
         shown = [r.title for r in self.d.rows if not r.isHidden()]
-        self.assertEqual(shown, ["Window blur"])
+        self.assertEqual(shown, ["Window Blur"])
 
     def test_matches_descriptions_and_keywords_not_only_titles(self):
         self.d.filter("frosts")
-        self.assertEqual([r.title for r in self.d.rows if not r.isHidden()], ["Window blur"])
+        self.assertEqual([r.title for r in self.d.rows if not r.isHidden()], ["Window Blur"])
         self.d.filter("voice")
         titles = {r.title for r in self.d.rows if not r.isHidden()}
-        self.assertIn("Sort by voice automatically", titles)
+        self.assertIn("Sort by Voice Automatically", titles)
 
     def test_every_word_must_match(self):
         self.assertEqual(self.d.filter("text size"), 1)
@@ -111,7 +111,7 @@ class TestSearch(DialogCase):
 
     def test_captions_hide_with_their_pages(self):
         self.d.filter("blur")
-        self.assertTrue(self.d._captions[1].isHidden())                      # "Voice and commands"
+        self.assertTrue(self.d._captions[1].isHidden())                      # "Voice and Commands"
         self.assertFalse(self.d._captions[0].isHidden())
 
     def test_typing_in_the_box_filters(self):
@@ -230,7 +230,7 @@ class TestCurrentRowCollapse(unittest.TestCase):
         _app.processEvents()
 
     def test_heading_is_a_toggle_with_an_arrow(self):
-        self.assertTrue(self.w.row_toggle.text().startswith("Current row"))
+        self.assertTrue(self.w.row_toggle.text().startswith("Current Row"))
         self.assertIn("▴", self.w.row_toggle.text())
 
     def test_clicking_hides_the_table_and_the_window_follows(self):

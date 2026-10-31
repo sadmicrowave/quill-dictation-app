@@ -74,7 +74,7 @@ class TestLiveUpdate(LiveCase):
 
     def test_live_changes_are_not_logged_as_saved(self):
         self.d.font_spin.setValue(13)
-        self.assertNotIn("Settings saved", self.app.window.log.toPlainText())
+        self.assertNotIn("Settings Saved", self.app.window.log.toPlainText())
 
     def test_cancel_puts_everything_back(self):
         original = dict(self.settings.preferences)

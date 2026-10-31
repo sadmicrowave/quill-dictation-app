@@ -34,7 +34,7 @@ from quill.ui.theme import apply_spacing
 #: Called with (key, decision, corrected words) when the user decides.
 ResolveCallback = Callable[[TermKey, Decision, str], None]
 
-PLACEHOLDER = "Choose column…"
+PLACEHOLDER = "Choose Column…"
 
 
 def question_for(column: str | None, term: str) -> str:
@@ -73,7 +73,7 @@ class TermRow(QFrame):
             self.combo.setCurrentIndex(self.combo.findData(column))
         self.add_button = QPushButton("Add")
         self.add_button.setToolTip("Add this as a new value in the chosen column")
-        self.same_button = QPushButton("Same as…")
+        self.same_button = QPushButton("Same As…")
         self.same_button.setToolTip("It is another name for a value that is already in the list")
         self.same_menu = QMenu(self.same_button)
         self.same_menu.aboutToShow.connect(self._fill_same_menu)
@@ -172,7 +172,7 @@ class SortingWindow:
         window.setObjectName("sortingWindow")
         window.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        window.setWindowTitle("Needs sorting")
+        window.setWindowTitle("Needs Sorting")
         window.resize(460, 300)
         window.setMinimumSize(320, 160)
         shell = QVBoxLayout(window)
@@ -209,9 +209,9 @@ class SortingWindow:
         self.scroll = scroll
 
         footer = QHBoxLayout()
-        self.add_all_button = QPushButton("Add all with a column")
+        self.add_all_button = QPushButton("Add All With a Column")
         self.add_all_button.clicked.connect(self.add_all)
-        self.ignore_all_button = QPushButton("Ignore all")
+        self.ignore_all_button = QPushButton("Ignore All")
         self.ignore_all_button.clicked.connect(self.ignore_all)
         footer.addWidget(self.add_all_button)
         self.undo_button = QPushButton("↶ Undo")
@@ -243,7 +243,7 @@ class SortingWindow:
             self._list.insertWidget(self._list.count() - 1, row)
             self.rows.append(row)
         if self._window is not None:
-            self._window.setWindowTitle(f"Needs sorting ({len(items)})" if items else "Needs sorting")
+            self._window.setWindowTitle(f"Needs Sorting ({len(items)})" if items else "Needs Sorting")
             self.add_all_button.setEnabled(bool(items))
             self.ignore_all_button.setEnabled(bool(items))
             if not items:
@@ -273,7 +273,7 @@ class SortingWindow:
     def _render_voice(self) -> None:
         self.voice_button.setChecked(self._voice_active)
         self.voice_button.setText("🎤 Listening… (click to stop)" if self._voice_active
-                                  else "🎤 Sort by voice")
+                                  else "🎤 Sort by Voice")
         if self._voice_active and not self.voice_status.text():
             self.voice_status.setText(self.VOICE_HINT)
 

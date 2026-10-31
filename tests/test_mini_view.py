@@ -16,7 +16,7 @@ from tests.test_sorting import SENTENCE, DemoCase
 
 _app = QApplication.instance() or QApplication([])
 
-HIDDEN_IN_MINI = ("state_label", "settings_button", "workbook_row", "sheet_label", "row_toggle",
+HIDDEN_IN_MINI = ("settings_button", "workbook_row", "sheet_label", "row_toggle",
                   "last_label", "log_toggle", "log", "footer", "download_button", "undo_button")
 
 
@@ -49,18 +49,26 @@ class TestMiniWindow(unittest.TestCase):
     def test_the_mini_view_keeps_the_row_the_buttons_and_the_way_back(self):
         self.w.set_mini(True)
         _app.processEvents()
-        for name in ("dot", "toggle_button", "row_table", "sorting_button", "mini_button"):
+        for name in ("dot", "state_label", "toggle_button", "row_table", "sorting_button", "mini_button"):
             self.assertTrue(shown(self.w, name), name)
+
+    def test_the_state_text_is_still_there_in_the_mini_view(self):
+        self.w.set_mini(True)
+        _app.processEvents()
+        self.assertEqual(self.w.state_label.text(), "Not Listening")
+        self.w.set_listening_indicator(True)
+        self.assertEqual(self.w.state_label.text(), "Listening")
+        self.assertTrue(shown(self.w, "state_label"))
 
     def test_the_buttons_shrink_to_icons(self):
         self.w.set_mini(True)
         self.assertEqual(self.w.toggle_button.text(), "")
         self.assertFalse(self.w.toggle_button.icon().isNull())
-        self.assertEqual(self.w.toggle_button.toolTip(), "Start listening")
+        self.assertEqual(self.w.toggle_button.toolTip(), "Start Listening")
         self.assertFalse(self.w.sorting_title.isVisibleTo(self.w.widget))
         self.assertEqual(self.w.badge_label.text(), "3")                  # just the count pill
         self.w.set_listening_indicator(True)
-        self.assertEqual((self.w.toggle_button.text(), self.w.toggle_button.toolTip()), ("", "Stop listening"))
+        self.assertEqual((self.w.toggle_button.text(), self.w.toggle_button.toolTip()), ("", "Stop Listening"))
 
     def test_the_window_becomes_small_and_comes_back_to_its_size(self):
         full = self.w.widget.size()
@@ -68,19 +76,53 @@ class TestMiniWindow(unittest.TestCase):
         _app.processEvents()
         small = self.w.widget.size()
         self.assertEqual(small.width(), MainWindow.MINI_WIDTH)
-        self.assertLess(small.height(), 260)
+        self.assertLess(small.height(), 130)                  # shorter than the first version (164)
         self.assertLess(small.height() * 2, full.height())
         self.w.set_mini(False)
         _app.processEvents()
         self.assertEqual(self.w.widget.size(), full)
         self.assertEqual(self.w.toggle_button.text(), "Start")
 
+    def test_the_needs_sorting_count_moves_into_the_status_row(self):
+        row = self.w._status_row
+        self.assertEqual(row.indexOf(self.w.sorting_button), -1)
+        self.w.set_mini(True)
+        self.assertGreaterEqual(row.indexOf(self.w.sorting_button), 0)
+        self.assertLess(row.indexOf(self.w.sorting_button), row.indexOf(self.w.toggle_button))
+        self.w.set_mini(False)
+        self.assertEqual(row.indexOf(self.w.sorting_button), -1)
+        self.assertEqual(self.w._layout.indexOf(self.w.sorting_button), self.w._sorting_index)
+
+    def test_the_mini_view_has_tight_margins_and_the_full_view_gets_its_own_back(self):
+        full = self.w._layout.contentsMargins().left()
+        self.w.set_mini(True)
+        self.assertEqual(self.w._layout.contentsMargins().left(), 10)
+        self.w.set_mini(False)
+        self.assertEqual(self.w._layout.contentsMargins().left(), full)
+
+    def test_density_changes_keep_the_mini_margins(self):
+        self.w.set_mini(True)
+        self.w.apply_density("comfortable")
+        self.assertEqual(self.w._layout.contentsMargins().left(), 10)
+
+    def test_the_resize_button_is_just_an_icon_without_a_box(self):
+        from PySide6.QtWidgets import QToolButton
+        self.assertIsInstance(self.w.mini_button, QToolButton)
+        self.assertTrue(self.w.mini_button.autoRaise())
+        self.assertTrue(self.w.mini_button.property("flatIcon"))
+        from quill.ui import theme
+        sheet = theme.stylesheet_for(False)
+        start = sheet.index('QToolButton[flatIcon="true"] {')
+        rule = sheet[start: sheet.index("}", start)]
+        self.assertIn("border: none", rule)
+        self.assertIn("background: transparent", rule)
+
     def test_the_row_box_is_small_but_always_there(self):
         self.w.set_row_collapsed(True)
         self.w.set_mini(True)
         _app.processEvents()
         self.assertTrue(shown(self.w, "row_table"))                         # shown even if collapsed in the full view
-        self.assertLessEqual(self.w.row_table.maximumHeight(), 110)
+        self.assertLessEqual(self.w.row_table.maximumHeight(), 70)
         self.w.set_mini(False)
         _app.processEvents()
         self.assertFalse(shown(self.w, "row_table"))                        # the full view remembers it was collapsed
@@ -110,9 +152,9 @@ class TestMiniWindow(unittest.TestCase):
         self.assertEqual(self.toggled, [True, False])                       # programmatic changes don't notify
 
     def test_the_button_tooltip_and_icon_follow_the_view(self):
-        self.assertEqual(self.w.mini_button.toolTip(), "Mini view")
+        self.assertEqual(self.w.mini_button.toolTip(), "Mini View")
         self.w.set_mini(True)
-        self.assertEqual(self.w.mini_button.toolTip(), "Back to the full window")
+        self.assertEqual(self.w.mini_button.toolTip(), "Back to the Full Window")
         self.assertFalse(self.w.mini_button.icon().isNull())
 
     def test_the_needs_sorting_button_hides_with_no_terms_in_either_view(self):
@@ -151,6 +193,72 @@ class TestMiniWindow(unittest.TestCase):
         size = self.w.widget.size()
         self.w.set_log_collapsed(True)
         self.assertEqual(self.w.widget.size(), size)
+
+
+class TestResizeAnimation(unittest.TestCase):
+    def setUp(self):
+        self.w = MainWindow()
+        self.w.setup()
+        self.w.widget.resize(360, 620)
+        self.w.widget.show()
+        MainWindow.animation_ms = 120
+        _app.processEvents()
+
+    def tearDown(self):
+        MainWindow.animation_ms = 0
+
+    def wait(self):
+        from PySide6.QtTest import QTest
+        QTest.qWait(260)
+
+    def test_entering_the_mini_view_eases_instead_of_jumping(self):
+        self.w.set_mini(True)
+        self.assertGreater(self.w.widget.height(), 400, "it must not jump straight to the small size")
+        self.assertEqual(self.w._animation.endValue().width(), MainWindow.MINI_WIDTH)
+        self.wait()
+        self.assertEqual(self.w.widget.width(), MainWindow.MINI_WIDTH)
+        self.assertLess(self.w.widget.height(), 150)
+
+    def test_leaving_eases_back_to_the_old_size(self):
+        self.w.set_mini(True)
+        self.wait()
+        self.w.set_mini(False)
+        self.assertLess(self.w.widget.height(), 200, "starts from the small size")
+        self.wait()
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (360, 620))
+
+    def test_toggling_quickly_ends_in_the_right_place(self):
+        for mini in (True, False, True):
+            self.w.set_mini(mini)
+        self.wait()
+        self.assertEqual(self.w.widget.width(), MainWindow.MINI_WIDTH)
+
+    def test_quick_toggle_there_and_back_restores_the_full_size(self):
+        self.w.set_mini(True)
+        self.w.set_mini(False)                       # before the first animation finished
+        self.wait()
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (360, 620))
+
+    def test_collapsing_the_log_eases_too_and_reopening_restores_exactly(self):
+        full = self.w.widget.height()
+        self.w.set_log_collapsed(True)
+        self.assertGreater(self.w.widget.height(), full - 50)
+        self.wait()
+        self.assertLess(self.w.widget.height(), full - 100)
+        self.w.set_log_collapsed(False)
+        self.wait()
+        self.assertEqual(self.w.widget.height(), full)
+
+    def test_a_hidden_window_resizes_at_once(self):
+        w = MainWindow()
+        w.setup()
+        w.set_mini(True)
+        self.assertEqual(w.widget.width(), MainWindow.MINI_WIDTH)
+
+    def test_animation_can_be_switched_off(self):
+        MainWindow.animation_ms = 0
+        self.w.set_mini(True)
+        self.assertEqual(self.w.widget.width(), MainWindow.MINI_WIDTH)
 
 
 class TestMiniInTheApp(DemoCase):

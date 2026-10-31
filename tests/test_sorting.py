@@ -287,10 +287,10 @@ class TestSortingWindow(unittest.TestCase):
 
     def test_title_counts_and_empty_hides(self):
         self.win.set_items([("Era", "90s")])
-        self.assertEqual(self.win.widget.windowTitle(), "Needs sorting (1)")
+        self.assertEqual(self.win.widget.windowTitle(), "Needs Sorting (1)")
         self.win.show()
         self.win.set_items([])
-        self.assertEqual(self.win.widget.windowTitle(), "Needs sorting")
+        self.assertEqual(self.win.widget.windowTitle(), "Needs Sorting")
         self.assertFalse(self.win.widget.isVisible())
 
     def test_removed_rows_leave_the_screen_immediately(self):

@@ -25,19 +25,19 @@ PRIORITY = {"success": 0, "dismiss": 1, "sort": 2, "error": 3}
 
 #: Feedback modes: nothing, a sound, or a spoken word.
 MODES = ("off", "sounds", "echo")
-MODE_LABELS = {"off": "Off", "sounds": "Short sounds", "echo": "Spoken word"}
+MODE_LABELS = {"off": "Off", "sounds": "Short sounds", "echo": "Spoken Word"}
 
 #: Sound packs (folder name -> label in Settings).
 PACKS = {"chime": "Chime", "marimba": "Marimba", "glass": "Glass",
-         "digital": "Digital", "walkie": "Walkie-talkie"}
+         "digital": "Digital", "walkie": "Walkie-Talkie"}
 
 #: Word spoken for a success in echo mode (key -> the word).
-ECHO_WORDS = {"okay": "Okay", "done": "Done", "got_it": "Got it"}
+ECHO_WORDS = {"okay": "Okay", "done": "Done", "got_it": "Got It"}
 
 SOUNDS_DIR = pathlib.Path(__file__).parent / "sounds"
 
 #: Spoken for the other cues in echo mode; dismiss uses the kind of event.
-_ECHO_FIXED = {"sort": "Please sort", "error": "Problem"}
+_ECHO_FIXED = {"sort": "Please Sort", "error": "Problem"}
 _DISMISS_WORDS = {"skipped": "Ignored", "undone": "Undone", "discarded": "Deleted"}
 
 _SUCCESS_KINDS = {"add_values", "alias_added", "searched", "cleared"}

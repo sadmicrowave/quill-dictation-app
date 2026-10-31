@@ -307,7 +307,7 @@ class TestAppVoiceSorting(AppVoiceCase):
     def test_voice_sort_is_logged(self):
         self.quill.sorting.voice_button.click()
         self.hear(self.quill, "ignore")
-        self.assertIn("Voice sort: Ignored ‘extra large’", self.quill.window.log.toPlainText())
+        self.assertIn("Voice Sort: Ignored ‘extra large’", self.quill.window.log.toPlainText())
 
     def test_button_with_nothing_to_sort(self):
         self.quill.sorting.set_items([])

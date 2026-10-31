@@ -213,6 +213,8 @@ QLabel#termPrompt {{ font-size: {font_size + 3}pt; font-weight: 500; }}
 QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2px 0;
               font-size: {font_size}pt;
               color: {t['muted']}; }}
+QToolButton[flatIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
+QToolButton[flatIcon="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
 QWidget#settingsSidebar {{ border-right: 1px solid {t['border']}; }}
 QListWidget#settingsNav {{ background: transparent; border: none; outline: none; padding: 0; }}

@@ -48,16 +48,16 @@ class TestMicOffByDefault(MicCase):
     def test_closed_at_launch(self):
         self.assertEqual((self.mic.starts, self.mic.started), (0, False))
         self.assertIn("Speech model ready", self.quill.window.log.toPlainText())
-        self.assertNotIn("Microphone on", self.quill.window.log.toPlainText())
+        self.assertNotIn("Microphone On", self.quill.window.log.toPlainText())
 
     def test_opens_when_listening_starts_and_closes_when_it_stops(self):
         self.quill.window.toggle_button.click()
         self.assertTrue(self.mic.started)
-        self.assertIn("Microphone on", self.quill.window.log.toPlainText())
+        self.assertIn("Microphone On", self.quill.window.log.toPlainText())
         self.quill.window.toggle_button.click()
         self.assertFalse(self.mic.started)
         self.assertEqual((self.mic.starts, self.mic.stops), (1, 1))
-        self.assertIn("Microphone off", self.quill.window.log.toPlainText())
+        self.assertIn("Microphone Off", self.quill.window.log.toPlainText())
 
     def test_the_tray_menu_opens_and_closes_it_too(self):
         self.quill.tray.toggle()

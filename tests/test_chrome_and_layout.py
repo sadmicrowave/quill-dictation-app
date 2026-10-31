@@ -250,7 +250,7 @@ class TestLastSaved(unittest.TestCase):
 
     def test_short_row_reads_naturally(self):
         self.w.set_last_saved("Row 4", {"Type": "Fern", "Price": 12.0})
-        self.assertEqual(self.w.last_label.full_text, "Last saved: Row 4 · 2 fields · Type: Fern, Price: 12.0")
+        self.assertEqual(self.w.last_label.full_text, "Last Saved: Row 4 · 2 fields · Type: Fern, Price: 12.0")
 
     def test_one_field_is_singular(self):
         self.w.set_last_saved("Row 4", {"Type": "Fern"})
@@ -261,7 +261,7 @@ class TestLastSaved(unittest.TestCase):
         self.w.set_last_saved("Row 9", record)
         label = self.w.last_label
         self.assertLessEqual(label.sizeHint().height(), label.fontMetrics().height() * 2)
-        self.assertTrue(label.text().startswith("Last saved: Row 9 · 40 fields"))
+        self.assertTrue(label.text().startswith("Last Saved: Row 9 · 40 fields"))
         self.assertTrue(label.text().endswith("…"))
         self.assertLess(len(label.text()), len(label.full_text))
 
@@ -280,7 +280,7 @@ class TestLastSaved(unittest.TestCase):
 
     def test_row_only_form_still_works(self):
         self.w.set_last_saved("Row 4")
-        self.assertEqual(self.w.last_label.full_text, "Last saved: Row 4")
+        self.assertEqual(self.w.last_label.full_text, "Last Saved: Row 4")
 
     def test_elided_label_follows_its_width(self):
         label = ElidedLabel()
