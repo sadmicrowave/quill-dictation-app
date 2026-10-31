@@ -4,7 +4,7 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 
 ![Appearance settings](images/settings-appearance.png)
 
-> 💡 Changes show **live**. **OK** keeps them, **Cancel** puts everything back.
+> 💡 Changes show **live**. **OK** keeps them, **Cancel** puts everything back. Settings reopens on the page you left it on, at the size you left it.
 
 ## 🧭 Groups
 

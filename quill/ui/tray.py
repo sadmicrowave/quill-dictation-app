@@ -127,8 +127,10 @@ class TrayIcon:
     def __init__(self, app, main_window, on_start: Callable, on_stop: Callable,
                  on_open_workbook: Callable | None = None,
                  on_open_sorting: Callable | None = None,
-                 on_open_file: Callable | None = None) -> None:
+                 on_open_file: Callable | None = None,
+                 on_quit: Callable | None = None) -> None:
         self._app = app
+        self._on_quit = on_quit or app.quit
         self._main_window = main_window
         self._on_start = on_start
         self._on_stop = on_stop
@@ -200,7 +202,7 @@ class TrayIcon:
         self._sorting_action = self._menu.addAction("", lambda: self._on_open_sorting())
         self._sorting_action.setVisible(False)
         self._menu.addSeparator()
-        self._menu.addAction("Quit", self._app.quit)
+        self._menu.addAction("Quit", lambda: self._on_quit())
         self._refresh_workbook_items()
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return False

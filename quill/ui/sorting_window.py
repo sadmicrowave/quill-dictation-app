@@ -42,7 +42,7 @@ from quill.parser.vocab import Vocabulary
 from quill.session import Decision, TermKey
 from quill.ui.chrome import SYMBOL_HELP, SYMBOL_UNDO, add_titlebar_button
 from quill.ui.settings_widgets import FlatCombo
-from quill.ui.theme import apply_spacing
+from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.widgets import pill, pillify
 
 #: Called with (key, decision, corrected words) when the user decides.
@@ -303,7 +303,9 @@ class SortingWindow:
         shell = QVBoxLayout(window)
         shell.setContentsMargins(0, 0, 0, 0)
         root = QWidget()
-        root.setObjectName("sortingRoot")                      # paints the background; opacity applies to it
+        root.setObjectName("sortingRoot")
+
+        install_backdrop(root)                              # paints its own (see-through-able) background
         root.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         shell.addWidget(root)
         self.root = root

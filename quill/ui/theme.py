@@ -16,8 +16,8 @@ import pathlib
 import tempfile
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLayout, QWidget
+from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 _SCHEMES = {
     "auto": Qt.ColorScheme.Unknown,   # follow the operating system
@@ -143,18 +143,75 @@ def _chevrons(t: dict[str, str]) -> dict[str, str]:
 _ICON_CACHE: dict[tuple[str, str, str], dict[str, str]] = {}
 
 
+def backdrop_alpha(opacity: int, blur: int) -> float:
+    """How solid a window's own background paint is, so the blur behind it can show.
+
+    With no blur, or a fully opaque window, the background is solid (1.0). Otherwise it thins out as the window
+    is made more see-through, in proportion to the blur, so the frosted desktop shows through the background
+    (the window as a whole is faded separately: see :func:`apply_opacity`).
+    """
+    fade = 1 - max(0, min(100, int(opacity))) / 100
+    return round(1 - 0.85 * max(0, min(100, int(blur))) / 100 * fade, 3)
+
+
+ROOT_NAMES = ("mainRoot", "settingsRoot", "sortingRoot", "helpRoot")
+
+
+class _BackdropPainter(QObject):
+    """Paints a window root's background (theme colour, with the backdrop alpha) just before the widget paints.
+
+    Doing this here instead of in the style sheet means the transparency can change as the user drags the opacity
+    or blur slider by a repaint of the roots, not a re-styling of every widget.
+    """
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Paint:
+            app = QApplication.instance()
+            if app is not None:
+                colors = colors_for(is_dark(app), str(app.property("quillAccent") or DEFAULT_ACCENT))
+                color = QColor(colors["bg"])
+                alpha = app.property("quillBackdrop")
+                color.setAlphaF(1.0 if alpha is None else float(alpha))
+                painter = QPainter(obj)
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+                painter.fillRect(obj.rect(), color)
+                painter.end()
+        return False
+
+
+def install_backdrop(root: QWidget) -> None:
+    """Make *root* (a window's root widget) paint its own background; call once when the window is built."""
+    painter = _BackdropPainter(root)                  # parented to the root, so it lives and dies with it
+    root.installEventFilter(painter)
+
+
+def set_backdrop(app: QApplication, alpha: float) -> None:
+    """Set how solid the windows' own backgrounds are (see :func:`backdrop_alpha`) and repaint them."""
+    alpha = max(0.0, min(1.0, float(alpha)))
+    if app.property("quillBackdrop") == alpha:
+        return
+    app.setProperty("quillBackdrop", alpha)
+    for widget in app.allWidgets():
+        if widget.objectName() in ROOT_NAMES:
+            widget.update()
+
+
 def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING,
                    font_size: int = DEFAULT_FONT_SIZE) -> str:
-    """The style sheet: rounded controls, hairline borders, an accent for the main action."""
+    """The style sheet: rounded controls, hairline borders, an accent for the main action.
+
+    A window's own background is not painted by the style sheet but by :class:`_BackdropPainter` (so its
+    transparency can change without re-styling the whole application).
+    """
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     icon = _chevrons(t)
-    win = t["bg"]                                        # all colours are solid: see-through is
-    surf = t["surface"]                                  # applied to the whole window, never per colour
+    win = t["bg"]                                        # all colours are solid: see-through is applied to the
+    surf = t["surface"]                                  # whole window (and, for blur, to its background only)
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
-QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: {win}; }}
+QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.10)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
            border-radius: 8px; padding: 5px 9px; }}
 
@@ -333,7 +390,7 @@ class _TooltipRounder(QObject):
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
-                spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE) -> None:
+                spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE, backdrop: float = 1.0) -> None:
     """Set the colour scheme, accent and spacing, and apply Quill's look.
 
     Args:
@@ -344,6 +401,7 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
         spacing: ``"compact"`` or ``"comfortable"``. Layout margins and gaps
             are applied separately by :func:`apply_spacing`.
         font_size: Base text size in points (the Needs-sorting questions are 3 larger).
+        backdrop: Alpha of the windows' own background (see :func:`backdrop_alpha`); 1 = solid.
     """
     if not app.property("quillFusion"):      # once: re-setting the style re-polishes everything
         app.setStyle("Fusion")
@@ -360,6 +418,7 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
     app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
     _restyle(app)
+    set_backdrop(app, backdrop)
     if not app.property("quillTooltips"):
         rounder = _TooltipRounder(app)             # parented to the app, which keeps it alive
         app.installEventFilter(rounder)
@@ -370,24 +429,17 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
 
 
 def apply_opacity(root: QWidget, percent: int) -> None:
-    """Fade a window's whole contents (background, controls and text together) to *percent*.
+    """Fade a whole window (background, controls and text together) to *percent*.
 
-    *root* is the window's root widget (the one that paints the background).
-    Fading the root, rather than the native window or each colour, makes every
-    pixel follow the setting uniformly and lets what is *behind* the window (blurred,
-    if blur is on) show through. At 100 the effect is removed, so the window is
-    completely solid and costs nothing.
+    This is the window's own opacity, done by the operating system's compositor, so every pixel follows
+    the setting uniformly, instantly and without re-drawing anything. (An earlier version faded the root widget
+    with a graphics effect; on macOS that left ghost copies of the text and stale pieces of the previous theme
+    when the theme changed.) *root* may be any widget of the window.
     """
     percent = max(0, min(100, int(percent)))
-    if percent >= 100:
-        if root.graphicsEffect() is not None:
-            root.setGraphicsEffect(None)
-        return
-    effect = root.graphicsEffect()
-    if not isinstance(effect, QGraphicsOpacityEffect):
-        effect = QGraphicsOpacityEffect(root)
-        root.setGraphicsEffect(effect)
-    effect.setOpacity(percent / 100)
+    if root.graphicsEffect() is not None:
+        root.setGraphicsEffect(None)                       # no effect may be left over from before
+    root.window().setWindowOpacity(percent / 100)
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:

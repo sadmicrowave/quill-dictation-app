@@ -18,7 +18,8 @@ import threading
 from typing import Callable
 
 import shiboken6
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtWidgets import QApplication
 
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
@@ -27,10 +28,11 @@ from quill.bridge.hosts import HostApp, SpreadsheetHosts
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
-from quill.feedback import Feedback
+from quill.feedback import spoken_words, Feedback
 from quill.listener.listener import Listener
 from quill.listener.model import download_model, ensure_model, user_model_dir
 from quill.session import Decision, Event, TermKey
+from quill.speaker.clips import SpokenClips
 from quill.speaker.speaker import Speaker
 from quill.stream import match_words
 from quill.ui.chrome import (
@@ -50,10 +52,25 @@ from quill.ui.theme import (
     apply_opacity,
     apply_spacing,
     apply_theme,
+    backdrop_alpha,
     colors_for,
     is_dark,
 )
 from quill.ui.tray import TrayIcon
+
+
+class QuillApplication(QApplication):
+    """The application object. The system's "quit the application" request (Dock menu, Cmd-Q) arrives as a
+    close event addressed to it; it is turned into :attr:`quit_requested`, which :meth:`QuillApp.quit_app` handles, so
+    quitting closes every window the same way whatever started it (and no open Settings window can hold it back)."""
+
+    quit_requested = Signal()
+
+    def event(self, event) -> bool:
+        if event.type() == QEvent.Type.Close:
+            self.quit_requested.emit()
+            return True
+        return super().event(event)
 
 
 class Relay(QObject):
@@ -90,6 +107,9 @@ class QuillApp:
         poll_interval_ms: How often to look for workbooks being opened/closed.
     """
 
+    #: How long after asking to quit the event loop is forced to end if something still holds it (0 = never; tests).
+    quit_failsafe_ms = 1500
+
     #: Default polling period of the workbook watcher.
     POLL_INTERVAL_MS = 3000
 
@@ -105,6 +125,7 @@ class QuillApp:
         poll_interval_ms: int = POLL_INTERVAL_MS,
         sound_player: Callable | None = None,
         echo_speaker=None,
+        clips: SpokenClips | None = None,
         file_chooser: Callable[[], str | None] | None = None,
         live_bridge_factory: Callable[[], WorkbookBridge] = get_bridge,
         hosts: SpreadsheetHosts | None = None,
@@ -115,6 +136,8 @@ class QuillApp:
         self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
         self._probe_ticks = 0
+        self._settings_dialog: SettingsDialog | None = None    # the open Settings window, if any
+        self._quitting = False
         self._error_in_footer = ""                    # the error currently shown in the window's footer, if any
         self._host_probe_running = False             # a look for files in other programs is under way
         self._host_noted = False
@@ -157,7 +180,7 @@ class QuillApp:
             on_start=lambda: self.toggle_listening(True),
             on_stop=lambda: self.toggle_listening(False),
             on_open_workbook=self.show_workbook, on_open_sorting=self.show_sorting,
-            on_open_file=self.choose_spreadsheet_file,
+            on_open_file=self.choose_spreadsheet_file, on_quit=self.quit_app,
         )
         self.listener = None
         self.connected = False
@@ -173,7 +196,9 @@ class QuillApp:
         self._expiry.setSingleShot(True)
         self._expiry.timeout.connect(self.controller.expire_prompt)
         self.echo_speaker = echo_speaker or Speaker(enabled=True)
-        self.feedback = Feedback(settings, sound_player or SoundPlayer(), self._speak_word,
+        self.sound_player = sound_player or SoundPlayer()
+        self.clips = clips or SpokenClips()                      # spoken confirmation words, rendered once, played at once
+        self.feedback = Feedback(settings, self.sound_player, self._speak_word,
                                  busy=self._mute_for)
         self.controller.lead_in_s = self.feedback.lead_in_s()
         self._cue_timer = QTimer()          # lets one breath's events settle into a single cue
@@ -214,12 +239,15 @@ class QuillApp:
         self.window.show()
         self.qapp.aboutToQuit.connect(self.window.report_size)      # a size changed just before quitting counts
         self.qapp.aboutToQuit.connect(self.shutdown)
+        if hasattr(self.qapp, "quit_requested"):                          # Quit from the Dock or Cmd-Q goes the same way
+            self.qapp.quit_requested.connect(self.quit_app)
         self._apply_dock()
         self._install_titlebar_button()
         self.window.set_file_mode(isinstance(self.controller.bridge, XlsxBridge))
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
         self._start_listener()
         self._watcher.start()
+        QTimer.singleShot(0, self._warm_up_sounds)           # after the window is up: load every sound, make spoken clips
 
     def connect_workbook(self, name: str | None = None, quiet: bool = False) -> None:
         """Connect (or reconnect) to a workbook and refresh the UI; never raises.
@@ -608,10 +636,37 @@ class QuillApp:
 
     def open_settings(self) -> None:
         """Show the settings dialog; apply the result if saved."""
-        dialog = SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback,
-                                on_change=lambda: self.apply_settings(quiet=True))
-        if dialog.exec():
+        if self._settings_dialog is not None:                 # already open: bring it forward, never a second one
+            self._settings_dialog.bring_forward()
+            return
+        dialog = self._settings_dialog = SettingsDialog(
+            self.settings, self.window.widget, on_preview=self.preview_feedback,
+            on_change=lambda: self.apply_settings(quiet=True))
+        try:
+            accepted = dialog.exec()
+        finally:
+            self._settings_dialog = None
+        if accepted and not self._quitting:
             self.apply_settings()
+
+    def quit_app(self) -> None:
+        """Quit from anywhere (menu bar, Dock, Cmd-Q): close every window first, whatever is open, then leave.
+
+        A modal Settings window used to be able to hold the application back; here it is closed first, the
+        other windows are closed, the microphone is released, and a fail-safe makes sure the event loop ends.
+        """
+        if self._quitting:
+            return
+        self._quitting = True
+        log.info("quitting")
+        if self._settings_dialog is not None:
+            self._settings_dialog.close_now()
+        for widget in list(self.qapp.topLevelWidgets()):
+            widget.close()
+        self.shutdown()
+        self.qapp.quit()
+        if self.quit_failsafe_ms:
+            QTimer.singleShot(self.quit_failsafe_ms, lambda: self.qapp.exit(0))    # fail-safe if a nested event loop lingers
 
     def _install_titlebar_button(self) -> None:
         """Put the resize icon in the title bar (macOS); the in-window one is then hidden."""
@@ -659,8 +714,15 @@ class QuillApp:
             self._apply_look()
 
     def _apply_dock(self) -> None:
-        """Show or hide the Dock icon to match the setting (macOS; a no-op elsewhere)."""
+        """Show or hide the Dock icon to match the setting (macOS; a no-op elsewhere).
+
+        Changing the Dock policy makes the system take the focus away; the window that had it gets it back,
+        so toggling the setting in Settings leaves Settings (or the main window) where it was.
+        """
+        active = self.qapp.activeWindow()
         set_dock_icon_visible(not bool(self.settings.preferences["hide_dock_icon"]))
+        if active is not None:
+            QTimer.singleShot(0, lambda: (active.raise_(), active.activateWindow()))
 
     def _app_state_changed(self, state) -> None:
         """Clicking Quill's Dock icon (or opening it from Finder) with no window up brings the window back."""
@@ -722,7 +784,7 @@ class QuillApp:
         """Apply theme, accent and spacing from the settings to the app and its windows."""
         prefs = self.settings.preferences
         apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]),
-                    int(prefs["font_size"]))
+                    int(prefs["font_size"]), backdrop=backdrop_alpha(int(prefs["opacity"]), int(prefs["blur"])))
         dark = is_dark(self.qapp)
         colors = colors_for(dark, str(prefs["accent"]))
         opacity, blur = int(prefs["opacity"]), int(prefs["blur"])
@@ -917,7 +979,27 @@ class QuillApp:
         self.feedback.cue("success", "", mode, pack, echo)
 
     def _speak_word(self, word: str) -> None:
+        """Say a confirmation word: from its ready-made clip at once, else live (and make the clip for next time)."""
+        if self.clips.ready(word):
+            self.sound_player(self.clips.path(word))
+            return
         self.echo_speaker.say(word)
+        self.clips.make_in_background([word], done=self._clips_ready)
+
+    def _clips_ready(self, paths) -> None:
+        """(Called on the helper thread.) New clips exist: load them on the GUI thread so they start instantly."""
+        preload = getattr(self.sound_player, "preload", None)
+        if preload is not None:
+            self.relay.background_done.emit(preload, list(paths))
+
+    def _warm_up_sounds(self) -> None:
+        """Load every feedback sound now (the first play of each would otherwise wait for it to load) and, when
+        words are spoken as confirmations, make their clips in the background."""
+        preload = getattr(self.sound_player, "preload", None)
+        if preload is not None:
+            preload(self.feedback.sound_files(all_packs=True))
+        if self.feedback.mode == "echo":
+            self.clips.make_in_background(spoken_words(), done=self._clips_ready)
 
     def _mute_for(self, seconds: float) -> None:
         """Keep the microphone muted while a cue is sounding."""

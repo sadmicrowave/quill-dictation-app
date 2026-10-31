@@ -68,9 +68,9 @@ class TestLiveUpdate(LiveCase):
 
     def test_the_running_window_follows_the_slider(self):
         self.d.opacity_slider.setValue(50)
-        self.assertAlmostEqual(self.app.window.root.graphicsEffect().opacity(), 0.5, 2)
+        self.assertAlmostEqual(self.app.window.widget.windowOpacity(), 0.5, 2)
         self.d.opacity_slider.setValue(100)
-        self.assertIsNone(self.app.window.root.graphicsEffect())
+        self.assertAlmostEqual(self.app.window.widget.windowOpacity(), 1.0, 2)
 
     def test_live_changes_are_not_logged_as_saved(self):
         self.d.font_spin.setValue(13)
@@ -109,11 +109,11 @@ class TestLiveUpdate(LiveCase):
 
     def test_the_settings_window_follows_opacity_but_never_below_the_floor(self):
         self.d.opacity_slider.setValue(30)
-        self.assertAlmostEqual(self.d.root.graphicsEffect().opacity(), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
+        self.assertAlmostEqual(self.d._dialog.windowOpacity(), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
         self.d.opacity_slider.setValue(85)
-        self.assertAlmostEqual(self.d.root.graphicsEffect().opacity(), 0.85, 2)
+        self.assertAlmostEqual(self.d._dialog.windowOpacity(), 0.85, 2)
         self.d.opacity_slider.setValue(100)
-        self.assertIsNone(self.d.root.graphicsEffect())
+        self.assertAlmostEqual(self.d._dialog.windowOpacity(), 1.0, 2)
 
     def test_open_settings_wires_live_updates_and_cancel_through_the_app(self):
         # The app's own dialog: change, cancel, and everything is as it was.

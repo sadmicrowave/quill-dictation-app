@@ -115,6 +115,7 @@ class GuardedSpinBox(_WheelGuard, QSpinBox):
         super().__init__()
         self.setProperty("flat", True)                           # drawn like the flat drop-downs (see theme.py)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.lineEdit().setTextMargins(2, 0, 6, 0)               # the text never touches the edge or the arrows
 
 
 class GuardedSlider(_WheelGuard, QSlider):
@@ -191,6 +192,7 @@ class SegmentedControl(QWidget):
         self._group.setExclusive(True)
         self._buttons: list[QToolButton] = []
         self._data: list[object] = []
+        self._icon_names: list[str] = []
         self._group.idClicked.connect(self._clicked)
 
     def addItem(self, icon_name: str, label: str, data: object) -> None:      # noqa: N802
@@ -200,8 +202,8 @@ class SegmentedControl(QWidget):
         button.setToolTip(label)
         button.setAccessibleName(label)
         button.setIconSize(QSize(18, 18))
-        color = self.palette().windowText().color().name()
-        button.setIcon(make_icon(icon_name, color, 18))
+        self._icon_names.append(icon_name)
+        button.setIcon(make_icon(icon_name, self.palette().windowText().color().name(), 18))
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         index = len(self._buttons)
         self._group.addButton(button, index)
@@ -210,6 +212,12 @@ class SegmentedControl(QWidget):
         self._data.append(data)
         if index == 0:
             button.setChecked(True)
+
+    def refresh_icons(self, color: str | None = None) -> None:
+        """Redraw the icons in *color* (default: the current text colour), e.g. after the theme changed."""
+        color = color or self.palette().windowText().color().name()
+        for button, name in zip(self._buttons, self._icon_names, strict=True):
+            button.setIcon(make_icon(name, color, 18))
 
     def count(self) -> int:
         return len(self._buttons)

@@ -25,8 +25,10 @@ def main(argv: list[str] | None = None) -> int:
     from quill.config.settings import Settings
     settings = Settings.load()
 
-    from PySide6.QtWidgets import QApplication, QMessageBox
-    app = QApplication(sys.argv[:1])
+    from PySide6.QtWidgets import QMessageBox
+
+    from quill.app import QuillApplication
+    app = QuillApplication(sys.argv[:1])
     app.setApplicationName("Quill")
     app.setQuitOnLastWindowClosed(False)  # lives in tray after window closes
 

@@ -45,6 +45,11 @@ _DISMISS_KINDS = {"skipped", "undone", "discarded"}
 _ERROR_KINDS = {"error", "unsure"}
 
 
+def spoken_words() -> list[str]:
+    """Every word Quill can say as a confirmation (so their clips can be made ahead of time)."""
+    return sorted({*ECHO_WORDS.values(), *_ECHO_FIXED.values(), *_DISMISS_WORDS.values()})
+
+
 def cue_for(event) -> tuple[str, str] | None:
     """Decide which cue an event deserves.
 
@@ -105,6 +110,11 @@ class Feedback:
         self._busy = busy or (lambda seconds: None)
         self._root = root
         self._wanted: tuple[str, str] | None = None
+
+    def sound_files(self, all_packs: bool = False) -> list[pathlib.Path]:
+        """The sound files this feedback may play: the chosen pack's, or every pack's (to load them ahead of time)."""
+        packs = list(PACKS) if all_packs else [str(self._settings.preferences.get("sound_pack", "chime"))]
+        return [sound_path(pack, cue, self._root) for pack in packs for cue in CUES]
 
     @property
     def mode(self) -> str:

@@ -66,6 +66,9 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "window_height": 0,
     "mini_width": 0,          # the mini view's size when it was last used (0 = the compact default)
     "mini_height": 0,
+    "settings_page": "",      # the Settings page that was open when the window was last closed
+    "settings_width": 0,      # and the window's size then (0 = default)
+    "settings_height": 0,
     "mini_mode": False,       # the main window starts as the small overlay
     "mini_on_top": True,      # the mini view floats above other windows
     "auto_stop": True,        # stop listening by itself when nothing has been said for a while

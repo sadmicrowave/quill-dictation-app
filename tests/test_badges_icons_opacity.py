@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QApplication, QWidget
 
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -221,8 +221,8 @@ class TestOpacityAndBlur(unittest.TestCase):
 
     @staticmethod
     def faded(root):
-        effect = root.graphicsEffect()
-        return None if effect is None else round(effect.opacity(), 2)
+        opacity = round(root.window().windowOpacity(), 2)
+        return None if opacity >= 1 else opacity
 
     def test_rgba_helper(self):
         self.assertEqual(theme.rgba("#FF8000", 0.5), "rgba(255, 128, 0, 128)")
@@ -247,10 +247,8 @@ class TestOpacityAndBlur(unittest.TestCase):
         app = self.make_app(opacity=100, blur=100)
         for root in (app.window.root, app.sorting.root):
             self.assertIsNone(root.graphicsEffect(), "no fade at 100%")
-        sheet = _app.styleSheet()
-        root_rule = sheet[sheet.index("QWidget#mainRoot"): sheet.index("}", sheet.index("QWidget#mainRoot"))]
-        self.assertIn(theme.TOKENS["light"]["bg"], root_rule)
-        self.assertNotIn("rgba", root_rule)                       # an opaque colour, not a see-through one
+        self.assertEqual(_app.property("quillBackdrop"), 1.0)         # the background is painted fully solid
+        self.assertEqual(app.window.widget.windowOpacity(), 1.0)
 
     def test_the_style_sheet_never_contains_a_see_through_colour_for_surfaces(self):
         for dark in (False, True):
@@ -287,20 +285,52 @@ class TestOpacityAndBlur(unittest.TestCase):
         app.apply_settings(quiet=True)
         self.assertIsNone(app.window.root.graphicsEffect())
 
-    def test_one_effect_is_reused_not_stacked(self):
+    def test_opacity_is_the_windows_own_and_never_a_graphics_effect(self):
         root = QWidget()
         theme.apply_opacity(root, 80)
-        first = root.graphicsEffect()
+        self.assertAlmostEqual(root.windowOpacity(), 0.8)
         theme.apply_opacity(root, 40)
-        self.assertIs(root.graphicsEffect(), first)
-        self.assertAlmostEqual(first.opacity(), 0.4)
+        self.assertAlmostEqual(root.windowOpacity(), 0.4)
+        self.assertIsNone(root.graphicsEffect())
+        root.setGraphicsEffect(QGraphicsOpacityEffect(root))          # one left over from an older version
+        theme.apply_opacity(root, 90)
+        self.assertIsNone(root.graphicsEffect())
 
     def test_apply_opacity_clamps(self):
         root = QWidget()
         theme.apply_opacity(root, -50)
-        self.assertEqual(root.graphicsEffect().opacity(), 0.0)
+        self.assertEqual(root.windowOpacity(), 0.0)
         theme.apply_opacity(root, 500)
-        self.assertIsNone(root.graphicsEffect())
+        self.assertEqual(root.windowOpacity(), 1.0)
+
+    def test_the_backdrop_thins_only_with_blur_and_only_as_the_window_fades(self):
+        self.assertEqual(theme.backdrop_alpha(100, 100), 1.0)             # solid window: solid background
+        self.assertEqual(theme.backdrop_alpha(50, 0), 1.0)                # no blur: solid background
+        self.assertLess(theme.backdrop_alpha(50, 100), theme.backdrop_alpha(80, 100))
+        self.assertLess(theme.backdrop_alpha(50, 100), theme.backdrop_alpha(50, 30))
+        self.assertGreater(theme.backdrop_alpha(10, 100), 0.1)            # never fully clear
+
+    def test_a_windows_background_is_painted_with_the_backdrop_alpha_and_changing_it_does_not_restyle(self):
+        theme.apply_theme(_app, "light", "violet", "compact", backdrop=1.0)
+        key = _app.property("quillThemeKey")
+        sheet = _app.styleSheet()
+        theme.set_backdrop(_app, 0.4)
+        self.assertEqual(_app.styleSheet(), sheet)                         # no re-styling of the whole application
+        self.assertEqual(_app.property("quillThemeKey"), key)
+        self.assertEqual(_app.property("quillBackdrop"), 0.4)
+        root = QWidget()
+        root.setObjectName("mainRoot")
+        theme.install_backdrop(root)
+        root.resize(40, 40)
+        pixel = root.grab().toImage().pixelColor(5, 5)
+        self.assertEqual(pixel.alpha(), round(0.4 * 255))                  # painted by the backdrop painter, see-through
+        theme.set_backdrop(_app, 1.0)
+        self.assertEqual(root.grab().toImage().pixelColor(5, 5).alpha(), 255)
+
+    def test_the_style_sheet_leaves_the_root_background_to_the_painter(self):
+        sheet = theme.stylesheet_for(False)
+        rule = sheet[sheet.index("QWidget#mainRoot"): sheet.index("}", sheet.index("QWidget#mainRoot"))]
+        self.assertIn("transparent", rule)
 
     def test_the_window_itself_is_transparent_so_only_the_root_paints(self):
         sheet = theme.stylesheet_for(False)
@@ -354,13 +384,15 @@ class TestThemeSwitching(unittest.TestCase):
         theme.apply_theme(_app, "light")
 
     def test_light_after_dark_changes_the_background_immediately(self):
-        theme.apply_theme(_app, "dark")
-        self.assertIn(f"background: {theme.TOKENS['dark']['bg']}", _app.styleSheet())
-        theme.apply_theme(_app, "light")
-        sheet = _app.styleSheet()
-        start = sheet.index("QWidget#mainRoot")
-        self.assertIn(theme.TOKENS["light"]["bg"], sheet[start: sheet.index("}", start)])
-        self.assertFalse(theme.is_dark(_app))
+        root = QWidget()
+        root.setObjectName("mainRoot")
+        theme.install_backdrop(root)
+        root.resize(30, 30)
+        for mode in ("dark", "light", "dark", "light"):
+            theme.apply_theme(_app, mode)
+            painted = root.grab().toImage().pixelColor(5, 5).name().upper()
+            self.assertEqual(painted, theme.TOKENS[mode]["bg"].upper(), mode)      # never a leftover of the other theme
+            self.assertEqual(theme.is_dark(_app), mode == "dark")
 
     def test_is_dark_follows_the_explicit_mode_at_once(self):
         theme.apply_theme(_app, "dark")

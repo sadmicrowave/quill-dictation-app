@@ -156,7 +156,10 @@ class TestMacChrome(unittest.TestCase):
         kit = FakeAppKit(FakeWindow())
         chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=70)
         self.assertIn(("opaque", False), kit._window.calls)
-        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.7)), kit._window.calls)   # the title bar follows the opacity
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), kit._window.calls)   # no blur: the backdrop stays solid; the window fades as a whole
+        kit = FakeAppKit(FakeWindow())
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=70, blur=100)
+        self.assertTrue(any(call[0] == "bg" and call[1][3] < 1 for call in kit._window.calls))   # blur: the backdrop thins out
 
     def test_full_opacity_and_no_blur_is_a_solid_window(self):
         kit = FakeAppKit(FakeWindow())

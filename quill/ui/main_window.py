@@ -57,7 +57,7 @@ from quill.ui.main_widgets import (
     StreamBox,
     WorkbookCombo,
 )
-from quill.ui.theme import apply_spacing
+from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.widgets import (
     ElidedLabel,
     HeadingToggle,
@@ -200,7 +200,9 @@ class MainWindow:
         self._size_timer.timeout.connect(self.report_size)
         window.installEventFilter(ResizeWatcher(window, self._size_timer, self._sync_mini_detail))
         central = QWidget()
-        central.setObjectName("mainRoot")                       # paints the background; opacity applies to it
+        central.setObjectName("mainRoot")
+
+        install_backdrop(central)                              # paints its own (see-through-able) background
         central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.root = central
         layout = QVBoxLayout(central)

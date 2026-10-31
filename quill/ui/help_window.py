@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from quill import helpdocs
+from quill.ui.theme import install_backdrop
 from quill.helpdocs import Topic
 
 #: Heading sizes as multiples of the body text.
@@ -52,7 +53,9 @@ class HelpWindow:
         shell = QVBoxLayout(window)
         shell.setContentsMargins(0, 0, 0, 0)
         root = QWidget()
-        root.setObjectName("helpRoot")                         # paints the background; opacity applies to it
+        root.setObjectName("helpRoot")
+
+        install_backdrop(root)                              # paints its own (see-through-able) background
         root.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         shell.addWidget(root)
         self.root = root

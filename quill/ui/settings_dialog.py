@@ -67,7 +67,7 @@ from quill.ui.settings_widgets import (
     SettingRow,
     ToggleSwitch,
 )
-from quill.ui.theme import ACCENTS, DENSITIES, apply_opacity
+from quill.ui.theme import install_backdrop, ACCENTS, DENSITIES, apply_opacity
 
 if TYPE_CHECKING:
     from quill.config.settings import Settings
@@ -187,11 +187,46 @@ class SettingsDialog:
         QGuiApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)   # the pointer stays steady while the window is made
         try:
             self.build(lazy=True)
+            self._restore_position()
             self._apply_dialog_look()
             self._install_help_icon()
         finally:
             QGuiApplication.restoreOverrideCursor()
-        return self._dialog.exec() == QDialog.DialogCode.Accepted
+        try:
+            return self._dialog.exec() == QDialog.DialogCode.Accepted
+        finally:
+            self._remember_position()
+
+    def bring_forward(self) -> None:
+        """Raise this window (it is already open)."""
+        if self._dialog is not None:
+            self._dialog.raise_()
+            self._dialog.activateWindow()
+
+    def close_now(self) -> None:
+        """Close the window without saving (used when the whole app is quitting)."""
+        if self._dialog is not None:
+            self._dialog.reject()
+
+    def _restore_position(self) -> None:
+        """Open on the page that was open last time, at the size it had."""
+        prefs = self._settings.preferences
+        page = str(prefs.get("settings_page", ""))
+        if page in self._nav_items:
+            self.nav.setCurrentRow(self._nav_row(page))
+        width, height = int(prefs.get("settings_width", 0)), int(prefs.get("settings_height", 0))
+        if width >= 720 and height >= 520:
+            self._dialog.resize(width, height)
+
+    def _remember_position(self) -> None:
+        """Keep the open page and the window size for next time (saved even if the changes were cancelled)."""
+        current = self.nav.currentItem() if self.nav is not None else None
+        title = current.data(Qt.ItemDataRole.UserRole) if current is not None else None
+        if title and self._dialog is not None:
+            prefs = self._settings.preferences
+            prefs["settings_page"] = title
+            prefs["settings_width"], prefs["settings_height"] = self._dialog.width(), self._dialog.height()
+            self._settings.save()
 
     def _install_help_icon(self) -> None:
         """Put a "?" in the title bar (macOS) that opens the Settings help page."""
@@ -224,9 +259,10 @@ class SettingsDialog:
         prefs = self._settings.preferences
         dark = is_dark(app)
         opacity = max(int(prefs["opacity"]), self.MIN_DIALOG_OPACITY)
-        apply_chrome(self._dialog, dark, colors_for(dark, str(prefs["accent"])),
-                     opacity=opacity, blur=int(prefs["blur"]))
+        colors = colors_for(dark, str(prefs["accent"]))
+        apply_chrome(self._dialog, dark, colors, opacity=opacity, blur=int(prefs["blur"]))
         apply_opacity(self.root, opacity)
+        self.theme_combo.refresh_icons(colors["text"])               # the Theme icons follow the light / dark colours
 
     def build(self, lazy: bool = False) -> QDialog:
         """Construct the dialog widgets (separate from exec for testing).
@@ -245,7 +281,9 @@ class SettingsDialog:
         shell = QVBoxLayout(dialog)
         shell.setContentsMargins(0, 0, 0, 0)
         root = QWidget()
-        root.setObjectName("settingsRoot")                     # paints the background; opacity applies to it
+        root.setObjectName("settingsRoot")
+
+        install_backdrop(root)                              # paints its own (see-through-able) background
         root.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         shell.addWidget(root)
         self.root = root

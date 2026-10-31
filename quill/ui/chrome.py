@@ -248,9 +248,10 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
     window.setTitlebarAppearsTransparent_(True)
     strength = max(0, min(100, blur)) / 100
     window.setOpaque_(not (strength > 0 or opacity < 100))   # a see-through window must not be marked opaque
-    # The title bar area is painted by the window itself, not by Quill's content, so it follows the
-    # opacity setting here (fully solid at 100). The content fades itself (see theme.apply_opacity).
-    alpha = max(0, min(100, opacity)) / 100
+    # The window fades as a whole (theme.apply_opacity); here only the window's own backdrop, which sits
+    # under the title bar, thins out when blur is on so the frosted desktop shows through it.
+    from quill.ui.theme import backdrop_alpha
+    alpha = backdrop_alpha(opacity, blur)
     window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
@@ -551,8 +552,7 @@ def set_dock_icon_visible(visible: bool, platform: str | None = None, appkit=Non
             import AppKit as appkit                      # noqa: F811 (PyObjC, optional)
         app = appkit.NSApplication.sharedApplication()
         ok = app.setActivationPolicy_(_POLICY_REGULAR if visible else _POLICY_ACCESSORY)
-        if visible:
-            app.activateIgnoringOtherApps_(True)         # a regular app that is not frontmost would look dead
+        app.activateIgnoringOtherApps_(True)             # changing the policy takes the focus away: take it back
         return bool(ok) if ok is not None else True
     except Exception:
         return False
