@@ -73,23 +73,50 @@ class CommandMatcher:
             [p for p in pairs if p[0]], key=lambda p: len(p[0]), reverse=True
         )
 
+    #: Words that, right before "next", show it is part of a sentence ("this next item is…"), not a command.
+    _SENTENCE_LEADS = frozenset({"this", "that", "the", "a", "an", "my", "our", "each", "every", "another", "one"})
+
     @staticmethod
     def _ends_speech_only(words: tuple[str, ...], action: Action) -> bool:
-        """A one-word "next row" keyword ("next", "stop") counts only as the last word of what was said.
+        """"next", "next item" and "stop" mean "next row" only as the last words said.
 
         Those words are everywhere in ordinary speech ("this next item is…"), so in the middle of a
         sentence they are just words; at the end, after the item was described, they mean "next row".
+        ("next row" itself is unambiguous and works anywhere.)
         """
-        return action is Action.NEXT_ROW and len(words) == 1
+        return action is Action.NEXT_ROW and words[0] in ("next", "stop") and words != ("next", "row")
 
     def _keyword_at(self, tokens: list[str], i: int) -> tuple[Action, int] | None:
         for words, action in self._keywords:
             n = len(words)
             if tuple(tokens[i:i + n]) == words:
-                if self._ends_speech_only(words, action) and i + n != len(tokens):
+                if self._ends_speech_only(words, action) and (
+                        i + n != len(tokens) or (i > 0 and tokens[i - 1] in self._SENTENCE_LEADS)):
                     continue
                 return action, n
         return None
+
+    def command_positions(self, text: str) -> set[int]:
+        """Positions (in the tokenised *text*) of the words that are a spoken command, not content.
+
+        The Voice Stream uses this to leave command words out ("next item" is heard as part of the last
+        turn and then taken out, rather than looking like the start of a new sentence).
+        """
+        tokens = tokenize(text)
+        found: set[int] = set()
+        i = 0
+        while i < len(tokens):
+            hit = self._keyword_at(tokens, i)
+            if hit is None:
+                i += 1
+                continue
+            action, n = hit
+            found.update(range(i, i + n))
+            i += n
+            if action in ARGUMENT_ACTIONS:                       # what follows belongs to the command's argument
+                while i < len(tokens) and self._keyword_at(tokens, i) is None:
+                    i += 1
+        return found
 
     def match(self, text: str) -> CommandEvent:
         """Find the first keyword in *text*.

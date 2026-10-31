@@ -493,6 +493,16 @@ class TestVoiceStream(unittest.TestCase):
         self.assertLessEqual(self.w.stream.height(), 5 * line + 30)
         self.assertTrue(self.w.stream.verticalScrollBar().maximum() > 0)
 
+    def test_spoken_commands_are_left_out_of_the_stream(self):
+        from quill.stream import WordMatch
+        self.w.set_stream_classifier(lambda words: [
+            WordMatch(True, command=word in ("next", "item")) for word in words])
+        self.w.add_stream_text("black shirt next item")
+        self.assertEqual(self.w.stream_text(), "black shirt")
+        self.w.end_stream()
+        self.w.add_stream_text("next item")                    # only a command: the finished row stays as it was
+        self.assertEqual(self.w.stream_text(), "black shirt")
+
     def test_a_finished_row_stays_until_the_next_words_arrive(self):
         self.w.add_stream_text("black large")
         self.w.end_stream()

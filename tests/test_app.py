@@ -332,10 +332,42 @@ class TestAutoStopWhenQuiet(unittest.TestCase):
         self.app._on_phrase_heard("black")
         self.assertFalse(self.app._quiet_timer.isActive())
 
-    def test_it_keeps_waiting_while_a_spoken_answer_is_expected(self):
+    def test_it_also_ends_a_wait_for_a_spoken_answer_and_voice_sorting(self):
         self.app.controller.handle_transcript("start listening")
         self.app.controller.session.pending = [("Color", "teal")]
         self.app.controller.session._voice_open = True
-        self.app._quiet_for_too_long()
-        self.assertTrue(self.app.controller.session.listening)
+        self.app.controller.start_voice_sort()
+        self.app._sync_mic()
         self.assertTrue(self.app._quiet_timer.isActive())
+        self.app._quiet_for_too_long()
+        self.assertIsNone(self.app.controller.voice_sorter)               # voice sorting ended
+        self.assertFalse(self.app.controller.session.awaiting_answer)     # the wait for an answer ended
+        self.assertFalse(self.app.controller.session.listening)           # and listening itself
+        self.assertEqual(self.app.controller.pending_terms(), [("Color", "teal")])   # the question stays for later
+        self.assertFalse(self.app._quiet_timer.isActive())
+
+    def test_unrelated_events_do_not_keep_postponing_the_countdown(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app._quiet_timer.start(7000)
+        remaining = self.app._quiet_timer.remainingTime()
+        self.app._sync_mic()
+        self.assertLessEqual(self.app._quiet_timer.remainingTime(), remaining)
+
+
+class TestNextItemAsTheLastWords(unittest.TestCase):
+    def test_next_item_is_heard_as_part_of_the_turn_then_removed_as_a_command(self):
+        import pathlib, tempfile
+        from quill.bridge.xlsx_bridge import XlsxBridge
+        from quill.config.settings import Settings
+        from tests.fixtures import make_workbook
+        with tempfile.TemporaryDirectory() as tmp:
+            d = pathlib.Path(tmp)
+            app = QuillApp(_app, Settings.load(d / "cfg"), XlsxBridge(make_workbook(d / "p.xlsx")),
+                           listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: d,
+                           speaker=FakeSpeaker(), sound_player=lambda p: None)
+            app.start()
+            app.controller.handle_transcript("start listening")
+            app._on_phrase_heard("fern small next item")
+            app.controller.handle_transcript("fern small next item")
+            self.assertEqual(app.window.stream_text(), "fern small")
+            self.assertEqual(app.controller.session.committed, 1)

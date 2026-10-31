@@ -8,7 +8,7 @@ Speak naturally. Quill picks out the words it knows.
 |---|---|
 | **"Start listening"** | starts taking notes |
 | *describe the item* | fills the columns |
-| **"Next row"** | saves the row, starts a new one. Saying just **"next"** or **"stop"** as the *last* word does the same |
+| **"Next row"** | saves the row, starts a new one. Ending with just **"next"**, **"next item"** or **"stop"** does the same |
 | **"Stop listening"** | stops |
 
 > 💡 Prefer buttons? Press the wide **Start / Stop** button, or use the menu bar icon.
@@ -30,7 +30,8 @@ Everything you say shows up, word by word and in italics, in the box under the f
 
 - Words Quill understood become **coloured pills** and appear in the grid below, in their column.
 - Words still being spoken are shown in the normal text colour; once the phrase is done, words that were **not understood** turn grey.
-- Everyday words (*got*, *really*, *yesterday*) are skipped, so Quill won't ask about them.
+- Spoken commands (*next row*, *next item*) are taken out of the box once recognised, so the box shows only what describes the item.
+- Everyday words (*got*, *really*) are skipped, so Quill won't ask about them.
 - A word that sounds like one of your column names or list values is taken as that word. *"Waste"* becomes *Waist* if your sheet has a Waist column. The Log notes it.
 - A word Quill doesn't know goes straight onto the **Term Helper** button as soon as the phrase ends.
 - Disagree with a match? Hover its line in the grid: a round **x** appears at the right (it turns red under the pointer). Click it and the line is removed, its pills turn grey again and it will not be written.
@@ -44,7 +45,7 @@ Say a date any way you like and Quill writes the **real date** into the sheet.
 - *"last friday"*, *"next monday"*, *"friday"*, *"last week"*
 - *"march third"*, *"the third of march twenty twenty five"*, *"october thirty"*
 
-Which date column? The words around it decide: **bought, got, picked up, acquired** go to a purchase-style date, **sold, listed, shipped** to a sale-style date. With no hint, the first empty date column is used and the Log says which. You can always name the column: *"sale date yesterday"*.
+Which date column? Quill reads your spreadsheet, not a word list. If a word you said is a form of a word in a date column's heading (*"departed"* near **Departure Date**), that column is used. Otherwise the first empty date column, left to right, is used and the Log says which (the second date you say goes to the second date column). You can always name the column: *"departure date yesterday"*.
 
 A month and day with no year mean this year, or last year if that day is more than a month ahead.
 

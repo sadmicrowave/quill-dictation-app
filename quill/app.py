@@ -451,6 +451,7 @@ class QuillApp:
             self.listener.stop()
             self._mic_open = False
             self.window.append_log("Microphone Off")
+        self._restart_quiet_timer(keep_running=True)       # starts when something opens the microphone for Quill
 
     @staticmethod
     def _default_listener(model: pathlib.Path, on_transcript, on_error) -> Listener:
@@ -680,7 +681,7 @@ class QuillApp:
 
     def _match_heard_words(self, words: list[str]):
         """What Quill makes of each word heard (understood words are drawn as pills in the Voice Stream)."""
-        return match_words(words, self.controller.vocab, self.settings.keywords.keys())
+        return match_words(words, self.controller.vocab, self.controller.session.matcher)
 
     def _on_phrase_heard(self, text: str) -> None:
         """A finished phrase: add it to the Voice Stream while Quill is listening."""
@@ -841,31 +842,45 @@ class QuillApp:
         self.tray.set_listening(active)
         self._restart_quiet_timer()
 
-    def _restart_quiet_timer(self) -> None:
-        """(Re)start the silence countdown while listening; stop it otherwise or when the setting is off.
+    def _dictation_mic_needed(self) -> bool:
+        """Is the microphone open for Quill to be told something (listening, a spoken answer, voice sorting)?"""
+        session = self.controller.session
+        return bool(session.listening or self.controller.voice_sorter is not None or session.awaiting_answer)
+
+    def _restart_quiet_timer(self, keep_running: bool = False) -> None:
+        """(Re)start the silence countdown while the microphone is open for Quill, otherwise stop it.
 
         Called whenever something is heard, when Quill finishes speaking, when listening starts and when the
-        settings change. Not counted while a spoken answer is awaited or voice sorting is on (those have
-        their own end).
+        settings change. It covers every reason the microphone is open (listening, waiting for a spoken
+        answer, voice sorting), except the "keep the microphone open" setting, which is the user's own
+        choice to leave it on. With *keep_running* an already-running countdown is left alone (so
+        unrelated events don't keep postponing it).
         """
-        prefs = self.settings.preferences
-        if not prefs["auto_stop"] or not self.window.listening:
+        if not self.settings.preferences["auto_stop"] or not self._dictation_mic_needed():
             self._quiet_timer.stop()
             return
-        self._quiet_timer.start(int(prefs["auto_stop_seconds"]) * 1000)
+        if keep_running and self._quiet_timer.isActive():
+            return
+        self._quiet_timer.start(int(self.settings.preferences["auto_stop_seconds"]) * 1000)
 
     def _quiet_for_too_long(self) -> None:
-        """Nothing was said for the set time: stop listening (the microphone closes with it)."""
-        session = self.controller.session
-        if self.window.widget is None or not shiboken6.isValid(self.window.widget) or not self.window.listening:
+        """Nothing was said for the set time: the user has forgotten the microphone or been called away.
+
+        Everything that keeps the microphone open for Quill ends: voice sorting, a spoken answer being
+        waited for, and listening itself (the questions stay on the Term Helper list to answer later).
+        """
+        if self.window.widget is None or not shiboken6.isValid(self.window.widget) or not self._dictation_mic_needed():
             return                                    # (the window is gone, as in a test that has finished)
-        if self.controller.voice_sorter is not None or session.awaiting_answer:
-            self._restart_quiet_timer()               # in the middle of answering: keep waiting
-            return
         seconds = int(self.settings.preferences["auto_stop_seconds"])
-        log.info("no speech for %d s: stopping", seconds)
+        log.info("no speech for %d s: closing the microphone", seconds)
         self.window.append_log(f"Stopped listening: nothing was said for {seconds} seconds")
-        self.controller.set_listening(False)
+        if self.controller.session.listening:
+            self.controller.set_listening(False)           # first: stopping may ask the pending questions again
+        if self.controller.voice_sorter is not None:
+            self.controller.stop_voice_sort("Voice sorting off: nothing was said")
+        if self.controller.session.awaiting_answer:
+            self.controller.expire_prompt()                 # last: nothing may reopen the wait for an answer
+        self._sync_mic()
 
     def preview_feedback(self, mode: str, pack: str, echo: str) -> None:
         """Play just the chosen sound (or say just the chosen word) from the (unsaved) Settings."""

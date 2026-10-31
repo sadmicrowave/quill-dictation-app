@@ -54,6 +54,32 @@ def sounds_like(heard: str, known: str, min_length: int = 4) -> bool:
     return sound_key(a) == sound_key(b) and ratio >= 0.7
 
 
+#: Endings removed to find a word's stem, longest first ("migrated", "migration" and "migrates" all give "migrat").
+_SUFFIXES = ("ations", "ation", "ings", "ing", "ions", "ion", "ied", "ies", "ed", "es", "s")
+
+
+def stem(word: str) -> str:
+    """A crude stem: ``stem("purchased") == stem("purchase") == "purchas"``, ``stem("migration") == "migrat"``.
+
+    Used to tell that a spoken word is about the same thing as a column name ("observed" and "Observation
+    Date"), without any list of words for any particular subject.
+    """
+    text = re.sub(r"[^a-z]", "", word.lower())
+    for suffix in _SUFFIXES:
+        if text.endswith(suffix) and len(text) - len(suffix) >= 3:
+            text = text[:-len(suffix)]
+            break
+    return text[:-1] if text.endswith("e") and len(text) > 3 else text
+
+
+def same_subject(spoken: str, header_word: str) -> bool:
+    """True if *spoken* and *header_word* look like forms of one word ("departed" / "Departure")."""
+    a, b = stem(spoken), stem(header_word)
+    if len(a) < 4 or len(b) < 4:
+        return a == b and len(a) >= 3
+    return a == b or a.startswith(b) or b.startswith(a)
+
+
 def initials_match(code: str, words: list[str]) -> bool:
     """True if *code* (letters only, up to three) is the abbreviation of *words*.
 

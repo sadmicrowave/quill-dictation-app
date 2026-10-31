@@ -8,8 +8,8 @@ too, but belongs to no column. Pure and fast, since it runs on every partial res
 from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
-from typing import Iterable
 
+from quill.parser.commands import CommandMatcher
 from quill.parser.phrase_parser import parse
 from quill.parser.tokens import tokenize
 from quill.parser.vocab import Vocabulary
@@ -25,15 +25,18 @@ class WordMatch:
     column: str | None = None
     """The column the word filled, or None for a command or a word that was not understood."""
 
+    command: bool = False
+    """True if the word is part of a spoken command ("next row"); the stream leaves those words out."""
 
-def match_words(words: list[str], vocab: Vocabulary, phrases: Iterable[str] = (),
+
+def match_words(words: list[str], vocab: Vocabulary, matcher: CommandMatcher | None = None,
                 today: dt.date | None = None) -> list[WordMatch]:
     """For each of *words*, what Quill understood by it.
 
     Args:
         words: The words heard, in order.
         vocab: The workbook's vocabulary (columns and list values).
-        phrases: Spoken command phrases ("next row", "start listening").
+        matcher: Finds the spoken commands ("next row", "stop"); their words are marked as commands.
         today: Replaces today's date (tests), for "today" / "march 3".
     """
     tokens: list[str] = []
@@ -52,10 +55,7 @@ def match_words(words: list[str], vocab: Vocabulary, phrases: Iterable[str] = ()
             if not matches[owner[k]].known:
                 matches[owner[k]] = WordMatch(True, column)
 
-    for phrase in (t for t in (tokenize(p) for p in phrases) if t):
-        for i in range(len(tokens) - len(phrase) + 1):
-            if tokens[i:i + len(phrase)] == phrase:
-                for k in range(i, i + len(phrase)):
-                    if not matches[owner[k]].known:
-                        matches[owner[k]] = WordMatch(True)
+    if matcher is not None:
+        for k in matcher.command_positions(" ".join(tokens)):
+            matches[owner[k]] = WordMatch(True, command=True)
     return matches

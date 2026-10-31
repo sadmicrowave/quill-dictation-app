@@ -77,59 +77,66 @@ class TestSpokenDates(unittest.TestCase):
 
 
 class TestWhichColumnTheDateGoesIn(unittest.TestCase):
+    """The choice comes from the spreadsheet's own headers, never from a built-in list of verbs for any subject."""
+
     def setUp(self):
         self.v = Vocabulary()
-        self.v.load({"Category": ["Shirt"]}, ["Purchase Date", "Sale Date", "Notes"])
-        self.v.date_columns = ["Purchase Date", "Sale Date"]
+        self.v.load({"Species": ["Humpback", "Orca"]}, ["Observation Date", "Departure Date", "Notes"])
+        self.v.date_columns = ["Observation Date", "Departure Date"]
 
     def parse(self, text):
         return parse(text, self.v, TODAY)
 
-    def test_a_buying_verb_picks_the_purchase_date(self):
-        for text in ("shirt and I bought it yesterday", "shirt got it yesterday", "shirt picked it up friday"):
-            self.assertIn("Purchase Date", self.parse(text).updates, text)
-
-    def test_a_selling_verb_picks_the_sale_date(self):
-        result = self.parse("shirt sold it yesterday")
-        self.assertEqual(result.updates["Sale Date"], dt.date(2026, 10, 30))
-        self.assertNotIn("Purchase Date", result.updates)
+    def test_a_word_that_is_a_form_of_a_header_word_picks_that_column(self):
+        self.assertIn("Departure Date", self.parse("orca departed yesterday").updates)
+        self.assertIn("Observation Date", self.parse("orca observed friday").updates)
+        self.assertEqual(self.parse("humpback departed last friday").updates["Departure Date"], dt.date(2026, 10, 30))
 
     def test_the_real_date_is_stored_not_the_words(self):
-        result = self.parse("shirt bought it three weeks ago")
-        self.assertEqual(result.updates["Purchase Date"], dt.date(2026, 10, 10))
+        self.assertEqual(self.parse("orca observed three weeks ago").updates["Observation Date"], dt.date(2026, 10, 10))
 
-    def test_both_dates_in_one_breath(self):
-        result = self.parse("shirt bought it last friday and sold it yesterday")
-        self.assertEqual(result.updates["Purchase Date"], dt.date(2026, 10, 30))
-        self.assertEqual(result.updates["Sale Date"], dt.date(2026, 10, 30))
-
-    def test_no_verb_uses_the_first_purchase_like_column_and_says_so(self):
-        result = self.parse("shirt yesterday")
-        self.assertEqual(list(result.updates), ["Category", "Purchase Date"])
-        self.assertTrue(any("Purchase Date" in note and "Sale Date" in note for note in result.assumptions))
+    def test_words_with_no_link_to_any_header_fall_back_to_sheet_order_and_say_so(self):
+        result = self.parse("orca spotted yesterday")
+        self.assertEqual(result.updates["Observation Date"], dt.date(2026, 10, 30))
+        self.assertTrue(any("Observation Date" in note and "Departure Date" in note for note in result.assumptions))
 
     def test_a_second_bare_date_goes_to_the_next_empty_date_column(self):
-        result = self.parse("shirt yesterday today")
-        self.assertEqual(result.updates["Purchase Date"], dt.date(2026, 10, 30))
-        self.assertEqual(result.updates["Sale Date"], TODAY)
+        result = self.parse("orca yesterday today")
+        self.assertEqual(result.updates["Observation Date"], dt.date(2026, 10, 30))
+        self.assertEqual(result.updates["Departure Date"], TODAY)
 
-    def test_naming_the_column_still_works_and_beats_the_verb(self):
-        result = self.parse("shirt sold it purchase date yesterday")
-        self.assertEqual(result.updates["Purchase Date"], dt.date(2026, 10, 30))
+    def test_both_dates_in_one_breath(self):
+        result = self.parse("orca observed last friday and departed yesterday")
+        self.assertEqual(result.updates["Observation Date"], dt.date(2026, 10, 30))
+        self.assertEqual(result.updates["Departure Date"], dt.date(2026, 10, 30))
+
+    def test_naming_the_column_still_works_and_beats_any_nearby_word(self):
+        result = self.parse("orca departed observation date yesterday")
+        self.assertEqual(result.updates["Observation Date"], dt.date(2026, 10, 30))
+
+    def test_nothing_about_buying_or_selling_is_built_in(self):
+        v = Vocabulary()
+        v.load({}, ["Purchase Date", "Sale Date"])
+        v.date_columns = ["Purchase Date", "Sale Date"]
+        result = parse("it sold yesterday", v, TODAY)
+        self.assertEqual(list(result.updates), ["Purchase Date"])           # "sold" has no link to "Sale": sheet order
+        result = parse("it purchased yesterday", v, TODAY)
+        self.assertEqual(list(result.updates), ["Purchase Date"])           # "purchased" is a form of "Purchase"
+        result = parse("it was on sale yesterday", v, TODAY)
+        self.assertEqual(list(result.updates), ["Sale Date"])               # the header's own word
 
     def test_the_words_of_a_date_are_never_sorted_as_new_values(self):
-        result = self.parse("shirt bought it yesterday morning")
-        self.assertEqual(result.candidates, [])
+        self.assertEqual(self.parse("orca observed yesterday morning").candidates, [])
 
     def test_with_no_date_column_in_the_sheet_the_words_are_skipped_not_sorted(self):
         self.v.date_columns = []
-        result = self.parse("shirt bought it yesterday")
+        result = self.parse("orca observed yesterday")
         self.assertEqual(result.candidates, [])
-        self.assertEqual(list(result.updates), ["Category"])
+        self.assertEqual(list(result.updates), ["Species"])
 
     def test_the_spans_cover_the_date_words(self):
-        result = self.parse("shirt bought it three weeks ago")
-        self.assertIn((3, 6, "Purchase Date"), result.spans)
+        result = self.parse("orca observed three weeks ago")
+        self.assertIn((2, 5, "Observation Date"), result.spans)
 
 
 class TestFindingDateColumns(unittest.TestCase):

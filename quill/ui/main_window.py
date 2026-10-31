@@ -980,21 +980,24 @@ class MainWindow:
 
     def add_stream_text(self, text: str) -> None:
         """A phrase was finished: keep it in the stream (the words in the phrase still being spoken are replaced)."""
-        words = text.split()
-        if not words:
-            return
-        self._begin_stream()
-        self._stream_words += [(word, match) for word, match in zip(words, self._classify_words(words))]
+        content = self._content_words(text.split())
         self._stream_partial = []
+        if content:                                    # a phrase that was only a command leaves the stream as it was
+            self._begin_stream()
+            self._stream_words += content
         self._render_stream()
 
     def set_stream_partial(self, text: str) -> None:
         """The words of the phrase still being spoken, as far as they are recognised."""
-        words = text.split()
-        if words:
+        content = self._content_words(text.split())
+        if content:
             self._begin_stream()
-        self._stream_partial = list(zip(words, self._classify_words(words))) if words else []
+        self._stream_partial = content
         self._render_stream()
+
+    def _content_words(self, words: list[str]) -> list[tuple[str, WordMatch]]:
+        """The words with what Quill made of each, leaving out spoken commands ("next row" is not content)."""
+        return [(word, match) for word, match in zip(words, self._classify_words(words)) if not match.command]
 
     def unmatch_stream_column(self, column: str) -> None:
         """The user removed the row for *column*: the words that filled it lose their pill (and are muted again)."""

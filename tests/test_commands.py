@@ -98,5 +98,17 @@ class TestEndOfSpeechKeywords(unittest.TestCase):
         self.assertEqual(self.matcher.split("this next item is a navy shirt"), ["this next item is a navy shirt"])
         self.assertEqual(self.matcher.split("stop the presses navy"), ["stop the presses navy"])
 
+    def test_next_item_works_the_same_way(self):
+        segments = self.matcher.split("navy shirt large next item")
+        self.assertEqual(segments[0], "navy shirt large")
+        self.assertEqual(segments[-1].action, Action.NEXT_ROW)
+        self.assertEqual(self.matcher.split("this next item"), ["this next item"])          # "this next item" is a sentence
+        self.assertEqual(self.matcher.split("now the next item is a shirt"), ["now the next item is a shirt"])
+
+    def test_command_words_are_reported_so_they_can_be_left_out_of_the_stream(self):
+        self.assertEqual(self.matcher.command_positions("navy shirt next item"), {2, 3})
+        self.assertEqual(self.matcher.command_positions("navy next row shirt"), {1, 2})
+        self.assertEqual(self.matcher.command_positions("this next item is a shirt"), set())
+
     def test_stop_listening_still_stops_listening(self):
         self.assertEqual(self.matcher.split("stop listening")[0].action, Action.STOP_LISTENING)

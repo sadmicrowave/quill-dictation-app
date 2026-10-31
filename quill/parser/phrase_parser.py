@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from quill.parser.fillers import FILLER_WORDS
 from quill.parser.numbers import parse_amount, parse_date, parse_number
 from quill.parser.tokens import tokenize
-from quill.parser.vocab import ACQUIRE_VERBS, SELL_VERBS, Vocabulary
+from quill.parser.vocab import Vocabulary
 
 #: Words that are never values. A run of unknown words stops at one of these.
 COMMON_WORDS = frozenset({
@@ -43,9 +43,6 @@ COMMON_WORDS = frozenset({
 
 #: Everything above plus the broad list of everyday words (see :mod:`quill.parser.fillers`).
 COMMON_WORDS = COMMON_WORDS | FILLER_WORDS
-
-#: Words that lead into a date ("bought it yesterday"): left out of a free-text value that the date interrupts.
-DATE_LEAD_WORDS = ACQUIRE_VERBS | SELL_VERBS | frozenset({"it", "and", "then", "on", "in", "at", "last", "was", "i", "we"})
 
 #: Unit words that mark a spoken number as money ("thirty five dollars").
 CURRENCY_WORDS = frozenset({"dollar", "dollars", "buck", "bucks", "cent", "cents"})
@@ -69,6 +66,11 @@ MAX_VALUE_WORDS = 4
 
 #: Fraction of a column's values that must share a shape for a shape-based guess.
 _SHAPE_AGREEMENT = 0.6
+
+
+def _is_verb_form(word: str) -> bool:
+    """True for a word that looks like an English verb form ("observed", "departing"): never a list value."""
+    return len(word) >= 5 and word.endswith(("ed", "ing"))
 
 
 @dataclass
@@ -211,6 +213,9 @@ class _Parser:
         date, used = parse_date(self.tokens, self.i, self.today)
         if date is None:
             return False
+        while self.run_words and _is_verb_form(self.run_words[-1]):
+            self.run_words.pop()                       # "… observed yesterday": the verb leads into the date
+            self.result.unmatched.pop()
         self._flush()
         column, note = self.vocab.date_column_for(self.tokens, self.i, self.filled)
         if column is None:
@@ -348,8 +353,9 @@ class _Parser:
                and not self._starts_date(end)):                  # a date ends the text: it goes in a date column
             end += 1
         text_end = end
-        while text_end > self.i and (self.tokens[text_end - 1] in DATE_LEAD_WORDS):
-            text_end -= 1                                         # "… bought it" belongs to the date, not the text
+        while (end < len(self.tokens) and self._starts_date(end)           # only when a date interrupted the text
+               and text_end > self.i and self.tokens[text_end - 1] in COMMON_WORDS):
+            text_end -= 1                                         # "… it was" leads into the date, it is not text
         if text_end == self.i:
             if end == self.i:
                 self.result.unmatched.append(" ".join(self.tokens[start:self.i]))
