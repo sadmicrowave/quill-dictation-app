@@ -18,10 +18,20 @@ class FakeListener:
     def __init__(self, model, on_transcript, on_error):
         self.on_transcript, self.on_error = on_transcript, on_error
         self.started = False
+        self.preloaded = False
+        self.starts, self.stops = 0, 0
         self.muted = []
+
+    def preload(self):
+        self.preloaded = True
 
     def start(self):
         self.started = True
+        self.starts += 1
+
+    def stop(self):
+        self.started = False
+        self.stops += 1
 
     def mute(self):
         self.muted.append(True)
@@ -87,8 +97,10 @@ class TestStartup(AppCase):
     def test_last_workbook_remembered(self):
         self.assertEqual(Settings.load(self.dir / "cfg").preferences["last_workbook"], "plants.xlsx")
 
-    def test_listener_started_with_found_model(self):
-        self.assertTrue(self.listeners[0].started)
+    def test_model_is_loaded_but_the_microphone_stays_off_at_launch(self):
+        self.assertTrue(self.listeners[0].preloaded)
+        self.assertFalse(self.listeners[0].started)
+        self.assertEqual(self.listeners[0].starts, 0)
 
 
 class TestDictationThroughUi(AppCase):
@@ -176,7 +188,9 @@ class TestModelHandling(AppCase):
         quill._on_progress(50, 100)
         self.assertIn("50%", quill.window.footer.text())
         quill._on_model_ready(self.model)
-        self.assertTrue(quill.listener.started)
+        self.assertIsNotNone(quill.listener)
+        self.assertTrue(quill.listener.preloaded)
+        self.assertFalse(quill.listener.started)          # the microphone waits for Start
         self.assertEqual(quill.window.footer.text(), "")
 
     def test_download_failure_offers_retry(self):

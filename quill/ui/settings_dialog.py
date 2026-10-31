@@ -17,6 +17,7 @@ fails validation keeps the window open with the reasons shown.
 """
 from __future__ import annotations
 from typing import TYPE_CHECKING
+import copy
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -32,7 +33,9 @@ from quill.config.settings import (
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
-from quill.ui.settings_widgets import FlatCombo, SegmentedControl, SettingRow, ToggleSwitch
+from quill.ui.settings_widgets import (
+    FlatCombo, GuardedCombo, GuardedSlider, GuardedSpinBox, SegmentedControl, SettingRow, ToggleSwitch,
+)
 from quill.ui.theme import ACCENTS, DENSITIES, apply_opacity, apply_spacing
 
 if TYPE_CHECKING:
@@ -68,7 +71,7 @@ def _swatch(color: str) -> QIcon:
 
 def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel, QWidget]:
     """A horizontal slider with a live "NN%" label; returns (slider, label, container)."""
-    slider = QSlider(Qt.Orientation.Horizontal)
+    slider = GuardedSlider(Qt.Orientation.Horizontal)
     slider.setRange(low, high)
     slider.setValue(value)
     slider.setToolTip(tip)
@@ -92,13 +95,19 @@ class SettingsDialog:
         settings: The Settings object to edit (mutated and saved on OK).
         parent: Optional parent QWidget.
         on_preview: Called with ``(mode, sound_pack, echo_word)`` to play one sample.
+        on_change: Called after every control change, once the new values are in
+            ``settings.preferences``, so the app can show them live. Cancel puts the
+            original values back and calls it again; only OK saves.
     """
 
-    def __init__(self, settings: "Settings", parent=None, on_preview=None) -> None:
+    def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None) -> None:
         self._on_preview = on_preview or (lambda mode, pack, echo: None)
+        self._on_change = on_change or (lambda: None)
+        self._original: dict = {}
         self._settings = settings
         self._parent = parent
         self._dialog: QDialog | None = None
+        self.root: QWidget | None = None
         self.table: QTableWidget | None = None
         self.search: QLineEdit | None = None
         self.nav: QListWidget | None = None
@@ -119,23 +128,34 @@ class SettingsDialog:
         self.history_spin: QSpinBox | None = None
         self.speak_check: ToggleSwitch | None = None
         self.auto_sort_check: ToggleSwitch | None = None
+        self.mic_check: ToggleSwitch | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
     # ------------------------------------------------------------------ #
 
+    #: The Settings window fades with the window-opacity setting but never below this, so it stays readable.
+    MIN_DIALOG_OPACITY = 70
+
     def exec(self) -> bool:
         """Show modally. Returns True if the user saved changes."""
         self.build()
+        self._apply_dialog_look()
+        return self._dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _apply_dialog_look(self) -> None:
+        """Give this window the OS title-bar styling, blur and (floored) opacity."""
         from PySide6.QtWidgets import QApplication
         from quill.ui.theme import colors_for, is_dark
         app = QApplication.instance()
-        if app is not None:
-            dark = is_dark(app)
-            apply_chrome(self._dialog, dark, colors_for(dark, str(self._settings.preferences["accent"])),
-                         opacity=100, blur=int(self._settings.preferences["blur"]))
-            apply_opacity(self._dialog, 100)         # Settings stays solid so it can always be read
-        return self._dialog.exec() == QDialog.DialogCode.Accepted
+        if app is None or self._dialog is None:
+            return
+        prefs = self._settings.preferences
+        dark = is_dark(app)
+        opacity = max(int(prefs["opacity"]), self.MIN_DIALOG_OPACITY)
+        apply_chrome(self._dialog, dark, colors_for(dark, str(prefs["accent"])),
+                     opacity=opacity, blur=int(prefs["blur"]))
+        apply_opacity(self.root, opacity)
 
     def build(self) -> QDialog:
         """Construct the dialog widgets (separate from exec for testing)."""
@@ -145,7 +165,14 @@ class SettingsDialog:
         dialog.setWindowTitle("Quill Settings")
         dialog.resize(920, 740)
         dialog.setMinimumSize(720, 520)
-        outer = QVBoxLayout(dialog)
+        shell = QVBoxLayout(dialog)
+        shell.setContentsMargins(0, 0, 0, 0)
+        root = QWidget()
+        root.setObjectName("settingsRoot")                     # paints the background; opacity applies to it
+        root.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        shell.addWidget(root)
+        self.root = root
+        outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
@@ -172,7 +199,53 @@ class SettingsDialog:
 
         self._dialog = dialog
         self.nav.setCurrentRow(self._nav_row("General"))
+        self._finish_build(dialog)
         return dialog
+
+    def _finish_build(self, dialog: QDialog) -> None:
+        """Pointer cursors on clickable things, and hook every control up for live updates."""
+        for button in dialog.findChildren(QPushButton):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        self._original = copy.deepcopy(self._settings.preferences)
+        for control in (self.speak_check, self.auto_sort_check, self.mic_check):
+            control.toggled.connect(self._live)
+        for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
+                        self.pack_combo, self.echo_combo):
+            control.currentIndexChanged.connect(self._live)
+        for control in (self.font_spin, self.history_spin, self.opacity_slider, self.blur_slider):
+            control.valueChanged.connect(self._live)
+        dialog.rejected.connect(self.revert)
+
+    def _live(self, *_args) -> None:
+        """A control changed: put the new values in the settings (unsaved) and let the app show them."""
+        self._store_preferences()
+        self._on_change()                # the app applies the new theme first ...
+        self._apply_dialog_look()        # ... so this window is dressed in the new colours, not the old
+
+    def revert(self) -> None:
+        """Cancel: put the settings back exactly as they were when the window opened."""
+        prefs = self._settings.preferences
+        prefs.clear()
+        prefs.update(copy.deepcopy(self._original))
+        self._on_change()
+
+    def _store_preferences(self) -> None:
+        """Copy every control's value into ``settings.preferences`` (not saved to disk)."""
+        prefs = self._settings.preferences
+        prefs["theme"] = THEMES[self.theme_combo.currentIndex()]
+        prefs["speak_prompts"] = self.speak_check.isChecked()
+        prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
+        prefs["mic_always_on"] = self.mic_check.isChecked()
+        prefs["accent"] = self.accent_combo.currentData()
+        prefs["spacing"] = self.spacing_combo.currentData()
+        prefs["font_size"] = self.font_spin.value()
+        prefs["opacity"] = self.opacity_slider.value()
+        prefs["blur"] = self.blur_slider.value()
+        prefs["history_limit"] = self.history_spin.value()
+        prefs["feedback"] = self.feedback_combo.currentData()
+        prefs["sound_pack"] = self.pack_combo.currentData()
+        prefs["echo_style"] = self.echo_combo.currentData()
 
     # ------------------------------------------------------------------ #
     # Sidebar and search                                                   #
@@ -302,7 +375,12 @@ class SettingsDialog:
         self._add("General", page, "Sort by voice automatically",
                   "Start answering the Needs-sorting list by voice as soon as terms need sorting.",
                   self.auto_sort_check, "voice sorting")
-        self.history_spin = QSpinBox()
+        self.mic_check = ToggleSwitch()
+        self.mic_check.setChecked(bool(prefs["mic_always_on"]))
+        self._add("General", page, "Keep the microphone open when not listening",
+                  "Lets you say “start listening”. Off (the default): the microphone is only on while "
+                  "Quill is listening, so nothing is heard otherwise.", self.mic_check, "privacy mic always on")
+        self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
         self.history_spin.setValue(int(prefs["history_limit"]))
         self.history_spin.setSuffix(" actions")
@@ -331,7 +409,7 @@ class SettingsDialog:
         self.spacing_combo.setCurrentIndex(SPACINGS.index(prefs["spacing"]))
         self._add("Appearance", page, "Spacing", "Compact packs controls closely; Comfortable gives them room.",
                   self.spacing_combo, "layout density padding margin")
-        self.font_spin = QSpinBox()
+        self.font_spin = GuardedSpinBox()
         self.font_spin.setRange(*FONT_SIZE_RANGE)
         self.font_spin.setValue(int(prefs["font_size"]))
         self.font_spin.setSuffix(" pt")
@@ -340,12 +418,14 @@ class SettingsDialog:
         self.opacity_slider, self.opacity_label, box = _slider(
             *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included")
         self._add("Appearance", page, "Window opacity",
-                  "Fades the whole window, text and controls included. The lowest is 10%.", box,
+                  "How solid the window is. 100% is completely solid; lower makes the whole window, text and "
+                  "controls included, see-through. The lowest is 10%.", box,
                   "transparent transparency")
         self.blur_slider, self.blur_label, box = _slider(
             *BLUR_RANGE, int(prefs["blur"]), "How strongly the desktop behind the window is blurred")
         self._add("Appearance", page, "Window blur",
-                  "Frosted-glass blur behind the windows (macOS and Windows 11). 0% is off.", box,
+                  "Frosts what you see through the window (macOS and Windows 11). Only visible when opacity is "
+                  "below 100%, since a solid window hides it. 0% is off.", box,
                   "glass vibrancy acrylic")
         page.addStretch(1)
 
@@ -384,7 +464,7 @@ class SettingsDialog:
         self.table.setHorizontalHeaderLabels(["When you say…", "Quill does…"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(48)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setMinimumHeight(280)
         self._fill_table(self._settings.keywords.items())
@@ -430,7 +510,8 @@ class SettingsDialog:
         row = self.table.rowCount()
         self.table.insertRow(row)
         self.table.setItem(row, 0, QTableWidgetItem(phrase if isinstance(phrase, str) else ""))
-        combo = QComboBox()
+        combo = GuardedCombo()
+        combo.setMinimumHeight(34)          # tall enough that the text is not clipped top and bottom
         for candidate in BINDABLE_ACTIONS:
             combo.addItem(action_label(candidate), candidate)
         combo.setCurrentIndex(BINDABLE_ACTIONS.index(action if isinstance(action, Action) else Action.NEXT_ROW))
@@ -467,20 +548,8 @@ class SettingsDialog:
             self.nav.setCurrentRow(self._nav_row("Keywords"))
             self.show_errors(errors)
             return False
-        prefs = self._settings.preferences
         self._settings.set_keywords(rows)
-        prefs["theme"] = THEMES[self.theme_combo.currentIndex()]
-        prefs["speak_prompts"] = self.speak_check.isChecked()
-        prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
-        prefs["accent"] = self.accent_combo.currentData()
-        prefs["spacing"] = self.spacing_combo.currentData()
-        prefs["font_size"] = self.font_spin.value()
-        prefs["opacity"] = self.opacity_slider.value()
-        prefs["blur"] = self.blur_slider.value()
-        prefs["history_limit"] = self.history_spin.value()
-        prefs["feedback"] = self.feedback_combo.currentData()
-        prefs["sound_pack"] = self.pack_combo.currentData()
-        prefs["echo_style"] = self.echo_combo.currentData()
+        self._store_preferences()
         self._settings.save()
         (dialog or self._dialog).accept()
         return True

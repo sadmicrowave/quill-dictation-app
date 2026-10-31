@@ -26,6 +26,53 @@ def is_model_dir(path: pathlib.Path) -> bool:
     return (path / "am").is_dir() and (path / "conf").is_dir()
 
 
+def bundled_archive(search_dirs: list[pathlib.Path] | None = None) -> pathlib.Path | None:
+    """The speech-model zip that ships with Quill (``quill/model/<name>.zip``), if present."""
+    bases = search_dirs if search_dirs is not None else default_search_dirs()[:-1]   # not the user folder
+    for base in bases:
+        archive = base / f"{MODEL_NAME}.zip"
+        if archive.is_file():
+            return archive
+    return None
+
+
+def unpack_bundled(dest_dir: pathlib.Path | None = None,
+                   archive: pathlib.Path | None = None) -> pathlib.Path | None:
+    """Unpack the bundled zip into *dest_dir* (default: the user's model folder).
+
+    Returns:
+        The unpacked model folder, or None if there is no bundled archive.
+
+    Raises:
+        RuntimeError: if the archive is unsafe or holds no model.
+    """
+    archive = archive or bundled_archive()
+    if archive is None:
+        return None
+    dest = dest_dir or user_model_dir()
+    dest.mkdir(parents=True, exist_ok=True)
+    _safe_extract(archive, dest)
+    model = find_model(search_dirs=[dest])
+    if model is None:
+        raise RuntimeError("The bundled archive did not contain a Vosk model.")
+    return model
+
+
+def ensure_model(configured: str | pathlib.Path | None = None) -> pathlib.Path | None:
+    """Find a usable model, unpacking the bundled zip on first launch if needed.
+
+    The repository keeps the model compressed (about 41 MB instead of 68 MB);
+    the first launch unpacks it once into the per-user data folder.
+    """
+    found = find_model(configured)
+    if found is not None:
+        return found
+    try:
+        return unpack_bundled()
+    except (RuntimeError, OSError):
+        return None
+
+
 def user_model_dir() -> pathlib.Path:
     """Per-user folder where a downloaded model is stored."""
     try:

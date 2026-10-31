@@ -77,6 +77,7 @@ class MainWindow:
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
         self._freed: dict[str, int] = {}     # window height each collapsed section gave back
         self._window: QMainWindow | None = None
+        self.root: QWidget | None = None       # the widget that paints the background (set in setup)
         self._listening = False
         self._on_accent = "#FFFFFF"
 
@@ -90,6 +91,9 @@ class MainWindow:
         window.setWindowTitle("Quill")
         window.resize(360, 520)
         central = QWidget()
+        central.setObjectName("mainRoot")                       # paints the background; opacity applies to it
+        central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.root = central
         layout = QVBoxLayout(central)
 
         # --- status row

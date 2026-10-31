@@ -21,7 +21,7 @@ from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.feedback import Feedback
 from quill.listener.listener import Listener
-from quill.listener.model import download_model, find_model, user_model_dir
+from quill.listener.model import download_model, ensure_model, user_model_dir
 from quill.session import Decision, Event, TermKey
 from quill.speaker.speaker import Speaker
 from quill.ui.main_window import MainWindow
@@ -66,7 +66,7 @@ class QuillApp:
         settings: Settings,
         bridge: WorkbookBridge,
         listener_factory: Callable | None = None,
-        model_finder: Callable[[str], pathlib.Path | None] = find_model,
+        model_finder: Callable[[str], pathlib.Path | None] = ensure_model,
         model_downloader: Callable = download_model,
         speaker: Speaker | None = None,
         poll_interval_ms: int = POLL_INTERVAL_MS,
@@ -103,6 +103,7 @@ class QuillApp:
         self._listener_factory = listener_factory or self._default_listener
         self._model_finder = model_finder
         self._model_downloader = model_downloader
+        self._mic_open = False
         self._expiry = QTimer()
         self._expiry.setSingleShot(True)
         self._expiry.timeout.connect(self.controller.expire_prompt)
@@ -122,6 +123,7 @@ class QuillApp:
         self.relay.error.connect(self._on_error)
         self.relay.progress.connect(self._on_progress)
         self.relay.model_ready.connect(self._on_model_ready)
+        qapp.styleHints().colorSchemeChanged.connect(self._system_scheme_changed)
 
     # ------------------------------------------------------------------ #
     # Startup                                                              #
@@ -217,8 +219,41 @@ class QuillApp:
             )
             return
         self.listener = self._listener_factory(model, self.relay.transcript.emit, self.relay.error.emit)
-        self.listener.start()
-        self.window.append_log("Microphone ready. Say \"start listening\".")
+        preload = getattr(self.listener, "preload", None)
+        if preload is not None:
+            preload()                                   # load the model now; the mic stays off
+        self._mic_open = False
+        self._sync_mic()
+        if not self._mic_open:
+            self.window.append_log("Speech model ready. The microphone is off until you press Start.")
+
+    def mic_wanted(self) -> bool:
+        """Should the microphone be open right now?
+
+        Only while Quill is listening, while a spoken answer is being waited for
+        (a yes / no question, voice sorting), or if the user chose to keep it
+        always on so they can say "start listening".
+        """
+        if self.listener is None:
+            return False
+        return bool(self.controller.session.listening
+                    or self.controller.voice_sorter is not None
+                    or self.controller.session.awaiting_answer
+                    or self.settings.preferences["mic_always_on"])
+
+    def _sync_mic(self) -> None:
+        """Open or close the microphone to match :meth:`mic_wanted` (and say so in the log)."""
+        if self.listener is None:
+            return
+        want = self.mic_wanted()
+        if want and not self._mic_open:
+            self.listener.start()
+            self._mic_open = True
+            self.window.append_log("Microphone on")
+        elif not want and self._mic_open:
+            self.listener.stop()
+            self._mic_open = False
+            self.window.append_log("Microphone off")
 
     @staticmethod
     def _default_listener(model: pathlib.Path, on_transcript, on_error) -> Listener:
@@ -288,13 +323,20 @@ class QuillApp:
 
     def open_settings(self) -> None:
         """Show the settings dialog; apply the result if saved."""
-        if SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback).exec():
+        dialog = SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback,
+                                on_change=lambda: self.apply_settings(quiet=True))
+        if dialog.exec():
             self.apply_settings()
 
     def _row_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the Current row section."""
         self.settings.preferences["row_collapsed"] = collapsed
         self.settings.save()
+
+    def _system_scheme_changed(self, *_args) -> None:
+        """The operating system switched between light and dark: follow it when set to Auto."""
+        if str(self.settings.preferences["theme"]) == "auto":
+            self._apply_look()
 
     def _log_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the log."""
@@ -305,25 +347,28 @@ class QuillApp:
         """Apply theme, accent and spacing from the settings to the app and its windows."""
         prefs = self.settings.preferences
         apply_theme(self.qapp, str(prefs["theme"]), str(prefs["accent"]), str(prefs["spacing"]),
-                    int(prefs["font_size"]), int(prefs["blur"]))
+                    int(prefs["font_size"]))
         dark = is_dark(self.qapp)
         colors = colors_for(dark, str(prefs["accent"]))
-        for window in (self.window.widget, self.sorting.widget):
+        opacity, blur = int(prefs["opacity"]), int(prefs["blur"])
+        for window, root in ((self.window.widget, self.window.root), (self.sorting.widget, self.sorting.root)):
             if window is not None:
                 apply_spacing(window, str(prefs["spacing"]))
-                apply_chrome(window, dark, colors, opacity=int(prefs["opacity"]), blur=int(prefs["blur"]))
-                apply_opacity(window, int(prefs["opacity"]))
+                apply_chrome(window, dark, colors, opacity=opacity, blur=blur)
+                apply_opacity(root, opacity)
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         self.tray.set_badge(self.tray.badge, colors["accent"])
 
-    def apply_settings(self) -> None:
-        """Push changed settings into the running app."""
+    def apply_settings(self, quiet: bool = False) -> None:
+        """Push changed settings into the running app (*quiet*: a live preview, nothing logged)."""
         self._apply_look()
         self.speaker.enabled = bool(self.settings.preferences["speak_prompts"])
         self.controller.apply_settings()
+        self._sync_mic()
         self.controller.lead_in_s = self.feedback.lead_in_s()
         self.refresh_sorting()
-        self.window.append_log("Settings saved")
+        if not quiet:
+            self.window.append_log("Settings saved")
 
     # ------------------------------------------------------------------ #
     # Events from the controller                                           #
@@ -331,6 +376,10 @@ class QuillApp:
 
     def handle_event(self, event: Event) -> None:
         """Reflect a Session/Controller event in the window and tray."""
+        self._handle_event(event)
+        self._sync_mic()
+
+    def _handle_event(self, event: Event) -> None:
         kind = event.kind
         self.feedback.request(event)
         if not self._cue_timer.isActive():

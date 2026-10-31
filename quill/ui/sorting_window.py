@@ -163,6 +163,7 @@ class SortingWindow:
         self._on_voice = on_voice or (lambda: None)
         self._voice_active = False
         self._window: QWidget | None = None
+        self.root: QWidget | None = None       # the widget that paints the background (set in setup)
         self.rows: list[TermRow] = []
 
     def setup(self) -> None:
@@ -174,7 +175,14 @@ class SortingWindow:
         window.setWindowTitle("Needs sorting")
         window.resize(460, 300)
         window.setMinimumSize(320, 160)
-        layout = QVBoxLayout(window)
+        shell = QVBoxLayout(window)
+        shell.setContentsMargins(0, 0, 0, 0)
+        root = QWidget()
+        root.setObjectName("sortingRoot")                      # paints the background; opacity applies to it
+        root.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        shell.addWidget(root)
+        self.root = root
+        layout = QVBoxLayout(root)
         self.intro = QLabel("Quill heard these but couldn't place them. Tell it what each one is.")
         self.intro.setWordWrap(True)
         layout.addWidget(self.intro)

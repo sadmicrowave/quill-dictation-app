@@ -129,7 +129,7 @@ class TestMacChrome(unittest.TestCase):
         self.assertEqual((view.props["material"], view.props["blending"], view.props["state"]), (7, 0, 1))
         self.assertEqual(view.props["mask"], 18)                      # grows with the window
         self.assertIn(("opaque", False), window.calls)                # blur needs a see-through window
-        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.76)), window.calls)        # 1 - 0.4 * 0.6
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), window.calls)         # title bar solid at 100% opacity
         self.assertEqual(view.props["alpha"], 0.6)                           # the blur's strength
 
     def test_blur_is_not_added_twice_but_its_strength_updates(self):
@@ -156,6 +156,13 @@ class TestMacChrome(unittest.TestCase):
         kit = FakeAppKit(FakeWindow())
         chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=70)
         self.assertIn(("opaque", False), kit._window.calls)
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.7)), kit._window.calls)   # the title bar follows the opacity
+
+    def test_full_opacity_and_no_blur_is_a_solid_window(self):
+        kit = FakeAppKit(FakeWindow())
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=100, blur=0)
+        self.assertIn(("opaque", True), kit._window.calls)
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), kit._window.calls)
 
 
 class TestWindowsBlur(unittest.TestCase):

@@ -5,8 +5,8 @@ from __future__ import annotations
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton,
-    QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QSlider, QSpinBox,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 from quill.ui.icons import make_icon
@@ -58,7 +58,48 @@ class SettingRow(QWidget):
         return all(word in self.search_text for word in query.lower().split())
 
 
-class FlatCombo(QComboBox):
+class _WheelGuard:
+    """Mixin: a control changes with the mouse wheel only once it has been clicked into.
+
+    Without this, scrolling a settings page with a trackpad changes whichever
+    drop-down, number box or slider happens to be under the pointer (which once
+    turned a saved keyword into the wrong action).
+    """
+
+    def wheelEvent(self, event) -> None:                         # noqa: N802 (Qt name)
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()                                       # let the page scroll instead
+
+
+class GuardedCombo(_WheelGuard, QComboBox):
+    """A QComboBox that ignores the wheel until focused, with a pointing-hand cursor."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+
+class GuardedSpinBox(_WheelGuard, QSpinBox):
+    """A QSpinBox that ignores the wheel until focused."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+
+class GuardedSlider(_WheelGuard, QSlider):
+    """A QSlider that ignores the wheel until focused, with a pointing-hand cursor."""
+
+    def __init__(self, orientation=Qt.Orientation.Horizontal) -> None:
+        super().__init__(orientation)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+
+class FlatCombo(GuardedCombo):
     """A drop-down drawn as plain text with a chevron (no box), like the settings rows of Claude."""
 
     def __init__(self) -> None:

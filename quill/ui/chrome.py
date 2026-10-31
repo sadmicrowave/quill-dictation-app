@@ -168,9 +168,9 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
     window.setTitlebarAppearsTransparent_(True)
     strength = max(0, min(100, blur)) / 100
     window.setOpaque_(not (strength > 0 or opacity < 100))   # a see-through window must not be marked opaque
-    # With blur the window colour is a tint over the blur, lighter the stronger it is; otherwise
-    # solid (window-wide opacity is applied with setWindowOpacity, not here).
-    alpha = 1.0 - 0.40 * strength
+    # The title bar area is painted by the window itself, not by Quill's content, so it follows the
+    # opacity setting here (fully solid at 100). The content fades itself (see theme.apply_opacity).
+    alpha = max(0, min(100, opacity)) / 100
     window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))

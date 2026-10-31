@@ -60,6 +60,7 @@ class TestLayout(DialogCase):
     def test_every_setting_lives_on_one_page_as_a_titled_row(self):
         self.assertEqual({r.title for r in self.d.rows},
                          {"Read questions aloud", "Sort by voice automatically", "Undo remembers", "Theme",
+                          "Keep the microphone open when not listening",
                           "Accent colour", "Spacing", "Text size", "Window opacity", "Window blur",
                           "Confirm with", "Sound set", "Spoken word", "Preview"})
 
@@ -84,15 +85,15 @@ class TestSearch(DialogCase):
         self.assertEqual(shown, ["Window blur"])
 
     def test_matches_descriptions_and_keywords_not_only_titles(self):
-        self.d.filter("frosted")
+        self.d.filter("frosts")
         self.assertEqual([r.title for r in self.d.rows if not r.isHidden()], ["Window blur"])
         self.d.filter("voice")
         titles = {r.title for r in self.d.rows if not r.isHidden()}
         self.assertIn("Sort by voice automatically", titles)
 
     def test_every_word_must_match(self):
-        self.assertEqual(self.d.filter("window opacity"), 1)
-        self.assertEqual(self.d.filter("window nonsense"), 0)
+        self.assertEqual(self.d.filter("text size"), 1)
+        self.assertEqual(self.d.filter("text nonsense"), 0)
 
     def test_no_match_says_so_and_clearing_restores_everything(self):
         self.d.filter("zzzz")

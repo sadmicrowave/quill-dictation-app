@@ -17,7 +17,7 @@ import tempfile
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QLayout, QWidget
+from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLayout, QWidget
 
 _SCHEMES = {
     "auto": Qt.ColorScheme.Unknown,   # follow the operating system
@@ -52,21 +52,6 @@ DENSITIES = {
                         header="10px", cell="7px", radius=14, margin=20, gap=12),
 }
 
-#: At full blur strength the window background is this opaque (so the blur shows through)
-#: and cards are this opaque; at 0 both are fully solid, and strengths in between blend.
-GLASS_WINDOW_ALPHA = 0.60
-GLASS_SURFACE_ALPHA = 0.80
-
-
-def window_alpha(strength: float) -> float:
-    """Window background opacity for a blur *strength* of 0 to 1."""
-    return 1.0 - (1.0 - GLASS_WINDOW_ALPHA) * max(0.0, min(1.0, strength))
-
-
-def surface_alpha(strength: float) -> float:
-    """Card / field opacity for a blur *strength* of 0 to 1."""
-    return 1.0 - (1.0 - GLASS_SURFACE_ALPHA) * max(0.0, min(1.0, strength))
-
 DEFAULT_ACCENT = "terracotta"
 DEFAULT_FONT_SIZE = 12
 DEFAULT_SPACING = "compact"
@@ -87,7 +72,7 @@ def rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {round(max(0.0, min(1.0, alpha)) * 255)})"
 
 
-def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, glass: float = 0.0) -> QPalette:
+def palette_for(dark: bool, accent: str = DEFAULT_ACCENT) -> QPalette:
     """A palette built from the tokens (so native-drawn bits match the style sheet)."""
     t = colors_for(dark, accent)
     palette = QPalette()
@@ -101,9 +86,6 @@ def palette_for(dark: bool, accent: str = DEFAULT_ACCENT, glass: float = 0.0) ->
         (QPalette.ColorRole.Link, "accent"),
     ):
         palette.setColor(role, QColor(t[key]))
-    window = QColor(t["bg"])
-    window.setAlphaF(window_alpha(glass))
-    palette.setColor(QPalette.ColorRole.Window, window)
     for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
         palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(t["disabled"]))
     return palette
@@ -140,16 +122,17 @@ _ICON_CACHE: dict[tuple[str, str, str], dict[str, str]] = {}
 
 
 def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING,
-                   font_size: int = DEFAULT_FONT_SIZE, glass: float = 0.0) -> str:
+                   font_size: int = DEFAULT_FONT_SIZE) -> str:
     """The style sheet: rounded controls, hairline borders, an accent for the main action."""
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     icon = _chevrons(t)
-    win = rgba(t["bg"], window_alpha(glass))             # the see-through part
-    surf = rgba(t["surface"], surface_alpha(glass))      # cards and fields: more solid
+    win = t["bg"]                                        # all colours are solid: see-through is
+    surf = t["surface"]                                  # applied to the whole window, never per colour
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
-QMainWindow, QDialog, QWidget#sortingWindow {{ background: {win}; }}
+QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
+QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot {{ background: {win}; }}
 QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
            border-radius: 6px; padding: 4px 8px; }}
 
@@ -273,21 +256,19 @@ def _restyle(app: QApplication) -> None:
     accent = str(app.property("quillAccent") or DEFAULT_ACCENT)
     spacing = str(app.property("quillSpacing") or DEFAULT_SPACING)
     size = int(app.property("quillFontSize") or DEFAULT_FONT_SIZE)
-    glass = int(app.property("quillGlass") or 0) / 100
-    key = f"{dark}/{accent}/{spacing}/{size}/{glass}"
+    key = f"{dark}/{accent}/{spacing}/{size}"
     if app.property("quillThemeKey") == key:
         return                      # unchanged: re-polishing every widget is slow
     app.setProperty("quillThemeKey", key)
     font = app.font()
     font.setPointSize(size)
     app.setFont(font)
-    app.setPalette(palette_for(dark, accent, glass))
-    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size, glass))
+    app.setPalette(palette_for(dark, accent))
+    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
-                spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE,
-                blur: int = 0) -> None:
+                spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE) -> None:
     """Set the colour scheme, accent and spacing, and apply Quill's look.
 
     Args:
@@ -298,28 +279,46 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
         spacing: ``"compact"`` or ``"comfortable"``. Layout margins and gaps
             are applied separately by :func:`apply_spacing`.
         font_size: Base text size in points (the Needs-sorting questions are 3 larger).
-        blur: Blur strength 0 to 100. Above 0 the window background turns see-through
-            (so a blur behind the window shows) and cards stay more solid. Needs windows
-            created with ``WA_TranslucentBackground`` (Quill's are).
     """
     if not app.property("quillFusion"):      # once: re-setting the style re-polishes everything
         app.setStyle("Fusion")
         app.setProperty("quillFusion", True)
-    app.styleHints().setColorScheme(_SCHEMES.get(mode, Qt.ColorScheme.Unknown))
+    hints = app.styleHints()
+    if mode in ("light", "dark"):
+        hints.setColorScheme(_SCHEMES[mode])
+    elif hasattr(hints, "unsetColorScheme"):
+        hints.unsetColorScheme()             # back to the operating system's own choice
+    else:
+        hints.setColorScheme(Qt.ColorScheme.Unknown)
     app.setProperty("quillThemeMode", mode)
     app.setProperty("quillAccent", accent if accent in ACCENTS else DEFAULT_ACCENT)
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
     app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
-    app.setProperty("quillGlass", max(0, min(100, int(blur))))
     _restyle(app)
     if not app.property("quillThemeHooked"):
         app.styleHints().colorSchemeChanged.connect(lambda *_: _restyle(app))
         app.setProperty("quillThemeHooked", True)
 
 
-def apply_opacity(widget: QWidget, percent: int) -> None:
-    """Fade a whole window, text and controls included, to *percent* (55 to 100)."""
-    widget.setWindowOpacity(max(0.0, min(1.0, percent / 100)))
+def apply_opacity(root: QWidget, percent: int) -> None:
+    """Fade a window's whole contents (background, controls and text together) to *percent*.
+
+    *root* is the window's root widget (the one that paints the background).
+    Fading the root, rather than the native window or each colour, makes every
+    pixel follow the setting uniformly and lets what is *behind* the window (blurred,
+    if blur is on) show through. At 100 the effect is removed, so the window is
+    completely solid and costs nothing.
+    """
+    percent = max(0, min(100, int(percent)))
+    if percent >= 100:
+        if root.graphicsEffect() is not None:
+            root.setGraphicsEffect(None)
+        return
+    effect = root.graphicsEffect()
+    if not isinstance(effect, QGraphicsOpacityEffect):
+        effect = QGraphicsOpacityEffect(root)
+        root.setGraphicsEffect(effect)
+    effect.setOpacity(percent / 100)
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:

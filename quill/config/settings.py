@@ -57,6 +57,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "font_size": 12,          # base text size in points
     "log_collapsed": False,   # the main window's log starts hidden
     "row_collapsed": False,   # the main window's Current row section starts hidden
+    "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
 }

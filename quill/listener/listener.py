@@ -91,6 +91,7 @@ class Listener:
         self._drain = threading.Event()
         self._muted = threading.Event()
         self._running = False
+        self._loading = False
         self._thread: threading.Thread | None = None
 
     # ------------------------------------------------------------------ #
@@ -102,8 +103,29 @@ class Listener:
         """True while the capture thread is active."""
         return self._running
 
+    def preload(self) -> None:
+        """Load the speech model in the background *without* opening the microphone.
+
+        Loading takes a few seconds; doing it ahead of time makes :meth:`start`
+        (which is what opens the microphone) quick.
+        """
+        if self._model is not None or self._loading:
+            return
+        self._loading = True
+
+        def load() -> None:
+            try:
+                if self._model is None:
+                    self._model = self._model_loader(self._model_path)
+            except Exception as exc:
+                self._on_error(f"Could not load the speech model: {exc}")
+            finally:
+                self._loading = False
+
+        threading.Thread(target=load, name="quill-model-loader", daemon=True).start()
+
     def start(self) -> None:
-        """Begin capturing and recognising audio in a background thread."""
+        """Open the microphone and begin recognising audio in a background thread."""
         if self._running:
             return
         self._running = True
@@ -111,7 +133,7 @@ class Listener:
         self._thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:
-        """Signal the capture thread to stop and wait briefly for it."""
+        """Close the microphone: signal the capture thread to stop and wait briefly for it."""
         self._running = False
         thread, self._thread = self._thread, None
         if thread is not None and thread is not threading.current_thread():

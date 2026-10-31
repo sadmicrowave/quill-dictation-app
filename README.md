@@ -25,7 +25,7 @@ Speech recognition is offline ([Vosk](https://alphacephei.com/vosk/)); nothing l
     python main.py                       # drives the Excel workbook that is open
     python main.py --workbook file.xlsx  # edits a file directly (no Excel needed)
 
-1. On first run press **Download speech model** (about 40 MB, one time).
+1. Nothing to download: the speech model ships in the repo as a zip (`quill/model/`, about 41 MB) and is unpacked once, on first launch. If it is ever missing, press **Download speech model**.
 2. Open a workbook in Excel (before or after Quill; Quill notices).
 3. Say **"start listening"**, or press **Start** in the window / menu bar icon.
 4. Speak a row, then say **"next row"**. Say **"stop listening"** when done.
@@ -193,9 +193,13 @@ A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a pa
 
 A sidebar of groups (**General**, **Appearance**, **Sounds**, **Keywords**) with a **search box** at the top, and rows of *name, muted help text, control*, in the style of Claude's own settings. Search filters the rows of every group (it matches names, help text and extra keywords, and a keyword phrase finds the Keywords page) and hides groups with no match. Controls: toggle switches, a three-icon **Theme** selector (Auto / Light / Dark), plain-text drop-downs with a chevron (no box), sliders with a live percentage, and the keyword table on its own page, which takes all the spare height. Built from `ui/settings_widgets.py` (`SettingRow`, `ToggleSwitch`, `SegmentedControl`, `FlatCombo`) and `ui/settings_dialog.py`. The Settings window itself always stays solid, so it can be read even when the main window is made very transparent.
 
-- **Window opacity**: 10 to 100 % (0 would make the window vanish with its own Settings button inside it).
-- **Window blur**: 0 to 100 %. 0 is off; higher makes the window background more see-through and the blur behind it stronger (macOS: the `NSVisualEffectView`'s alpha; Windows 11: acrylic on/off, since the backdrop strength cannot be set).
+- **Window opacity**: 10 to 100 %. **100 % is completely solid**, whatever the blur. Lower values fade the whole window (background, controls and text together) so what is behind it shows through.
+- **Window blur**: 0 to 100 %. Frosts what shows through the window; at 100 % opacity there is nothing to see through, so blur only matters once opacity is lowered (macOS: the `NSVisualEffectView`'s alpha; Windows 11: acrylic on/off, since its strength cannot be set).
 - **Current row** can be collapsed like the log (arrow beside the heading; remembered). The window gives back the height of whatever you collapse and takes it again when you reopen it.
+
+- **Live updates.** Every control applies as you change it (theme, accent, spacing, text size, opacity, blur, sounds, undo cap and so on) so you can see the result before deciding; **Cancel** (or closing the window) restores the settings exactly as they were, and **OK** saves. Nothing is written to disk until OK; keyword edits take effect only on OK.
+- **Scrolling is safe.** Drop-downs, number boxes and sliders ignore the mouse wheel until clicked into, so scrolling a page cannot change a setting by accident (this once silently changed a saved keyword's action while scrolling the table). All clickable controls show a pointing hand.
+- The Settings window follows the opacity setting but never goes below 70 % so it stays readable.
 
 ### Sounds
 
@@ -203,7 +207,15 @@ The five sets now differ in instrument *and* melody, not just pitch: **Chime** (
 
 ### App icon ideas
 
-`tools/make_icon_ideas.py` draws ten concepts into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
+`tools/make_icon_ideas.py` draws twenty concepts (`--more` for ideas 11 to 20) into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
+
+### Speech model
+
+The Vosk small US-English model (`vosk-model-small-en-us-0.15`, Apache 2.0) ships **compressed** as `quill/model/vosk-model-small-en-us-0.15.zip` (41 MB; 68 MB unpacked), so a fresh clone works with no download and the repository stays smaller. `ensure_model` (in `quill/listener/model.py`) uses a model you configured or one already unpacked, and otherwise unpacks the zip once into the per-user data folder (`.../Quill/model`). An unpacked copy beside the zip is also used and is git-ignored. Plain git is enough (the zip is under GitHub's 100 MB limit); move it to Git LFS if the repository should stay small.
+
+### Microphone
+
+The microphone is **only open while Quill is listening** (plus while a spoken answer is expected: a yes / no question or voice sorting). At launch the speech model loads in the background but the microphone stays off until you press Start, so the macOS microphone indicator is off whenever Quill is idle. The log says "Microphone on" / "Microphone off". Because a closed microphone cannot hear "start listening", there is a setting, **Keep the microphone open when not listening** (off by default), for people who want to start by voice. Implementation: `Listener.preload()` loads the model without opening a stream; `QuillApp.mic_wanted()` / `_sync_mic()` start and stop the stream after every event.
 
 ## The window, the tray icon and settings
 
@@ -226,7 +238,7 @@ Quill mutes the microphone while it speaks so it can't hear itself.
 
 | Symptom | Try |
 |---------|-----|
-| "No speech model found" | Press **Download speech model**, or set `model_path` in `keywords.toml` to a Vosk model folder |
+| "No speech model found" | `quill/model/` was removed. Restore it from git, press **Download speech model**, or set `model_path` to a Vosk model folder |
 | Nothing happens when I speak | Is the light green? Say "start listening". Check the OS microphone permission for Quill (macOS: Privacy & Security > Microphone) |
 | "Can't find an open spreadsheet" | Open a workbook in desktop Excel; Quill attaches within a few seconds |
 | macOS asks to control Excel | Choose OK (Privacy & Security > Automation). If you declined, re-enable it there |

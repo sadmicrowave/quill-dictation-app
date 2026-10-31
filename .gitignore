@@ -14,7 +14,8 @@ build/
 venv/
 env/
 
-# Vosk model (large; download separately — see README)
+# The speech model ships as quill/model/*.zip (tracked, about 41 MB) and is unpacked on first launch
+# into the user's data folder. An unpacked copy next to it is ignored.
 quill/model/*/
 
 # PyInstaller artifacts

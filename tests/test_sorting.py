@@ -314,7 +314,7 @@ class TestAppSorting(unittest.TestCase):
         self.path = demo.build(self.dir / "demo.xlsx")
         self.quill = QuillApp(_app, Settings.load(self.dir / "cfg"), XlsxBridge(self.path),
                               listener_factory=lambda m, t, e: type("L", (), {
-                                  "start": lambda s: None, "mute": lambda s: None,
+                                  "start": lambda s: None, "stop": lambda s: None, "preload": lambda s: None, "mute": lambda s: None,
                                   "unmute": lambda s: None})(),
                               model_finder=lambda c: self.dir,
                               speaker=type("S", (), {"enabled": True,

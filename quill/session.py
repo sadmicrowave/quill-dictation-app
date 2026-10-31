@@ -156,6 +156,11 @@ class Session:
                 events += self._segment(segment)
         return events
 
+    @property
+    def awaiting_answer(self) -> bool:
+        """True while a spoken yes / no to a question would still be accepted."""
+        return bool(self.pending and self._voice_open)
+
     def apply(self, action: Action) -> list[Event]:
         """Run a command without speech (a tray click, a menu item)."""
         return self._command(CommandEvent(action))
