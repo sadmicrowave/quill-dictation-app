@@ -209,13 +209,17 @@ The five sets now differ in instrument *and* melody, not just pitch: **Chime** (
 
 `tools/make_icon_ideas.py` draws twenty concepts (`--more` for ideas 11 to 20, `--all` for one sheet of all twenty) in the modern macOS manner: a flat colour with only a hint of depth (a faint light-to-dark shift, a hairline top highlight, a faint shade on the bottom edge, a flat white glyph at 72 % of the box with a very soft shadow), like the Mail or Arduino icons in the Dock. An earlier, heavily embossed version was too much. They are written into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
 
+### Auto-refresh
+
+There is no Refresh button. Every 3 seconds Quill compares the workbook file's modification time with the last one it saw and, if you have saved a change in Excel (a new column, a new drop-down value), re-reads the lists and columns. Quill's own writes (rows, taught values, filters) record the new time straight away so they are never mistaken for outside changes, and a file caught mid-save is simply retried on the next tick. The log says "Workbook changed: lists and columns re-read".
+
 ### Capitalisation
 
 Titles, labels, buttons, menu items, setting names and the like use Title Case throughout: two-word titles have both words capitalised (**Last Saved**, **Current Row**, **Not Listening**, **Needs Sorting**, **Sound Set**), and longer ones capitalise every word except small joining words (**Sort by Voice Automatically**, **Keep the Mini View on Top**). Descriptions, tooltips and log sentences stay sentence case.
 
 ### Mini view
 
-Press the arrows button beside Settings (or tick **Mini view** in the tray / menu bar menu) to shrink Quill to a small overlay: a status row (light, the **Listening / Not Listening** text, the **Needs Sorting** count, an icon-only **Start / Stop** and a bare arrows icon, no box, to go back) and the **row being built** in a small box beneath. The log, the saved-row line, the workbook picker, the sheet name, Undo, the footer and Settings are hidden. The window **animates** (about 0.2 s, eased; `MainWindow.animation_ms`) to 340 px wide and about 120 px tall and **floats above other windows** (Settings has a switch, *Keep the mini view on top*) so it can sit beside or over a spreadsheet. The arrows button turns into the way back and restores the previous size, and which view you left it in is remembered. Collapsed sections keep their state across a round trip. Dictation, the microphone and the tray all work from the mini view. (Changing a window's stay-on-top flag recreates its native window, so the title-bar styling is re-applied each time.)
+Press the arrows button beside Settings (or tick **Mini view** in the tray / menu bar menu) to shrink Quill to a small overlay: a status row (light, the **Listening / Not Listening** text, the **Needs Sorting** count and an icon-only **Start / Stop**); the resize icon sits in the **title bar** itself, on the right, opposite the red / yellow / green buttons (macOS; elsewhere a bare icon inside the window) and the **row being built** in a small box beneath. The log, the saved-row line, the workbook picker, the sheet name, Undo, the footer and Settings are hidden. The window **animates** (about 0.25 s, eased; `MainWindow.animation_ms`; the size moves first and the contents swap at the end when shrinking or at the start's end when growing, so it visibly shrinks and grows instead of snapping) to 340 px wide and about 120 px tall and **floats above other windows** (Settings has a switch, *Keep the mini view on top*) so it can sit beside or over a spreadsheet. The arrows button turns into the way back and restores the previous size, and which view you left it in is remembered. Collapsed sections keep their state across a round trip. Dictation, the microphone and the tray all work from the mini view. The stay-on-top level is changed in place with the OS (`NSWindow.setLevel_` on macOS, `SetWindowPos` on Windows) because changing Qt's window flag destroys and recreates the native window, which is what made the first version jump; Qt's flag is only a fallback.
 
 ### Speech model
 
@@ -227,7 +231,7 @@ The microphone is **only open while Quill is listening** (plus while a spoken an
 
 ## The window, the tray icon and settings
 
-- **Main window**: status light, Start/Stop, Settings, workbook picker and Refresh, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).
+- **Main window**: status light, Start/Stop, Settings, workbook picker, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).
 - **Tray / menu bar icon**: green dot when listening, grey ring when not. Menu: Start/Stop Listening, Open Quill, Quit. While listening it begins with `Editing: <workbook>` and the workbook's folder (`~` for home, long paths shortened); click either line to bring the workbook to the front. On Windows a left click toggles listening; on macOS use the menu.
 - **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), accent colour, spacing (compact / comfortable), text size, window opacity and blur, "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
 
@@ -236,7 +240,7 @@ Quill mutes the microphone while it speaks so it can't hear itself.
 ## Working with workbooks
 
 - **Which lists it finds**: validation lists typed inline (`"A,B,C"`), pointing at a range (`Config!$A$2:$A$20`, quoted sheet names fine), or a defined name; plus any column on a sheet named Config or Settings whose header ends `_list`. Header row: the first Excel table, otherwise the text-richest of the first 10 rows.
-- **Live Excel** reads cell values live but reads list *structure* from the saved file: save after adding a validation rule, then press **Refresh**.
+- **Live Excel** reads cell values live but reads list *structure* from the saved file: save after adding a validation rule and Quill re-reads it within a few seconds (the file's modification time is checked every 3 seconds; Quill's own writes are not mistaken for outside changes).
 - **Lists can grow** only if their range has spare empty slots (or is a `*_list` column). A full fixed range reports an error; an inline `"A,B,C"` list can't be extended in live Excel (it can in file mode) — keep lists on a Config sheet.
 - **No workbook open?** Quill says so (window, notification, spoken) and keeps watching every 3 seconds: when a workbook opens it attaches by itself (it doesn't start listening — you still say "start listening"); when it closes Quill lets go and stops listening.
 - **Several workbooks**: use the picker; the last one used is re-selected on launch.
@@ -250,7 +254,7 @@ Quill mutes the microphone while it speaks so it can't hear itself.
 | Nothing happens when I speak | Is the light green? Say "start listening". Check the OS microphone permission for Quill (macOS: Privacy & Security > Microphone) |
 | "Can't find an open spreadsheet" | Open a workbook in desktop Excel; Quill attaches within a few seconds |
 | macOS asks to control Excel | Choose OK (Privacy & Security > Automation). If you declined, re-enable it there |
-| My drop-downs aren't picked up | Save the workbook, press Refresh; check the validation is a list pointing at a single column |
+| My drop-downs aren't picked up | Save the workbook (Quill re-reads it by itself within a few seconds); check the validation is a list pointing at a single column |
 | "list is full" | Extend the list's range in the workbook (leave spare empty cells) |
 | A column word is ignored | It must match the header text; say it just before the value |
 | Search says nothing to filter on | Use values that exist in your lists, e.g. `search for fern under 20` |

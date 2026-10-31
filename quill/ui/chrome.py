@@ -200,3 +200,158 @@ def _set_blur(view, appkit, strength: float) -> None:
     effect.setAutoresizingMask_(_NS_VIEW_SIZABLE)
     effect.setAlphaValue_(strength)          # fades the blur in: 0 = none, 1 = full
     holder.addSubview_positioned_relativeTo_(effect, _NS_WINDOW_BELOW, view)
+
+
+# --------------------------------------------------------------------------- #
+# Always on top, without recreating the window                                 #
+# --------------------------------------------------------------------------- #
+
+#: NSWindow levels: a normal window and a floating (always on top) one.
+_NS_NORMAL_LEVEL, _NS_FLOATING_LEVEL = 0, 3
+
+
+def set_always_on_top(widget, on: bool, platform: str | None = None,
+                      appkit=None, user32=None) -> bool:
+    """Float *widget* above other windows (or stop) using the OS, not Qt's window flag.
+
+    Changing Qt's ``WindowStaysOnTopHint`` destroys and recreates the native window,
+    which interrupts any animation and loses the title-bar styling. The native calls
+    change the level in place.
+
+    Returns:
+        True if the OS did it; False if the caller must fall back to the Qt flag
+        (headless runs, other platforms, or a missing PyObjC).
+    """
+    platform = platform or sys.platform
+    try:
+        if not _native_platform(platform):
+            return False
+        handle = int(widget.winId())
+        if platform == "darwin":
+            if appkit is None:
+                import AppKit as appkit            # noqa: F811 (PyObjC, optional)
+                import objc
+                view = objc.objc_object(c_void_p=handle)
+            else:
+                view = appkit.view_for(handle)
+            window = view.window()
+            if window is None:
+                return False
+            window.setLevel_(_NS_FLOATING_LEVEL if on else _NS_NORMAL_LEVEL)
+            return True
+        if platform == "win32":
+            import ctypes
+            user32 = user32 or ctypes.windll.user32
+            HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+            SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
+            user32.SetWindowPos(ctypes.c_void_p(handle), ctypes.c_void_p(HWND_TOPMOST if on else HWND_NOTOPMOST),
+                                0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+            return True
+    except Exception:
+        return False
+    return False
+
+
+# --------------------------------------------------------------------------- #
+# A button in the title bar                                                    #
+# --------------------------------------------------------------------------- #
+
+#: SF Symbol names for "shrink to the mini view" / "back to the full window".
+SYMBOL_MINI = "arrow.down.right.and.arrow.up.left"
+SYMBOL_FULL = "arrow.up.left.and.arrow.down.right"
+_NS_LAYOUT_RIGHT = 2
+
+
+class TitlebarButton:
+    """A borderless icon button placed at the right end of a macOS title bar.
+
+    Created by :func:`add_titlebar_button`; keeps the Cocoa objects alive and
+    swaps the icon with :meth:`set_mini`.
+    """
+
+    def __init__(self, button, controller, target, appkit) -> None:
+        self._button, self._controller, self._target, self._appkit = button, controller, target, appkit
+
+    def set_mini(self, mini: bool) -> None:
+        """Show the "back to full" icon while in the mini view, "shrink" otherwise."""
+        name = SYMBOL_FULL if mini else SYMBOL_MINI
+        text = "Back to the Full Window" if mini else "Mini View"
+        image = self._appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, text)
+        if image is not None:
+            self._button.setImage_(image)
+        self._button.setToolTip_(text)
+
+    def click(self) -> None:
+        """Press the button (used by tests)."""
+        self._button.performClick_(None)
+
+    def remove(self) -> None:
+        self._controller.removeFromParentViewController()
+
+
+def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False,
+                        platform: str | None = None, appkit=None) -> TitlebarButton | None:
+    """Add a resize icon to the right of the window's native title bar (macOS).
+
+    Args:
+        widget: The top-level window.
+        callback: Called, with no arguments, when the icon is clicked.
+        mini: Whether the window is currently the mini view (chooses the icon).
+
+    Returns:
+        The button, or None where this is not possible (other platforms, headless
+        runs, no PyObjC), in which case the caller keeps an in-window button.
+    """
+    platform = platform or sys.platform
+    try:
+        if platform != "darwin" or not _native_platform(platform):
+            return None
+        handle = int(widget.winId())
+        if appkit is None:
+            import AppKit as appkit                  # noqa: F811
+            import objc
+            view = objc.objc_object(c_void_p=handle)
+            target_class = _target_class(appkit, objc)
+        else:
+            view = appkit.view_for(handle)
+            target_class = appkit.TargetClass
+        window = view.window()
+        if window is None:
+            return None
+        target = target_class.alloc().initWithCallback_(callback)
+        button = appkit.NSButton.alloc().initWithFrame_(((0, 0), (34, 24)))
+        button.setBordered_(False)
+        button.setTarget_(target)
+        button.setAction_("toggle:")
+        controller = appkit.NSTitlebarAccessoryViewController.alloc().init()
+        controller.setView_(button)
+        controller.setLayoutAttribute_(_NS_LAYOUT_RIGHT)
+        window.addTitlebarAccessoryViewController_(controller)
+        result = TitlebarButton(button, controller, target, appkit)
+        result.set_mini(mini)
+        return result
+    except Exception:
+        return None
+
+
+_TARGET_CLASS = None
+
+
+def _target_class(appkit, objc):
+    """The Objective-C object that receives the button's action and calls back into Python."""
+    global _TARGET_CLASS
+    if _TARGET_CLASS is None:
+        class QuillTitlebarTarget(appkit.NSObject):
+            def initWithCallback_(self, callback):
+                self = objc.super(QuillTitlebarTarget, self).init()
+                if self is None:
+                    return None
+                self._callback = callback
+                return self
+
+            @objc.IBAction
+            def toggle_(self, sender):
+                self._callback()
+
+        _TARGET_CLASS = QuillTitlebarTarget
+    return _TARGET_CLASS

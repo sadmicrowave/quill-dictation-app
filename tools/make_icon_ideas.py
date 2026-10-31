@@ -2,7 +2,8 @@
 
     python tools/make_icon_ideas.py [contact-sheet.png]            # ideas 01-10
     python tools/make_icon_ideas.py --more [contact-sheet.png]     # ideas 11-20
-    python tools/make_icon_ideas.py --all [contact-sheet.png]      # all twenty, one sheet
+    python tools/make_icon_ideas.py --new [contact-sheet.png]      # a third round: 21-40 (all new symbols)
+    python tools/make_icon_ideas.py --all [contact-sheet.png]      # everything, one sheet
 
 Writes ``assets/icon-ideas/NN-name.svg`` (the full-colour app icon) and
 ``NN-name-menubar.svg`` (the same idea as a plain black glyph, which macOS can
@@ -124,6 +125,76 @@ def shade(color: str, amount: float) -> str:
     return "#" + "".join(f"{round(c + (target - c) * k):02X}" for c in (r, g, b))
 
 
+IDEAS_NEW = [
+    ("open-book", "An open book with sound arcs rising from it", "#2F6FB5",
+     lambda fg, bg: f'<path d="M18 50C34 43 50 44 64 52C78 44 94 43 110 50V102C94 95 78 96 64 104C50 96 34 95 18 102Z" fill="{fg}"/>'
+     f'<path d="M64 54V102" stroke="{bg}" stroke-width="4" stroke-linecap="round"/>'
+     f'<g stroke="{fg}" stroke-width="6" stroke-linecap="round" fill="none"><path d="M46 34a26 26 0 0 1 36 0"/><path d="M36 22a42 42 0 0 1 56 0" opacity=".65"/></g>'),
+    ("headphones", "Headphones", "#7A55C2",
+     lambda fg, bg: f'<path d="M24 82V66a40 40 0 0 1 80 0v16" stroke="{fg}" stroke-width="9" stroke-linecap="round" fill="none"/>'
+     f'<rect x="14" y="74" width="26" height="42" rx="11" fill="{fg}"/><rect x="88" y="74" width="26" height="42" rx="11" fill="{fg}"/>'),
+    ("checklist", "A checklist with the first item ticked", "#3E7D4F",
+     lambda fg, bg: f'<g stroke="{fg}" stroke-width="7" stroke-linecap="round" fill="none"><rect x="18" y="26" width="26" height="26" rx="7"/>'
+     f'<rect x="18" y="74" width="26" height="26" rx="7" opacity=".7"/><path d="M58 39h50M58 87h38" /></g>'
+     f'<path d="M24 39 30 46 40 32" stroke="{fg}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+     f'<path d="M58 63h42" stroke="{fg}" stroke-width="7" stroke-linecap="round" opacity=".7"/>'),
+    ("clipboard-wave", "A clipboard holding a voice waveform", "#C0446B",
+     lambda fg, bg: f'<rect x="26" y="22" width="76" height="92" rx="12" fill="{fg}"/><rect x="48" y="14" width="32" height="18" rx="8" fill="{fg}" stroke="{bg}" stroke-width="5"/>'
+     + bars([40, 51, 62, 73, 84], [14, 30, 44, 24, 12], bg, 74, 7)),
+    ("cassette", "A dictaphone cassette", "#C9623F",
+     lambda fg, bg: f'<rect x="14" y="30" width="100" height="68" rx="12" fill="{fg}"/><rect x="28" y="42" width="72" height="28" rx="14" fill="{bg}"/>'
+     f'<circle cx="46" cy="56" r="8" fill="{fg}"/><circle cx="82" cy="56" r="8" fill="{fg}"/><path d="M38 98l8-14h36l8 14" stroke="{bg}" stroke-width="4" stroke-linejoin="round" fill="none"/>'),
+    ("speaker-cone", "A speaker cone: rings around a dot", "#1F2A44",
+     lambda fg, bg: f'<circle cx="64" cy="64" r="44" stroke="{fg}" stroke-width="8" fill="none"/><circle cx="64" cy="64" r="26" stroke="{fg}" stroke-width="7" fill="none" opacity=".75"/>'
+     f'<circle cx="64" cy="64" r="11" fill="{fg}"/>'),
+    ("enso", "A brush-stroke circle with a dot", "#C0446B",
+     lambda fg, bg: f'<path d="M92 30A44 44 0 1 0 108 70" stroke="{fg}" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="100" cy="42" r="7" fill="{fg}"/>'),
+    ("pencil-waves", "A pencil with sound arcs at its tip", "#3E7D4F",
+     lambda fg, bg: f'<g transform="rotate(-45 64 64)"><rect x="52" y="14" width="24" height="70" rx="5" fill="{fg}"/><path d="M52 90h24L64 112Z" fill="{fg}"/>'
+     f'<rect x="52" y="26" width="24" height="6" fill="{bg}"/></g>'
+     f'<g stroke="{fg}" stroke-width="6" stroke-linecap="round" fill="none"><path d="M82 98a24 24 0 0 0 16-16" opacity=".8"/><path d="M82 112a40 40 0 0 0 30-30" opacity=".5"/></g>'),
+    ("typing-pill", "A pill with three typing dots", "#2F6FB5",
+     lambda fg, bg: f'<rect x="12" y="38" width="104" height="52" rx="26" fill="{fg}"/>'
+     f'<circle cx="42" cy="64" r="8" fill="{bg}"/><circle cx="64" cy="64" r="8" fill="{bg}" opacity=".75"/><circle cx="86" cy="64" r="8" fill="{bg}" opacity=".5"/>'),
+    ("radio-mast", "A radio mast broadcasting", "#7A55C2",
+     lambda fg, bg: f'<path d="M64 52 44 112M64 52 84 112M52 90h24" stroke="{fg}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+     f'<circle cx="64" cy="44" r="8" fill="{fg}"/><g stroke="{fg}" stroke-width="6" stroke-linecap="round" fill="none"><path d="M44 28a28 28 0 0 0 0 32"/><path d="M84 28a28 28 0 0 1 0 32"/>'
+     f'<path d="M30 20a46 46 0 0 0 0 48" opacity=".6"/><path d="M98 20a46 46 0 0 1 0 48" opacity=".6"/></g>'),
+    ("voice-to-cell", "A voice waveform turning into a spreadsheet cell", "#C9623F",
+     lambda fg, bg: bars([14, 25, 36], [22, 48, 30], fg, 64, 7)
+     + f'<path d="M54 64h20M66 54l10 10-10 10" stroke="{fg}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+     f'<rect x="84" y="42" width="32" height="44" rx="8" fill="{fg}"/>'),
+    ("sprout", "A sprout growing from the ground", "#3E7D4F",
+     lambda fg, bg: f'<path d="M20 108h88" stroke="{fg}" stroke-width="8" stroke-linecap="round"/><path d="M64 108V58" stroke="{fg}" stroke-width="7" stroke-linecap="round"/>'
+     f'<path d="M64 70C64 46 46 34 24 36 24 58 40 72 64 70Z" fill="{fg}"/><path d="M64 56C64 36 80 24 104 26 104 48 88 60 64 56Z" fill="{fg}"/>'),
+    ("abacus", "An abacus", "#1F2A44",
+     lambda fg, bg: f'<rect x="16" y="22" width="96" height="84" rx="10" stroke="{fg}" stroke-width="8" fill="none"/>'
+     f'<g stroke="{fg}" stroke-width="5"><path d="M16 50h96M16 78h96"/></g>'
+     f'<g fill="{fg}"><circle cx="38" cy="36" r="8"/><circle cx="58" cy="36" r="8"/><circle cx="92" cy="36" r="8"/>'
+     f'<circle cx="46" cy="64" r="8"/><circle cx="82" cy="64" r="8"/><circle cx="100" cy="64" r="8"/>'
+     f'<circle cx="34" cy="92" r="8"/><circle cx="70" cy="92" r="8"/><circle cx="90" cy="92" r="8"/></g>'),
+    ("pushpin", "A pushpin", "#C0446B",
+     lambda fg, bg: f'<circle cx="64" cy="40" r="22" fill="{fg}"/><path d="M50 56h28L72 86H56Z" fill="{fg}"/><path d="M64 86V116" stroke="{fg}" stroke-width="6" stroke-linecap="round"/>'
+     f'<circle cx="57" cy="33" r="6" fill="{bg}" opacity=".45"/>'),
+    ("stacked-rows", "A stack of rows with a leading dot", "#2F6FB5",
+     lambda fg, bg: f'<rect x="14" y="26" width="100" height="22" rx="8" fill="{fg}"/><rect x="14" y="53" width="100" height="22" rx="8" fill="{fg}" opacity=".8"/>'
+     f'<rect x="14" y="80" width="100" height="22" rx="8" fill="{fg}" opacity=".6"/><circle cx="28" cy="37" r="5" fill="{bg}"/>'),
+    ("record-bars", "A record ring with a waveform inside", "#C9623F",
+     lambda fg, bg: f'<circle cx="64" cy="64" r="46" stroke="{fg}" stroke-width="9" fill="none"/>' + bars([40, 51, 62, 73, 84], [14, 30, 44, 26, 12], fg, 64, 7)),
+    ("page-wave", "A page with a folded corner and a waveform line", "#7A55C2",
+     lambda fg, bg: f'<path d="M30 14H78L102 38V114H30Z" fill="{fg}"/><path d="M78 14V38H102" fill="{bg}" opacity=".35"/>'
+     f'<path d="M42 78c6 0 6-18 12-18s6 28 12 28 6-22 12-22 6 12 12 12" stroke="{bg}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'),
+    ("bolt-ring", "A lightning bolt in a ring: dictation at speed", "#3E7D4F",
+     lambda fg, bg: f'<circle cx="64" cy="64" r="46" stroke="{fg}" stroke-width="8" fill="none"/><path d="M70 22 38 70h22l-6 36 36-52H68Z" fill="{fg}"/>'),
+    ("signal-fan", "Signal arcs fanning out from a corner dot", "#1F2A44",
+     lambda fg, bg: f'<circle cx="30" cy="98" r="9" fill="{fg}"/><g stroke="{fg}" stroke-width="9" stroke-linecap="round" fill="none"><path d="M30 64a34 34 0 0 1 34 34"/>'
+     f'<path d="M30 38a60 60 0 0 1 60 60"/><path d="M30 14a84 84 0 0 1 84 84" opacity=".7"/></g>'),
+    ("bookmark-tick", "A bookmark ribbon with a tick", "#C0446B",
+     lambda fg, bg: f'<path d="M36 14H92a6 6 0 0 1 6 6V114L64 90 30 114V20a6 6 0 0 1 6-6Z" fill="{fg}"/>'
+     f'<path d="M48 48 60 60 82 36" stroke="{bg}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'),
+]
+
+
 def app_icon(color: str, draw) -> str:
     """A dock-style icon in the modern macOS manner: a flat colour with only a *hint* of depth.
 
@@ -156,15 +227,16 @@ def menubar(glyph: str) -> str:
 
 
 def write_everything() -> list[tuple[str, str, str, str]]:
-    """All twenty ideas, in order."""
-    return write_all(False) + write_all(True)
+    """The first forty ideas, in order (01-20 are the first two rounds, 21-40 the third)."""
+    return write_all(False) + write_all(True) + write_all(batch="new")
 
 
-def write_all(more: bool = False) -> list[tuple[str, str, str, str]]:
-    """Write one batch of ideas (numbered from 01, or from 11 with *more*)."""
+def write_all(more: bool = False, batch: str = "") -> list[tuple[str, str, str, str]]:
+    """Write one batch of ideas: the first ten (01-10), *more* (11-20) or ``batch="new"`` (21-40)."""
     OUT.mkdir(parents=True, exist_ok=True)
     made = []
-    for i, (slug, title, color, draw) in enumerate(IDEAS_MORE if more else IDEAS, 11 if more else 1):
+    ideas, first = (IDEAS_NEW, 21) if batch == "new" else ((IDEAS_MORE, 11) if more else (IDEAS, 1))
+    for i, (slug, title, color, draw) in enumerate(ideas, first):
         big = app_icon(color, draw)
         mono = menubar(draw("#000000", "#FFFFFF"))
         (OUT / f"{i:02d}-{slug}.svg").write_text(big, encoding="utf-8")
@@ -201,7 +273,8 @@ def contact_sheet(path: str, made) -> None:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    made = write_everything() if "--all" in sys.argv else write_all(more="--more" in sys.argv)
+    made = (write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
+            else write_all(more="--more" in sys.argv))
     print(f"Wrote {len(made) * 2} icons to {OUT}")
     if args:
         contact_sheet(args[0], made)

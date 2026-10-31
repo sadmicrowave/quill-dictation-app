@@ -27,7 +27,6 @@ class TestMainWindow(unittest.TestCase):
         self.w = MainWindow(
             on_toggle=lambda a: self.calls.append(("toggle", a)),
             on_settings=lambda: self.calls.append(("settings",)),
-            on_refresh=lambda: self.calls.append(("refresh",)),
             on_workbook=lambda n: self.calls.append(("workbook", n)),
             on_download_model=lambda: self.calls.append(("download",)),
         )

@@ -10,6 +10,7 @@ delivers on the GUI thread, so no widget is touched off-thread.
 """
 
 from __future__ import annotations
+import os
 import pathlib
 import threading
 from typing import Callable
@@ -28,7 +29,7 @@ from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.chrome import apply_chrome
+from quill.ui.chrome import add_titlebar_button, apply_chrome
 from quill.ui.theme import apply_opacity, apply_spacing, apply_theme, colors_for, is_dark
 from quill.ui.tray import TrayIcon
 
@@ -83,7 +84,7 @@ class QuillApp:
         )
         self.window = MainWindow(
             on_toggle=self.toggle_listening, on_settings=self.open_settings,
-            on_refresh=self.refresh, on_workbook=self.select_workbook,
+            on_workbook=self.select_workbook,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
             on_undo=self.undo, on_log_toggled=self._log_toggled,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
@@ -107,6 +108,8 @@ class QuillApp:
         self._model_finder = model_finder
         self._model_downloader = model_downloader
         self._mic_open = False
+        self._seen_mtime: int | None = None      # last known state of the workbook file
+        self._titlebar = None                    # the resize icon in the title bar, where supported
         self._expiry = QTimer()
         self._expiry.setSingleShot(True)
         self._expiry.timeout.connect(self.controller.expire_prompt)
@@ -141,6 +144,7 @@ class QuillApp:
         self.tray.setup()
         self.tray.set_mini(self.window.mini)
         self.window.show()
+        self._install_titlebar_button()
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
         self._start_listener()
         self._watcher.start()
@@ -178,6 +182,7 @@ class QuillApp:
         self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
         self.settings.preferences["last_workbook"] = bridge.workbook_name
         self.settings.save()
+        self._remember_mtime()
 
     def poll_workbooks(self) -> None:
         """Watcher tick: attach when a workbook appears, detach when it closes.
@@ -192,6 +197,7 @@ class QuillApp:
             names = []   # Excel not running
         if self.connected:
             if bridge.workbook_name in names:
+                self._check_workbook_changes()
                 return
             closed = bridge.workbook_name
             self.controller.detach()
@@ -206,6 +212,43 @@ class QuillApp:
             self.connect_workbook(preferred if preferred in names else None, quiet=True)
             if self.connected:
                 self.window.append_log(f"Attached to {bridge.workbook_name} automatically.")
+
+    #: Events after which Quill itself has just written to the workbook file.
+    _WRITE_EVENTS = frozenset({"committed", "add_values", "alias_added", "undone", "searched", "cleared"})
+
+    def _workbook_mtime(self) -> int | None:
+        """When the connected workbook's file was last changed (None if unsaved or unreadable)."""
+        try:
+            path = self.controller.bridge.workbook_path
+            return os.stat(path).st_mtime_ns if path else None
+        except (BridgeError, OSError):
+            return None
+
+    def _remember_mtime(self) -> None:
+        """Note the file's current state, so Quill's own writes are not mistaken for outside changes."""
+        self._seen_mtime = self._workbook_mtime()
+
+    def _check_workbook_changes(self) -> None:
+        """Watcher tick: if the saved file changed since we last looked, re-read its lists and columns.
+
+        This replaces a manual Refresh button: add a column or a drop-down value in Excel, save,
+        and Quill picks it up within a few seconds. A file caught mid-save is simply retried.
+        """
+        mtime = self._workbook_mtime()
+        if mtime is None:
+            return
+        if self._seen_mtime is None:
+            self._seen_mtime = mtime
+            return
+        if mtime == self._seen_mtime:
+            return
+        try:
+            self.controller.refresh()
+        except BridgeError:
+            return                                   # probably being saved right now; try again next tick
+        self._seen_mtime = mtime
+        self.window.update_sheet(self._safe_sheet())
+        self.window.append_log("Workbook changed: lists and columns re-read")
 
     def show_workbook(self) -> None:
         """Bring the workbook being dictated into to the front (tray click)."""
@@ -332,16 +375,31 @@ class QuillApp:
         if dialog.exec():
             self.apply_settings()
 
-    def _mini_toggled(self, mini: bool) -> None:
-        """Remember the view, keep the tray menu in step, and redo the window styling.
+    def _install_titlebar_button(self) -> None:
+        """Put the resize icon in the title bar (macOS); the in-window one is then hidden."""
+        if self._titlebar is not None or self.window.widget is None:
+            return
+        self._titlebar = add_titlebar_button(
+            self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
+            mini=self.window.mini)
+        self.window.set_native_mini_button(self._titlebar is not None)
 
-        Changing a window's "stay on top" flag recreates its native window, which loses
-        the title-bar and blur styling, so the look is applied again.
+    def _mini_toggled(self, mini: bool) -> None:
+        """Remember the view and keep the tray menu and the title-bar icon in step.
+
+        The window's stay-on-top level is changed in place, so nothing needs restyling. Only
+        where that was impossible (the old, window-recreating way) is the look applied again.
         """
         self.settings.preferences["mini_mode"] = mini
         self.settings.save()
         self.tray.set_mini(mini)
-        self._apply_look()
+        if self._titlebar is not None:
+            self._titlebar.set_mini(mini)
+        if self.window.native_window_recreated:
+            self.window.native_window_recreated = False
+            self._titlebar = None
+            self._apply_look()
+            self._install_titlebar_button()
 
     def _row_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the Current row section."""
@@ -396,6 +454,8 @@ class QuillApp:
     def handle_event(self, event: Event) -> None:
         """Reflect a Session/Controller event in the window and tray."""
         self._handle_event(event)
+        if event.kind in self._WRITE_EVENTS:
+            self._remember_mtime()
         self._sync_mic()
 
     def _handle_event(self, event: Event) -> None:
