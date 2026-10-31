@@ -349,7 +349,7 @@ IDEAS_SHEET = [
 ]
 
 
-def offset_box(color: str, x=16.0, y=40.0, size=48.0) -> str:
+def offset_box(color: str, x=16.0, y=39.0, size=50.0) -> str:
     """The small front box (Excel's X box) holding the white sound lines."""
     deep = shade(color, -0.22)
     return (f'<rect x="{x}" y="{y + 3}" width="{size}" height="{size}" rx="11" fill="#000" opacity=".22"/>'
@@ -368,9 +368,9 @@ def sheet_offset_plate(color: str) -> str:
             '<rect x="6" y="9" width="116" height="116" rx="29" fill="#5A6088" opacity=".16"/>'
             '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#plate)"/>'
             '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
-            '<rect x="42" y="22" width="68" height="86" rx="10" fill="#000" opacity=".12" transform="translate(0 3)"/>'
-            + tiled_sheet(color, 42, 20, 68, 86, 10)
-            + offset_box(color, 16, 44, 50) + '</svg>')
+            '<rect x="42" y="21" width="68" height="86" rx="10" fill="#000" opacity=".12" transform="translate(0 3)"/>'
+            + tiled_sheet(color, 42, 21, 68, 86, 10)
+            + offset_box(color, 16, 39, 50) + '</svg>')
 
 
 def sheet_offset_body(color: str) -> str:
@@ -384,9 +384,9 @@ def sheet_offset_body(color: str) -> str:
             '<rect x="6" y="8" width="116" height="116" rx="29" fill="#000" opacity=".10"/>'
             '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#base)"/>'
             '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
-            '<rect x="42" y="22" width="68" height="86" rx="10" fill="#000" opacity=".16" transform="translate(0 3)"/>'
-            + tiled_sheet(color, 42, 20, 68, 86, 10, light=True)
-            + offset_box(color, 16, 44, 50) + '</svg>')
+            '<rect x="42" y="21" width="68" height="86" rx="10" fill="#000" opacity=".16" transform="translate(0 3)"/>'
+            + tiled_sheet(color, 42, 21, 68, 86, 10, light=True)
+            + offset_box(color, 16, 39, 50) + '</svg>')
 
 
 #: Round eight: the Excel layout (an offset sheet behind a small front box that holds the sound lines).
@@ -396,6 +396,18 @@ IDEAS_OFFSET = [
     ("offset-body-violet", "Offset sheet and small box on a violet icon", None, lambda: sheet_offset_body("#7A55C2")),
     ("offset-body-indigo", "Offset sheet and small box on an indigo icon", None, lambda: sheet_offset_body("#5B4BC4")),
 ]
+
+
+def menubar_square(size: float = 96.0) -> str:
+    """The menu bar glyph for the offset icons: the small rounded square with its sound lines cut out."""
+    x0 = 64 - size / 2
+    xs = [-33, -22, -11, 0, 11, 22, 33]
+    hs = [14, 30, 46, 60, 40, 24, 12]
+    k = size / 50 * 0.44
+    path = rrect(x0, x0, size, size, 22, 22, 22, 22)
+    for x, h in zip(xs, hs):
+        path += rrect(64 + (x - 3.5) * k, 64 - h / 2 * k, 7 * k, h * k, 3.5 * k, 3.5 * k, 3.5 * k, 3.5 * k)
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><path d="{path}" fill="#000000" fill-rule="evenodd"/></svg>'
 
 
 def app_icon(color: str, draw) -> str:
@@ -443,7 +455,10 @@ def write_all(more: bool = False, batch: str = "") -> list[tuple[str, str, str, 
     for i, (slug, title, color, draw) in enumerate(ideas, first):
         if color is None:                                   # a ready-made icon (no glyph function)
             big = draw()
-            mono = menubar(sound_lines(64, 64, 1.0).replace('"#FFFFFF"', '"#000000"').replace('fill="#000" opacity', 'fill="none" opacity'))
+            if slug.startswith("offset"):
+                mono = menubar_square()
+            else:
+                mono = menubar(sound_lines(64, 64, 1.0).replace('"#FFFFFF"', '"#000000"').replace('fill="#000" opacity', 'fill="none" opacity'))
         else:
             big = app_icon(color, draw)
             mono = menubar(draw("#000000", "#FFFFFF"))

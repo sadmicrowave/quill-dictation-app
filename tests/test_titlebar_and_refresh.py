@@ -286,10 +286,6 @@ class TestTitlebarInTheApp(TitlebarCase):
         self.assertFalse(self.app.window.mini)
         self.assertFalse(self.fake_button.mini)
 
-    def test_the_tray_toggle_updates_the_title_bar_icon(self):
-        self.app.tray.mini_action.setChecked(True)
-        self.assertTrue(self.fake_button.mini)
-
     def test_where_there_is_no_title_bar_icon_the_window_keeps_its_own_button(self):
         app_module.add_titlebar_button = lambda *a, **k: None
         app = QuillApp(_app, self.settings, XlsxBridge(self.path), listener_factory=lambda *a: FakeListener(*a),

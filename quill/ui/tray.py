@@ -6,10 +6,9 @@ Menu items:
   <folder it lives in>   click either to bring the workbook to the front)
   Start Listening / Stop Listening  (label flips with state)
   Open Quill
-  Mini view            (checkable: the small always-handy overlay)
   Quit
 
-Active light: a green dot while listening, a grey ring when stopped.
+Icon: the small rounded square of the app icon with its sound lines: an outline when idle, solid when listening.
 A click on the icon opens this menu (a left click pops it up on Windows too);
 listening is only ever started or stopped from the menu item or the window.
 """
@@ -18,7 +17,7 @@ import pathlib
 import sys
 from typing import Callable
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QRectF, Qt
 from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -52,23 +51,48 @@ def folder_for_display(path: str) -> str:
     return "~" + folder[len(home):] if folder.startswith(home) else folder
 
 
-def make_icon(listening: bool, badge: int = 0, badge_color: str = "#C9623F") -> QIcon:
-    """Draw the tray icon: a filled green dot when listening, else a grey ring.
+def _glyph(painter: QPainter, listening: bool, ink: QColor) -> None:
+    """The menu bar glyph: the small rounded square of the app icon with its sound lines.
 
-    With *badge* > 0 a coloured circle holding the count sits at the top right
-    ("9+" past nine), like the unread count on other menu bar apps.
+    Idle is an outline with the lines inside; listening is solid with the lines cut out,
+    so the two states read apart at a glance without needing colour.
+    """
+    box = QRectF(8, 8, 48, 48)
+    heights = [8, 16, 24, 34, 22, 14, 8]
+    step, width = 5.6, 3.6
+    left = 32 - (step * (len(heights) - 1) + width) / 2
+    bars = [QRectF(left + i * step, 32 - h / 2, width, h) for i, h in enumerate(heights)]
+    painter.setPen(Qt.PenStyle.NoPen)
+    if listening:
+        painter.setBrush(ink)
+        painter.drawRoundedRect(box, 12, 12)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        for bar in bars:
+            painter.drawRoundedRect(bar, width / 2, width / 2)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+    else:
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(ink, 4.5))
+        painter.drawRoundedRect(box.adjusted(2.25, 2.25, -2.25, -2.25), 10, 10)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(ink)
+        for bar in bars:
+            painter.drawRoundedRect(bar, width / 2, width / 2)
+
+
+def make_icon(listening: bool, badge: int = 0, badge_color: str = "#C9623F", dark: bool = False) -> QIcon:
+    """Draw the tray icon (see :func:`_glyph`), with an optional count badge.
+
+    Without a badge the icon is a *mask* (black shapes the system tints to suit the
+    light or dark menu bar). With *badge* > 0 a coloured circle holding the count sits
+    at the top right ("9+" past nine) and the icon is drawn in the colour that suits
+    the menu bar (*dark*: white shapes), because a mask would turn the badge grey.
     """
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    if listening:
-        painter.setBrush(QColor(COLOR_ACTIVE))
-        painter.setPen(Qt.PenStyle.NoPen)
-    else:
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QColor(COLOR_IDLE), 8))
-    painter.drawEllipse(QPoint(ICON_SIZE // 2, ICON_SIZE // 2), 22, 22)
+    _glyph(painter, listening, QColor("white" if (badge > 0 and dark) else "black"))
     if badge > 0:
         text = str(badge) if badge < 10 else "9+"
         radius = 19
@@ -84,7 +108,9 @@ def make_icon(listening: bool, badge: int = 0, badge_color: str = "#C9623F") -> 
         painter.drawText(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius,
                          Qt.AlignmentFlag.AlignCenter, text)
     painter.end()
-    return QIcon(pixmap)
+    icon = QIcon(pixmap)
+    icon.setIsMask(badge <= 0)
+    return icon
 
 
 class TrayIcon:
@@ -100,16 +126,14 @@ class TrayIcon:
 
     def __init__(self, app, main_window, on_start: Callable, on_stop: Callable,
                  on_open_workbook: Callable | None = None,
-                 on_open_sorting: Callable | None = None,
-                 on_mini: Callable[[bool], None] | None = None) -> None:
+                 on_open_sorting: Callable | None = None) -> None:
         self._app = app
         self._main_window = main_window
         self._on_start = on_start
         self._on_stop = on_stop
         self._on_open_workbook = on_open_workbook or (lambda: None)
         self._on_open_sorting = on_open_sorting or (lambda: None)
-        self._on_mini = on_mini or (lambda mini: None)
-        self._mini_action: QAction | None = None
+        self._dark = False
         self._sorting_action: QAction | None = None
         self._workbook_name = ""
         self._workbook_path = ""
@@ -122,17 +146,11 @@ class TrayIcon:
         self._badge = 0
         self._badge_color = "#C9623F"
 
-    @property
-    def mini_action(self) -> QAction | None:
-        """The checkable "Mini View" menu entry (exposed for tests)."""
-        return self._mini_action
-
-    def set_mini(self, mini: bool) -> None:
-        """Tick or untick the menu entry without triggering it."""
-        if self._mini_action is not None and self._mini_action.isChecked() != mini:
-            self._mini_action.blockSignals(True)
-            self._mini_action.setChecked(mini)
-            self._mini_action.blockSignals(False)
+    def set_dark(self, dark: bool) -> None:
+        """Tell the tray whether the menu bar is dark (only matters while a count badge is shown)."""
+        if dark != self._dark:
+            self._dark = dark
+            self._redraw()
 
     @property
     def badge(self) -> int:
@@ -151,7 +169,7 @@ class TrayIcon:
 
     def _redraw(self) -> None:
         if self._tray is not None:
-            self._tray.setIcon(make_icon(self._listening, self._badge, self._badge_color))
+            self._tray.setIcon(make_icon(self._listening, self._badge, self._badge_color, self._dark))
 
     @property
     def listening(self) -> bool:
@@ -175,9 +193,6 @@ class TrayIcon:
         self._menu.addSeparator()
         self._toggle_action = self._menu.addAction("Start Listening", self.toggle)
         self._menu.addAction("Open Quill", self._main_window.show)
-        self._mini_action = self._menu.addAction("Mini View")
-        self._mini_action.setCheckable(True)
-        self._mini_action.toggled.connect(lambda checked: self._on_mini(checked))
         self._sorting_action = self._menu.addAction("", lambda: self._on_open_sorting())
         self._sorting_action.setVisible(False)
         self._menu.addSeparator()
@@ -185,7 +200,7 @@ class TrayIcon:
         self._refresh_workbook_items()
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return False
-        self._tray = QSystemTrayIcon(make_icon(self._listening, self._badge, self._badge_color))
+        self._tray = QSystemTrayIcon(make_icon(self._listening, self._badge, self._badge_color, self._dark))
         self._tray.setContextMenu(self._menu)
         self._tray.activated.connect(self._on_activated)
         self._tray.setToolTip("Quill — not listening")

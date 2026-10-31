@@ -282,15 +282,11 @@ class TestMiniInTheApp(DemoCase):
                        model_finder=lambda c: self.dir, speaker=FakeSpeaker(), sound_player=lambda p: None)
         app.start()
         self.assertTrue(app.window.mini)
-        self.assertTrue(app.tray.mini_action.isChecked())
 
-    def test_the_tray_menu_toggles_it_and_stays_in_step(self):
-        self.assertIsNotNone(self.app.tray.mini_action)
-        self.assertTrue(self.app.tray.mini_action.isCheckable())
-        self.app.tray.mini_action.setChecked(True)
-        self.assertTrue(self.app.window.mini)
-        self.app.window.mini_button.click()                                 # leave via the window
-        self.assertFalse(self.app.tray.mini_action.isChecked())
+    def test_the_menu_bar_menu_has_no_mini_view_item(self):
+        titles = [action.text() for action in self.app.tray._menu.actions()]
+        self.assertNotIn("Mini View", titles)
+        self.assertFalse(hasattr(self.app.tray, "mini_action"))
 
     def test_dictation_still_shows_in_the_mini_row(self):
         self.app.window.set_mini(True)

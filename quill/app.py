@@ -100,7 +100,6 @@ class QuillApp:
             on_start=lambda: self.toggle_listening(True),
             on_stop=lambda: self.toggle_listening(False),
             on_open_workbook=self.show_workbook, on_open_sorting=self.show_sorting,
-            on_mini=lambda mini: self.window.set_mini(mini, notify=True),
         )
         self.listener = None
         self.connected = False
@@ -142,7 +141,6 @@ class QuillApp:
         self.sorting.setup()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
-        self.tray.set_mini(self.window.mini)
         self.window.show()
         self._install_titlebar_button()
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
@@ -392,7 +390,6 @@ class QuillApp:
         """
         self.settings.preferences["mini_mode"] = mini
         self.settings.save()
-        self.tray.set_mini(mini)
         if self._titlebar is not None:
             self._titlebar.set_mini(mini)
         if self.window.native_window_recreated:
@@ -433,6 +430,7 @@ class QuillApp:
                 apply_chrome(window, dark, colors, opacity=opacity, blur=blur)
                 apply_opacity(root, opacity)
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
+        self.tray.set_dark(dark)
         self.tray.set_badge(self.tray.badge, colors["accent"])
 
     def apply_settings(self, quiet: bool = False) -> None:
