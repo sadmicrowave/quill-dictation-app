@@ -166,6 +166,7 @@ class MainWindow:
         self._offer_download = False
         self._not_connected = False
         self._native_settings_button = False
+        self._native_undo_button = False
         self._text_color = "#1F1E1D"
         self._accent = "#7A55C2"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
@@ -226,7 +227,16 @@ class MainWindow:
         self.mini_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mini_button.clicked.connect(lambda: self.set_mini(not self._mini, notify=True))
         row = QHBoxLayout()
+        # Undo: just an icon (greyed out when there is nothing to take back); the title bar has its own on macOS
+        self.undo_button = QPushButton()
+        self.undo_button.setProperty("iconOnly", True)
+        self.undo_button.setToolTip("Undo the Last Answer")
+        self.undo_button.setAccessibleName("Undo")
+        self.undo_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.undo_button.setEnabled(False)
+        self.undo_button.clicked.connect(lambda: self._on_undo())
         row.addWidget(self.toggle_button, 1)
+        row.addWidget(self.undo_button)
         row.addWidget(self.settings_button)
         row.addWidget(self.mini_button)
         layout.addLayout(row)
@@ -297,11 +307,10 @@ class MainWindow:
         inner = QHBoxLayout(self.sorting_button)
         inner.setContentsMargins(12, 0, 12, 0)
         inner.addStretch(1)
-        self.sorting_icon = QLabel()                                  # a question mark, drawn by refresh_icons()
-        title = QLabel("Terms")
+        title = QLabel("Term Helper")
         self.sorting_title = title
         self.badge_label = Pill("0")
-        for part in (self.sorting_icon, title, self.badge_label):
+        for part in (title, self.badge_label):
             part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)   # clicks reach the button
             inner.addWidget(part, 0, Qt.AlignmentFlag.AlignVCenter)   # the pill hugs its text
         inner.addStretch(1)
@@ -310,11 +319,6 @@ class MainWindow:
         self.sorting_button.setVisible(False)
         layout.addWidget(self.sorting_button)
         self._sorting_index = layout.indexOf(self.sorting_button)
-        self.undo_button = QPushButton("↶ Undo")
-        self.undo_button.setToolTip("Take back the last sorting answer; press again to keep stepping back")
-        self.undo_button.clicked.connect(lambda: self._on_undo())
-        self.undo_button.setVisible(False)
-        layout.addWidget(self.undo_button)
 
         # --- status messages (the model download, and so on) sit above the log, so that
         # nothing is ever below "Log" when it is minimized
@@ -465,6 +469,11 @@ class MainWindow:
         self._native_settings_button = native
         self._refresh_visibility()
 
+    def set_native_undo_button(self, native: bool) -> None:
+        """The title bar now has its own Undo icon, so the one inside the window is hidden."""
+        self._native_undo_button = native
+        self._refresh_visibility()
+
     def set_native_mini_button(self, native: bool) -> None:
         """The title bar now has its own resize icon, so the one inside the window is hidden."""
         self._native_mini_button = native
@@ -549,6 +558,21 @@ class MainWindow:
         layout.activate()
         return layout.sizeHint().height()
 
+    def _keep_minimum(self) -> None:
+        """Re-apply the content's minimum size when widgets appear or disappear (not while a resize is animating).
+
+        Without this the window could stay smaller than its content after, say, the Term Helper
+        button appears, and the sections would draw on top of each other.
+        """
+        animation = getattr(self, "_animation", None)
+        if (self._window is None or not self._window.isVisible()
+                or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
+            return
+        layout = self._window.centralWidget().layout()
+        layout.invalidate()
+        layout.activate()
+        self._settle_minimum()
+
     def _settle_minimum(self) -> None:
         """Stop the user dragging the window smaller than its content (applied once a resize is done)."""
         self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize())
@@ -590,20 +614,21 @@ class MainWindow:
         self.settings_button.setVisible(full and not self._native_settings_button)
         for widget in (self.workbook_row, self.row_heading, self.last_label, self.log_toggle):
             widget.setVisible(full)
-        self.undo_button.setVisible(full and self._undo_count > 0)
+        self.undo_button.setVisible(full and not self._native_undo_button)
+        self.undo_button.setEnabled(self._undo_count > 0)
         self.log.setVisible(full and not self._log_collapsed)
         self.footer.setVisible(full and bool(self._footer_text))
         self.download_button.setVisible(full and self._offer_download)
         self.sorting_button.setVisible(self._sorting_count > 0)
         self.sorting_title.setVisible(full)                               # just the count pill when mini
-        self.sorting_icon.setVisible(full)
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
         self._fit_row_table(animate=False)
         self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini else tall)
         log_open = full and not self._log_collapsed
         self._layout.setStretchFactor(self.row_table, 2 if log_open else 1)     # with the log open they share extra height
         self._layout.setStretchFactor(self.log, 1)
-        self.sorting_button.setToolTip("Needs Sorting: terms that were heard but not placed yet")
+        self._keep_minimum()
+        self.sorting_button.setToolTip("Term Helper: terms that were heard but not placed yet")
 
     def _section_toggle(self, tip: str) -> HeadingToggle:
         button = HeadingToggle()
@@ -778,7 +803,7 @@ class MainWindow:
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
-        self.sorting_icon.setPixmap(make_icon("question", on_accent, 16).pixmap(16, 16))
+        self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self.open_file_button.setIcon(make_icon("folder", text_color, 18))
         self._draw_toggle_icon()
@@ -787,14 +812,13 @@ class MainWindow:
         """Show "Undo (n)" while there is a sorting answer to take back."""
         self._undo_count = count
         self._refresh_visibility()
-        self.undo_button.setText(f"↶ Undo ({count})")
 
     def set_sorting_count(self, count: int) -> None:
         """Show the accent-coloured "Needs sorting" button, with *count* as a pill, while terms wait."""
         self._sorting_count = count
         self._refresh_visibility()
         self.badge_label.setText(str(count))
-        self.sorting_button.setAccessibleName(f"Needs Sorting ({count})")
+        self.sorting_button.setAccessibleName(f"Term Helper ({count})")
 
     def set_footer(self, text: str, offer_download: bool = False) -> None:
         """Show a status message; optionally reveal the model-download button."""

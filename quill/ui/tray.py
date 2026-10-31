@@ -168,7 +168,7 @@ class TrayIcon:
         self._redraw()
         if self._sorting_action is not None:
             self._sorting_action.setVisible(self._badge > 0)
-            self._sorting_action.setText(f"Needs Sorting ({self._badge})…")
+            self._sorting_action.setText(f"Term Helper ({self._badge})…")
 
     def _redraw(self) -> None:
         if self._tray is not None:

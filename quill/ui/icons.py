@@ -28,6 +28,8 @@ SHAPES = {
     "question": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
                 '<circle cx="12" cy="12" r="9"/><path d="M9.4 9.3a2.7 2.7 0 1 1 3.8 2.5c-.8.4-1.2.9-1.2 1.8"/></g>'
                 '<circle cx="12" cy="17.2" r="1.1" fill="COLOR"/>',
+    "undo": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></g>',
     "search": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round">'
               '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g>',
     # Three sliders: the usual "settings" glyph, simple enough to stay crisp when small.

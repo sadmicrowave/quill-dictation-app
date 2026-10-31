@@ -68,6 +68,25 @@ def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | Non
     return None
 
 
+def no_window_shadow(widget, platform: str | None = None) -> bool:
+    """Take the operating system's shadow off a (macOS) window, so a rounded, transparent one has no square edge."""
+    platform = platform or sys.platform
+    try:
+        if platform != "darwin" or not _native_platform(platform):
+            return False
+        import AppKit
+        import objc
+        window = objc.objc_object(c_void_p=int(widget.winId())).window()
+        if window is None:
+            return False
+        window.setHasShadow_(False)
+        window.setOpaque_(False)
+        window.setBackgroundColor_(AppKit.NSColor.clearColor())
+        return True
+    except Exception:
+        return False
+
+
 def _native_platform(platform: str) -> bool:
     """True only when Qt is really drawing with the OS's windowing system.
 
@@ -260,7 +279,9 @@ def set_always_on_top(widget, on: bool, platform: str | None = None,
 SYMBOL_MINI = "arrow.down.right.and.arrow.up.left"
 SYMBOL_FULL = "arrow.up.left.and.arrow.down.right"
 SYMBOL_SETTINGS = "slider.horizontal.3"
-_NS_LAYOUT_RIGHT = 2
+SYMBOL_UNDO = "arrow.uturn.backward"
+SYMBOL_HELP = "questionmark.circle"
+_NS_LAYOUT_LEFT, _NS_LAYOUT_RIGHT = 1, 2
 
 
 class TitlebarButton:
@@ -283,6 +304,10 @@ class TitlebarButton:
             self._button.setImage_(image)
         self._button.setToolTip_(text)
 
+    def set_extra_enabled(self, index: int, enabled: bool) -> None:
+        """Enable or grey out the *index*-th extra icon (counting from the left)."""
+        self._extras[index][0].setEnabled_(enabled)
+
     def click(self) -> None:
         """Press the button (used by tests)."""
         self._button.performClick_(None)
@@ -298,15 +323,20 @@ _ICON_WIDTH, _LAST_ICON_WIDTH, _ICON_GAP = 30, 22, 14
 
 def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False,
                         platform: str | None = None, appkit=None,
-                        extra: list[tuple[str, str, Callable[[], None]]] | None = None) -> TitlebarButton | None:
+                        extra: list[tuple] | None = None, symbol: str | None = None, tip: str = "",
+                        hover: tuple | None = None, side: str = "right") -> TitlebarButton | None:
     """Add the resize icon (and optionally more icons to its left) at the right of the native title bar (macOS).
 
     Args:
         widget: The top-level window.
         callback: Called, with no arguments, when the resize icon is clicked.
         mini: Whether the window is currently the mini view (chooses the icon).
-        extra: More icons to place to the *left* of the resize icon, as
-            ``(SF Symbol name, tooltip, callback)`` (for example the Settings icon).
+        extra: More icons to place to the *left* of the main one, as
+            ``(SF Symbol name, tooltip, callback)`` (for example the Settings icon); an entry may add
+            ``hover_in, hover_out`` callbacks (run while the pointer is over the icon) after the callback.
+        symbol, tip: Give the main icon its own symbol and tooltip instead of the resize icon's.
+        hover: ``(hover_in, hover_out)`` for the main icon; its native tooltip is then left off.
+        side: ``"right"`` (default) or ``"left"`` (beside the window's close / zoom buttons).
 
     Returns:
         The button, or None where this is not possible (other platforms, headless
@@ -322,28 +352,40 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             import objc
             view = objc.objc_object(c_void_p=handle)
             target_class = _target_class(appkit, objc)
+            button_class = _button_class(appkit, objc)
         else:
             view = appkit.view_for(handle)
             target_class = appkit.TargetClass
+            button_class = appkit.NSButton
         window = view.window()
         if window is None:
             return None
-        def make_button(action, width=_ICON_WIDTH):
+        def make_button(action, width=_ICON_WIDTH, hover_in=None, hover_out=None):
             target = target_class.alloc().initWithCallback_(action)
-            button = appkit.NSButton.alloc().initWithFrame_(((0, 0), (width, 24)))
+            button = button_class.alloc().initWithFrame_(((0, 0), (width, 24)))
+            button.hover_in, button.hover_out = hover_in, hover_out    # (used by the pointer-tracking button class)
             button.setBordered_(False)
             button.setTarget_(target)
             button.setAction_("toggle:")
             return button, target
 
-        button, target = make_button(callback, _LAST_ICON_WIDTH)    # the right-most icon sits close to the edge
-        extras = []
-        for symbol, tip, action in extra or []:
-            extra_button, extra_target = make_button(action)
+        hover_in, hover_out = hover or (None, None)
+        button, target = make_button(callback, _LAST_ICON_WIDTH, hover_in, hover_out)   # right-most: close to the edge
+        if symbol:
             image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, tip)
             if image is not None:
+                button.setImage_(image)
+            if not hover:
+                button.setToolTip_(tip)
+        extras = []
+        for entry in extra or []:
+            name, label, action, *hovers = entry
+            extra_button, extra_target = make_button(action, _ICON_WIDTH, *hovers)
+            image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, label)
+            if image is not None:
                 extra_button.setImage_(image)
-            extra_button.setToolTip_(tip)
+            if not hovers:
+                extra_button.setToolTip_(label)
             extras.append((extra_button, extra_target))
         controller = appkit.NSTitlebarAccessoryViewController.alloc().init()
         if extras:                                    # extra icons first (left), the resize icon last (right)
@@ -355,16 +397,48 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             controller.setView_(row)
         else:
             controller.setView_(button)
-        controller.setLayoutAttribute_(_NS_LAYOUT_RIGHT)
+        controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)
         window.addTitlebarAccessoryViewController_(controller)
         result = TitlebarButton(button, controller, target, appkit, extras)
-        result.set_mini(mini)
+        if not symbol:
+            result.set_mini(mini)
         return result
     except Exception:
         return None
 
 
 _TARGET_CLASS = None
+_BUTTON_CLASS = None
+
+
+def _button_class(appkit, objc):
+    """A title-bar button that shows the pointing-hand cursor and reports the pointer entering / leaving."""
+    global _BUTTON_CLASS
+    if _BUTTON_CLASS is None:
+        class QuillIconButton(appkit.NSButton):
+            def resetCursorRects(self):
+                self.addCursorRect_cursor_(self.bounds(), appkit.NSCursor.pointingHandCursor())
+
+            def updateTrackingAreas(self):
+                objc.super(QuillIconButton, self).updateTrackingAreas()
+                old = getattr(self, "_tracking", None)
+                if old is not None:
+                    self.removeTrackingArea_(old)
+                options = 0x01 | 0x80 | 0x200      # entered / exited, always active, the visible rectangle
+                self._tracking = appkit.NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+                    self.bounds(), options, self, None)
+                self.addTrackingArea_(self._tracking)
+
+            def mouseEntered_(self, event):
+                if getattr(self, "hover_in", None):
+                    self.hover_in()
+
+            def mouseExited_(self, event):
+                if getattr(self, "hover_out", None):
+                    self.hover_out()
+
+        _BUTTON_CLASS = QuillIconButton
+    return _BUTTON_CLASS
 
 
 def _target_class(appkit, objc):

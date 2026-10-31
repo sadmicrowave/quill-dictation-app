@@ -238,10 +238,46 @@ class TestSortingWindow(unittest.TestCase):
         from PySide6.QtCore import Qt
         self.assertFalse(win.widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
 
-    def test_the_guidance_is_a_full_width_info_box(self):
-        self.assertTrue(self.win.intro.property("info"))
-        from quill.ui import theme
-        self.assertIn('QLabel[info="true"]', theme.stylesheet_for(False))
+    def test_the_guidance_lives_in_a_help_icon_with_a_rich_hover_text(self):
+        from quill.ui.sorting_window import HELP_HTML
+        self.assertFalse(hasattr(self.win, "intro"))
+        self.assertEqual(self.win.help_button.toolTip(), HELP_HTML)
+        for part in ("These terms were <i>heard</i>", "<b>Add</b>", "<b>Same As…</b>", "<b>Ignore</b>", "🎤", "line-height"):
+            self.assertIn(part, HELP_HTML)
+
+    def test_the_title_bar_icon_is_on_the_left_with_hover_help(self):
+        calls = []
+        import quill.ui.sorting_window as module
+        original = module.add_titlebar_button
+        module.add_titlebar_button = lambda *a, **k: calls.append(k) or object()
+        try:
+            self.win.install_titlebar()
+        finally:
+            module.add_titlebar_button = original
+        self.assertEqual(calls[0]["side"], "left")
+        self.assertEqual(calls[0]["hover"], (self.win.show_help, self.win.hide_help))
+        self.assertFalse(self.win.help_button.isVisibleTo(self.win.widget))     # the title bar has it now
+
+    def test_spoken_words_are_code_pills(self):
+        self.win.set_items([("Era", "bit")])
+        self.assertIn("&nbsp;bit&nbsp;", self.win.rows[0].prompt.text())
+        self.assertIn("font-family:Menlo", self.win.rows[0].prompt.text())
+        self.assertEqual(question_for("Era", "bit"), "You said ‘bit’ — is that an Era?")      # the plain text is unchanged
+
+    def test_a_row_needing_a_column_opens_its_list_when_it_is_the_active_one(self):
+        from PySide6.QtTest import QTest
+        self.win.set_items([(None, "teal")])
+        self.win.widget.show()
+        opened = []
+        self.win.rows[0].combo.showPopup = lambda: opened.append(1)
+        self.win.rows[0].set_active(True)
+        QTest.qWait(400)
+        self.assertEqual(opened, [1])
+        self.win.set_items([("Era", "90s")])
+        self.win.rows[0].combo.showPopup = lambda: opened.append(2)
+        self.win.rows[0].set_active(True)
+        QTest.qWait(400)
+        self.assertEqual(opened, [1])                                           # a row with a column does not
 
     def test_rows_use_the_settings_controls_and_leave_room_under_the_question(self):
         from quill.ui.settings_widgets import FlatCombo
@@ -266,13 +302,10 @@ class TestSortingWindow(unittest.TestCase):
         self.assertIn("Era", first.hint.text())
         self.assertIn("Color", first.hint.text())
         second.set_active(True)
-        self.assertIn("yes (adds to Era)", second.hint.text())
+        self.assertIn("(adds to Era)", second.hint.text())
+        self.assertIn("&nbsp;yes&nbsp;", second.hint.text())
         first.set_active(False)
         self.assertFalse(first.hint.isVisibleTo(self.win.widget))
-
-    def test_guidance_text(self):
-        self.assertEqual(self.win.intro.text(),
-                         "These terms were heard but couldn't be placed. Decide what to do for each one.")
 
     def test_it_opens_wide_enough_for_a_whole_row(self):
         self.win.set_items([("Era", "90s")])
@@ -352,10 +385,10 @@ class TestSortingWindow(unittest.TestCase):
 
     def test_title_counts_and_empty_hides(self):
         self.win.set_items([("Era", "90s")])
-        self.assertEqual(self.win.widget.windowTitle(), "Needs Sorting (1)")
+        self.assertEqual(self.win.widget.windowTitle(), "Term Helper (1)")
         self.win.show()
         self.win.set_items([])
-        self.assertEqual(self.win.widget.windowTitle(), "Needs Sorting")
+        self.assertEqual(self.win.widget.windowTitle(), "Term Helper")
         self.assertFalse(self.win.widget.isVisible())
 
     def test_removed_rows_leave_the_screen_immediately(self):

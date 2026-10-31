@@ -268,18 +268,18 @@ class TestUndoInTheApp(DemoCase):
 
     def test_buttons_follow_the_history(self):
         window, ctl = self.app.window, self.app.controller
-        self.assertFalse(window.undo_button.isVisibleTo(window.widget))
+        self.assertFalse(window.undo_button.isEnabled())                  # nothing to take back yet
         ctl.handle_transcript("start listening")
         ctl.handle_transcript(SENTENCE)
         ctl.handle_transcript("next row")
         key = ctl.pending_terms()[0]
         self.app.resolve_term(key, Decision.ignore(), key[1])
-        self.assertTrue(window.undo_button.isVisibleTo(window.widget))
-        self.assertIn("(1)", window.undo_button.text())
+        self.assertTrue(window.undo_button.isEnabled())
+        self.assertEqual(window.undo_button.text(), "")                     # just an icon, no count
         self.assertTrue(self.app.sorting.undo_button.isEnabled())
         self.app.undo()
         self.assertEqual(len(ctl.pending_terms()), 3)
-        self.assertFalse(window.undo_button.isVisibleTo(window.widget))
+        self.assertFalse(window.undo_button.isEnabled())
         self.assertIn("Undid: Ignored", window.log.toPlainText())
 
     def test_window_bulk_buttons_are_one_undo_step(self):

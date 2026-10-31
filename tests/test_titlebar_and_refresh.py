@@ -260,7 +260,8 @@ class TestTwoPhaseAnimation(unittest.TestCase):
 class TitlebarCase(DemoCase):
     def setUp(self):
         super().setUp()
-        self.fake_button = type("B", (), {"mini": None, "set_mini": lambda s, m: setattr(s, "mini", m)})()
+        self.fake_button = type("B", (), {"mini": None, "set_mini": lambda s, m: setattr(s, "mini", m),
+                                          "set_extra_enabled": lambda s, i, f: None})()
         self.made = []
         original = app_module.add_titlebar_button
         app_module.add_titlebar_button = lambda widget, callback, mini=False, **kw: (

@@ -344,3 +344,13 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - The workbook picker (`_WorkbookCombo`) is a drop-down only with two or more workbooks; with none (the not-connected notice) or one, it shows no arrow and does not open.
 - The sorting window is created with the main window as its parent (`setup(parent=...)`), so it stays above that window and only it, and falls back with the app when Quill is not frontmost.
 - Its guidance is a full-width info box (`QLabel[info="true"]`); each row uses the Settings controls (`FlatCombo`, 34 px high), keeps a 5 px gap under its question, and, while voice sorting highlights it, shows what to say (the column names when it has none yet). The column list is shown inline rather than auto-opened as a popup, which would sit over the row and need closing as each term is answered.
+
+### Phase 33 notes
+- **Term Helper** replaces the "Needs Sorting" wording everywhere (button, window title `Term Helper (n)`, tray). The button is just the text and the count pill.
+- **Undo** is a title-bar icon (greyed out when there is nothing to undo, no count) left of Settings; elsewhere it is an icon-only button in the status row. The title-bar icons use a button class (`chrome._button_class`) that shows the pointing hand and reports hover.
+- **The "?" help** is a title-bar icon on the left of the Term Helper window (`add_titlebar_button(..., side="left", hover=...)`); hovering it shows `sorting_window.HELP_HTML` as a rich tooltip.
+- **Code pills** (`widgets.pill`, `pillify`) mark spoken words and commands: `You said bit …`, the "Say …" hints and the "Heard …" line.
+- A row that needs a column opens its Choose Column list when it becomes the active voice row.
+- Voice status sits under the Sort by Voice button, which keeps its size; nothing is shown once voice sorting is off.
+- Tooltip windows lose the OS shadow (`chrome.no_window_shadow`), which showed a faint square corner.
+- The main window re-applies its minimum size whenever widgets appear or disappear, so sections can no longer overlap.

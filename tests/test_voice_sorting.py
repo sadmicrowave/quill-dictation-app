@@ -284,7 +284,8 @@ class TestAppVoiceSorting(AppVoiceCase):
         self.assertEqual([r.key for r in s.rows], [(None, "teal"), ("Era", "90s")])
         self.assertIn("highlight", s.rows[0].styleSheet())
         self.assertEqual(self.quill.window.badge_label.text(), "2")
-        self.assertIn("Heard ‘same as xl’", s.voice_status.text())
+        self.assertIn("&nbsp;same as xl&nbsp;", s.voice_status.text())
+        self.assertIn("Heard", s.voice_status.text())
         self.hear(self.quill, "color")
         self.assertEqual([r.key for r in s.rows], [("Era", "90s")])
 

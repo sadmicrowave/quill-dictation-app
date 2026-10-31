@@ -32,7 +32,7 @@ from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.chrome import SYMBOL_SETTINGS, add_titlebar_button, apply_chrome, set_dock_icon_visible
+from quill.ui.chrome import SYMBOL_SETTINGS, SYMBOL_UNDO, add_titlebar_button, apply_chrome, set_dock_icon_visible
 from quill.ui.theme import apply_opacity, apply_spacing, apply_theme, colors_for, is_dark
 from quill.ui.tray import TrayIcon
 
@@ -149,6 +149,7 @@ class QuillApp:
         self._apply_look()
         self.window.setup()
         self.sorting.setup(parent=self.window.widget)
+        self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
         self.window.show()
@@ -358,6 +359,7 @@ class QuillApp:
         undoable = len(self.controller.history)
         self.sorting.set_undo_available(undoable)
         self.window.set_undo_count(undoable)
+        self._sync_titlebar_undo()
         if reveal and pending:
             self.sorting.show()
 
@@ -462,10 +464,18 @@ class QuillApp:
             return
         self._titlebar = add_titlebar_button(
             self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
-            mini=self.window.mini, extra=[(SYMBOL_SETTINGS, "Settings", self.open_settings)])
+            mini=self.window.mini,
+            extra=[(SYMBOL_UNDO, "Undo the Last Answer", self.undo), (SYMBOL_SETTINGS, "Settings", self.open_settings)])
         native = self._titlebar is not None
+        self.window.set_native_undo_button(native)
+        self._sync_titlebar_undo()
         self.window.set_native_mini_button(native)
         self.window.set_native_settings_button(native)        # Settings and resize both live in the title bar
+
+    def _sync_titlebar_undo(self) -> None:
+        """Grey out the title bar's Undo icon while there is nothing to take back."""
+        if self._titlebar is not None:
+            self._titlebar.set_extra_enabled(0, len(self.controller.history) > 0)
 
     def _mini_toggled(self, mini: bool) -> None:
         """Remember the view and keep the tray menu and the title-bar icon in step.
@@ -520,6 +530,7 @@ class QuillApp:
                 apply_chrome(window, dark, colors, opacity=opacity, blur=blur)
                 apply_opacity(root, opacity)
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
+        self.sorting.refresh_icons(colors["text"])
         self.tray.set_dark(dark)
         self.tray.set_badge(self.tray.badge, colors["accent"])
 

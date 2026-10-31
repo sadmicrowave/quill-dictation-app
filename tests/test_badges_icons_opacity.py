@@ -77,7 +77,7 @@ class TestInlineBadge(unittest.TestCase):
         self.assertEqual(self.w.badge_label.text(), "4")
         self.assertIsInstance(self.w.badge_label, Pill)
         self.assertIs(self.w.badge_label.parent(), self.w.sorting_button)
-        self.assertEqual(self.w.sorting_button.accessibleName(), "Needs Sorting (4)")
+        self.assertEqual(self.w.sorting_button.accessibleName(), "Term Helper (4)")
 
     def test_the_button_is_filled_with_the_accent(self):
         self.assertTrue(self.w.sorting_button.property("accent"))
@@ -142,7 +142,7 @@ class TestTrayBadge(unittest.TestCase):
         tray.set_badge(3, "#2F6FB5")
         self.assertEqual(tray.badge, 3)
         self.assertTrue(tray._sorting_action.isVisible())
-        self.assertEqual(tray._sorting_action.text(), "Needs Sorting (3)…")
+        self.assertEqual(tray._sorting_action.text(), "Term Helper (3)…")
         tray._sorting_action.trigger()
         self.assertEqual(opened, [1])
         tray.set_badge(0)

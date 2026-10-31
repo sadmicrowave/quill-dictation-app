@@ -313,6 +313,9 @@ class _TooltipRounder(QObject):
         if event.type() == QEvent.Type.Polish and obj.inherits("QTipLabel"):
             obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
+        elif event.type() == QEvent.Type.Show and obj.inherits("QTipLabel"):
+            from quill.ui.chrome import no_window_shadow          # the OS shadow shows a faint square corner
+            no_window_shadow(obj)
         return False
 
 

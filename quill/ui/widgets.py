@@ -131,6 +131,24 @@ class HeadingToggle(QLabel):
         super().mousePressEvent(event)
 
 
+#: The look of spoken words and commands wherever they appear in text: a small monospaced pill.
+PILL_STYLE = "background-color:#5E4A99; color:#FFFFFF; font-family:Menlo,Consolas,monospace"
+
+
+def pill(text: str) -> str:
+    """*text* as an inline code pill in rich text (``yes``, ``ignore``, a spoken word)."""
+    import html
+    return f'<span style="{PILL_STYLE}">&nbsp;{html.escape(text)}&nbsp;</span>'
+
+
+def pillify(text: str) -> str:
+    """Rich text from plain *text* in which every ‘quoted’ part (what was heard or answered) becomes a pill."""
+    import html
+    import re
+    parts = re.split(r"‘([^’]*)’", text)
+    return "".join(pill(part) if i % 2 else html.escape(part) for i, part in enumerate(parts))
+
+
 def connection_tip(hint: str | None = None) -> str:
     """The tooltip of the "File stream not connected" chip, as short lines with bold, italics and icons.
 

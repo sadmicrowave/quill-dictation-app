@@ -240,6 +240,7 @@ class TestStatusRowWithTheIconsInTheTitleBar(unittest.TestCase):
         w = window()
         w.set_native_mini_button(True)
         w.set_native_settings_button(True)
+        w.set_native_undo_button(True)
         _app.processEvents()
         row = w._status_row
         visible = [row.itemAt(i).widget() for i in range(row.count())
@@ -257,6 +258,7 @@ class TestStatusRowWithTheIconsInTheTitleBar(unittest.TestCase):
         w = window()
         w.set_native_mini_button(True)
         w.set_native_settings_button(True)
+        w.set_native_undo_button(True)
         _app.processEvents()
         self.assertEqual(right(w.toggle_button, w.root), w.root.width() - w.root.layout().contentsMargins().right() - 1)
 
@@ -356,6 +358,7 @@ class TestAlignment(unittest.TestCase):
         self.w = window()
         self.w.set_native_mini_button(True)
         self.w.set_native_settings_button(True)
+        self.w.set_native_undo_button(True)
         _app.processEvents()
 
     def test_the_file_row_has_no_inner_margin(self):
@@ -399,6 +402,19 @@ class TestAlignment(unittest.TestCase):
         QVBoxLayout(plain)
         theme.apply_spacing(plain, "comfortable")
         self.assertEqual(plain.layout().contentsMargins().left(), 20)
+
+
+class TestWindowNeverSmallerThanItsContent(unittest.TestCase):
+    def test_a_button_appearing_pushes_the_window_taller_instead_of_overlapping(self):
+        w = window()
+        w.widget.setMinimumSize(0, 0)
+        w.widget.resize(360, w.widget.centralWidget().layout().minimumSize().height())
+        _app.processEvents()
+        before = w.widget.height()
+        w.set_sorting_count(2)
+        _app.processEvents()
+        self.assertGreater(w.widget.height(), before)
+        self.assertGreaterEqual(w.widget.height(), w.widget.centralWidget().layout().minimumSize().height())
 
 
 class TestPickerOnlyDropsDownWithChoices(unittest.TestCase):

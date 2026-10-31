@@ -20,17 +20,20 @@ from __future__ import annotations
 import contextlib
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QTimer, Qt
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton,
+    QComboBox, QToolButton, QToolTip, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
 
 from quill.parser.tokens import display_name
 from quill.parser.vocab import Vocabulary
 from quill.session import Decision, TermKey
+from quill.ui.chrome import SYMBOL_HELP, add_titlebar_button
 from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import apply_spacing
+from quill.ui.widgets import pill, pillify
 
 #: Called with (key, decision, corrected words) when the user decides.
 ResolveCallback = Callable[[TermKey, Decision, str], None]
@@ -50,6 +53,31 @@ def question_for(column: str | None, term: str) -> str:
     return f"You said ‘{term}’ — is that {article} {column}?"
 
 
+def question_html(column: str | None, term: str) -> str:
+    """:func:`question_for` as rich text, with the spoken term in a code pill."""
+    shown = pill(term)
+    if not column:
+        return f"You said {shown} — which column is that?"
+    article = "an" if column[:1].lower() in "aeiou" else "a"
+    return f"You said {shown} — is that {article} {column}?"
+
+
+#: The help shown from the "?" icon in the title bar.
+HELP_HTML = (
+    '<div style="line-height:155%; letter-spacing:0.35px">'
+    '<b>🧩&nbsp;&nbsp;Term Helper</b><br>'
+    'These terms were <i>heard</i> but couldn\'t be <i>placed</i>.<br>'
+    'Decide what to do with each one:<br><br>'
+    '➕&nbsp;&nbsp;<b>Add</b>: save it as a <i>new value</i> in the chosen column<br>'
+    '🔁&nbsp;&nbsp;<b>Same As…</b>: it is another name for a value you <i>already have</i><br>'
+    '🚫&nbsp;&nbsp;<b>Ignore</b>: forget it<br><br>'
+    '🎤&nbsp;&nbsp;<b>Sort by Voice</b>: click it, then say<br>'
+    f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{pill("yes")} {pill("a column name")} {pill("same as …")}<br>'
+    f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{pill("ignore")} {pill("later")} {pill("undo")} {pill("done")}<br><br>'
+    '💡&nbsp;&nbsp;<i>Tip: you can fix the words in the box first.</i>'
+    '</div>')
+
+
 class TermRow(QFrame):
     """One unrecognised term and its controls."""
 
@@ -64,7 +92,8 @@ class TermRow(QFrame):
         column, term = key
         self.setFrameShape(QFrame.Shape.StyledPanel)
 
-        self.prompt = QLabel(question_for(column, term))
+        self.prompt = QLabel(question_html(column, term))
+        self.prompt.setTextFormat(Qt.TextFormat.RichText)
         self.prompt.setObjectName("termPrompt")      # larger than body text (see theme)
         self.prompt.setWordWrap(True)
         self.edit = QLineEdit(term)
@@ -72,6 +101,7 @@ class TermRow(QFrame):
         self.hint = QLabel()                          # what to say, while the voice stream is answering this row
         self.hint.setProperty("note", True)
         self.hint.setWordWrap(True)
+        self.hint.setTextFormat(Qt.TextFormat.RichText)
         self.hint.setVisible(False)
         self.combo = FlatCombo()                      # the same controls the Settings pages use
         self.combo.addItem(PLACEHOLDER, None)
@@ -113,13 +143,23 @@ class TermRow(QFrame):
         self.setStyleSheet("#termRow { border: 2px solid palette(highlight); }" if active else "")
         self.hint.setText(self._spoken_hint())
         self.hint.setVisible(active)
+        if active and self.column is None:
+            QTimer.singleShot(200, self._open_column_list)       # so the columns to choose from are in view
+
+    def _open_column_list(self) -> None:
+        """Open the Choose Column list (once the row is on screen and still the one being answered)."""
+        if self.isVisible() and self.hint.isVisible() and self.column is None and self.combo.count() > 1:
+            self.combo.showPopup()
 
     def _spoken_hint(self) -> str:
         """What the user can say to answer this row: the columns to choose from if it has none yet."""
         if self.column is None:
             names = [c for c in self._vocab.columns() if self._vocab.is_list_column(c)]
-            return "🎤 Say a column: " + " · ".join(names) if names else "🎤 Say ignore, or later"
-        return f"🎤 Say: yes (adds to {self.column}) · same as … · ignore · later"
+            if not names:
+                return f"🎤 Say {pill('ignore')} or {pill('later')}"
+            return "🎤 Say a column: " + " ".join(pill(n) for n in names)
+        return (f"🎤 Say: {pill('yes')} (adds to {self.column}) {pill('same as …')} {pill('ignore')} "
+                f"{pill('later')}")
 
     def mousePressEvent(self, event) -> None:
         """Clicking the (first) row starts answering it by voice."""
@@ -188,6 +228,7 @@ class SortingWindow:
         self._batch = batch or (lambda label: contextlib.nullcontext())
         self._on_voice = on_voice or (lambda: None)
         self._voice_active = False
+        self._titlebar = None
         self._window: QWidget | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
         self.rows: list[TermRow] = []
@@ -204,7 +245,7 @@ class SortingWindow:
         window.setObjectName("sortingWindow")
         window.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        window.setWindowTitle("Needs Sorting")
+        window.setWindowTitle("Term Helper")
         window.resize(460, 300)
         window.setMinimumSize(320, 160)
         shell = QVBoxLayout(window)
@@ -217,22 +258,27 @@ class SortingWindow:
         layout = QVBoxLayout(root)
         root.setProperty("keepMargins", True)                  # the spacing setting must not widen these
         layout.setContentsMargins(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
-        self.intro = QLabel("These terms were heard but couldn't be placed. Decide what to do for each one.")
-        self.intro.setWordWrap(True)
-        self.intro.setProperty("info", True)                   # a full-width info box
-        layout.addWidget(self.intro)
 
         voice_row = QHBoxLayout()
         self.voice_button = QPushButton()
         self.voice_button.setCheckable(True)
         self.voice_button.clicked.connect(lambda: self._on_voice())
         self.voice_button.setToolTip(self.VOICE_HINT)
-        voice_row.addWidget(self.voice_button)
-        self.voice_status = QLabel()                          # only what was just heard; empty (and hidden) otherwise
+        voice_row.addWidget(self.voice_button, 1)
+        # Help ("?"): in the title bar on macOS (install_titlebar), otherwise this small icon button.
+        self.help_button = QToolButton()
+        self.help_button.setProperty("flatIcon", True)
+        self.help_button.setAutoRaise(True)
+        self.help_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.help_button.setToolTip(HELP_HTML)
+        self.help_button.setAccessibleName("Help")
+        voice_row.addWidget(self.help_button)
+        layout.addLayout(voice_row)
+        self.voice_status = QLabel()                          # what was just heard, under the button; hidden when empty
+        self.voice_status.setTextFormat(Qt.TextFormat.RichText)
         self.voice_status.setWordWrap(True)
         self.voice_status.setVisible(False)
-        voice_row.addWidget(self.voice_status, 1)
-        layout.addLayout(voice_row)
+        layout.addWidget(self.voice_status)
         self._render_voice()
 
         self._list = QVBoxLayout()
@@ -267,6 +313,32 @@ class SortingWindow:
     def widget(self) -> QWidget | None:
         return self._window
 
+    def refresh_icons(self, color: str = "#1F1E1D") -> None:
+        """Redraw the in-window help icon in the theme's text colour."""
+        if self._window is None:
+            return
+        from quill.ui.icons import make_icon
+        self.help_button.setIcon(make_icon("question", color, 18))
+
+    def install_titlebar(self) -> None:
+        """Put the "?" help icon in the title bar (macOS), beside the close and zoom buttons.
+
+        Hovering it shows the help; elsewhere the in-window icon does the same.
+        """
+        if self._window is None or self._titlebar is not None:
+            return
+        self._titlebar = add_titlebar_button(
+            self._window, self.show_help, symbol=SYMBOL_HELP, tip="Help",
+            hover=(self.show_help, self.hide_help), side="left")
+        self.help_button.setVisible(self._titlebar is None)
+
+    def show_help(self) -> None:
+        """Show the help text next to the pointer."""
+        QToolTip.showText(QCursor.pos() + QPoint(0, 22), HELP_HTML, self._window)
+
+    def hide_help(self) -> None:
+        QToolTip.hideText()
+
     def set_items(self, items: list[TermKey]) -> None:
         """Replace the list with *items*; hides the window when it is empty."""
         for row in self.rows:
@@ -283,7 +355,7 @@ class SortingWindow:
             self._list.insertWidget(self._list.count() - 1, row)
             self.rows.append(row)
         if self._window is not None:
-            self._window.setWindowTitle(f"Needs Sorting ({len(items)})" if items else "Needs Sorting")
+            self._window.setWindowTitle(f"Term Helper ({len(items)})" if items else "Term Helper")
             self.add_all_button.setEnabled(bool(items))
             self.ignore_all_button.setEnabled(bool(items))
             if not items:
@@ -309,8 +381,10 @@ class SortingWindow:
 
     def set_voice_status(self, heard: str, message: str) -> None:
         """Show what was heard and what Quill did with it."""
+        if not self._voice_active:
+            return                                            # nothing to report once voice sorting is off
         text = f"Heard ‘{heard}’ → {message}" if heard else message
-        self.voice_status.setText(text)
+        self.voice_status.setText(pillify(text))
         self.voice_status.setVisible(bool(text))
 
     def _render_voice(self) -> None:
