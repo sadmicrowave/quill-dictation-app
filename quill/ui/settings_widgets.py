@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QSlider, QSpinBox,
@@ -10,6 +10,12 @@ from PySide6.QtWidgets import (
 )
 
 from quill.ui.icons import make_icon
+
+
+#: Width and height of every value control on a settings row (drop-down, number box, slider), so the
+#: descriptions wrap alike on every row and every control lines up whatever the spacing mode.
+CONTROL_WIDTH = 190
+CONTROL_HEIGHT = 34
 
 
 class SettingRow(QWidget):
@@ -43,9 +49,13 @@ class SettingRow(QWidget):
         self.description_label = QLabel(description)
         self.description_label.setWordWrap(True)
         self.description_label.setProperty("muted", True)
-        self.description_label.setVisible(bool(description))
+        if not description:
+            self.description_label.hide()           # (never setVisible(True): on a wrapped label it forces a layout pass, ~20 ms a row)
         text.addWidget(self.description_label)
         line.addLayout(text, 1)
+        if isinstance(control, (QComboBox, QSpinBox)) or control.property("valueControl"):
+            control.setFixedWidth(CONTROL_WIDTH)
+            control.setMinimumHeight(CONTROL_HEIGHT)
         line.addWidget(control, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         outer.addLayout(line)
         divider = QFrame()
@@ -82,12 +92,28 @@ class GuardedCombo(_WheelGuard, QComboBox):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    def showPopup(self) -> None:                                 # noqa: N802 (Qt name)
+        """Open the list wide enough for its longest item, lined up with the control's right edge.
+
+        The list is a window of its own; without this its width (and so the text) depended on the control.
+        """
+        super().showPopup()
+        container = self.view().window()
+        metrics = self.view().fontMetrics()
+        text = max((metrics.horizontalAdvance(self.itemText(i)) for i in range(self.count())), default=0)
+        icon = self.iconSize().width() + 8 if any(not self.itemIcon(i).isNull() for i in range(self.count())) else 0
+        wanted = text + icon + 2 * 10 + 2 * 4 + 2 * 2 + 12       # item padding, list padding, frame, a little air
+        width = max(self.width(), wanted)
+        x = self.mapToGlobal(QPoint(self.width() - width, 0)).x() if self.property("flat") else container.x()
+        container.setGeometry(x, container.y(), width, container.height())
+
 
 class GuardedSpinBox(_WheelGuard, QSpinBox):
     """A QSpinBox that ignores the wheel until focused."""
 
     def __init__(self) -> None:
         super().__init__()
+        self.setProperty("flat", True)                           # drawn like the flat drop-downs (see theme.py)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
 

@@ -1131,6 +1131,7 @@ class MainWindow:
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
         self.row_table.set_delete_colors(accent, on_accent)
+        self.update_current_row(self._row_fields)         # the grid's first column takes its colour from the theme
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.help_button.setIcon(make_icon("question", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))

@@ -21,7 +21,7 @@ import copy
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -106,12 +106,12 @@ def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel,
     slider.setRange(low, high)
     slider.setValue(value)
     slider.setToolTip(tip)
-    slider.setMinimumWidth(180)
     label = QLabel(f"{value}%")
-    label.setMinimumWidth(40)
+    label.setFixedWidth(44)
     label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     slider.valueChanged.connect(lambda v: label.setText(f"{v}%"))
     box = QWidget()
+    box.setProperty("valueControl", True)               # the settings row gives it the standard control width
     row = QHBoxLayout(box)
     row.setContentsMargins(0, 0, 0, 0)
     row.addWidget(slider, 1)
@@ -184,9 +184,13 @@ class SettingsDialog:
 
     def exec(self) -> bool:
         """Show modally. Returns True if the user saved changes."""
-        self.build()
-        self._apply_dialog_look()
-        self._install_help_icon()
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)   # the pointer stays steady while the window is made
+        try:
+            self.build(lazy=True)
+            self._apply_dialog_look()
+            self._install_help_icon()
+        finally:
+            QGuiApplication.restoreOverrideCursor()
         return self._dialog.exec() == QDialog.DialogCode.Accepted
 
     def _install_help_icon(self) -> None:
@@ -224,8 +228,14 @@ class SettingsDialog:
                      opacity=opacity, blur=int(prefs["blur"]))
         apply_opacity(self.root, opacity)
 
-    def build(self) -> QDialog:
-        """Construct the dialog widgets (separate from exec for testing)."""
+    def build(self, lazy: bool = False) -> QDialog:
+        """Construct the dialog widgets (separate from exec for testing).
+
+        Args:
+            lazy: Leave the Keywords page (a table with a drop-down on every row, the slowest part by far)
+                empty until it is first opened or searched, so the window appears at once.
+        """
+        self._lazy_keywords = lazy
         dialog = QDialog(self._parent)
         dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)    # paint the themed background
@@ -370,6 +380,8 @@ class SettingsDialog:
         item = self.nav.item(row)
         title = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
         if title:
+            if title == "Keywords":
+                self._ensure_keywords()                              # built the first time it is opened
             self.pages.setCurrentIndex(self._page_index[title])
 
     def filter(self, text: str) -> int:
@@ -379,6 +391,8 @@ class SettingsDialog:
             How many settings match. An empty query shows everything.
         """
         query = text.strip()
+        if query:
+            self._ensure_keywords()                                  # a search has to look in every page
         total = 0
         for title, rows in self._page_rows.items():
             hits = 0
@@ -565,7 +579,20 @@ class SettingsDialog:
         page.addStretch(1)
 
         # --- Keywords (the table gets all the height the window has)
-        page = self._page("Keywords", "Say a phrase on the left and Quill does the action on the right.")
+        self._keywords_layout = self._page(
+            "Keywords", "Say a phrase on the left and Quill does the action on the right.")
+        self._keywords_built = False
+        if not self._lazy_keywords:
+            self._ensure_keywords()
+        if self.SHOW_ACCOUNT:
+            self._build_account_page()
+
+    def _ensure_keywords(self) -> None:
+        """Build the Keywords page now if it has not been built yet."""
+        if self._keywords_built:
+            return
+        self._keywords_built = True
+        page = self._keywords_layout
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["When You Say…", "Quill Does…"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -582,6 +609,7 @@ class SettingsDialog:
         for label, slot in (("Add", self.add_row), ("Remove", self.remove_selected),
                             ("Restore Defaults", self.restore_defaults)):
             button = QPushButton(label)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(slot)
             buttons.addWidget(button)
         buttons.addStretch(1)
@@ -590,8 +618,6 @@ class SettingsDialog:
         self._keyword_box = keyword_box
         self._keyword_row = _KeywordSearch(keyword_box, self)
         self._page_rows["Keywords"].append(self._keyword_row)
-        if self.SHOW_ACCOUNT:
-            self._build_account_page()
 
     def _build_account_page(self) -> None:
         """Wireframe of the Account page (sign-in, plan, billing). Hidden until ``SHOW_ACCOUNT`` is on.
@@ -675,7 +701,9 @@ class SettingsDialog:
         self._fill_table(Settings.defaults().keywords.items())
 
     def collect_rows(self) -> list[tuple[str, Action]]:
-        """Read the table back as ``(phrase, action)`` pairs."""
+        """Read the table back as ``(phrase, action)`` pairs (the saved ones if the page was never opened)."""
+        if not self._keywords_built:
+            return list(self._settings.keywords.items())
         rows = []
         for r in range(self.table.rowCount()):
             item = self.table.item(r, 0)

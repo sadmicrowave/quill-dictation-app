@@ -163,11 +163,12 @@ class TestWidgets(DialogCase):
 
     def test_flat_style_has_no_border_and_a_hover_tint(self):
         sheet = theme.stylesheet_for(False)
-        start = sheet.index('QComboBox[flat="true"] {')
+        start = sheet.index('QComboBox[flat="true"], QSpinBox[flat="true"] {')
         rule = sheet[start: sheet.index("}", start)]
-        self.assertIn("border: none", rule)
+        self.assertIn("border: 1px solid transparent", rule)          # no visible box, but the focus ring has room
         self.assertIn("background: transparent", rule)
         self.assertIn('QComboBox[flat="true"]:hover', sheet)
+        self.assertIn('QSpinBox[flat="true"]:hover', sheet)
 
     def test_setting_row_layout(self):
         control = ToggleSwitch()
@@ -327,3 +328,118 @@ class TestAutoStopSettings(unittest.TestCase):
         dialog.auto_stop_spin.setValue(25)
         self.assertEqual((dialog._settings.preferences["auto_stop"], dialog._settings.preferences["auto_stop_seconds"]),
                          (True, 25))
+
+
+class TestStyleInEveryMode(unittest.TestCase):
+    """Settings controls look and line up the same in light and dark, compact and comfortable."""
+
+    MODES = [(theme_name, spacing) for theme_name in ("light", "dark") for spacing in ("compact", "comfortable")]
+
+    def make(self, theme_name, spacing, parent=None, lazy=False):
+        theme.apply_theme(_app, theme_name, "violet", spacing)
+        dialog = SettingsDialog(Settings.defaults(), parent)
+        widget = dialog.build(lazy=lazy)
+        widget.resize(900, 640)
+        widget.show()
+        _app.processEvents()
+        return dialog, widget
+
+    def value_controls(self, dialog):
+        from PySide6.QtWidgets import QComboBox, QSpinBox
+        return [row.control for row in dialog.rows
+                if isinstance(row.control, (QComboBox, QSpinBox)) or row.control.property("valueControl")]
+
+    def test_every_value_control_has_the_same_size_and_right_edge(self):
+        from PySide6.QtCore import QPoint
+        from quill.ui.settings_widgets import CONTROL_HEIGHT, CONTROL_WIDTH
+        for theme_name, spacing in self.MODES:
+            dialog, widget = self.make(theme_name, spacing)
+            for title in ("General", "Appearance", "Sounds"):
+                dialog.nav.setCurrentRow(dialog._nav_row(title))
+                _app.processEvents()
+                edges = set()
+                for row in dialog._page_rows[title]:
+                    control = row.control
+                    if control not in self.value_controls(dialog):
+                        continue
+                    self.assertEqual(control.width(), CONTROL_WIDTH, (theme_name, spacing, row.title))
+                    self.assertGreaterEqual(control.height(), CONTROL_HEIGHT, (theme_name, spacing, row.title))
+                    edges.add(control.mapTo(widget, QPoint(control.width(), 0)).x())
+                self.assertLessEqual(len(edges), 1, (theme_name, spacing, title))
+            widget.close()
+
+    def test_number_boxes_are_flat_like_the_drop_downs(self):
+        for theme_name, spacing in self.MODES:
+            dialog, widget = self.make(theme_name, spacing)
+            for spin in (dialog.font_spin, dialog.history_spin, dialog.auto_stop_spin):
+                self.assertTrue(spin.property("flat"))
+            widget.close()
+
+    def test_a_rows_text_does_not_move_when_the_spacing_mode_changes(self):
+        gaps = {}
+        for spacing in ("compact", "comfortable"):
+            dialog, widget = self.make("light", spacing)
+            dialog.nav.setCurrentRow(dialog._nav_row("Appearance"))
+            _app.processEvents()
+            row = dialog._page_rows["Appearance"][1]
+            gaps[spacing] = row.description_label.y() - row.title_label.y()
+            widget.close()
+        self.assertEqual(gaps["compact"], gaps["comfortable"])
+
+    def test_the_main_windows_spacing_does_not_reach_into_the_settings_window_or_its_drop_down_lists(self):
+        for spacing in ("compact", "comfortable"):
+            main = MainWindow()
+            main.setup()
+            dialog, widget = self.make("light", spacing, parent=main.widget)
+            combo = dialog.spacing_combo
+            dialog.nav.setCurrentRow(dialog._nav_row("Appearance"))
+            combo.showPopup()
+            combo.hidePopup()
+            main.apply_density("comfortable" if spacing == "compact" else "compact")    # a live change of the spacing
+            _app.processEvents()
+            combo.showPopup()
+            _app.processEvents()
+            popup = combo.view().window()
+            row_height = combo.view().sizeHintForRow(0)
+            self.assertGreaterEqual(popup.height(), combo.count() * row_height, spacing)      # every item is visible
+            longest = max(combo.view().fontMetrics().horizontalAdvance(combo.itemText(i)) for i in range(combo.count()))
+            self.assertGreater(popup.width(), longest + 20, spacing)                             # and none is cut short
+            combo.hidePopup()
+            widget.close()
+
+    def test_the_popup_list_is_lined_up_with_the_controls_right_edge(self):
+        from PySide6.QtCore import QPoint
+        dialog, widget = self.make("light", "comfortable")
+        combo = dialog.accent_combo
+        combo.showPopup()
+        _app.processEvents()
+        popup = combo.view().window()
+        self.assertEqual(popup.x() + popup.width(), combo.mapToGlobal(QPoint(combo.width(), 0)).x())
+        combo.hidePopup()
+        widget.close()
+
+
+class TestSettingsOpensQuickly(unittest.TestCase):
+    def test_the_keywords_page_is_built_only_when_it_is_needed(self):
+        theme.apply_theme(_app, "light", "violet", "compact")
+        dialog = SettingsDialog(Settings.defaults())
+        dialog.build(lazy=True)
+        self.assertIsNone(dialog.table)
+        self.assertEqual(dict(dialog.collect_rows()), Settings.defaults().keywords)       # saving works without opening it
+        dialog.nav.setCurrentRow(dialog._nav_row("Keywords"))
+        self.assertIsNotNone(dialog.table)
+        self.assertEqual(dialog.table.rowCount(), len(Settings.defaults().keywords))
+
+    def test_searching_looks_in_the_keywords_too(self):
+        theme.apply_theme(_app, "light", "violet", "compact")
+        dialog = SettingsDialog(Settings.defaults())
+        dialog.build(lazy=True)
+        self.assertGreater(dialog.filter("keyword"), 0)
+        self.assertIsNotNone(dialog.table)
+
+    def test_a_setting_row_never_forces_a_layout_pass_while_it_is_made(self):
+        import time
+        start = time.perf_counter()
+        rows = [SettingRow(f"Title {i}", "A wrapped description. " * 8, ToggleSwitch()) for i in range(40)]
+        self.assertLess(time.perf_counter() - start, 1.0, "making 40 rows took too long")
+        self.assertEqual(len(rows), 40)

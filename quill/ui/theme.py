@@ -271,10 +271,13 @@ QWidget#settingsFooter {{ border-top: 1px solid {t['border']}; }}
 QFrame#settingsDivider {{ background: {t['border']}; border: none; }}
 QLabel#pageTitle {{ font-size: {font_size + 3}pt; padding-bottom: 4px; }}
 QLabel[muted="true"] {{ color: {t['muted']}; }}
-QComboBox[flat="true"] {{ background: transparent; border: none; border-radius: 8px;
-              padding: 6px 34px 6px 12px; }}
+QComboBox[flat="true"], QSpinBox[flat="true"] {{ background: transparent; border: 1px solid transparent;
+              border-radius: 8px; padding: 6px 34px 6px 12px; }}
+QSpinBox[flat="true"]::up-button, QSpinBox[flat="true"]::down-button {{ width: 30px; }}
+QSpinBox[flat="true"]:hover {{ background: {rgba(t['text'], 0.06)}; }}
+QComboBox[flat="true"]:focus, QSpinBox[flat="true"]:focus {{ border: 1px solid {t['accent']}; }}
 QComboBox[flat="true"]:hover {{ background: {rgba(t['text'], 0.06)}; }}
-QComboBox[flat="true"]:disabled {{ background: transparent; color: {t['disabled']}; }}
+QComboBox[flat="true"]:disabled, QSpinBox[flat="true"]:disabled {{ background: transparent; color: {t['disabled']}; }}
 QWidget#segmented {{ background: {rgba(t['text'], 0.06)}; border-radius: 10px; }}
 QToolButton[segment="true"] {{ border: none; border-radius: 8px; padding: 6px 10px; background: transparent; }}
 QToolButton[segment="true"]:hover {{ background: {rgba(t['text'], 0.06)}; }}
@@ -399,7 +402,12 @@ def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:
         spacing = str(app.property("quillSpacing")) if app is not None else DEFAULT_SPACING
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     layouts = ([widget.layout()] if widget.layout() else []) + widget.findChildren(QLayout)
+    window = widget.window()
     for layout in layouts:
+        owner = layout.parentWidget()
+        if owner is not None and owner.window() is not window:
+            continue                           # another window that is a child of this one (Settings, Term Helper, a
+                                               # drop-down's pop-up list) keeps its own layout; findChildren reaches it too
         layout.setSpacing(d["gap"])
         parent = layout.parent()
         if isinstance(parent, QWidget) and not parent.property("keepMargins"):   # a widget's own layout, not a nested one
