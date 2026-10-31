@@ -303,7 +303,7 @@ class SettingsDialog:
         """Copy every control's value into ``settings.preferences`` (not saved to disk)."""
         prefs = self._settings.preferences
         prefs["theme"] = THEMES[self.theme_combo.currentIndex()]
-        prefs["speak_prompts"] = self.speak_check.isChecked()
+        prefs["speak_sort_prompts"] = self.speak_check.isChecked()
         prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
         prefs["mic_always_on"] = self.mic_check.isChecked()
         prefs["auto_stop"] = self.auto_stop_check.isChecked()
@@ -440,9 +440,11 @@ class SettingsDialog:
         # --- General
         page = self._page("General")
         self.speak_check = ToggleSwitch()
-        self.speak_check.setChecked(bool(prefs["speak_prompts"]))
-        self._add("General", page, "Read Questions Aloud",
-                  "Quill speaks its questions, such as “Add it to the list?”.", self.speak_check)
+        self.speak_check.setChecked(bool(prefs["speak_sort_prompts"]))
+        self._add("General", page, "Speak Sort Term Prompts",
+                  "Off by default. When on, the system voice tells you what to do for each term in the Term Helper "
+                  "(“Which column is that? Say Color, Size…”). Quill uses spoken words nowhere else.",
+                  self.speak_check, "speech voice speak read aloud guide prompts accessibility")
         self.auto_sort_check = ToggleSwitch()
         self.auto_sort_check.setChecked(bool(prefs["auto_voice_sort"]))
         self._add("General", page, "Sort by Voice Automatically",

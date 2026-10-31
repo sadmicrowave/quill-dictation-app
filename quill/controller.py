@@ -350,15 +350,18 @@ class Controller:
                 event.kind, event.detail = "ignored", "Sorting terms by voice"
             else:
                 event.kind, event.detail = "ignored", "Nothing to sort"
-        elif event.kind == "error" and event.detail == NO_WORKBOOK_HELP:
-            self._say(event.detail)
         elif event.kind == "confirm" and all(column for column, _ in event.values or []):
             self._say(event.detail, lead_in=self.lead_in_s)             # only spoken when a spoken yes can answer it
 
+    def speak(self, text: str) -> None:
+        """Speak *text* with the system voice if the "speak sort prompts" setting is on (the speaker says
+        nothing otherwise). This is the only kind of system speech Quill uses for guidance."""
+        self._say(text)
+
     def _say(self, text: str, lead_in: float = 0.0) -> None:
         """Speak *text* if there is a speaker, muting the mic meanwhile."""
-        if self.speaker is None:
-            return
+        if self.speaker is None or not getattr(self.speaker, "enabled", True):
+            return                                     # speech is off (the default): say nothing, and don't mute the microphone
         self._on_speech(True)
         extra = {"lead_in": lead_in} if lead_in else {}
         self.speaker.say(text, on_done=lambda: self._on_speech(False), **extra)

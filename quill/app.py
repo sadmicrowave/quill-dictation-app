@@ -130,7 +130,7 @@ class QuillApp:
         qapp.setWindowIcon(app_icon())               # the Dock / taskbar / window icon
         self.settings = settings
         self.relay = Relay()
-        self.speaker = speaker or Speaker(enabled=bool(settings.preferences["speak_prompts"]))
+        self.speaker = speaker or Speaker(enabled=bool(settings.preferences["speak_sort_prompts"]))
         self.controller = Controller(
             bridge, settings, self.speaker,
             on_event=self.handle_event, on_speech=self._on_speech,
@@ -149,7 +149,8 @@ class QuillApp:
         )
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
                                      on_voice=self.toggle_voice_sorting,
-                                     on_undo=self.undo, batch=self.controller.batch, on_help=self.open_help)
+                                     on_undo=self.undo, batch=self.controller.batch, on_help=self.open_help,
+                                     on_speak=self.controller.speak)
         self.tray = TrayIcon(
             qapp, self.window,
             on_start=lambda: self.toggle_listening(True),
@@ -742,7 +743,7 @@ class QuillApp:
     def apply_settings(self, quiet: bool = False) -> None:
         """Push changed settings into the running app (*quiet*: a live preview, nothing logged)."""
         self._apply_look()
-        self.speaker.enabled = bool(self.settings.preferences["speak_prompts"])
+        self.speaker.enabled = bool(self.settings.preferences["speak_sort_prompts"])
         self.controller.apply_settings()
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
         self._apply_dock()
@@ -876,7 +877,8 @@ class QuillApp:
             self._countdown_timer.stop()
             return
         if self._quiet_timer.isActive():
-            seconds = max(-(-self._quiet_timer.remainingTime() // 1000), 0)      # rounded up: 10 ... 1, never "0s" early
+            limit = int(self.settings.preferences["auto_stop_seconds"])
+            seconds = min(max(-(-self._quiet_timer.remainingTime() // 1000), 0), limit)   # rounded up, never above the setting
             self.window.set_quiet_countdown(seconds)
             if not self._countdown_timer.isActive():
                 self._countdown_timer.start()

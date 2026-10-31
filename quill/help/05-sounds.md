@@ -20,8 +20,10 @@ Short sounds tell you what happened, so your eyes can stay on your hands.
 - Or turn confirmations **off**
 - **Play Sample** to hear your choice
 
-## 🤐 Spoken questions
+## 🤐 Spoken guidance (off by default)
 
-Quill reads some questions aloud (*"Add it to the list?"*). Answer **"yes"** or **"no"**.
+Quill is silent apart from the sounds above. If you want a voice to guide you through the **Term Helper**, turn on **Speak Sort Term Prompts** in **Settings > General**. The system voice then tells you what to do for each term (*"Which column is that? Say Color, Size, or ignore, or later."*) as it becomes the active row, and asks the add-it question when a row ends. Answer **"yes"** or **"no"** as usual.
 
-> 💡 Turn this off in **Settings > General** if you use speakers and Quill hears itself.
+Quill uses spoken words nowhere else. (The *Spoken word* choice under **Confirm With** is a different, optional way to confirm what you said.)
+
+> 💡 If you use speakers and Quill hears itself, leave this off or wear headphones.

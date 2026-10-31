@@ -10,7 +10,7 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 
 | Group | What's in it |
 |---|---|
-| **General** | Spoken questions, automatic voice sorting, microphone, **stop when quiet**, Dock icon, Undo memory |
+| **General** | Spoken Term Helper prompts (off by default), automatic voice sorting, microphone, **stop when quiet**, Dock icon, Undo memory |
 | **Appearance** | Theme, accent colour, spacing, text size, opacity, blur |
 | **Sounds** | Sound set, spoken word, sample |
 | **Keywords** | The phrases you say and what they do |

@@ -220,11 +220,11 @@ class TestModelHandling(AppCase):
 class TestSettingsApplied(AppCase):
     def test_apply_settings_updates_speaker_and_keywords(self):
         from quill.parser.commands import Action
-        self.settings.preferences["speak_prompts"] = False
+        self.settings.preferences["speak_sort_prompts"] = True
         self.settings.set_keywords([("go", Action.START_LISTENING), ("halt", Action.STOP_LISTENING),
                                     ("commit", Action.NEXT_ROW)])
         self.quill.apply_settings()
-        self.assertFalse(self.speaker.enabled)
+        self.assertTrue(self.speaker.enabled)
         self.hear("go")
         self.assertTrue(self.quill.controller.session.listening)
 
@@ -425,3 +425,61 @@ class TestQuietCountdownLabel(unittest.TestCase):
         self.assertIn("font-style: italic", rule)
         self.assertIn("font-size:", rule)
         self.assertIn("color:", rule)
+
+
+class TestSystemSpeechOnlyForSortPrompts(unittest.TestCase):
+    """Quill speaks nowhere except the Term Helper prompts, and only when the user turned that on."""
+
+    def build(self, speak):
+        import pathlib, tempfile
+        from quill.bridge.xlsx_bridge import XlsxBridge
+        from quill.config.settings import Settings
+        from tests.fixtures import make_workbook
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        d = pathlib.Path(tmp.name)
+        settings = Settings.load(d / "cfg")
+        settings.preferences["speak_sort_prompts"] = speak
+        self.speaker = FakeSpeaker()
+        app = QuillApp(_app, settings, XlsxBridge(make_workbook(d / "p.xlsx")),
+                       listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: d,
+                       speaker=self.speaker, sound_player=lambda p: None)
+        app.start()
+        app.apply_settings(quiet=True)                 # the speaker follows the setting
+        return app
+
+    def test_it_is_off_by_default(self):
+        from quill.config.settings import DEFAULT_PREFERENCES
+        self.assertFalse(DEFAULT_PREFERENCES["speak_sort_prompts"])
+
+    def test_starting_with_no_spreadsheet_is_never_spoken(self):
+        from quill.bridge.base import BridgeError
+        for speak in (False, True):
+            app = self.build(speak)
+            self.speaker.said.clear()
+            app.controller.bridge.disconnect()
+            app.controller.connected = False
+            app.controller.bridge.connect = lambda *a, **k: (_ for _ in ()).throw(BridgeError("none"))
+            app.controller.set_listening(True)
+            self.assertEqual(self.speaker.said, [], speak)
+
+    def test_with_the_setting_off_nothing_is_spoken_even_for_sort_rows(self):
+        app = self.build(False)
+        app.controller.handle_transcript("start listening")
+        app.controller.handle_transcript("teal t-shirt")
+        app.controller.handle_transcript("next row")
+        app.controller.start_voice_sort()
+        self.assertEqual(self.speaker.said, [])
+
+    def test_each_sort_row_is_spoken_once_when_it_becomes_the_active_one_and_the_setting_is_on(self):
+        app = self.build(True)
+        app.controller.handle_transcript("start listening")
+        app.controller.handle_transcript("teal t-shirt")
+        app.controller.handle_transcript("next row")
+        self.speaker.said.clear()
+        app.controller.start_voice_sort()
+        spoken = [text for text in self.speaker.said if "Say" in text]
+        self.assertTrue(any(text.startswith("Teal") for text in spoken), spoken)
+        count = len(self.speaker.said)
+        app.refresh_sorting()                                            # the same row again: not repeated
+        self.assertEqual(len(self.speaker.said), count)

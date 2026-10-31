@@ -46,7 +46,7 @@ from quill.parser.tokens import tokenize
 #: Preference defaults. Types here define what is accepted on load.
 DEFAULT_PREFERENCES: dict[str, object] = {
     "theme": "auto",          # "auto" | "light" | "dark"
-    "speak_prompts": True,    # read questions aloud
+    "speak_sort_prompts": False,  # speak what to do for each Term Helper row (system speech; the only place Quill speaks)
     "model_path": "",         # Vosk model folder; empty = search the usual places
     "last_workbook": "",      # re-selected on launch when still open
     "workbook_file": "",      # an .xlsx opened with Open Spreadsheet File (no Excel needed); "" = live Excel

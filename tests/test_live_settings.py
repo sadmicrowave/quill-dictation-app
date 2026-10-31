@@ -55,7 +55,7 @@ class TestLiveUpdate(LiveCase):
         d.opacity_slider.setValue(60)
         d.blur_slider.setValue(30)
         d.history_spin.setValue(20)
-        d.speak_check.setChecked(False)
+        d.speak_check.setChecked(True)
         d.auto_sort_check.setChecked(True)
         d.feedback_combo.setCurrentIndex(2)
         d.pack_combo.setCurrentIndex(3)
@@ -64,7 +64,7 @@ class TestLiveUpdate(LiveCase):
         p = self.settings.preferences
         self.assertEqual((p["theme"], p["spacing"], p["font_size"], p["opacity"], p["blur"]),
                          ("dark", "comfortable", 15, 60, 30))
-        self.assertEqual((p["history_limit"], p["speak_prompts"], p["auto_voice_sort"]), (20, False, True))
+        self.assertEqual((p["history_limit"], p["speak_sort_prompts"], p["auto_voice_sort"]), (20, True, True))
 
     def test_the_running_window_follows_the_slider(self):
         self.d.opacity_slider.setValue(50)
@@ -89,9 +89,9 @@ class TestLiveUpdate(LiveCase):
         self.assertEqual(_app.font().pointSize(), original["font_size"])
 
     def test_cancel_after_cancel_is_harmless_and_nothing_reaches_disk(self):
-        self.d.speak_check.setChecked(False)
+        self.d.speak_check.setChecked(True)
         self.dlg.reject()
-        self.assertTrue(Settings.load(self.dir / "cfg").preferences["speak_prompts"])
+        self.assertFalse(Settings.load(self.dir / "cfg").preferences["speak_sort_prompts"])
 
     def test_ok_keeps_and_saves_the_live_values(self):
         self.d.accent_combo.setCurrentIndex(self.d.accent_combo.findData("ocean"))

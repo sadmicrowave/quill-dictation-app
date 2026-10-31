@@ -59,7 +59,7 @@ class TestLayout(DialogCase):
 
     def test_every_setting_lives_on_one_page_as_a_titled_row(self):
         self.assertEqual({r.title for r in self.d.rows},
-                         {"Read Questions Aloud", "Sort by Voice Automatically", "Undo Remembers", "Theme",
+                         {"Speak Sort Term Prompts", "Sort by Voice Automatically", "Undo Remembers", "Theme",
                           "Keep the Microphone Open When Not Listening", "Keep the Mini View on Top", "Hide the Dock Icon", "Troubleshooting",
                           "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur",
                           "Confirm With", "Sound Set", "Spoken Word", "Preview", "Stop Listening When Quiet",
@@ -191,7 +191,7 @@ class TestSaving(DialogCase):
         d.opacity_slider.setValue(40)
         d.blur_slider.setValue(85)
         d.history_spin.setValue(33)
-        d.speak_check.setChecked(False)
+        d.speak_check.setChecked(True)
         d.auto_sort_check.setChecked(True)
         d.feedback_combo.setCurrentIndex(fb.MODES.index("echo"))
         d.echo_combo.setCurrentIndex(d.echo_combo.findData("done"))
@@ -200,7 +200,7 @@ class TestSaving(DialogCase):
         p = Settings.load(self.dir).preferences
         self.assertEqual((p["theme"], p["accent"], p["spacing"], p["font_size"], p["opacity"], p["blur"]),
                          ("dark", "violet", "comfortable", 14, 40, 85))
-        self.assertEqual((p["history_limit"], p["speak_prompts"], p["auto_voice_sort"]), (33, False, True))
+        self.assertEqual((p["history_limit"], p["speak_sort_prompts"], p["auto_voice_sort"]), (33, True, True))
         self.assertEqual((p["feedback"], p["echo_style"], p["sound_pack"]), ("echo", "done", "walkie"))
 
     def test_keyword_errors_jump_to_the_keywords_page(self):

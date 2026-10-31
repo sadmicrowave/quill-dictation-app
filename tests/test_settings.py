@@ -57,11 +57,11 @@ class TestLoadSave(SettingsCase):
 
     def test_bad_preference_types_and_theme_ignored(self):
         (self.dir / Settings.KEYWORDS_FILE).write_text(
-            '[preferences]\ntheme = "neon"\nspeak_prompts = "yes"\nprompt_timeout_s = 5\n',
+            '[preferences]\ntheme = "neon"\nspeak_sort_prompts = "yes"\nprompt_timeout_s = 5\n',
             encoding="utf-8")
         s = Settings.load(self.dir)
         self.assertEqual(s.preferences["theme"], "auto")
-        self.assertIs(s.preferences["speak_prompts"], True)
+        self.assertIs(s.preferences["speak_sort_prompts"], False)      # a bad value falls back to the (off) default
         self.assertEqual(s.preferences["prompt_timeout_s"], 5)
 
     def test_windows_path_and_quotes_survive_roundtrip(self):

@@ -179,11 +179,11 @@ class TestSettingsDialog(unittest.TestCase):
 
     def test_preferences_saved(self):
         self.dlg.theme_combo.setCurrentIndex(2)
-        self.dlg.speak_check.setChecked(False)
+        self.dlg.speak_check.setChecked(True)
         self.assertTrue(self.dlg.try_accept())
         reloaded = Settings.load(pathlib.Path(self._tmp.name))
         self.assertEqual(reloaded.preferences["theme"], "dark")
-        self.assertIs(reloaded.preferences["speak_prompts"], False)
+        self.assertIs(reloaded.preferences["speak_sort_prompts"], True)
 
     def test_blank_row_rejected(self):
         self.dlg.add_row("  ", Action.NEXT_ROW)

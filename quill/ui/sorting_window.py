@@ -162,6 +162,18 @@ class TermRow(QFrame):
         if self.isVisible() and self.hint.isVisible() and self.column is None and self.combo.count() > 1:
             self.combo.showPopup()
 
+    def guidance(self) -> str:
+        """What to do for this row, as plain sentences for the system voice (spoken only if the user turned that on)."""
+        term = display_name(self.key[1])
+        if self.short_code:
+            return f"{term} looks like {self.short_code}. Say yes to use it, same as another value, ignore, or later."
+        if self.column is None:
+            names = self._vocab.columns_for(self.key[1])
+            if not names:
+                return f"{term}. Say ignore, or later."
+            return f"{term}. Which column is that? Say {', '.join(names)}, or ignore, or later."
+        return f"{term}. Say yes to add it to {self.column}, same as another value, ignore, or later."
+
     def _spoken_hint(self) -> str:
         """What the user can say to answer this row: the columns to choose from if it has none yet."""
         if self.column is None:
@@ -254,8 +266,11 @@ class SortingWindow:
                  on_voice: Callable[[], None] | None = None,
                  on_undo: Callable[[], None] | None = None,
                  batch: Callable[[str], object] | None = None,
-                 on_help: Callable[[str], None] | None = None) -> None:
+                 on_help: Callable[[str], None] | None = None,
+                 on_speak: Callable[[str], None] | None = None) -> None:
         self._on_help = on_help or (lambda topic: None)
+        self._on_speak = on_speak or (lambda text: None)          # speaks a row's guidance (when the user turned that on)
+        self._spoken_key: TermKey | None = None                    # the row whose guidance was last spoken
         self._vocab = vocab
         self._on_resolve = on_resolve
         self._on_undo = on_undo or (lambda: None)
@@ -393,7 +408,12 @@ class SortingWindow:
                 row = TermRow(key, self._vocab, self._on_resolve)
             row._on_activate = self._start_voice if first and not self._voice_active else None
             row.set_active(first and self._voice_active)
+            if first and self._voice_active and key != self._spoken_key:
+                self._spoken_key = key
+                self._on_speak(row.guidance())                       # tell the user what to do for this row
             rows.append(row)
+        if not self._voice_active:
+            self._spoken_key = None
         leaving = list(old.values())
         animate = self.animation_ms > 0 and self._window is not None and self._window.isVisible()
         for row in leaving + rows:                          # answered rows stay on top while they play out

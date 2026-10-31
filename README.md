@@ -413,3 +413,7 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Countdown:** `MainWindow.countdown_label` (property `countdown`, styled small, muted, italic in `theme.py`) sits left of the light inside the Start / Stop button and reads "Stops in 7s" (just "7s" in the mini view). `QuillApp._show_countdown` redraws it four times a second from the quiet timer's remaining time (rounded up) while the timer runs; it is hidden when the timer is not running.
 - **Learned links:** design only, in `Learned Links Design.md` (outer folder).
 
+### Phase 43 notes (system speech only for Term Helper prompts)
+- Quill no longer speaks the "no spreadsheet" guidance (it is shown as a popup and chip only). The setting `speak_prompts` (default on) became `speak_sort_prompts` (**default off**; the old key in an existing settings file is ignored, so nobody keeps the old default). When on, `Controller.speak` says each Term Helper row's `TermRow.guidance()` as it becomes the active row (once per row) plus the existing add-it question when a row ends. `Controller._say` skips everything, including muting the microphone, when the speaker is disabled.
+- The optional "spoken word" confirmation (`Confirm With`) still uses system speech when chosen; it is off unless selected.
+

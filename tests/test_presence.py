@@ -54,13 +54,13 @@ class TestControllerWithoutWorkbook(PresenceCase):
         self.assertFalse(self.ctl.session.listening)
         self.assertEqual(self.kinds(), ["error"])
         self.assertEqual(self.events[0].detail, NO_WORKBOOK_HELP)
-        self.assertEqual(self.speaker.said, [NO_WORKBOOK_HELP])
+        self.assertEqual(self.speaker.said, [])                    # guidance is shown, never spoken
 
     def test_button_start_is_refused_with_guidance(self):
         self.ctl.set_listening(True)
         self.assertFalse(self.ctl.session.listening)
         self.assertEqual(self.events[0].detail, NO_WORKBOOK_HELP)
-        self.assertEqual(self.speaker.said, [NO_WORKBOOK_HELP])
+        self.assertEqual(self.speaker.said, [])
 
     def test_help_text_says_how_to_proceed(self):
         self.assertIn("Open a workbook in Excel", NO_WORKBOOK_HELP)
@@ -120,7 +120,7 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
         self.assertFalse(quill.window.listening)
         self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
         quill.tray.notify.assert_called_with(NO_WORKBOOK_HELP)
-        self.assertEqual(self.speaker.said[-1], NO_WORKBOOK_HELP)
+        self.assertEqual(self.speaker.said, [])                    # the popup shows it; nothing is spoken
 
 
 class TestWatcher(AppPresenceCase):

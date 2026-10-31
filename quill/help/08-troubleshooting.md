@@ -24,7 +24,7 @@
 | No sounds | **Settings > Sounds**: check it isn't *Off*; press **Play Sample** |
 | Undo does nothing | Nothing left to undo, or you changed sheets |
 | Nothing is typed | You may still be voice sorting: say **"done"** |
-| Quill hears itself | Turn off spoken questions in Settings, or wear headphones |
+| Quill hears itself | Turn off **Speak Sort Term Prompts** (off by default) in **Settings > General**, or wear headphones |
 | Rows don't show in my app | See [Your spreadsheet](help:spreadsheet): some apps need a reload |
 
 ## 🙌 Good to know
