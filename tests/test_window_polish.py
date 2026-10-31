@@ -401,6 +401,36 @@ class TestAlignment(unittest.TestCase):
         self.assertEqual(plain.layout().contentsMargins().left(), 20)
 
 
+class TestPickerOnlyDropsDownWithChoices(unittest.TestCase):
+    def test_no_arrow_and_no_popup_for_zero_or_one_workbook(self):
+        w = window()
+        combo = w.workbook_combo
+        self.assertTrue(combo.property("single"))                      # empty: only the notice
+        w.update_workbooks(["Only.xlsx"], "Only.xlsx")
+        self.assertTrue(combo.property("single"))
+        combo.showPopup()
+        self.assertFalse(combo.view().isVisible())
+
+    def test_two_or_more_make_it_a_drop_down(self):
+        w = window()
+        w.update_workbooks(["A.xlsx", "B.xlsx"], "A.xlsx")
+        self.assertFalse(w.workbook_combo.property("single"))
+        w.update_workbooks(["A.xlsx"], "A.xlsx")
+        self.assertTrue(w.workbook_combo.property("single"))
+
+    def test_the_style_sheet_hides_the_arrow_when_single(self):
+        from quill.ui import theme
+        sheet = theme.stylesheet_for(True)
+        self.assertIn('QComboBox[single="true"]::drop-down { width: 0px', sheet)
+
+    def test_section_headings_are_not_bold(self):
+        from quill.ui import theme
+        sheet = theme.stylesheet_for(False)
+        for selector in ('QLabel[staticHeading="true"]', 'QLabel[headingToggle="true"] {'):
+            start = sheet.index(selector)
+            self.assertIn("font-weight: 400", sheet[start: sheet.index("}", start)])
+
+
 class TestResizingKeepsAlignment(unittest.TestCase):
     """Making the window taller gives the height to the Current Row box; nothing else gaps or stretches."""
 

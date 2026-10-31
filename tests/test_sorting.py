@@ -229,6 +229,47 @@ class TestSortingWindow(unittest.TestCase):
         self.assertFalse(flags & Qt.WindowType.Tool == Qt.WindowType.Tool)     # tool windows vanish when the app is inactive
         self.assertEqual(flags & Qt.WindowType.WindowType_Mask, Qt.WindowType.Window)
 
+    def test_with_a_parent_it_stays_above_that_window_only(self):
+        from PySide6.QtWidgets import QWidget
+        parent = QWidget()
+        win = SortingWindow(self.vocab, lambda *a: None)
+        win.setup(parent=parent)
+        self.assertIs(win.widget.parentWidget(), parent)              # owned by the main window: above it, not above everything
+        from PySide6.QtCore import Qt
+        self.assertFalse(win.widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+
+    def test_the_guidance_is_a_full_width_info_box(self):
+        self.assertTrue(self.win.intro.property("info"))
+        from quill.ui import theme
+        self.assertIn('QLabel[info="true"]', theme.stylesheet_for(False))
+
+    def test_rows_use_the_settings_controls_and_leave_room_under_the_question(self):
+        from quill.ui.settings_widgets import FlatCombo
+        from quill.ui.sorting_window import CONTROL_HEIGHT, PROMPT_GAP
+        self.win.set_items([("Era", "90s")])
+        row = self.win.rows[0]
+        self.assertIsInstance(row.combo, FlatCombo)
+        for control in (row.edit, row.combo, row.add_button, row.same_button, row.ignore_button):
+            self.assertGreaterEqual(control.minimumHeight(), CONTROL_HEIGHT)
+        self.assertEqual(PROMPT_GAP, 5)
+        gaps = [row.layout().itemAt(i).spacerItem() for i in range(row.layout().count())]
+        self.assertIn(PROMPT_GAP, [g.sizeHint().height() for g in gaps if g is not None])
+
+    def test_the_active_row_says_what_to_say(self):
+        self.win.set_items([(None, "teal"), ("Era", "90s")])
+        first, second = self.win.rows
+        self.assertFalse(first.hint.isVisibleTo(self.win.widget))
+        first.set_active(True)
+        self.win.widget.show()
+        self.assertTrue(first.hint.isVisibleTo(self.win.widget))
+        self.assertIn("Say a column", first.hint.text())
+        self.assertIn("Era", first.hint.text())
+        self.assertIn("Color", first.hint.text())
+        second.set_active(True)
+        self.assertIn("yes (adds to Era)", second.hint.text())
+        first.set_active(False)
+        self.assertFalse(first.hint.isVisibleTo(self.win.widget))
+
     def test_guidance_text(self):
         self.assertEqual(self.win.intro.text(),
                          "These terms were heard but couldn't be placed. Decide what to do for each one.")

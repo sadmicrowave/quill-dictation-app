@@ -148,7 +148,7 @@ class QuillApp:
         """Build the UI, connect to the workbook, and start listening for speech."""
         self._apply_look()
         self.window.setup()
-        self.sorting.setup()
+        self.sorting.setup(parent=self.window.widget)
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
         self.window.show()

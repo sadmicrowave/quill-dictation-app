@@ -338,3 +338,9 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Needs Sorting** button reads `? Terms (n)`. The pill's tooltip is rich text (`widgets.connection_tip`): bold, italics, icons, 155% line height, letter spacing.
 - **Sorting window** is a normal window (`Qt.Window`), not a tool window: tool windows hide when the app loses focus and have a third-size title bar. It opens wide enough for a whole row, has 12 px margins, no scroll-area frame, and the voice-status line only appears for what was just heard.
 - **Dock icon:** banded grid (alternating light / mid rows, grid lines) and a white inlay inside the front box (`make_icon_ideas.tiled_sheet(banded=True)`, `offset_box(border=True)`).
+
+### Phase 32 notes
+- The dock icon's front box has a lighter-purple inlay (`shade(color, 0.5)`) instead of white.
+- The workbook picker (`_WorkbookCombo`) is a drop-down only with two or more workbooks; with none (the not-connected notice) or one, it shows no arrow and does not open.
+- The sorting window is created with the main window as its parent (`setup(parent=...)`), so it stays above that window and only it, and falls back with the app when Quill is not frontmost.
+- Its guidance is a full-width info box (`QLabel[info="true"]`); each row uses the Settings controls (`FlatCombo`, 34 px high), keeps a 5 px gap under its question, and, while voice sorting highlights it, shows what to say (the column names when it has none yet). The column list is shown inline rather than auto-opened as a popup, which would sit over the row and need closing as each term is answered.

@@ -29,12 +29,17 @@ from PySide6.QtWidgets import (
 from quill.parser.tokens import display_name
 from quill.parser.vocab import Vocabulary
 from quill.session import Decision, TermKey
+from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import apply_spacing
 
 #: Called with (key, decision, corrected words) when the user decides.
 ResolveCallback = Callable[[TermKey, Decision, str], None]
 
 PLACEHOLDER = "Choose Column…"
+
+#: Height (px) of the controls in a row, and the gap kept between a row's question and its controls.
+CONTROL_HEIGHT = 34
+PROMPT_GAP = 5
 
 
 def question_for(column: str | None, term: str) -> str:
@@ -64,7 +69,11 @@ class TermRow(QFrame):
         self.prompt.setWordWrap(True)
         self.edit = QLineEdit(term)
         self.edit.setToolTip("Correct the words if Quill heard too much")
-        self.combo = QComboBox()
+        self.hint = QLabel()                          # what to say, while the voice stream is answering this row
+        self.hint.setProperty("note", True)
+        self.hint.setWordWrap(True)
+        self.hint.setVisible(False)
+        self.combo = FlatCombo()                      # the same controls the Settings pages use
         self.combo.addItem(PLACEHOLDER, None)
         # Columns with an unfilled slot are not known here; list them in sheet order.
         for name in vocab.columns():
@@ -80,8 +89,12 @@ class TermRow(QFrame):
         self.same_button.setMenu(self.same_menu)
         self.ignore_button = QPushButton("Ignore")
 
+        for control in (self.edit, self.combo, self.add_button, self.same_button, self.ignore_button):
+            control.setMinimumHeight(CONTROL_HEIGHT)
         top = QVBoxLayout(self)
         top.addWidget(self.prompt)
+        top.addSpacing(PROMPT_GAP)                    # room between the question and its controls
+        top.addWidget(self.hint)
         controls = QHBoxLayout()
         controls.addWidget(self.edit, 1)
         controls.addWidget(self.combo)
@@ -98,6 +111,15 @@ class TermRow(QFrame):
     def set_active(self, active: bool) -> None:
         """Highlight this row as the one the voice stream is answering."""
         self.setStyleSheet("#termRow { border: 2px solid palette(highlight); }" if active else "")
+        self.hint.setText(self._spoken_hint())
+        self.hint.setVisible(active)
+
+    def _spoken_hint(self) -> str:
+        """What the user can say to answer this row: the columns to choose from if it has none yet."""
+        if self.column is None:
+            names = [c for c in self._vocab.columns() if self._vocab.is_list_column(c)]
+            return "🎤 Say a column: " + " · ".join(names) if names else "🎤 Say ignore, or later"
+        return f"🎤 Say: yes (adds to {self.column}) · same as … · ignore · later"
 
     def mousePressEvent(self, event) -> None:
         """Clicking the (first) row starts answering it by voice."""
@@ -170,11 +192,15 @@ class SortingWindow:
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
         self.rows: list[TermRow] = []
 
-    def setup(self) -> None:
-        """Build the window (call once, after the QApplication exists)."""
+    def setup(self, parent: QWidget | None = None) -> None:
+        """Build the window (call once, after the QApplication exists).
+
+        With a *parent* (the main window) this window stays above it, and only it: not above other
+        applications' windows, and it drops back with the app when Quill loses focus.
+        """
         # A normal window, not a tool window: tool windows hide whenever the app is not frontmost,
         # and their title bar buttons are drawn at a third of the usual size.
-        window = QWidget(None, Qt.WindowType.Window)
+        window = QWidget(parent, Qt.WindowType.Window)
         window.setObjectName("sortingWindow")
         window.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -193,6 +219,7 @@ class SortingWindow:
         layout.setContentsMargins(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
         self.intro = QLabel("These terms were heard but couldn't be placed. Decide what to do for each one.")
         self.intro.setWordWrap(True)
+        self.intro.setProperty("info", True)                   # a full-width info box
         layout.addWidget(self.intro)
 
         voice_row = QHBoxLayout()

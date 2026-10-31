@@ -78,6 +78,26 @@ class _ChipPlacer(QObject):
         self._chip.raise_()
 
 
+class _WorkbookCombo(QComboBox):
+    """The workbook picker: a drop-down only while there is more than one workbook to choose from.
+
+    With none (the "not connected" notice) or one, the arrow is hidden and it does not open, so it
+    does not promise a choice that is not there.
+    """
+
+    def sync(self) -> None:
+        single = self.count() <= 1
+        if self.property("single") != single:
+            self.setProperty("single", single)
+            self.style().unpolish(self)
+            self.style().polish(self)
+        self.setCursor(Qt.CursorShape.ArrowCursor if single else Qt.CursorShape.PointingHandCursor)
+
+    def showPopup(self) -> None:                                   # noqa: N802 (Qt name)
+        if self.count() > 1:
+            super().showPopup()
+
+
 class _RowTable(QTableWidget):
     """The Current Row box: it asks for just its minimum height, so it grows only when given room."""
 
@@ -213,7 +233,8 @@ class MainWindow:
         self._layout, self._status_row = layout, row
 
         # --- workbook row
-        self.workbook_combo = QComboBox()
+        self.workbook_combo = _WorkbookCombo()
+        self.workbook_combo.sync()
         self.workbook_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.workbook_combo.activated.connect(
             lambda index: self._on_workbook(self.workbook_combo.itemText(index))
@@ -646,6 +667,7 @@ class MainWindow:
             self.workbook_combo.addItem(name)
             index = self.workbook_combo.count() - 1
         self.workbook_combo.setCurrentIndex(index)
+        self.workbook_combo.sync()
 
     def set_file_mode(self, file_mode: bool) -> None:
         """Say whether Quill is working on a file (not live Excel): enables the way back to Excel."""
@@ -659,6 +681,7 @@ class MainWindow:
         if current:
             self.update_workbook(current)
         self.workbook_combo.blockSignals(False)
+        self.workbook_combo.sync()
 
     def update_sheet(self, name: str) -> None:
         self.sheet_label.setText(f"Sheet: {name}")

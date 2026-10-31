@@ -370,7 +370,7 @@ def offset_box(color: str, x=16.0, y=39.0, size=50.0, simple: bool = False, bord
             f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="11" fill="{deep}"/>'
             f'<rect x="{x + .6}" y="{y + .6}" width="{size - 1.2}" height="{size - 1.2}" rx="10.4" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="1.2"/>'
             + (f'<rect x="{x + 2.2}" y="{y + 2.2}" width="{size - 4.4}" height="{size - 4.4}" rx="9" fill="none" '
-               'stroke="#FFFFFF" stroke-opacity=".92" stroke-width="1.7"/>' if border else '')   # a white inlay all round
+               f'stroke="{shade(color, 0.5)}" stroke-width="2"/>' if border else '')   # a lighter-purple inlay all round
             + sound_lines(x + size / 2, y + size / 2, (0.44 if not simple else 0.52) * size / 50, simple))
 
 
