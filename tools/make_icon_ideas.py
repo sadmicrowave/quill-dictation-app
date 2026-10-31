@@ -5,6 +5,7 @@
     python tools/make_icon_ideas.py --new [contact-sheet.png]      # a third round: 21-40 (all new symbols)
     python tools/make_icon_ideas.py --mix [contact-sheet.png]      # a fourth round: 41-50, recombining the liked parts
     python tools/make_icon_ideas.py --ring [contact-sheet.png]     # a fifth round: 51-56, the ring with vertical sound lines in purples
+    python tools/make_icon_ideas.py --clip [contact-sheet.png]     # a sixth round: 57-59, idea 47 on purples
     python tools/make_icon_ideas.py --all [contact-sheet.png]      # the first forty, one sheet
 
 Writes ``assets/icon-ideas/NN-name.svg`` (the full-colour app icon) and
@@ -267,6 +268,15 @@ IDEAS_RING = [
 ]
 
 
+#: Round six: idea 47 (the clipboard: audio lines above, rows below) on purple backgrounds.
+_CLIPBOARD = next(idea[3] for idea in IDEAS_MIX if idea[0] == "clipboard-rows")
+IDEAS_CLIP = [
+    ("clipboard-violet", "Clipboard, violet", "#7A55C2", _CLIPBOARD),
+    ("clipboard-indigo", "Clipboard, indigo", "#5B4BC4", _CLIPBOARD),
+    ("clipboard-plum", "Clipboard, plum", "#9446B8", _CLIPBOARD),
+]
+
+
 def app_icon(color: str, draw) -> str:
     """A dock-style icon in the modern macOS manner: a flat colour with only a *hint* of depth.
 
@@ -307,7 +317,7 @@ def write_all(more: bool = False, batch: str = "") -> list[tuple[str, str, str, 
     """Write one batch of ideas: 01-10, *more* (11-20), ``batch="new"`` (21-40) or ``batch="mix"`` (41-50)."""
     OUT.mkdir(parents=True, exist_ok=True)
     made = []
-    ideas, first = ((IDEAS_RING, 51) if batch == "ring" else (IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
+    ideas, first = ((IDEAS_CLIP, 57) if batch == "clip" else (IDEAS_RING, 51) if batch == "ring" else (IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
                     else (IDEAS_MORE, 11) if more else (IDEAS, 1))
     for i, (slug, title, color, draw) in enumerate(ideas, first):
         big = app_icon(color, draw)
@@ -361,10 +371,10 @@ def render_png(svg: str, path: str, size: int = 1024) -> None:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    made = (write_all(batch="ring") if "--ring" in sys.argv else write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
+    made = (write_all(batch="clip") if "--clip" in sys.argv else write_all(batch="ring") if "--ring" in sys.argv else write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
             else write_all(more="--more" in sys.argv))
     print(f"Wrote {len(made) * 2} icons to {OUT}")
-    if "--ring" in sys.argv and len(args) > 1:
+    if ("--ring" in sys.argv or "--clip" in sys.argv) and len(args) > 1:
         render_png(made[0][2], args[1])                 # the first ring at 1024 px
     if args:
         contact_sheet(args[0], made)
