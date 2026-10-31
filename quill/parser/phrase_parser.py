@@ -358,12 +358,12 @@ class _Parser:
         """
         shape = _shape(term)
         by_shape = [
-            col for col in self.vocab.columns()
+            col for col in self.vocab.columns_for(term)           # type check first: text is never a date or a number
             if self._shape_matches(col, shape)
         ]
         if len(by_shape) == 1:
             return by_shape[0]
-        unfilled = [c for c in self.vocab.columns() if c not in self.filled]
+        unfilled = [c for c in self.vocab.columns_for(term) if c not in self.filled]
         return unfilled[0] if len(unfilled) == 1 else None
 
     def _shape_matches(self, column: str, shape: str) -> bool:

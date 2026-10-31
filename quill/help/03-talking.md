@@ -6,10 +6,10 @@ Speak naturally. Quill picks out the words it knows.
 
 | Say | Quill |
 |---|---|
-| **"Start listening"** | 🟢 starts taking notes |
-| *describe the item* | ✍️ fills the columns |
-| **"Next row"** | 💾 saves the row, starts a new one |
-| **"Stop listening"** | ⚪ stops |
+| **"Start listening"** | starts taking notes |
+| *describe the item* | fills the columns |
+| **"Next row"** | saves the row, starts a new one |
+| **"Stop listening"** | stops |
 
 > 💡 Prefer buttons? Press the wide **Start / Stop** button, or use the menu bar icon.
 
@@ -17,20 +17,20 @@ Speak naturally. Quill picks out the words it knows.
 
 > "Black t-shirt, large, good condition, appraisal thirty five dollars. Next row."
 
-- 📋 **List words** go to their column by themselves: *"black"* → Color
-- 🏷️ **Column name first** when it's ambiguous: *"size medium"*
-- 💲 **Amounts:** *"appraisal thirty five"*, *"twelve dollars fifty"*
-- 📅 **Dates:** *"acquired today"*, *"date march 3"*
-- 📝 **Notes:** *"notes needs a new button"*
-- 🫧 Filler like *"this next one is a…"* is ignored
+- **List words** go to their column by themselves: *"black"* Color
+- **Column name first** when it's ambiguous: *"size medium"*
+- **Amounts:** *"appraisal thirty five"*, *"twelve dollars fifty"*
+- **Dates:** *"acquired today"*, *"date march 3"*
+- **Notes:** *"notes needs a new button"*
+- Filler like *"this next one is a…"* is ignored
 
 ## 🛠️ Fixing mistakes
 
 | Say | Quill |
 |---|---|
-| **"Cancel"** / **"Delete row"** | 🗑️ drops the row you're still describing |
-| **"Undo"** | ↩️ takes back the last Term Helper answer |
-| *(saved rows)* | ✏️ fix them in your spreadsheet as usual |
+| **"Cancel"** / **"Delete row"** | drops the row you're still describing |
+| **"Undo"** | takes back the last Term Helper answer |
+| *(saved rows)* | fix them in your spreadsheet as usual |
 
 ## 🔍 Search
 

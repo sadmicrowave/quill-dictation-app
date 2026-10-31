@@ -103,3 +103,33 @@ class TestFieldWordsAndMatching(unittest.TestCase):
     def test_reload_clears_fields(self):
         self.v.load({"Only": ["x"]})
         self.assertIsNone(self.v.field_at(["brand"], 0))
+
+
+class TestTypeCheckedColumns(unittest.TestCase):
+    def setUp(self):
+        from quill.parser.vocab import Vocabulary
+        self.v = Vocabulary()
+        self.v.load({"Color": ["Black", "Navy"], "Year": ["1990", "2001", "2010"], "Acquired": ["2024-01-05", "2025-03-09"],
+                     "Era": ["1980s", "1990s"], "Price": ["$5", "$12.50"]}, [])
+
+    def test_columns_are_read_as_number_date_or_text(self):
+        kinds = {c: self.v.column_kind(c) for c in self.v.columns()}
+        self.assertEqual(kinds, {"Color": "text", "Year": "number", "Acquired": "date", "Era": "text", "Price": "number"})
+
+    def test_a_word_is_never_offered_a_number_or_date_column(self):
+        self.assertEqual(self.v.columns_for("teal"), ["Color", "Era"])
+
+    def test_numbers_and_dates_only_go_to_matching_columns_and_to_text_lists(self):
+        self.assertEqual(self.v.columns_for("1995"), ["Color", "Year", "Era", "Price"])
+        self.assertEqual(self.v.columns_for("2024-06-01"), ["Color", "Acquired", "Era"])
+        self.assertEqual(self.v.columns_for("thirty five"), ["Color", "Year", "Era", "Price"])
+
+    def test_the_terms_sorting_window_offers_only_those_columns(self):
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance() or QApplication([])
+        from quill.ui.sorting_window import TermRow
+        row = TermRow((None, "teal"), self.v, lambda *a: None)
+        offered = [row.combo.itemData(i) for i in range(row.combo.count())]
+        self.assertEqual(offered, [None, "Color", "Era"])
+        self.assertIn("Color", row._spoken_hint())
+        self.assertNotIn("Year", row._spoken_hint())

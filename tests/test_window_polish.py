@@ -117,12 +117,12 @@ class TestConnectionChip(unittest.TestCase):
         self.assertEqual(w.footer.text(), "")
         self.assertFalse(w.footer.isVisibleTo(w.widget))
 
-    def test_chip_style_is_an_amber_pill_in_both_themes(self):
+    def test_chip_style_is_a_pill_in_the_theme_colour_in_both_themes(self):
         for dark in (False, True):
             sheet = theme.stylesheet_for(dark)
             start = sheet.index('QLabel[chip="warn"] {')
             rule = sheet[start: sheet.index("}", start)]
-            warn = theme.colors_for(dark)["warn"]
+            warn = theme.colors_for(dark)["accent"]
             self.assertIn(warn, rule)
             self.assertIn("border-radius: 11px", rule)
             self.assertIn("rgba(", rule)

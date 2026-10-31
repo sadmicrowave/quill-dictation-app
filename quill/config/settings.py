@@ -62,6 +62,8 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "hide_dock_icon": False,  # macOS: keep Quill out of the Dock (it stays in the menu bar)
     "window_width": 0,        # the full window's size when Quill last closed (0 = not saved yet)
     "window_height": 0,
+    "mini_width": 0,          # the mini view's size when it was last used (0 = the compact default)
+    "mini_height": 0,
     "mini_mode": False,       # the main window starts as the small overlay
     "mini_on_top": True,      # the mini view floats above other windows
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)

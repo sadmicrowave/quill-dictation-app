@@ -49,7 +49,7 @@ def _default_stream(sample_rate: int, push: Callable[[bytes], None]):
         push(bytes(indata))
 
     return sounddevice.RawInputStream(
-        samplerate=sample_rate, blocksize=8000, dtype="int16", channels=1, callback=on_audio
+        samplerate=sample_rate, blocksize=4000, dtype="int16", channels=1, callback=on_audio
     )
 
 
@@ -61,6 +61,8 @@ class Listener:
         on_transcript: Callback called with each final recognised segment.
         sample_rate: Audio sample rate (Vosk small-en models use 16000).
         on_error: Called if the microphone or model cannot be opened.
+        on_partial: Called with the words of the phrase still being spoken, as they are recognised
+            (changes only; an empty string once the phrase is final).
         model_loader: Test seam: ``path -> model``.
         recognizer_factory: Test seam: ``(model, rate) -> recogniser``.
         stream_factory: Test seam: ``(rate, push) -> context manager``.
@@ -77,11 +79,14 @@ class Listener:
         model_loader: Callable[[pathlib.Path], object] = _default_model_loader,
         recognizer_factory: RecognizerFactory = _default_recognizer,
         stream_factory: StreamFactory = _default_stream,
+        on_partial: TranscriptCallback | None = None,
     ) -> None:
         self._model_path = model_path
         self._on_transcript = on_transcript
         self._sample_rate = sample_rate
         self._on_error = on_error or (lambda message: None)
+        self._on_partial = on_partial
+        self._last_partial = ""
         self._model_loader = model_loader
         self._recognizer_factory = recognizer_factory
         self._stream_factory = stream_factory
@@ -123,6 +128,10 @@ class Listener:
                 self._loading = False
 
         threading.Thread(target=load, name="quill-model-loader", daemon=True).start()
+
+    def set_partial_callback(self, callback: TranscriptCallback | None) -> None:
+        """Receive the words of the phrase being spoken as they are recognised (see ``on_partial``)."""
+        self._on_partial = callback
 
     def start(self) -> None:
         """Open the microphone and begin recognising audio in a background thread."""
@@ -188,11 +197,27 @@ class Listener:
                         continue
                     if recognizer.AcceptWaveform(chunk):
                         self._emit(recognizer.Result())
+                        self._partial("")
+                    elif self._on_partial is not None:
+                        self._partial(self._read_partial(recognizer))
         except Exception as exc:   # model missing, no microphone, permission denied, ...
             self._running = False
             self._on_error(f"Listening stopped: {exc}")
         finally:
             self._clear_queue()
+
+    @staticmethod
+    def _read_partial(recognizer) -> str:
+        try:
+            return json.loads(recognizer.PartialResult()).get("partial", "").strip()
+        except (AttributeError, ValueError):
+            return ""
+
+    def _partial(self, text: str) -> None:
+        """Report the unfinished phrase when it has changed."""
+        if self._on_partial is not None and text != self._last_partial:
+            self._last_partial = text
+            self._on_partial(text)
 
     def _emit(self, result_json: str) -> None:
         try:

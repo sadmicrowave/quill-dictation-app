@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
+from quill.stream import recognized_words
 from quill.bridge.hosts import HostApp, SpreadsheetHosts
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
@@ -43,6 +44,7 @@ class Relay(QObject):
     """Signals used to hop from background threads onto the GUI thread."""
 
     transcript = Signal(str)
+    partial = Signal(str)           # words of the phrase still being spoken
     error = Signal(str)
     progress = Signal(int, int)
     model_ready = Signal(object)   # pathlib.Path on success, None on failure
@@ -113,7 +115,7 @@ class QuillApp:
             on_use_excel=self.use_live_excel,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
             on_undo=self.undo, on_help=self.open_help, on_log_toggled=self._log_toggled,
-            on_resized=self._window_resized,
+            on_resized=self._window_resized, on_mini_resized=self._mini_window_resized,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
@@ -153,6 +155,8 @@ class QuillApp:
         self._watcher.setInterval(poll_interval_ms)
         self._watcher.timeout.connect(self.poll_workbooks)
 
+        self.relay.transcript.connect(self._heard)                  # first: show the words before they are acted on
+        self.relay.partial.connect(self._hearing)
         self.relay.transcript.connect(self.controller.handle_transcript)
         self.relay.error.connect(self._on_error)
         self.relay.progress.connect(self._on_progress)
@@ -172,6 +176,9 @@ class QuillApp:
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
+        self.window.set_stream_classifier(self._known_words)
+        self.window.restore_mini_size(int(self.settings.preferences["mini_width"]),
+                                      int(self.settings.preferences["mini_height"]))
         self.window.restore_size(int(self.settings.preferences["window_width"]),
                                  int(self.settings.preferences["window_height"]))
         self.window.show()
@@ -340,6 +347,9 @@ class QuillApp:
             )
             return
         self.listener = self._listener_factory(model, self.relay.transcript.emit, self.relay.error.emit)
+        set_partial = getattr(self.listener, "set_partial_callback", None)
+        if set_partial is not None:
+            set_partial(self.relay.partial.emit)                      # words appear in the Voice Stream as they are heard
         preload = getattr(self.listener, "preload", None)
         if preload is not None:
             preload()                                   # load the model now; the mic stays off
@@ -584,6 +594,26 @@ class QuillApp:
                 and not self.window.widget.isVisible():
             self.window.show()
 
+    def _known_words(self, words: list[str]) -> list[bool]:
+        """Which of the words heard are already understood (drawn as pills in the Voice Stream)."""
+        return recognized_words(words, self.controller.vocab, self.settings.keywords.keys())
+
+    def _heard(self, text: str) -> None:
+        """A finished phrase: add it to the Voice Stream while Quill is listening."""
+        if self.window.listening:
+            self.window.add_stream_text(text)
+
+    def _hearing(self, text: str) -> None:
+        """A phrase still being spoken: show it in the Voice Stream."""
+        if self.window.listening:
+            self.window.set_stream_partial(text)
+
+    def _mini_window_resized(self, width: int, height: int) -> None:
+        """Remember the mini view's size, separately from the full window's."""
+        self.settings.preferences["mini_width"] = width
+        self.settings.preferences["mini_height"] = height
+        self.settings.save()
+
     def _window_resized(self, width: int, height: int) -> None:
         """Remember the window's size, so the next launch opens the way the user left it."""
         self.settings.preferences["window_width"] = width
@@ -646,6 +676,8 @@ class QuillApp:
 
     def _handle_event(self, event: Event) -> None:
         kind = event.kind
+        if kind in ("committed", "discarded", "stopped"):
+            self.window.end_stream()                  # the row is over: the next words start a new stream
         self.feedback.request(event)
         if not self._cue_timer.isActive():
             self._cue_timer.start()

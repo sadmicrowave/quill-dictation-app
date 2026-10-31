@@ -224,7 +224,7 @@ QMenu::item:disabled {{ color: {t['disabled']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
 QLabel[heading="true"] {{ color: {t['muted']}; }}
-QLabel[chip="warn"] {{ background: {rgba(t['warn'], 0.14)}; color: {t['warn']}; border: 1px solid {rgba(t['warn'], 0.42)};
+QLabel[chip="warn"] {{ background: {rgba(t['accent'], 0.14)}; color: {t['accent']}; border: 1px solid {rgba(t['accent'], 0.42)};
               border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
 QLabel[note="true"] {{ font-size: {max(font_size - 2, 7)}pt; font-style: italic; color: {t['muted']}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
@@ -240,7 +240,7 @@ QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2
 QToolButton[flatIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[flatIcon="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
-QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; }}
+QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; font-size: {max(font_size - 2, 8)}pt; }}
 QLabel[staticHeading="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; }}
 QLabel[info="true"] {{ background: {rgba(t['accent'], 0.12)}; color: {t['text']}; border: 1px solid {rgba(t['accent'], 0.38)};
               border-radius: 12px; padding: 8px 14px; }}

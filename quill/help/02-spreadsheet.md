@@ -6,10 +6,10 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 
 | App | How Quill works with it | You do |
 |---|---|---|
-| 📗 **Excel** (Mac, Windows) | Live: rows appear as you speak | Nothing |
-| 🔢 **Numbers** | Works on the Excel file (`.xlsx`) open in Numbers, then asks Numbers to reload it | Open an `.xlsx` (for a `.numbers` sheet: **File > Export To > Excel** once) |
-| 📘 **LibreOffice Calc** | Works on the open `.xlsx` file | **File > Reload** now and then |
-| 📄 **Others, Google Drive copies** | Works on the `.xlsx` file | Reopen the file to see new rows |
+| **Excel** (Mac, Windows) | Live: rows appear as you speak | Nothing |
+| **Numbers** | Works on the Excel file (`.xlsx`) open in Numbers, then asks Numbers to reload it | Open an `.xlsx` (for a `.numbers` sheet: **File > Export To > Excel** once) |
+| **LibreOffice Calc** | Works on the open `.xlsx` file | **File > Reload** now and then |
+| **Others, Google Drive copies** | Works on the `.xlsx` file | Reopen the file to see new rows |
 
 > 💡 Quill looks for an open sheet every few seconds. Open one at any time and Quill finds it.
 
@@ -17,7 +17,7 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 
 No spreadsheet app open? Quill can fill a file by itself.
 
-1. Press the **📁 folder** button (or **File > Open Spreadsheet File…**).
+1. Press the **folder** button (or **File > Open Spreadsheet File…**).
 2. Pick an `.xlsx` file.
 3. Dictate. Quill remembers the file next time.
 
@@ -27,19 +27,20 @@ No spreadsheet app open? Quill can fill a file by itself.
 
 ![Not connected](images/not-connected.png)
 
-- 🟠 **File stream not connected**: no sheet found yet. Hover it for what to do.
-- 📄 **Current Row**: what Quill has understood so far. Check it before saying "next row".
-- 🕘 **Last Saved**: the row written last. It only appears after the first save.
-- 📜 **Log**: click to open a record of what happened.
+- **File stream not connected**: no sheet found yet. Hover it for what to do.
+- **Voice Stream**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
+- **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row".
+- **Last Saved**: the row written last. It only appears after the first save.
+- **Log**: click to open a record of what happened.
 
 ## 🔘 The title bar
 
-| Icon | Does |
-|---|---|
-| ❓ | Opens this help, on the page for where you are |
-| ↩️ | **Undo** the last answer |
-| 🎚️ | **Settings** |
-| ↘️ | **Mini view** |
+| Icon | Where | Does |
+|---|---|---|
+| Question mark | left, beside the window buttons | Opens this help, on the page for where you are |
+| Curved arrow | left, next to the question mark | **Undo** the last answer |
+| Sliders | right | **Settings** |
+| Arrows | far right | **Mini view** |
 
 ## 🔔 Menu bar icon
 

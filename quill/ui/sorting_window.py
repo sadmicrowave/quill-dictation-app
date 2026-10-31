@@ -92,7 +92,7 @@ class TermRow(QFrame):
         self.combo = FlatCombo()                      # the same controls the Settings pages use
         self.combo.addItem(PLACEHOLDER, None)
         # Columns with an unfilled slot are not known here; list them in sheet order.
-        for name in vocab.columns():
+        for name in vocab.columns_for(term):                  # only columns the term could belong to ("teal" is no date)
             self.combo.addItem(name, name)
         if column and self.combo.findData(column) >= 0:
             self.combo.setCurrentIndex(self.combo.findData(column))
@@ -140,7 +140,7 @@ class TermRow(QFrame):
     def _spoken_hint(self) -> str:
         """What the user can say to answer this row: the columns to choose from if it has none yet."""
         if self.column is None:
-            names = [c for c in self._vocab.columns() if self._vocab.is_list_column(c)]
+            names = self._vocab.columns_for(self.key[1])
             if not names:
                 return f"🎤 Say {pill('ignore')} or {pill('later')}"
             return "🎤 Say a column: " + " ".join(pill(n) for n in names)

@@ -18,7 +18,7 @@ from quill.parser.vocab import Vocabulary                               # noqa: 
 from quill.ui.main_window import MainWindow                             # noqa: E402
 from quill.ui.settings_dialog import SettingsDialog                     # noqa: E402
 from quill.ui.sorting_window import SortingWindow                       # noqa: E402
-from quill.ui.theme import apply_spacing, apply_theme                   # noqa: E402
+from quill.ui.theme import apply_spacing, apply_theme, colors_for                   # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "quill" / "help" / "images"
 WIDTH = 560                                                              # pictures are shown at most this wide
@@ -52,9 +52,13 @@ def main() -> None:
     main_window.update_workbooks(["Apparel Inventory.xlsx"], "Apparel Inventory.xlsx")
     main_window.update_sheet("Inventory")
     main_window.set_listening_indicator(True)
+    colors = colors_for(True, "violet")
+    main_window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
+    main_window.set_stream_classifier(lambda words: [w in ('black', 't-shirt', 'large', 'good', 'appraisal', 'thirty', 'five') for w in words])
+    main_window.add_stream_text('this next one is a black t-shirt large good appraisal thirty five')
     main_window.update_current_row(row)
     main_window.set_last_saved("Row 6", {"Type": "Blouse", "Color": "Navy", "Size": "M"})
-    main_window.widget.resize(380, 500)
+    main_window.widget.resize(380, 590)
     main_window.widget.show()
 
     mini = as_native(MainWindow())

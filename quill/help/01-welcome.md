@@ -6,20 +6,20 @@
 
 ## ⚡ Quick start
 
-1. 📂 **Open your spreadsheet** in Excel, Numbers, LibreOffice… any of them.
-2. ▶️ **Press Start** (the wide button at the top).
-3. 🗣️ **Describe an item:** *"black t-shirt, large, good, appraisal thirty five"*
-4. ➡️ **Say "next row"** to save it and start the next.
-5. ⏹️ **Say "stop listening"** when you're done.
+1. **Open your spreadsheet** in Excel, Numbers, LibreOffice… any of them.
+2. **Press Start** (the wide button at the top).
+3. **Describe an item:** *"black t-shirt, large, good, appraisal thirty five"*. Watch the words appear in the **Voice Stream**.
+4. **Say "next row"** to save it and start the next.
+5. **Say "stop listening"** when you're done.
 
 > 💡 First launch: allow the **microphone** (and on a Mac, **Automation** for Excel). That's it. There's nothing to set up.
 
 ## ✅ Why it just works
 
-- 🧠 **Learns your words** from your own drop-down lists and column headings.
-- 🔒 **Private**: speech stays on your computer.
-- 🛡️ **Only writes while listening**, so room chatter never lands in your sheet.
-- 🔄 **Notices changes**: save a new list value and Quill picks it up within seconds.
+- **Learns your words** from your own drop-down lists and column headings.
+- **Private**: speech stays on your computer.
+- **Only writes while listening**, so room chatter never lands in your sheet.
+- **Notices changes**: save a new list value and Quill picks it up within seconds.
 
 ## 🧭 Where to next
 

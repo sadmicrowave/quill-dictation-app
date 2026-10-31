@@ -6,6 +6,7 @@ via WorkbookBridge.get_lists(). No domain-specific terms are hard-coded here.
 
 from __future__ import annotations
 import difflib
+import re
 from dataclasses import dataclass, field
 
 from quill.parser.tokens import tokenize
@@ -16,6 +17,29 @@ MONEY_WORDS = frozenset({
     "price", "cost", "amount", "total", "paid", "value", "fee", "msrp",
     "appraisal", "worth", "estimate",
 })
+
+
+_NUMBER_VALUE = re.compile(r"^[-+]?[$€£]?\s*\d[\d,]*(\.\d+)?\s*%?$")
+_DATE_VALUE = re.compile(r"^(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|"
+                         r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(,?\s+\d{2,4})?)$", re.I)
+
+
+def value_kind(text: str) -> str:
+    """What kind of thing *text* is: ``"number"``, ``"date"`` or ``"text"`` (a simple check, not a parse)."""
+    stripped = text.strip()
+    if _NUMBER_VALUE.match(stripped):
+        return "number"
+    if _DATE_VALUE.match(stripped):
+        return "date"
+    from quill.parser.numbers import parse_number
+    tokens = tokenize(stripped)
+    if tokens:
+        number, used = parse_number(tokens, 0)
+        if number is not None and used == len(tokens):      # spoken: "thirty five"
+            return "number"
+        if tokens[0] in ("today", "yesterday") and len(tokens) == 1:
+            return "date"
+    return "text"
 
 
 def money_header(column: str) -> bool:
@@ -116,6 +140,21 @@ class Vocabulary:
     def values_for(self, column: str) -> list[str]:
         """Return canonical values for a column (empty list if unknown)."""
         return list(self._by_column.get(column, []))
+
+    def column_kind(self, column: str) -> str:
+        """``"number"`` or ``"date"`` if every value in the column's list is one, otherwise ``"text"``."""
+        kinds = {value_kind(v) for v in self._by_column.get(column, [])}
+        return kinds.pop() if len(kinds) == 1 else "text"
+
+    def accepts(self, column: str, term: str) -> bool:
+        """Could *term* be a new value of *column*? A list of numbers only takes numbers and a list of
+        dates only dates ("teal" is never either); a list of words takes anything."""
+        kind = self.column_kind(column)
+        return kind == "text" or value_kind(term) == kind
+
+    def columns_for(self, term: str) -> list[str]:
+        """The list columns *term* could be added to, in sheet order."""
+        return [c for c in self._by_column if self.accepts(c, term)]
 
     def add_alias(self, column: str, phrase: str, canonical: str) -> bool:
         """Teach that spoken *phrase* means the existing value *canonical*.

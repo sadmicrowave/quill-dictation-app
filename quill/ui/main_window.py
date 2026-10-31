@@ -16,9 +16,11 @@ import datetime as dt
 import logging
 from typing import Callable
 
+import html
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSize, Qt, QTimer, QVariantAnimation
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
+    QGraphicsOpacityEffect, QStyle, QTextEdit, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
     QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -53,6 +55,8 @@ ROW_MAX_MINI = 66
 LOG_BOTTOM_MARGIN = 7
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
+STREAM_MAX_LINES = 5        # the Voice Stream box grows to this many lines, then scrolls
+STREAM_MIN_HEIGHT = 40
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open
 
 #: Lines kept in the log before the oldest are dropped.
@@ -84,16 +88,59 @@ class _ChipPlacer(QObject):
         self._chip.raise_()
 
 
+class _StreamBox(QTextEdit):
+    """The Voice Stream: what is being heard, as italic text that grows to a few lines before it scrolls.
+
+    Words Quill recognises are drawn as pills in the theme colour. It is display only.
+    """
+
+    def __init__(self, on_height=None) -> None:
+        super().__init__()
+        self._on_height = on_height or (lambda old, new: None)
+        self.setReadOnly(True)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setPlaceholderText("Words you say appear here as they are heard")
+        font = self.font()
+        font.setItalic(True)
+        self.setFont(font)
+        self.setFixedHeight(STREAM_MIN_HEIGHT)
+
+    def fit(self) -> None:
+        """Make the box as tall as its text needs (between one line and :data:`STREAM_MAX_LINES`)."""
+        doc = self.document()
+        doc.setTextWidth(max(self.viewport().width(), 40))
+        line = self.fontMetrics().lineSpacing()
+        extra = 2 * self.frameWidth() + 14                         # border and the style sheet's padding
+        wanted = int(doc.size().height()) + extra
+        height = max(STREAM_MIN_HEIGHT, min(wanted, STREAM_MAX_LINES * line + extra))
+        if height != self.height():
+            old = self.height()
+            self.setFixedHeight(height)
+            self._on_height(old, height)
+
+    def resizeEvent(self, event) -> None:                           # noqa: N802 (Qt name)
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self.fit)                              # the wrapping changed with the width
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+
+
 class _ResizeWatcher(QObject):
     """Restarts a timer every time the window is resized, so the size is reported once it has settled."""
 
-    def __init__(self, window: QWidget, timer: QTimer) -> None:
+    def __init__(self, window: QWidget, timer: QTimer, on_resize=None) -> None:
         super().__init__(window)
         self._timer = timer
+        self._on_resize = on_resize
 
     def eventFilter(self, obj, event) -> bool:
         if event.type() == QEvent.Type.Resize:
             self._timer.start()
+            if self._on_resize is not None:
+                self._on_resize()
         return False
 
 
@@ -118,7 +165,34 @@ class _WorkbookCombo(QComboBox):
 
 
 class _RowTable(QTableWidget):
-    """The Current Row box: it asks for just its minimum height, so it grows only when given room."""
+    """The Current Row box: it asks for just its minimum height, so it grows only when given room.
+
+    It only displays: the cells can't be selected, focused or edited (that would suggest an action
+    that isn't there), and the grid line at the far right edge is pushed out of view.
+    """
+
+    def __init__(self, rows: int, columns: int) -> None:
+        super().__init__(rows, columns)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.setShowGrid(False)                  # drawn in paintEvent, so there is no line at the far right
+
+    def paintEvent(self, event) -> None:                             # noqa: N802 (Qt name)
+        super().paintEvent(event)
+        if self.columnCount() < 2 or not self.rowCount():
+            return
+        color = QColor.fromRgba(self.style().styleHint(QStyle.StyleHint.SH_Table_GridLineColor, None, self) & 0xFFFFFFFF)
+        painter = QPainter(self.viewport())
+        painter.setPen(color)
+        bottom = self.rowViewportPosition(self.rowCount() - 1) + self.rowHeight(self.rowCount() - 1)
+        divider = self.columnViewportPosition(0) + self.columnWidth(0) - 1
+        painter.drawLine(divider, 0, divider, bottom - 1)            # between the two columns
+        for row in range(self.rowCount()):
+            y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
+            painter.drawLine(0, y, self.viewport().width() - 1, y)
+        painter.end()
+
 
     def sizeHint(self) -> QSize:                                    # noqa: N802 (Qt name)
         return QSize(super().sizeHint().width(), self.minimumHeight())
@@ -162,6 +236,7 @@ class MainWindow:
         on_use_excel: Callable[[], None] | None = None,
         on_help: Callable[[str], None] | None = None,
         on_resized: Callable[[int, int], None] | None = None,
+        on_mini_resized: Callable[[int, int], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
     ) -> None:
@@ -198,6 +273,15 @@ class MainWindow:
         self._log_grew = 0                   # window height added to make room for the open log (given back on close)
         self._log_animation: QVariantAnimation | None = None
         self._log_busy = False               # the log is sliding open or shut
+        self._mini_detail = False            # the mini view is tall enough to show the stream and the row
+        self._mini_base = 0                  # the mini view's own (compact) height
+        self._mini_size: QSize | None = None  # the size the user left the mini view at
+        self._on_mini_resized = on_mini_resized or (lambda width, height: None)
+        self._stream_words: list[tuple[str, bool]] = []     # what was heard (final), with whether it is known
+        self._stream_partial: list[tuple[str, bool]] = []   # the phrase still being spoken
+        self._stream_done = False            # the row ended: the next words start a fresh stream
+        self._stream_known = lambda words: [False] * len(words)
+        self._sorting_animation: QVariantAnimation | None = None
         self._window: QMainWindow | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
         self._listening = False
@@ -216,7 +300,7 @@ class MainWindow:
         self._size_timer.setSingleShot(True)
         self._size_timer.setInterval(SIZE_SETTLE_MS)
         self._size_timer.timeout.connect(self.report_size)
-        window.installEventFilter(_ResizeWatcher(window, self._size_timer))
+        window.installEventFilter(_ResizeWatcher(window, self._size_timer, self._sync_mini_detail))
         central = QWidget()
         central.setObjectName("mainRoot")                       # paints the background; opacity applies to it
         central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -289,10 +373,13 @@ class MainWindow:
             lambda index: self._on_workbook(self.workbook_combo.itemText(index))
         )
         self.sheet_label = QLabel("Sheet: –")
+        self.sheet_label.setProperty("note", True)               # small, italic, muted: it sits under the file box
+        self.sheet_label.setContentsMargins(8, 0, 0, 0)
         # Shown instead of the sheet name while no spreadsheet is connected: a technical warning chip.
         # (It sits inside the empty workbook picker; the mini view, which has no picker, has its own.)
-        self.workbook_row = QWidget()                   # one widget so the mini view can hide the row whole
-        self.connection_chip = self._make_chip(self.workbook_row)
+        self.workbook_row = QWidget()                   # the picker row and the sheet name under it; the mini view hides it whole
+        self.picker_row = QWidget(self.workbook_row)
+        self.connection_chip = self._make_chip(self.picker_row)
         self._chip_placer = _ChipPlacer(self.workbook_combo, self.connection_chip)
         self.mini_chip = self._make_chip(None)
         self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
@@ -302,19 +389,26 @@ class MainWindow:
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self._on_open_file())
         self.workbook_row.setProperty("keepMargins", True)    # flush with the content above and below
-        row = QHBoxLayout(self.workbook_row)
+        self.picker_row.setProperty("keepMargins", True)
+        row = QHBoxLayout(self.picker_row)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.workbook_combo, 1)
         row.addWidget(self.open_file_button)
+        self._workbook_block = QVBoxLayout(self.workbook_row)
+        self._workbook_block.setContentsMargins(0, 0, 0, 0)
+        self._workbook_block.addWidget(self.picker_row)
+        self._workbook_block.addWidget(self.sheet_label)
+        self._tighten_sheet_label()
         layout.addWidget(self.workbook_row)
-        layout.addWidget(self.sheet_label)
         layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
         # --- current row
         # (Not collapsible: the row being built is the point of every spoken turn, so it is always in view.)
-        self.row_heading = QLabel("Current Row")
+        self.row_heading = QLabel("Voice Stream")
         self.row_heading.setProperty("staticHeading", True)
         layout.addWidget(self.row_heading, 0, Qt.AlignmentFlag.AlignLeft)
+        self.stream = _StreamBox(self._stream_height_changed)
+        layout.addWidget(self.stream)
         self.row_table = _RowTable(0, 2)
         self.row_table.horizontalHeader().setVisible(False)
         self.row_table.verticalHeader().setVisible(False)
@@ -463,12 +557,15 @@ class MainWindow:
             self._apply_stay_on_top()
             animate = window.isVisible() and self.animation_ms > 0
             if not animate:
-                self._apply_view(mini)
-                target = QSize(self.MINI_WIDTH, self._fit_height()) if mini else self._full_size
+                if mini:
+                    target = self._mini_target()
+                    self._apply_view(True)
+                else:
+                    self._apply_view(False)
+                    target = self._full_size
                 self._resize_to(target.width(), target.height())
             elif mini:
-                self._apply_view(True)                                      # measure the mini layout ...
-                target = QSize(self.MINI_WIDTH, self._fit_height())
+                target = self._mini_target()                                # measures the compact mini layout
                 self._apply_view(False)                                     # ... but keep showing the full one
                 self._resize_to(target.width(), target.height(), then=lambda: self._apply_view(True))
             else:
@@ -478,6 +575,47 @@ class MainWindow:
             self._apply_view(mini)
         if notify:
             self._on_mini_toggled(mini)
+
+    def _mini_detail_need(self) -> int:
+        """The mini view's height from which there is room for the stream and the row."""
+        gap = max(self._layout.spacing(), 0)
+        return self._mini_base + STREAM_MIN_HEIGHT + ROW_EMPTY_HEIGHT + 2 * gap
+
+    def _mini_target(self) -> QSize:
+        """The size to take on entering the mini view: where the user left it, else the compact default.
+
+        Also measures the compact height (``_mini_base``) and decides whether the target shows the details.
+        """
+        self._view_mini, self._mini_detail = True, False
+        self._place_sorting_button(True)
+        self._set_margins(True)
+        self._refresh_visibility()
+        self._mini_base = self._fit_height()
+        remembered = self._mini_size
+        target = QSize(max(remembered.width(), 200), max(remembered.height(), self._mini_base)) \
+            if remembered is not None else QSize(self.MINI_WIDTH, self._mini_base)
+        self._mini_detail = target.height() >= self._mini_detail_need()
+        self._view_mini = False                                           # the caller applies the view
+        return target
+
+    def _sync_mini_detail(self) -> None:
+        """While the mini view is on screen, show the stream and row only when the window is tall enough."""
+        window = self._window
+        animation = getattr(self, "_animation", None)
+        if (window is None or not self._view_mini or not self._mini_base
+                or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
+            return
+        want = window.height() >= self._mini_detail_need()
+        if want != self._mini_detail:
+            self._mini_detail = want
+            self._refresh_visibility()
+
+    def restore_mini_size(self, width: int, height: int) -> None:
+        """Use a remembered size for the mini view the next time it is entered."""
+        if width >= 200 and height >= 60:
+            self._mini_size = QSize(width, height)
+            if self._window is not None and self._mini and self._view_mini:
+                self._window.resize(width, height)
 
     def _finish_animation(self) -> None:
         """If a resize is still running, jump to its end and apply the contents it was heading for."""
@@ -529,10 +667,15 @@ class MainWindow:
         if self._window is None:
             return
         apply_spacing(self._window, spacing)
+        self._tighten_sheet_label()
         if self._view_mini:
             self._set_margins(True)
         else:
             self._log_bottom_margin()
+
+    def _tighten_sheet_label(self) -> None:
+        """Keep the sheet name close under the file box, whatever the spacing setting says."""
+        self._workbook_block.setSpacing(1)
 
     def _set_margins(self, mini: bool) -> None:
         if mini:
@@ -540,6 +683,7 @@ class MainWindow:
             self._layout.setSpacing(6)
         else:
             apply_spacing(self._window)
+            self._tighten_sheet_label()
             self._log_bottom_margin()
 
     def _log_bottom_margin(self) -> None:
@@ -622,6 +766,9 @@ class MainWindow:
         """Stop the user dragging the window smaller than its content (applied once a resize is done)."""
         if self._log_busy:                             # the log is still sliding; its final size is not known yet
             return
+        if self._view_mini and self._mini_base:        # the mini view may shrink back to its compact size
+            self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize().width(), self._mini_base)
+            return
         self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize())
 
     def set_mini_on_top(self, on_top: bool) -> None:
@@ -661,6 +808,9 @@ class MainWindow:
         self.settings_button.setVisible(full and not self._native_settings_button)
         for widget in (self.workbook_row, self.row_heading, self.log_toggle):
             widget.setVisible(full)
+        detail = full or self._mini_detail                                   # the mini view shows them only when tall
+        self.stream.setVisible(detail)
+        self.row_table.setVisible(detail)
         self.last_label.setVisible(full and self._has_last_saved)
         self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
@@ -712,8 +862,12 @@ class MainWindow:
         """Tell the app the full window's size (not while it is the mini view or in the middle of a resize)."""
         window = self._window
         animation = getattr(self, "_animation", None)
-        if (window is None or self._mini or self._view_mini or self._log_busy
+        if (window is None or self._log_busy or self._mini != self._view_mini
                 or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
+            return
+        if self._view_mini:                                    # the mini view keeps its own size
+            self._mini_size = QSize(window.width(), window.height())
+            self._on_mini_resized(window.width(), window.height())
             return
         self._full_size = QSize(window.width(), window.height())
         self._on_resized(window.width(), window.height())
@@ -899,10 +1053,81 @@ class MainWindow:
             text = value.isoformat() if isinstance(value, dt.date) else str(value)
             for c, content in enumerate((column, text)):
                 item = QTableWidgetItem(content)
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled)            # not selectable
                 if c == 0:
                     item.setForeground(self.row_table.palette().placeholderText())
                 self.row_table.setItem(r, c, item)
         self._fit_row_table()
+
+    # ------------------------------------------------------------------ #
+    # Voice Stream                                                         #
+    # ------------------------------------------------------------------ #
+
+    def set_stream_classifier(self, known) -> None:
+        """Tell the stream how to tell which words are already known: ``words -> [bool, ...]``."""
+        self._stream_known = known
+
+    def add_stream_text(self, text: str) -> None:
+        """A phrase was finished: keep it in the stream (the words in the phrase still being spoken are replaced)."""
+        words = text.split()
+        if not words:
+            return
+        self._begin_stream()
+        self._stream_words += list(zip(words, self._stream_known(words)))
+        self._stream_partial = []
+        self._render_stream()
+
+    def set_stream_partial(self, text: str) -> None:
+        """The words of the phrase still being spoken, as far as they are recognised."""
+        words = text.split()
+        if words:
+            self._begin_stream()
+        self._stream_partial = list(zip(words, self._stream_known(words))) if words else []
+        self._render_stream()
+
+    def end_stream(self) -> None:
+        """The row ended (saved, discarded or listening stopped): the next words start a new stream."""
+        self._stream_done = True
+
+    def clear_stream(self) -> None:
+        self._stream_words, self._stream_partial, self._stream_done = [], [], False
+        self._render_stream()
+
+    def stream_text(self) -> str:
+        """Everything in the stream, as plain text."""
+        return " ".join(w for w, _ in self._stream_words + self._stream_partial)
+
+    def _begin_stream(self) -> None:
+        if self._stream_done:
+            self._stream_words, self._stream_partial, self._stream_done = [], [], False
+
+    def _render_stream(self) -> None:
+        """Draw the stream: italic text, known words as theme-coloured pills, the unfinished phrase muted."""
+        pill = f"background-color:{self._accent}; color:{self._on_accent}"
+        muted = self.stream.palette().placeholderText().color().name()
+        def words(items, color):
+            return " ".join(
+                f'<span style="{pill}">&nbsp;{html.escape(w)}&nbsp;</span>' if known
+                else f'<span style="color:{color}">{html.escape(w)}</span>' for w, known in items)
+        text = self._text_color
+        parts = [p for p in (words(self._stream_words, text), words(self._stream_partial, muted)) if p]
+        self.stream.setHtml(f'<div style="font-style:italic">{" ".join(parts)}</div>' if parts else "")
+        self.stream.fit()
+        bar = self.stream.verticalScrollBar()
+        bar.setValue(bar.maximum())                    # keep the newest words in view once it scrolls
+
+    def _stream_height_changed(self, old: int, new: int) -> None:
+        """The stream grew or shrank: take the room from the Current Row box, growing the window only if it has none."""
+        window = self._window
+        if window is None or new <= old or not window.isVisible() or self._view_mini:
+            self._keep_minimum()
+            return
+        slack = max(self.row_table.height() - self.row_table.minimumHeight(), 0)
+        grow = max(new - old - slack, 0)
+        if grow:
+            self._resize_to(window.width(), self._height_now() + grow)
+        else:
+            self._keep_minimum()
 
     def set_last_saved(self, row: str, record: dict[str, object] | None = None) -> None:
         """Show the last saved row as one line: ``Row 6 · 12 fields · Type: T-Shirt, …``.
@@ -957,6 +1182,7 @@ class MainWindow:
         self._on_accent, self._text_color, self._accent = on_accent, text_color, accent
         if self._window is None:
             return                      # not built yet; setup() draws them
+        self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
@@ -974,10 +1200,42 @@ class MainWindow:
 
     def set_sorting_count(self, count: int) -> None:
         """Show the accent-coloured "Needs sorting" button, with *count* as a pill, while terms wait."""
+        appearing = count > 0 and self._sorting_count == 0
         self._sorting_count = count
+        slide = (appearing and self._view_mini and self._window is not None and self._window.isVisible()
+                 and self.animation_ms > 0)
+        if slide:
+            self.sorting_button.setMaximumWidth(0)       # starts squeezed shut, so Start gives it the room
         self._refresh_visibility()
         self.badge_label.setText(str(count))
+        if slide:
+            self._slide_sorting_in()
         self.sorting_button.setAccessibleName(f"Term Helper ({count})")
+
+    def _slide_sorting_in(self) -> None:
+        """Mini view: the Start button eases narrower while the Term Helper button grows in on its right."""
+        button = self.sorting_button
+        target = max(button.sizeHint().width(), 44)
+        effect = QGraphicsOpacityEffect(button)
+        button.setGraphicsEffect(effect)
+        animation = QVariantAnimation(button)
+        animation.setDuration(260)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+
+        def step(value) -> None:
+            button.setMaximumWidth(max(int(target * float(value)), 1))
+            effect.setOpacity(float(value))
+
+        def done() -> None:
+            button.setMaximumWidth(16777215)
+            button.setGraphicsEffect(None)
+
+        animation.valueChanged.connect(step)
+        animation.finished.connect(done)
+        self._sorting_animation = animation
+        animation.start()
 
     def set_footer(self, text: str, offer_download: bool = False) -> None:
         """Show a status message; optionally reveal the model-download button."""

@@ -231,3 +231,39 @@ class TestSettingsApplied(AppCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVoiceStreamInTheApp(unittest.TestCase):
+    def setUp(self):
+        import pathlib, tempfile
+        from quill.bridge.xlsx_bridge import XlsxBridge
+        from quill.config.settings import Settings
+        from tests.fixtures import make_workbook
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        d = pathlib.Path(self._tmp.name)
+        path = make_workbook(d / "p.xlsx")
+        self.app = QuillApp(_app, Settings.load(d / "cfg"), XlsxBridge(path),
+                            listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: d,
+                            speaker=FakeSpeaker(), sound_player=lambda p: None)
+        self.app.start()
+
+    def test_words_are_shown_while_listening_and_known_ones_are_flagged(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app._heard("hello there")
+        self.assertEqual(self.app.window.stream_text(), "hello there")
+        known = self.app._known_words(["next", "row", "zzzz"])
+        self.assertEqual(known, [True, True, False])
+
+    def test_nothing_is_shown_while_not_listening(self):
+        self.app._heard("hello there")
+        self.app._hearing("hello")
+        self.assertEqual(self.app.window.stream_text(), "")
+
+    def test_the_stream_restarts_after_listening_stops_and_starts_again(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app._heard("black")
+        self.app.controller.handle_transcript("stop listening")
+        self.app.controller.handle_transcript("start listening")
+        self.app._heard("navy")
+        self.assertEqual(self.app.window.stream_text(), "navy")

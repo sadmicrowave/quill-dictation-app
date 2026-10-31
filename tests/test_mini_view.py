@@ -57,11 +57,55 @@ class TestMiniWindow(unittest.TestCase):
         for name in HIDDEN_IN_MINI:
             self.assertFalse(shown(self.w, name), name)
 
-    def test_the_mini_view_keeps_the_row_the_buttons_and_the_way_back(self):
+    def test_the_mini_view_keeps_the_buttons_and_the_way_back(self):
         self.w.set_mini(True)
         _app.processEvents()
-        for name in ("dot", "state_label", "toggle_button", "row_table", "sorting_button", "mini_button"):
+        for name in ("dot", "state_label", "toggle_button", "sorting_button", "mini_button"):
             self.assertTrue(shown(self.w, name), name)
+
+    def test_the_default_mini_size_has_no_stream_or_row_but_a_taller_one_does(self):
+        self.w.set_mini(True)
+        _app.processEvents()
+        self.assertFalse(shown(self.w, "row_table"))
+        self.assertFalse(shown(self.w, "stream"))
+        self.w.widget.resize(MainWindow.MINI_WIDTH, 260)
+        _app.processEvents()
+        self.assertTrue(shown(self.w, "row_table"))
+        self.assertTrue(shown(self.w, "stream"))
+        self.w.widget.resize(MainWindow.MINI_WIDTH, self.w._mini_base)
+        _app.processEvents()
+        self.assertFalse(shown(self.w, "row_table"))
+
+    def test_the_mini_view_comes_back_at_the_size_the_user_left_it(self):
+        self.w.set_mini(True)
+        _app.processEvents()
+        self.w.widget.resize(400, 300)
+        _app.processEvents()
+        self.w.report_size()
+        self.w.set_mini(False)
+        _app.processEvents()
+        self.w.set_mini(True)
+        _app.processEvents()
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (400, 300))
+        self.assertTrue(shown(self.w, "row_table"))
+
+    def test_the_mini_size_is_reported_on_its_own(self):
+        reported = []
+        w = MainWindow(on_mini_resized=lambda a, b: reported.append((a, b)))
+        w.setup()
+        w.widget.show()
+        w.set_mini(True)
+        _app.processEvents()
+        w.widget.resize(380, 280)
+        _app.processEvents()
+        w.report_size()
+        self.assertEqual(reported[-1], (380, 280))
+
+    def test_a_remembered_mini_size_is_used(self):
+        self.w.restore_mini_size(390, 310)
+        self.w.set_mini(True)
+        _app.processEvents()
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (390, 310))
 
     def test_the_state_text_is_still_there_in_the_mini_view(self):
         self.w.set_mini(True)
@@ -128,10 +172,9 @@ class TestMiniWindow(unittest.TestCase):
         self.assertIn("border: none", rule)
         self.assertIn("background: transparent", rule)
 
-    def test_the_row_box_is_small_but_always_there(self):
+    def test_the_row_box_is_small_in_the_mini_view_and_always_there_in_the_full_one(self):
         self.w.set_mini(True)
         _app.processEvents()
-        self.assertTrue(shown(self.w, "row_table"))
         self.assertLessEqual(self.w.row_table.minimumHeight(), 70)
         self.w.set_mini(False)
         _app.processEvents()
@@ -314,7 +357,9 @@ class TestMiniInTheApp(DemoCase):
         self.app.controller.handle_transcript("start listening")
         self.app.controller.handle_transcript("t-shirt thirty five dollars")
         _app.processEvents()
-        self.assertGreater(self.app.window.row_table.rowCount(), 0)
+        self.assertGreater(self.app.window.row_table.rowCount(), 0)             # still filled, shown once the mini view is tall
+        self.app.window.widget.resize(MainWindow.MINI_WIDTH, 300)
+        _app.processEvents()
         self.assertTrue(self.app.window.row_table.isVisibleTo(self.app.window.widget))
 
     def test_needs_sorting_count_shows_in_the_mini_view(self):
@@ -405,3 +450,73 @@ class TestRememberedSize(unittest.TestCase):
         self.w.restore_size(90000, 90000)
         room = self.w.widget.screen().availableGeometry()
         self.assertLessEqual(self.w.widget.width(), room.width())
+
+
+class TestVoiceStream(unittest.TestCase):
+    def setUp(self):
+        self.w = MainWindow()
+        self.w.setup()
+        self.w.widget.resize(360, 620)
+        self.w.widget.show()
+        self.w.set_stream_classifier(lambda words: [word in ("black", "large") for word in words])
+        _app.processEvents()
+
+    def test_the_heading_and_the_box_are_there(self):
+        self.assertEqual(self.w.row_heading.text(), "Voice Stream")
+        self.assertTrue(self.w.stream.isReadOnly())
+        self.assertTrue(self.w.stream.font().italic())
+
+    def test_heard_words_appear_with_known_ones_as_pills(self):
+        self.w.add_stream_text("a black shirt")
+        self.assertEqual(self.w.stream_text(), "a black shirt")
+        html = self.w.stream.toHtml()
+        self.assertIn(self.w._accent.lower(), html.lower())          # the pill's colour
+        self.assertIn("italic", html)
+
+    def test_the_unfinished_phrase_is_shown_then_replaced_by_the_final_one(self):
+        self.w.set_stream_partial("black")
+        self.assertEqual(self.w.stream_text(), "black")
+        self.w.add_stream_text("black large")
+        self.assertEqual(self.w.stream_text(), "black large")
+
+    def test_the_box_grows_with_the_text_up_to_a_limit(self):
+        one = self.w.stream.height()
+        self.w.add_stream_text(" ".join(["word"] * 60))
+        _app.processEvents()
+        self.assertGreater(self.w.stream.height(), one)
+        self.w.add_stream_text(" ".join(["word"] * 600))
+        _app.processEvents()
+        line = self.w.stream.fontMetrics().lineSpacing()
+        self.assertLessEqual(self.w.stream.height(), 5 * line + 30)
+        self.assertTrue(self.w.stream.verticalScrollBar().maximum() > 0)
+
+    def test_a_finished_row_stays_until_the_next_words_arrive(self):
+        self.w.add_stream_text("black large")
+        self.w.end_stream()
+        self.assertEqual(self.w.stream_text(), "black large")
+        self.w.add_stream_text("navy")
+        self.assertEqual(self.w.stream_text(), "navy")
+
+    def test_the_text_cannot_be_selected(self):
+        self.assertEqual(self.w.stream.textInteractionFlags(), Qt.TextInteractionFlag.NoTextInteraction)
+
+
+class TestSortingButtonSlidesIn(unittest.TestCase):
+    def test_in_the_mini_view_start_makes_room_while_the_button_grows(self):
+        from PySide6.QtTest import QTest
+        MainWindow.animation_ms = 240
+        w = MainWindow()
+        w.setup()
+        w.widget.show()
+        w.set_mini(True)
+        QTest.qWait(300)
+        start = w.toggle_button.width()
+        w.set_sorting_count(2)
+        QTest.qWait(60)
+        mid = w.sorting_button.width()
+        self.assertLess(mid, w.sorting_button.sizeHint().width() + 1)
+        QTest.qWait(400)
+        end = w.sorting_button.width()
+        self.assertGreater(end, mid - 1)
+        self.assertLess(w.toggle_button.width(), start)                       # Start eased narrower
+        self.assertIsNone(w.sorting_button.graphicsEffect())

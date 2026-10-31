@@ -231,13 +231,16 @@ class TestCurrentRowAlwaysVisible(unittest.TestCase):
         _app.processEvents()
 
     def test_the_heading_is_plain_text_without_an_arrow(self):
-        self.assertEqual(self.w.row_heading.text(), "Current Row")
+        self.assertEqual(self.w.row_heading.text(), "Voice Stream")
         self.assertFalse(hasattr(self.w, "row_toggle"))
         self.assertFalse(hasattr(self.w, "set_row_collapsed"))
 
     def test_the_table_is_always_shown(self):
         self.assertTrue(self.w.row_table.isVisible())
         self.w.set_mini(True)
+        _app.processEvents()
+        self.assertFalse(self.w.row_table.isVisible())          # not at the compact mini size
+        self.w.set_mini(False)
         _app.processEvents()
         self.assertTrue(self.w.row_table.isVisible())
 
