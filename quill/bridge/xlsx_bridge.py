@@ -84,6 +84,8 @@ class XlsxBridge(GridBridge):
 
     def _add_inline(self, source: ListSource, value: str) -> None:
         """Rewrite the inline validation formula(s) to include *value*."""
+        if "," in value or '"' in value:
+            raise BridgeError(f"'{value}' can't go into the '{source.column}' list: it contains a comma or a quote mark.")
         new_items = [*source.items, value]
         formula = '"' + ",".join(new_items) + '"'
         if len(formula) - 2 > INLINE_LIST_LIMIT:

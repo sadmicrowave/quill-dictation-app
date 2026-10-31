@@ -17,15 +17,17 @@ import logging
 from typing import Callable
 
 import html
-from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSize, Qt, QTimer, QVariantAnimation
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, QVariantAnimation
 from PySide6.QtWidgets import (
-    QGraphicsOpacityEffect, QStyle, QTextEdit, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
+    QGraphicsOpacityEffect, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
     QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
 
 from quill.ui.chrome import set_always_on_top
 from quill.ui.icons import make_icon
+from quill.ui.main_widgets import (
+    CHIP_HEIGHT, ROW_EMPTY_HEIGHT, STREAM_MIN_HEIGHT, ChipPlacer, ResizeWatcher, RowTable, StreamBox, WorkbookCombo,
+)
 from quill.ui.theme import apply_spacing
 from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, connection_tip, tooltip_lines
 
@@ -44,10 +46,8 @@ NOT_CONNECTED_HINT = (
     "the workbook opening) or through an .xlsx file chosen with File > Open Spreadsheet File.\n"
     "Open a workbook or choose a file; listening can start once the connection is made."
 )
-CHIP_HEIGHT = 22
 
-#: Heights (px) of the Current Row box: when empty, and the most it grows to before it scrolls inside itself.
-ROW_EMPTY_HEIGHT = 42
+#: Most the Current Row box grows to before it scrolls inside itself (full view, mini view).
 ROW_MAX_FULL = 150
 ROW_MAX_MINI = 66
 
@@ -55,150 +55,10 @@ ROW_MAX_MINI = 66
 LOG_BOTTOM_MARGIN = 7
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
-STREAM_MAX_LINES = 5        # the Voice Stream box grows to this many lines, then scrolls
-STREAM_MIN_HEIGHT = 40
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
-
-
-class _ChipPlacer(QObject):
-    """Keeps a chip laid over the left of a combo box (in the space its text would use) as the box moves or resizes.
-
-    The chip is a sibling of the box, not a child: a label inside a combo box is not given the style sheet.
-    """
-
-    def __init__(self, combo: QComboBox, chip: QLabel) -> None:
-        super().__init__(combo)
-        self._combo, self._chip = combo, chip
-        combo.installEventFilter(self)
-
-    def eventFilter(self, obj, event) -> bool:
-        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show):
-            self.place()
-        return False
-
-    def place(self) -> None:
-        gap = 8
-        room = max(self._combo.width() - 2 * gap - 22, 40)          # leave the drop-down arrow clear
-        width = min(self._chip.sizeHint().width(), room)
-        box = self._combo.geometry()                                  # in the shared parent's coordinates
-        self._chip.setGeometry(box.x() + gap, box.y() + (box.height() - CHIP_HEIGHT) // 2, width, CHIP_HEIGHT)
-        self._chip.raise_()
-
-
-class _StreamBox(QTextEdit):
-    """The Voice Stream: what is being heard, as italic text that grows to a few lines before it scrolls.
-
-    Words Quill recognises are drawn as pills in the theme colour. It is display only.
-    """
-
-    def __init__(self, on_height=None) -> None:
-        super().__init__()
-        self._on_height = on_height or (lambda old, new: None)
-        self.setReadOnly(True)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setPlaceholderText("Words you say appear here as they are heard")
-        font = self.font()
-        font.setItalic(True)
-        self.setFont(font)
-        self.setFixedHeight(STREAM_MIN_HEIGHT)
-
-    def fit(self) -> None:
-        """Make the box as tall as its text needs (between one line and :data:`STREAM_MAX_LINES`)."""
-        doc = self.document()
-        doc.setTextWidth(max(self.viewport().width(), 40))
-        line = self.fontMetrics().lineSpacing()
-        extra = 2 * self.frameWidth() + 14                         # border and the style sheet's padding
-        wanted = int(doc.size().height()) + extra
-        height = max(STREAM_MIN_HEIGHT, min(wanted, STREAM_MAX_LINES * line + extra))
-        if height != self.height():
-            old = self.height()
-            self.setFixedHeight(height)
-            self._on_height(old, height)
-
-    def resizeEvent(self, event) -> None:                           # noqa: N802 (Qt name)
-        super().resizeEvent(event)
-        QTimer.singleShot(0, self.fit)                              # the wrapping changed with the width
-        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
-
-
-class _ResizeWatcher(QObject):
-    """Restarts a timer every time the window is resized, so the size is reported once it has settled."""
-
-    def __init__(self, window: QWidget, timer: QTimer, on_resize=None) -> None:
-        super().__init__(window)
-        self._timer = timer
-        self._on_resize = on_resize
-
-    def eventFilter(self, obj, event) -> bool:
-        if event.type() == QEvent.Type.Resize:
-            self._timer.start()
-            if self._on_resize is not None:
-                self._on_resize()
-        return False
-
-
-class _WorkbookCombo(QComboBox):
-    """The workbook picker: a drop-down only while there is more than one workbook to choose from.
-
-    With none (the "not connected" notice) or one, the arrow is hidden and it does not open, so it
-    does not promise a choice that is not there.
-    """
-
-    def sync(self) -> None:
-        single = self.count() <= 1
-        if self.property("single") != single:
-            self.setProperty("single", single)
-            self.style().unpolish(self)
-            self.style().polish(self)
-        self.setCursor(Qt.CursorShape.ArrowCursor if single else Qt.CursorShape.PointingHandCursor)
-
-    def showPopup(self) -> None:                                   # noqa: N802 (Qt name)
-        if self.count() > 1:
-            super().showPopup()
-
-
-class _RowTable(QTableWidget):
-    """The Current Row box: it asks for just its minimum height, so it grows only when given room.
-
-    It only displays: the cells can't be selected, focused or edited (that would suggest an action
-    that isn't there), and the grid line at the far right edge is pushed out of view.
-    """
-
-    def __init__(self, rows: int, columns: int) -> None:
-        super().__init__(rows, columns)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.setShowGrid(False)                  # drawn in paintEvent, so there is no line at the far right
-
-    def paintEvent(self, event) -> None:                             # noqa: N802 (Qt name)
-        super().paintEvent(event)
-        if self.columnCount() < 2 or not self.rowCount():
-            return
-        color = QColor.fromRgba(self.style().styleHint(QStyle.StyleHint.SH_Table_GridLineColor, None, self) & 0xFFFFFFFF)
-        painter = QPainter(self.viewport())
-        painter.setPen(color)
-        bottom = self.rowViewportPosition(self.rowCount() - 1) + self.rowHeight(self.rowCount() - 1)
-        divider = self.columnViewportPosition(0) + self.columnWidth(0) - 1
-        painter.drawLine(divider, 0, divider, bottom - 1)            # between the two columns
-        for row in range(self.rowCount()):
-            y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
-            painter.drawLine(0, y, self.viewport().width() - 1, y)
-        painter.end()
-
-
-    def sizeHint(self) -> QSize:                                    # noqa: N802 (Qt name)
-        return QSize(super().sizeHint().width(), self.minimumHeight())
-
-    def minimumSizeHint(self) -> QSize:                             # noqa: N802
-        return QSize(super().minimumSizeHint().width(), self.minimumHeight())
 
 
 class MainWindow:
@@ -300,7 +160,7 @@ class MainWindow:
         self._size_timer.setSingleShot(True)
         self._size_timer.setInterval(SIZE_SETTLE_MS)
         self._size_timer.timeout.connect(self.report_size)
-        window.installEventFilter(_ResizeWatcher(window, self._size_timer, self._sync_mini_detail))
+        window.installEventFilter(ResizeWatcher(window, self._size_timer, self._sync_mini_detail))
         central = QWidget()
         central.setObjectName("mainRoot")                       # paints the background; opacity applies to it
         central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -366,7 +226,7 @@ class MainWindow:
         self._layout, self._status_row = layout, row
 
         # --- workbook row
-        self.workbook_combo = _WorkbookCombo()
+        self.workbook_combo = WorkbookCombo()
         self.workbook_combo.sync()
         self.workbook_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.workbook_combo.activated.connect(
@@ -380,7 +240,7 @@ class MainWindow:
         self.workbook_row = QWidget()                   # the picker row and the sheet name under it; the mini view hides it whole
         self.picker_row = QWidget(self.workbook_row)
         self.connection_chip = self._make_chip(self.picker_row)
-        self._chip_placer = _ChipPlacer(self.workbook_combo, self.connection_chip)
+        self._chip_placer = ChipPlacer(self.workbook_combo, self.connection_chip)
         self.mini_chip = self._make_chip(None)
         self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
         self.open_file_button.setProperty("iconOnly", True)
@@ -407,9 +267,9 @@ class MainWindow:
         self.row_heading = QLabel("Voice Stream")
         self.row_heading.setProperty("staticHeading", True)
         layout.addWidget(self.row_heading, 0, Qt.AlignmentFlag.AlignLeft)
-        self.stream = _StreamBox(self._stream_height_changed)
+        self.stream = StreamBox(self._stream_height_changed)
         layout.addWidget(self.stream)
-        self.row_table = _RowTable(0, 2)
+        self.row_table = RowTable(0, 2)
         self.row_table.horizontalHeader().setVisible(False)
         self.row_table.verticalHeader().setVisible(False)
         self.row_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -420,11 +280,11 @@ class MainWindow:
         self._row_target = ROW_EMPTY_HEIGHT
         # a hint shown while no fields have been heard yet
         self.row_placeholder = QLabel("Fields appear here as they are heard", self.row_table.viewport())
-        self.row_placeholder.setProperty("note", True)
-        self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.row_placeholder.setProperty("placeholder", True)        # same look as the Voice Stream box's placeholder
+        self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         holder = QVBoxLayout(self.row_table.viewport())
-        holder.setContentsMargins(4, 0, 4, 0)
+        holder.setContentsMargins(4, 4, 4, 0)             # the text starts where the Voice Stream box's text does
         holder.addWidget(self.row_placeholder)
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
         self._has_last_saved = False                       # the line shows only once a row has been saved
@@ -514,6 +374,7 @@ class MainWindow:
 
     @property
     def log_collapsed(self) -> bool:
+        """True while the log is hidden."""
         return self._log_collapsed
 
     def set_log_collapsed(self, collapsed: bool, notify: bool = False) -> None:
@@ -530,6 +391,7 @@ class MainWindow:
 
     @property
     def mini(self) -> bool:
+        """True when the mini view is wanted (it may still be animating there)."""
         return self._mini
 
     def set_mini(self, mini: bool, notify: bool = False) -> None:
@@ -825,7 +687,6 @@ class MainWindow:
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
         self._fit_row_table(animate=False)
         self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini else tall)
-        log_open = full and not self._log_collapsed
         self._layout.setStretchFactor(self.row_table, 1)       # extra height always goes to the Current Row box;
         self._layout.setStretchFactor(self.log, 0)             # the log keeps its own height
         self._keep_minimum()
@@ -986,6 +847,7 @@ class MainWindow:
         return self._window
 
     def show(self) -> None:
+        """Show the window."""
         if self._window is not None:
             self._window.show()
             self._window.raise_()
@@ -1019,6 +881,7 @@ class MainWindow:
         self.workbook_combo.sync()
 
     def update_sheet(self, name: str) -> None:
+        """Show the name of the sheet that is active in the workbook."""
         self.sheet_label.setText(f"Sheet: {name}")
 
     def _row_table_height(self) -> int:
@@ -1090,6 +953,7 @@ class MainWindow:
         self._stream_done = True
 
     def clear_stream(self) -> None:
+        """Empty the Voice Stream."""
         self._stream_words, self._stream_partial, self._stream_done = [], [], False
         self._render_stream()
 

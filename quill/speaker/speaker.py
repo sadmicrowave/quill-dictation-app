@@ -8,11 +8,14 @@ transcribe its own voice: pass ``on_done=listener.drain`` to :meth:`say`.
 """
 
 from __future__ import annotations
+import logging
 import subprocess
 import sys
 import threading
 import time
 from typing import Callable
+
+log = logging.getLogger("quill.speaker")
 
 DoneCallback = Callable[[], None]
 
@@ -47,7 +50,9 @@ class Speaker:
                 or fails), on the speaking thread.
             lead_in: Seconds to wait first (a sound cue is playing).
         """
-        print(f"  Quill: {text}")
+        log.info("says: %s", text)
+        if sys.stdout is not None and sys.stdout.isatty():     # a developer's terminal also sees it
+            print(f"  Quill: {text}")
         if not self.enabled:
             if on_done:
                 on_done()
@@ -79,9 +84,10 @@ class Speaker:
 
     def _say_mac(self, text: str) -> None:
         try:
-            subprocess.run(["say", text], check=False, timeout=30)
-        except Exception:
-            pass   # TTS is a nicety; the prompt is also printed and logged
+            # "--" ends the options, so spoken text that starts with "-" is never read as a ``say`` option.
+            subprocess.run(["say", "--", text], check=False, timeout=30)    # noqa: S603, S607 (built-in macOS tool)
+        except Exception as exc:
+            log.debug("speech failed: %s", exc)   # TTS is a nicety; the prompt is also logged
 
     def _say_win(self, text: str) -> None:
         try:
@@ -89,5 +95,5 @@ class Speaker:
             engine = pyttsx3.init()   # one engine per utterance: SAPI engines are thread-bound
             engine.say(text)
             engine.runAndWait()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("speech failed: %s", exc)

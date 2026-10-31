@@ -29,12 +29,12 @@ class FakeRunner:
 
 class TestRunning(unittest.TestCase):
     def test_mac_lists_the_known_programs_that_are_running(self):
-        runner = FakeRunner({"System Events": "Safari, Finder, Numbers, Quill"})
+        runner = FakeRunner({"comm=": "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder\n/Applications/Numbers.app/Contents/MacOS/Numbers\n"})
         found = SpreadsheetHosts("darwin", runner).running()
         self.assertEqual([a.key for a in found], ["numbers"])
 
     def test_excel_is_recognised_too(self):
-        runner = FakeRunner({"System Events": "Microsoft Excel, Numbers"})
+        runner = FakeRunner({"comm=": "/Applications/Microsoft Excel.app/Contents/MacOS/Microsoft Excel\n/Applications/Numbers.app/Contents/MacOS/Numbers"})
         self.assertEqual([a.key for a in SpreadsheetHosts("darwin", runner).running()], ["excel", "numbers"])
 
     def test_windows_reads_the_task_list(self):
@@ -56,22 +56,22 @@ class TestOpenFiles(unittest.TestCase):
         self.path = make_file(self.dir.name)
 
     def test_numbers_documents_are_read_from_its_script(self):
-        runner = FakeRunner({"System Events": "Numbers", "Numbers": f"{self.path}\n/gone/old.numbers\n"})
+        runner = FakeRunner({"comm=": "/Applications/Numbers.app/Contents/MacOS/Numbers", "Numbers": f"{self.path}\n/gone/old.numbers\n"})
         found = SpreadsheetHosts("darwin", runner).open_excel_files()
         self.assertEqual(found, [(NUMBERS, self.path)])
 
     def test_files_named_on_a_command_line_are_found(self):
         line = f'/Applications/LibreOffice.app/Contents/MacOS/soffice --calc "{self.path}"'
-        runner = FakeRunner({"System Events": "soffice", "ps": line})
+        runner = FakeRunner({"comm=": "/Applications/LibreOffice.app/Contents/MacOS/soffice", "command=": line})
         found = SpreadsheetHosts("darwin", runner).open_excel_files()
         self.assertEqual(found, [(LIBREOFFICE, self.path)])
 
     def test_files_that_are_not_excel_files_or_do_not_exist_are_ignored(self):
-        runner = FakeRunner({"System Events": "Numbers", "Numbers": "/x/a.numbers\n/x/missing.xlsx\n"})
+        runner = FakeRunner({"comm=": "/Applications/Numbers.app/Contents/MacOS/Numbers", "Numbers": "/x/a.numbers\n/x/missing.xlsx\n"})
         self.assertEqual(SpreadsheetHosts("darwin", runner).open_excel_files(), [])
 
     def test_excel_itself_is_left_to_live_automation(self):
-        runner = FakeRunner({"System Events": "Microsoft Excel"})
+        runner = FakeRunner({"comm=": "/Applications/Microsoft Excel.app/Contents/MacOS/Microsoft Excel"})
         self.assertEqual(SpreadsheetHosts("darwin", runner).open_excel_files(), [])
 
 

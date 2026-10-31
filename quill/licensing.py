@@ -84,11 +84,12 @@ class TokenStore(Protocol):
     def clear(self) -> None: ...
 
 
+# (bandit flags empty strings assigned to token-like names; these are placeholders, not secrets)
 class MemoryTokenStore:
     """Keeps the token for this run only (the placeholder until a keychain store exists)."""
 
     def __init__(self) -> None:
-        self._token = ""
+        self._token = ""  # nosec B105
 
     def get(self) -> str:
         return self._token
@@ -97,19 +98,19 @@ class MemoryTokenStore:
         self._token = token
 
     def clear(self) -> None:
-        self._token = ""
+        self._token = ""  # nosec B105
 
 
 class Transport(Protocol):
     """Sends a request to the licence service and returns its JSON answer as a dict."""
 
-    def request(self, base_url: str, path: str, payload: dict, token: str = "") -> dict: ...
+    def request(self, base_url: str, path: str, payload: dict, token: str = "") -> dict: ...  # nosec B107
 
 
 class UnavailableTransport:
     """The stand-in used until the service exists: every request says it is not available."""
 
-    def request(self, base_url: str, path: str, payload: dict, token: str = "") -> dict:
+    def request(self, base_url: str, path: str, payload: dict, token: str = "") -> dict:  # nosec B107
         raise NotAvailable("The account service is not available yet.")
 
 
@@ -146,6 +147,7 @@ class LicenseService:
 
     @property
     def account(self) -> dict:
+        """The ``[account]`` settings table this service reads and updates."""
         return self._settings.account
 
     @property
@@ -231,7 +233,7 @@ class LicenseService:
 
     # ------------------------------------------------------------------ #
 
-    def _send(self, path: str, payload: dict, token: str = "") -> dict:
+    def _send(self, path: str, payload: dict, token: str = "") -> dict:  # nosec B107
         if not self.configured:
             raise NotAvailable("The account service is not set up yet.")
         return self._transport.request(str(self.account["service_url"]), path, payload, token)

@@ -61,19 +61,48 @@ class TestDownload(unittest.TestCase):
     def test_download_and_unpack(self):
         url = self._zip({"vosk-model-t/am/final.mdl": "x", "vosk-model-t/conf/mfcc.conf": "y"})
         calls = []
-        model = download_model(self.root / "dest", url, progress=lambda d, t: calls.append((d, t)))
+        model = download_model(self.root / "dest", url, progress=lambda d, t: calls.append((d, t)), allow_local_file=True)
         self.assertEqual(model.name, "vosk-model-t")
         self.assertTrue(is_model_dir(model))
         self.assertTrue(calls and calls[-1][0] == calls[-1][1])
 
     def test_archive_without_model_rejected(self):
         with self.assertRaises(RuntimeError):
-            download_model(self.root / "dest", self._zip({"readme.txt": "hi"}))
+            download_model(self.root / "dest", self._zip({"readme.txt": "hi"}), allow_local_file=True)
 
     def test_zip_slip_rejected(self):
         with self.assertRaises(RuntimeError):
-            download_model(self.root / "dest", self._zip({"../evil.txt": "x"}))
+            download_model(self.root / "dest", self._zip({"../evil.txt": "x"}), allow_local_file=True)
         self.assertFalse((self.root / "evil.txt").exists())
+
+    def test_only_https_is_accepted_for_a_download(self):
+        url = self._zip({"vosk-model-t/am/final.mdl": "x", "vosk-model-t/conf/mfcc.conf": "y"})
+        with self.assertRaises(RuntimeError):
+            download_model(self.root / "dest", url)                          # file:// without the test switch
+        with self.assertRaises(RuntimeError):
+            download_model(self.root / "dest", "http://example.com/m.zip")   # plain http
+
+    def test_a_wrong_checksum_is_rejected_and_nothing_is_unpacked(self):
+        url = self._zip({"vosk-model-t/am/final.mdl": "x", "vosk-model-t/conf/mfcc.conf": "y"})
+        with self.assertRaises(RuntimeError):
+            download_model(self.root / "dest", url, expected_sha256="0" * 64, allow_local_file=True)
+        self.assertFalse((self.root / "dest" / "vosk-model-t").exists())
+
+    def test_a_correct_checksum_is_accepted(self):
+        import hashlib
+        url = self._zip({"vosk-model-t/am/final.mdl": "x", "vosk-model-t/conf/mfcc.conf": "y"})
+        digest = hashlib.sha256((self.root / "m.zip").read_bytes()).hexdigest()
+        self.assertTrue(is_model_dir(download_model(self.root / "dest", url, expected_sha256=digest,
+                                                    allow_local_file=True)))
+
+    def test_an_oversized_archive_is_rejected(self):
+        from quill.listener import model as model_module
+        url = self._zip({"vosk-model-t/am/final.mdl": "x" * 100, "vosk-model-t/conf/mfcc.conf": "y"})
+        original = model_module.MAX_UNPACKED_BYTES
+        model_module.MAX_UNPACKED_BYTES = 10
+        self.addCleanup(lambda: setattr(model_module, "MAX_UNPACKED_BYTES", original))
+        with self.assertRaises(RuntimeError):
+            download_model(self.root / "dest", url, allow_local_file=True)
 
 
 if __name__ == "__main__":

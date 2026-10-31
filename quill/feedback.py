@@ -108,6 +108,7 @@ class Feedback:
 
     @property
     def mode(self) -> str:
+        """How Quill confirms what it did: one of :data:`MODES` (sounds, a spoken word or nothing)."""
         mode = self._settings.preferences.get("feedback", "sounds")
         return mode if mode in MODES else "sounds"
 

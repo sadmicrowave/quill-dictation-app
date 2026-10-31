@@ -37,7 +37,7 @@ from quill.ui.chrome import apply_chrome
 from quill.ui.settings_widgets import (
     FlatCombo, GuardedCombo, GuardedSlider, GuardedSpinBox, SegmentedControl, SettingRow, ToggleSwitch,
 )
-from quill.ui.theme import ACCENTS, DENSITIES, apply_opacity, apply_spacing
+from quill.ui.theme import ACCENTS, DENSITIES, apply_opacity
 
 if TYPE_CHECKING:
     from quill.config.settings import Settings

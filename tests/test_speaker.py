@@ -16,7 +16,12 @@ class TestSpeaker(unittest.TestCase):
     def test_mac_uses_say_command(self):
         with mock.patch("subprocess.run") as run:
             Speaker(platform="darwin", run_in_thread=False).say("hello there")
-        self.assertEqual(run.call_args[0][0], ["say", "hello there"])
+        self.assertEqual(run.call_args[0][0], ["say", "--", "hello there"])
+
+    def test_text_that_looks_like_an_option_is_not_read_as_one(self):
+        with mock.patch("subprocess.run") as run:
+            Speaker(platform="darwin", run_in_thread=False).say("-v Zarvox")
+        self.assertEqual(run.call_args[0][0], ["say", "--", "-v Zarvox"])
 
     def test_done_called_after_speech(self):
         order = []

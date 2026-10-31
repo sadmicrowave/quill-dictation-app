@@ -105,6 +105,7 @@ class HelpWindow:
 
     @property
     def widget(self) -> QWidget | None:
+        """The underlying window (None before :meth:`setup`)."""
         return self._window
 
     # ------------------------------------------------------------------ #
@@ -126,6 +127,7 @@ class HelpWindow:
                 item.addChild(child)
 
     def topic(self, slug: str) -> Topic | None:
+        """The page with this slug, or None."""
         return next((t for t in self.topics if t.slug == slug), None)
 
     def show(self, topic: str | None = None, section: str | None = None) -> None:
@@ -218,7 +220,7 @@ class HelpWindow:
         doc = self.page.document()
         palette = self.page.palette()
         base = QFont(self.page.font()).pointSizeF() or 12.0
-        muted, text = palette.placeholderText().color(), palette.text().color()
+        text = palette.text().color()
         tint = QColor(palette.highlight().color())
         tint.setAlpha(40)
         panel = QColor(text)

@@ -13,6 +13,7 @@ pyobjc-framework-Cocoa>=10; sys_platform == "darwin"
 
 # Excel bridge
 openpyxl>=3.1          # used for file-based fallback and validation reads
+defusedxml>=0.7        # makes openpyxl refuse XML bombs in a hostile .xlsx
 xlwings>=0.31          # macOS AppleScript bridge + Windows COM
 
 # Cross-platform config directory

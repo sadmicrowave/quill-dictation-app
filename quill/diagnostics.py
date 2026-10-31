@@ -9,6 +9,7 @@ folder, which Settings can open.
 from __future__ import annotations
 import logging
 import logging.handlers
+import os
 import pathlib
 import sys
 import threading
@@ -28,10 +29,21 @@ def log_dir() -> pathlib.Path:
     return folder
 
 
-def setup_logging(folder: pathlib.Path | None = None) -> pathlib.Path:
+def verbose_requested(flag: bool = False) -> bool:
+    """True if detailed (debug) logging was asked for: ``--verbose`` or the ``QUILL_DEBUG`` environment variable."""
+    return flag or os.environ.get("QUILL_DEBUG", "").lower() in ("1", "true", "yes", "on")
+
+
+def setup_logging(folder: pathlib.Path | None = None, verbose: bool = False) -> pathlib.Path:
     """Send the ``quill`` logger and uncaught exceptions to a rotating log file.
 
     Safe to call more than once (it replaces its own handler rather than adding another).
+
+    Args:
+        folder: Where the log file goes (default: the per-user log folder).
+        verbose: Also log debug detail (microphone on / off, background tasks, file and program detection) and
+            copy the log to the terminal. The log stays on this computer and rotates at 500 KB (three
+            backups); the window's own log lines, which can include the values of a saved row, go into it too.
 
     Returns:
         The log file's path.
@@ -40,7 +52,7 @@ def setup_logging(folder: pathlib.Path | None = None) -> pathlib.Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / LOG_NAME
     logger = logging.getLogger("quill")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG if verbose_requested(verbose) else logging.INFO)
     for handler in list(logger.handlers):
         if getattr(handler, "_quill_file", False):
             logger.removeHandler(handler)
@@ -49,6 +61,11 @@ def setup_logging(folder: pathlib.Path | None = None) -> pathlib.Path:
     handler.setFormatter(logging.Formatter(_FORMAT))
     handler._quill_file = True
     logger.addHandler(handler)
+    if verbose_requested(verbose) and sys.stderr is not None:
+        console = logging.StreamHandler(sys.stderr)
+        console.setFormatter(logging.Formatter(_FORMAT))
+        console._quill_file = True            # removed and replaced like the file handler on a second call
+        logger.addHandler(console)
 
     def log_uncaught(exc_type, exc, tb) -> None:
         logger.error("Uncaught error", exc_info=(exc_type, exc, tb))

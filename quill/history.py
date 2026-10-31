@@ -39,6 +39,7 @@ class History:
 
     @property
     def limit(self) -> int:
+        """How many answers are remembered for Undo."""
         return self._entries.maxlen or 0
 
     @limit.setter
@@ -50,6 +51,7 @@ class History:
         return len(self._entries)
 
     def clear(self) -> None:
+        """Forget every remembered answer (for example after connecting to a different spreadsheet)."""
         self._entries.clear()
 
     def push(self, label: str, undo: Callable[[], list[str]]) -> None:

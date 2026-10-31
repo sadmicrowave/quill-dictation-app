@@ -11,6 +11,7 @@ without any spreadsheet program installed.
 """
 
 from __future__ import annotations
+import logging
 import os
 import pathlib
 import re
@@ -18,6 +19,11 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Callable
+
+log = logging.getLogger("quill.hosts")
+
+#: Seconds a helper command may take (a program waiting on a permission dialog would otherwise hang it).
+COMMAND_TIMEOUT_S = 6
 
 Runner = Callable[[list[str]], str]
 """Runs a command and returns its standard output ('' if it failed or timed out)."""
@@ -55,12 +61,14 @@ APPS: tuple[HostApp, ...] = (EXCEL, NUMBERS, LIBREOFFICE, WPS)
 
 
 def _run(args: list[str]) -> str:
+    """Run a command (never through a shell) and return its output; '' if it fails or takes over 6 s."""
     if os.environ.get("QUILL_NO_HOSTS"):              # the tests never ask the system
         return ""
     try:
-        done = subprocess.run(args, capture_output=True, text=True, timeout=6, check=False)
+        done = subprocess.run(args, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, check=False)   # noqa: S603
         return done.stdout
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.debug("command %s failed: %s", args[0], exc)
         return ""
 
 
@@ -84,12 +92,16 @@ class SpreadsheetHosts:
     # ------------------------------------------------------------------ #
 
     def running(self) -> list[HostApp]:
-        """Spreadsheet programs that are running now, in the order of :data:`APPS`."""
+        """Spreadsheet programs that are running now, in the order of :data:`APPS`.
+
+        Where it runs commands that can stall (they are given a time limit), call it off the GUI thread.
+        """
         if self._platform == "darwin":
-            names = self._split(self._run(["osascript", "-e",
-                                           'tell application "System Events" to get name of every '
-                                           "application process whose background only is false"]), ",")
-            return [a for a in APPS if a.mac_process and a.mac_process.lower() in {n.lower() for n in names}]
+            # `ps` needs no permission, unlike asking System Events, which would show Quill's users a
+            # "Quill wants to control System Events" prompt for no visible reason.
+            paths = self._run(["ps", "-axo", "comm="]).splitlines()
+            names = {pathlib.PurePosixPath(line.strip()).name.lower() for line in paths if line.strip()}
+            return [a for a in APPS if a.mac_process and a.mac_process.lower() in names]
         if self._platform == "win32":
             lines = self._run(["tasklist", "/fo", "csv", "/nh"]).lower()
             return [a for a in APPS if a.win_process and f'"{a.win_process.lower()}"' in lines]

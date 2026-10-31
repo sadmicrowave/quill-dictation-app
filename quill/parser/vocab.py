@@ -7,7 +7,7 @@ via WorkbookBridge.get_lists(). No domain-specific terms are hard-coded here.
 from __future__ import annotations
 import difflib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from quill.parser.tokens import tokenize
 

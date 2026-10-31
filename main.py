@@ -5,6 +5,7 @@ Entry point: python main.py  (or double-click the packaged .app / .exe)
 
 Options:
   --workbook PATH   Dictate into an .xlsx file directly (no Excel needed).
+  --verbose, -v     Log debug detail to the log file and the terminal (same as QUILL_DEBUG=1).
 """
 from __future__ import annotations
 import argparse
@@ -12,12 +13,14 @@ import sys
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Start Quill: read the settings, open the first workbook and run the window until the user quits."""
     parser = argparse.ArgumentParser(description="Quill dictation utility")
     parser.add_argument("--workbook", help="path to an .xlsx file to use instead of live Excel")
+    parser.add_argument("--verbose", "-v", action="store_true", help="log debug detail (also QUILL_DEBUG=1)")
     args = parser.parse_args(argv)
 
     from quill.diagnostics import setup_logging
-    setup_logging()                      # a packaged app has no console: keep a log file instead
+    setup_logging(verbose=args.verbose)                      # a packaged app has no console: keep a log file instead
 
     from quill.config.settings import Settings
     settings = Settings.load()

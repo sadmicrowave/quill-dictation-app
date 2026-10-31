@@ -25,6 +25,7 @@ Usage:
 """
 
 from __future__ import annotations
+import contextlib
 import json
 import pathlib
 
@@ -107,10 +108,8 @@ def _parse_keywords(table: dict) -> dict[str, Action]:
     """Convert a ``{phrase: "ACTION_NAME"}`` table, dropping unknown actions."""
     result: dict[str, Action] = {}
     for phrase, action_name in table.items():
-        try:
+        with contextlib.suppress(KeyError, TypeError):      # an unknown action (say, from a newer version) is skipped
             result[phrase.lower()] = Action[action_name]
-        except (KeyError, TypeError):
-            pass  # unknown action (e.g. from a newer version) — skip
     return result
 
 
@@ -120,7 +119,17 @@ def _toml_value(value: object) -> str:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
-    return json.dumps(str(value))   # JSON string escapes are valid TOML basic strings
+    return _toml_string(str(value))
+
+
+def _toml_string(text: str) -> str:
+    """*text* as a TOML basic string.
+
+    JSON escapes are valid TOML escapes, but ``ensure_ascii`` would write an emoji as a surrogate pair
+    (``\\ud83d\\ude00``), which TOML rejects, so the whole settings file would be thrown away on the next
+    launch. Real characters are written as they are instead; control characters stay escaped.
+    """
+    return json.dumps(text, ensure_ascii=False)
 
 
 class Settings:
@@ -295,7 +304,7 @@ class Settings:
         """Write keywords and preferences to TOML in the config dir."""
         lines = ["[keywords]\n"]
         for phrase, action in sorted(self.keywords.items()):
-            lines.append(f"{json.dumps(phrase)} = {json.dumps(action.name)}\n")
+            lines.append(f"{_toml_string(phrase)} = {_toml_string(action.name)}\n")
         lines.append("\n[preferences]\n")
         for key in DEFAULT_PREFERENCES:
             lines.append(f"{key} = {_toml_value(self.preferences[key])}\n")
@@ -304,7 +313,10 @@ class Settings:
             lines.append(f"{key} = {_toml_value(self.account[key])}\n")
         for column, mapping in sorted(self.aliases.items()):
             if mapping:
-                lines.append(f"\n[aliases.{json.dumps(column)}]\n")
+                lines.append(f"\n[aliases.{_toml_string(column)}]\n")
                 for phrase, canonical in sorted(mapping.items()):
-                    lines.append(f"{json.dumps(phrase)} = {json.dumps(canonical)}\n")
-        (self._dir() / self.KEYWORDS_FILE).write_text("".join(lines), encoding="utf-8")
+                    lines.append(f"{_toml_string(phrase)} = {_toml_string(canonical)}\n")
+        target = self._dir() / self.KEYWORDS_FILE
+        scratch = target.with_suffix(".tmp")
+        scratch.write_text("".join(lines), encoding="utf-8")
+        scratch.replace(target)          # an atomic swap: a crash while saving never leaves a half-written file

@@ -22,7 +22,6 @@ from PySide6.QtCore import QPoint, QRectF, Qt
 from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from quill.ui.main_window import COLOR_ACTIVE, COLOR_IDLE
 
 ICON_SIZE = 64
 
@@ -176,6 +175,7 @@ class TrayIcon:
 
     @property
     def listening(self) -> bool:
+        """True while Quill is listening (the icon is then filled in)."""
         return self._listening
 
     @property

@@ -14,10 +14,13 @@ or a speech model.
 
 from __future__ import annotations
 import json
+import logging
 import pathlib
 import queue
 import threading
 from typing import Callable, ContextManager
+
+log = logging.getLogger("quill.listener")
 
 TranscriptCallback = Callable[[str], None]
 """Type alias: called with each final transcript segment."""
@@ -137,12 +140,14 @@ class Listener:
         """Open the microphone and begin recognising audio in a background thread."""
         if self._running:
             return
+        log.debug("opening the microphone")
         self._running = True
         self._thread = threading.Thread(target=self._run, name="quill-listener", daemon=True)
         self._thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:
         """Close the microphone: signal the capture thread to stop and wait briefly for it."""
+        log.debug("closing the microphone")
         self._running = False
         thread, self._thread = self._thread, None
         if thread is not None and thread is not threading.current_thread():
@@ -201,6 +206,7 @@ class Listener:
                     elif self._on_partial is not None:
                         self._partial(self._read_partial(recognizer))
         except Exception as exc:   # model missing, no microphone, permission denied, ...
+            log.exception("listening stopped")
             self._running = False
             self._on_error(f"Listening stopped: {exc}")
         finally:
@@ -225,4 +231,5 @@ class Listener:
         except (ValueError, AttributeError):
             return
         if text:
+            log.debug("heard: %s", text)
             self._on_transcript(text)

@@ -11,6 +11,7 @@ delivers on the GUI thread, so no widget is touched off-thread.
 
 from __future__ import annotations
 import os
+import logging
 import pathlib
 import threading
 from typing import Callable
@@ -48,7 +49,10 @@ class Relay(QObject):
     error = Signal(str)
     progress = Signal(int, int)
     model_ready = Signal(object)   # pathlib.Path on success, None on failure
+    background_done = Signal(object, object)   # (callback, result) of a task that ran off the GUI thread
 
+
+log = logging.getLogger("quill.app")
 
 #: How long after the last write the program showing the file is asked to reload it, and how many
 #: watcher ticks pass between looks for a file open in another spreadsheet program.
@@ -96,6 +100,7 @@ class QuillApp:
         self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
         self._probe_ticks = 0
+        self._host_probe_running = False             # a look for files in other programs is under way
         self._host_noted = False
         self._host_reload = QTimer()
         self._host_reload.setSingleShot(True)
@@ -155,8 +160,9 @@ class QuillApp:
         self._watcher.setInterval(poll_interval_ms)
         self._watcher.timeout.connect(self.poll_workbooks)
 
-        self.relay.transcript.connect(self._heard)                  # first: show the words before they are acted on
-        self.relay.partial.connect(self._hearing)
+        self.relay.transcript.connect(self._on_phrase_heard)        # first: show the words before they are acted on
+        self.relay.partial.connect(self._on_partial_heard)
+        self.relay.background_done.connect(lambda callback, result: callback(result))
         self.relay.transcript.connect(self.controller.handle_transcript)
         self.relay.error.connect(self._on_error)
         self.relay.progress.connect(self._on_progress)
@@ -183,6 +189,7 @@ class QuillApp:
                                  int(self.settings.preferences["window_height"]))
         self.window.show()
         self.qapp.aboutToQuit.connect(self.window.report_size)      # a size changed just before quitting counts
+        self.qapp.aboutToQuit.connect(self.shutdown)
         self._apply_dock()
         self._install_titlebar_button()
         self.window.set_file_mode(isinstance(self.controller.bridge, XlsxBridge))
@@ -259,22 +266,48 @@ class QuillApp:
             if self.connected:
                 self.window.append_log(f"Attached to {bridge.workbook_name} automatically.")
 
+    def run_in_background(self, work: Callable[[], object], done: Callable[[object], None]) -> None:
+        """Run ``work()`` on a helper thread and call ``done(result)`` on the GUI thread afterwards.
+
+        For anything that may stall (asking the system what is running, asking another program to
+        reload a file): the window must never freeze while waiting on it. A failing task is logged and
+        its result is None. Tests replace this with a synchronous version.
+        """
+        def target() -> None:
+            try:
+                result = work()
+            except Exception:                       # a helper must never take the app down
+                log.exception("background task failed")
+                result = None
+            self.relay.background_done.emit(done, result)
+
+        threading.Thread(target=target, name="quill-background", daemon=True).start()
+
     def _attach_host_file(self) -> None:
         """No Excel workbook is open: if another spreadsheet program has an Excel file open, work on that file.
 
-        Looks every few ticks only (it asks the system what is running), and never when the user
+        Looks every few ticks only, never while a previous look is still running, and never when the user
         chose a program in the settings or is already working on a file.
         """
-        if isinstance(self.controller.bridge, XlsxBridge) or \
+        if isinstance(self.controller.bridge, XlsxBridge) or self._host_probe_running or \
                 str(self.settings.preferences["spreadsheet_app"]) not in ("auto", ""):
             return
         self._probe_ticks += 1
         if self._probe_ticks % HOST_PROBE_EVERY != 1:
             return
-        for app, path in self.hosts.open_excel_files():
+        self._host_probe_running = True
+        self.run_in_background(self.hosts.open_excel_files, self._open_host_file)
+
+    def _open_host_file(self, found) -> None:
+        """A look for files open in other spreadsheet programs finished: work on the first one found."""
+        self._host_probe_running = False
+        if not found or self.connected or isinstance(self.controller.bridge, XlsxBridge):
+            return
+        for host_app, path in found:
             if self.open_workbook_file(path, remember=False):
-                self._host = app
-                self.window.append_log(f"Found {path.name} open in {app.name}: working on it directly.")
+                self._host = host_app
+                log.info("working on %s, open in %s", path.name, host_app.name)
+                self.window.append_log(f"Found {path.name} open in {host_app.name}: working on it directly.")
                 return
 
     def _reload_host(self) -> None:
@@ -282,17 +315,31 @@ class QuillApp:
         bridge = self.controller.bridge
         if not isinstance(bridge, XlsxBridge) or not bridge.workbook_path:
             return
-        app = self._host
-        if app is None:
-            hits = [a for a, p in self.hosts.open_excel_files() if str(p.resolve()) == bridge.workbook_path]
-            app = self._host = hits[0] if hits else None
-        if app is None or app.reloads is False:
-            if app is not None and app.note and not self._host_noted:
-                self._host_noted = True
-                self.window.append_log(f"{app.name}: {app.note}")
+        path = bridge.workbook_path
+
+        def find_and_reload() -> tuple[HostApp | None, bool]:
+            host_app = self._host
+            if host_app is None:
+                hits = [h for h, p in self.hosts.open_excel_files() if str(p.resolve()) == path]
+                host_app = hits[0] if hits else None
+            reloaded = bool(host_app and host_app.reloads and self.hosts.reload(host_app, path))
+            return host_app, reloaded
+
+        self.run_in_background(find_and_reload, self._host_reloaded)
+
+    def _host_reloaded(self, outcome) -> None:
+        """A reload request finished: remember the program, and say what to do by hand if it can't be asked."""
+        host_app, reloaded = outcome or (None, False)
+        if host_app is None or reloaded:
+            self._host = host_app or self._host
             return
-        if not self.hosts.reload(app, bridge.workbook_path):
-            self.window.append_log(f"Couldn't refresh {app.name}. {app.note}")
+        self._host = host_app
+        if not host_app.reloads:
+            if host_app.note and not self._host_noted:
+                self._host_noted = True                         # one line of advice, not one per saved row
+                self.window.append_log(f"{host_app.name}: {host_app.note}")
+        else:
+            self.window.append_log(f"Couldn't refresh {host_app.name}. {host_app.note}")
 
     #: Events after which Quill itself has just written to the workbook file.
     _WRITE_EVENTS = frozenset({"committed", "add_values", "alias_added", "undone", "searched", "cleared"})
@@ -448,6 +495,7 @@ class QuillApp:
             self.sorting.set_voice_active(False)
 
     def show_sorting(self) -> None:
+        """Open the Term Helper window (the main window's Term Helper button and the tray menu call this)."""
         self.refresh_sorting(reveal=True)
 
     # ------------------------------------------------------------------ #
@@ -522,6 +570,7 @@ class QuillApp:
         self.connect_workbook(quiet=True)
 
     def select_workbook(self, name: str) -> None:
+        """The user picked another workbook in the file picker: connect to it."""
         self.connect_workbook(name)
 
     def open_help(self, topic: str | None = None) -> None:
@@ -594,16 +643,25 @@ class QuillApp:
                 and not self.window.widget.isVisible():
             self.window.show()
 
+    def shutdown(self) -> None:
+        """Quitting: close the microphone and stop the timers, so nothing is left running."""
+        log.info("shutting down")
+        self._watcher.stop()
+        self._host_reload.stop()
+        if self.listener is not None:
+            self.listener.stop()
+            self._mic_open = False
+
     def _known_words(self, words: list[str]) -> list[bool]:
         """Which of the words heard are already understood (drawn as pills in the Voice Stream)."""
         return recognized_words(words, self.controller.vocab, self.settings.keywords.keys())
 
-    def _heard(self, text: str) -> None:
+    def _on_phrase_heard(self, text: str) -> None:
         """A finished phrase: add it to the Voice Stream while Quill is listening."""
         if self.window.listening:
             self.window.add_stream_text(text)
 
-    def _hearing(self, text: str) -> None:
+    def _on_partial_heard(self, text: str) -> None:
         """A phrase still being spoken: show it in the Voice Stream."""
         if self.window.listening:
             self.window.set_stream_partial(text)
@@ -772,8 +830,15 @@ class QuillApp:
     # ------------------------------------------------------------------ #
 
     def _on_error(self, message: str) -> None:
+        """Show an error from a helper thread; if the listener died, close the gate so the window doesn't
+        claim to be listening to a dead microphone (and a later Start opens it again)."""
+        log.error("%s", message)
         self.window.append_log(message)
         self.window.set_footer(message)
+        if self.listener is not None and self._mic_open and not getattr(self.listener, "running", True):
+            self._mic_open = False
+            if self.controller.session.listening:
+                self.controller.set_listening(False)
 
     def download_model(self) -> None:
         """Download the speech model on a background thread."""

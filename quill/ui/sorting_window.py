@@ -22,7 +22,7 @@ from typing import Callable
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt
 from PySide6.QtWidgets import (
-    QComboBox, QGraphicsOpacityEffect, QLayout, QToolButton, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton,
+    QGraphicsOpacityEffect, QLayout, QToolButton, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
 
@@ -164,6 +164,7 @@ class TermRow(QFrame):
 
     @property
     def words(self) -> str:
+        """The term as currently typed in the row's text box (the user may have corrected it)."""
         return self.edit.text().strip()
 
     def _update_enabled(self) -> None:
@@ -179,14 +180,17 @@ class TermRow(QFrame):
     # -- decisions ---------------------------------------------------------
 
     def add(self) -> None:
+        """Add the term as a new value in the chosen column."""
         if self.column and self.words:
             self._on_resolve(self.key, Decision.add(self.column, display_name(self.words)), self.words)
 
     def same_as(self, canonical: str) -> None:
+        """Record the term as another name for the existing value *canonical*."""
         if self.column and self.words:
             self._on_resolve(self.key, Decision.alias(self.column, canonical), self.words)
 
     def ignore(self) -> None:
+        """Forget the term."""
         self._on_resolve(self.key, Decision.ignore(), self.words)
 
 
@@ -310,6 +314,7 @@ class SortingWindow:
 
     @property
     def widget(self) -> QWidget | None:
+        """The underlying window (None before :meth:`setup`)."""
         return self._window
 
     def refresh_icons(self, color: str = "#1F1E1D") -> None:
@@ -420,6 +425,7 @@ class SortingWindow:
 
     @property
     def voice_active(self) -> bool:
+        """True while voice sorting is on."""
         return self._voice_active
 
     def _start_voice(self) -> None:
@@ -448,6 +454,7 @@ class SortingWindow:
                                   else "🎤 Sort by Voice")
 
     def show(self) -> None:
+        """Show the window (and bring it to the front)."""
         if self._window is not None and self.rows:
             self._fit_width()
             self._window.show()
@@ -472,6 +479,7 @@ class SortingWindow:
                     row.add()
 
     def ignore_all(self) -> None:
+        """Forget every term in the list."""
         with self._batch("Ignored terms"):
             for row in list(self.rows):
                 row.ignore()

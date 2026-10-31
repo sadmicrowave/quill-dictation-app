@@ -78,14 +78,17 @@ class Decision:
 
     @classmethod
     def add(cls, column: str, value: str = "") -> "Decision":
+        """A decision to add the term to *column* as a new list value (*value* defaults to the term)."""
         return cls("add", column, value)
 
     @classmethod
     def alias(cls, column: str, canonical: str) -> "Decision":
+        """A decision that the term is another spoken name for the existing value *canonical* of *column*."""
         return cls("alias", column, canonical)
 
     @classmethod
     def ignore(cls) -> "Decision":
+        """A decision to forget the term."""
         return cls("ignore")
 
 

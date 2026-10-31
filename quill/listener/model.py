@@ -6,16 +6,29 @@ fetches the small English model on first run.
 """
 
 from __future__ import annotations
+import hashlib
 import pathlib
 import shutil
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 import zipfile
 from typing import Callable
 
 MODEL_NAME = "vosk-model-small-en-us-0.15"
 MODEL_URL = f"https://alphacephei.com/vosk/models/{MODEL_NAME}.zip"
+
+#: SHA-256 of the official model archive. A download that does not match is rejected, so a tampered
+#: or truncated file (or a hijacked connection) is never unpacked.
+MODEL_SHA256 = "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498"
+
+#: Safety limits when unpacking an archive (a "zip bomb" could otherwise fill the disk).
+MAX_UNPACKED_BYTES = 600 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 5_000
+
+#: Seconds to wait for the network before giving up.
+DOWNLOAD_TIMEOUT_S = 30
 
 ProgressCallback = Callable[[int, int], None]
 """Called with ``(bytes_done, bytes_total)``; total is 0 when unknown."""
@@ -125,32 +138,48 @@ def download_model(
     dest_dir: pathlib.Path,
     url: str = MODEL_URL,
     progress: ProgressCallback | None = None,
+    expected_sha256: str | None = None,
+    allow_local_file: bool = False,
 ) -> pathlib.Path:
     """Download and unpack a model zip into *dest_dir*.
 
     Args:
         dest_dir: Folder to unpack into (created if needed).
-        url: Zip location (``https://`` or, for tests, ``file://``).
+        url: Zip location. Only ``https://`` is accepted (``file://`` too when *allow_local_file* is set, for tests).
         progress: Optional progress callback.
+        expected_sha256: Checksum the archive must have. Defaults to :data:`MODEL_SHA256` for the official
+            URL and to no check for any other URL.
+        allow_local_file: Accept a ``file://`` URL (tests only).
 
     Returns:
         The unpacked model folder.
 
     Raises:
-        RuntimeError: if the archive is unsafe or contains no model.
+        RuntimeError: if the address is not allowed, the checksum is wrong, the archive is unsafe or it
+            contains no model.
         OSError / urllib.error.URLError: on network or disk failure.
     """
+    scheme = urllib.parse.urlparse(url).scheme
+    if scheme != "https" and not (allow_local_file and scheme == "file"):
+        raise RuntimeError(f"The model must be downloaded over https, not '{scheme or 'a bare path'}'.")
+    if expected_sha256 is None and url == MODEL_URL:
+        expected_sha256 = MODEL_SHA256
     dest_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         archive = pathlib.Path(tmp) / "model.zip"
-        with urllib.request.urlopen(url) as response, archive.open("wb") as out:
+        digest = hashlib.sha256()
+        # (the scheme was checked above: only https, or file:// when a test allows it)
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response, archive.open("wb") as out:  # noqa: S310  # nosec B310
             total = int(response.headers.get("Content-Length") or 0)
             done = 0
             while chunk := response.read(1 << 16):
                 out.write(chunk)
+                digest.update(chunk)
                 done += len(chunk)
                 if progress:
                     progress(done, total)
+        if expected_sha256 and digest.hexdigest() != expected_sha256.lower():
+            raise RuntimeError("The downloaded speech model is not the expected file (checksum mismatch).")
         _safe_extract(archive, dest_dir)
     model = find_model(search_dirs=[dest_dir])
     if model is None:
@@ -162,7 +191,10 @@ def _safe_extract(archive: pathlib.Path, dest_dir: pathlib.Path) -> None:
     """Extract a zip, refusing members that would escape *dest_dir* (zip-slip)."""
     root = dest_dir.resolve()
     with zipfile.ZipFile(archive) as zf:
-        for member in zf.infolist():
+        members = zf.infolist()
+        if len(members) > MAX_ARCHIVE_MEMBERS or sum(m.file_size for m in members) > MAX_UNPACKED_BYTES:
+            raise RuntimeError("The model archive is larger than a speech model should be.")
+        for member in members:
             target = (root / member.filename).resolve()
             if root != target and root not in target.parents:
                 raise RuntimeError(f"Unsafe path in model archive: {member.filename}")

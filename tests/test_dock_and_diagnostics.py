@@ -222,7 +222,22 @@ class TestLogFile(unittest.TestCase):
 
     def test_main_sets_logging_up(self):
         text = (pathlib.Path(__file__).resolve().parents[1] / "main.py").read_text()
-        self.assertIn("setup_logging()", text)
+        self.assertIn("setup_logging(verbose=args.verbose)", text)
+
+    def test_verbose_mode_is_switched_on_by_the_flag_or_the_environment(self):
+        import logging
+        import os
+        from quill.diagnostics import setup_logging, verbose_requested
+        self.assertFalse(verbose_requested(False))
+        self.assertTrue(verbose_requested(True))
+        os.environ["QUILL_DEBUG"] = "1"
+        self.addCleanup(os.environ.pop, "QUILL_DEBUG", None)
+        self.assertTrue(verbose_requested(False))
+        setup_logging(self.dir / "logs")
+        self.assertEqual(logging.getLogger("quill").level, logging.DEBUG)
+        os.environ.pop("QUILL_DEBUG")
+        setup_logging(self.dir / "logs")
+        self.assertEqual(logging.getLogger("quill").level, logging.INFO)
 
     def test_settings_can_open_the_log_folder(self):
         opened = []

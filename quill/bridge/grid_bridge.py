@@ -20,6 +20,19 @@ def normalize_header(text: object) -> str:
     return " ".join(str(text).lower().split())
 
 
+def _looks_like_formula(text: str) -> bool:
+    """True if a spreadsheet would treat *text* as a formula (a typed value could then run something)."""
+    if text[0] in "=@":
+        return True
+    if text[0] in "+-":
+        try:
+            float(text)
+            return False                         # a plain signed number
+        except ValueError:
+            return True
+    return False
+
+
 class GridBridge(WorkbookBridge):
     """A WorkbookBridge implemented over a :class:`Grid` and a :class:`Discovery`."""
 
@@ -267,6 +280,8 @@ class GridBridge(WorkbookBridge):
         text = value.strip()
         if not text:
             return
+        if _looks_like_formula(text):
+            raise BridgeError(f"'{text}' can't be added: a value starting with = + - or @ would be read as a formula.")
         if text.lower() in (v.lower() for v in self._read_values(grid, source)):
             return  # already present; nothing to do
 

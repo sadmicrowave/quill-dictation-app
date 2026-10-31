@@ -1,2 +1,5 @@
 pytest>=8.0
 pyinstaller>=6.6
+ruff>=0.5          # lint: python -m ruff check quill
+bandit>=1.7        # security scan: python -m bandit -r quill -ll
+vulture>=2.11      # dead code: python -m vulture quill --min-confidence 70

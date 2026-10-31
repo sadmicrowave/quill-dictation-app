@@ -381,3 +381,9 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Type-checked columns:** `Vocabulary.column_kind` / `accepts` / `columns_for`: a list of only numbers or only dates is never offered for a word like "teal" (the Term Helper's Choose Column list and the "Say a column" hint, and the parser's guesses).
 - **Help:** emoji stay in page and section headings and in 💡 / ⚠️ call-outs; body text no longer uses emoji as stand-ins for UI elements.
 
+### Phase 38 notes (app sanity check)
+- **Security:** the model download is https-only with a pinned SHA-256, size and member limits and a timeout; settings are written with correct TOML escaping (an emoji in a column name used to make the file unreadable) and saved atomically; formula-like values and comma / quote values are refused for list cells; `defusedxml` guards against XML bombs; `say` gets `--` before the text.
+- **Robustness:** program detection no longer asks System Events and runs off the GUI thread (`QuillApp.run_in_background`, 6 s command limit); a listener that dies resets the mic state and closes the gate; the microphone and timers stop on quit (`QuillApp.shutdown`).
+- **Debugging:** `python main.py --verbose` or `QUILL_DEBUG=1` logs debug detail to the log file and the terminal.
+- **Structure:** `ui/main_widgets.py` holds the main window's small widgets; docstrings added. Dev tools (ruff, bandit, vulture) are in `requirements-dev.txt`. The review checklist and the Mermaid UML are in the outer folder (`App Sanity Check.md`, `Quill Architecture (UML).md`).
+

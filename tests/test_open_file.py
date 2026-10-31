@@ -294,6 +294,7 @@ class TestOtherSpreadsheetPrograms(FileCase):
         super().setUp()
         from quill.bridge.hosts import NUMBERS
         self.hosts = self.app.hosts = FakeHosts(NUMBERS, self.plants)
+        self.app.run_in_background = lambda work, done: done(work())          # no helper thread in tests
 
     def test_a_file_open_in_another_program_is_picked_up_without_any_action(self):
         self.app.poll_workbooks()

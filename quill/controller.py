@@ -7,7 +7,9 @@ file-based bridge.
 """
 
 from __future__ import annotations
+import contextlib
 import datetime as dt
+import logging
 from typing import Callable
 
 from quill.bridge.base import BridgeError, WorkbookBridge
@@ -18,6 +20,8 @@ from quill.parser.vocab import Vocabulary
 from quill.search import parse_search
 from quill.sorting_voice import VoiceSorter
 from quill.session import Decision, Event, Session, TermKey
+
+log = logging.getLogger("quill.controller")
 
 EventCallback = Callable[[Event], None]
 
@@ -95,10 +99,8 @@ class Controller:
     def detach(self) -> None:
         """Let go of a workbook that was closed; closes the gate if it was open."""
         self.connected = False
-        try:
+        with contextlib.suppress(BridgeError):
             self.bridge.disconnect()
-        except BridgeError:
-            pass
         if self.session.listening:
             for event in self.session.apply(Action.STOP_LISTENING):
                 self._on_event(event)
@@ -308,6 +310,8 @@ class Controller:
             self._on_event(Event("ignored", detail=f"Now on sheet '{current}'"))
 
     def _carry_out(self, event: Event) -> None:
+        """Do what a Session event asks of the outside world (write the row, save a synonym, search, speak ...)."""
+        log.debug("event %s: %s", event.kind, event.detail)
         if event.resolved is not None:
             self._record(event)
         if event.kind == "committed":
@@ -331,9 +335,8 @@ class Controller:
                 event.kind, event.detail = "ignored", "Nothing to sort"
         elif event.kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self._say(event.detail)
-        elif event.kind == "confirm":
-            if all(column for column, _ in event.values or []):         # only spoken when a spoken yes can answer it
-                self._say(event.detail, lead_in=self.lead_in_s)
+        elif event.kind == "confirm" and all(column for column, _ in event.values or []):
+            self._say(event.detail, lead_in=self.lead_in_s)             # only spoken when a spoken yes can answer it
 
     def _say(self, text: str, lead_in: float = 0.0) -> None:
         """Speak *text* if there is a speaker, muting the mic meanwhile."""

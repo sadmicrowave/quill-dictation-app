@@ -133,3 +133,22 @@ class TestWindowSizePreference(unittest.TestCase):
             settings.save()
             again = Settings.load(pathlib.Path(tmp))
             self.assertEqual((again.preferences["window_width"], again.preferences["window_height"]), (410, 630))
+
+
+class TestSettingsFileSafety(unittest.TestCase):
+    def test_emoji_and_odd_characters_in_column_names_survive_a_round_trip(self):
+        import tempfile, pathlib
+        from quill.config.settings import Settings
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings.load(pathlib.Path(tmp))
+            settings.add_alias("Colour 🎨", "navy blue", 'Navy "Deep"\tBlue')
+            settings.save()
+            again = Settings.load(pathlib.Path(tmp))
+            self.assertEqual(again.aliases["Colour 🎨"]["navy blue"], 'Navy "Deep"\tBlue')
+
+    def test_saving_leaves_no_temporary_file_behind(self):
+        import tempfile, pathlib
+        from quill.config.settings import Settings
+        with tempfile.TemporaryDirectory() as tmp:
+            Settings.load(pathlib.Path(tmp)).save()
+            self.assertEqual(sorted(p.name for p in pathlib.Path(tmp).iterdir()), ["keywords.toml"])

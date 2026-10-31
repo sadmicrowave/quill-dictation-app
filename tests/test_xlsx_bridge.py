@@ -163,3 +163,21 @@ class TestAddToList(BridgeCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHostileListValues(BridgeCase):
+    """Values typed into the Term Helper end up in the user's spreadsheet, so they are checked first."""
+
+    def column(self):
+        return next(iter(self.bridge.get_lists()))
+
+    def test_a_value_that_would_be_read_as_a_formula_is_refused(self):
+        for bad in ("=HYPERLINK(\"http://x\")", "@SUM(A1)", "+cmd|x", "-2+3"):
+            with self.assertRaises(BridgeError, msg=bad):
+                self.bridge.add_to_list(self.column(), bad)
+
+    def test_a_plain_signed_number_is_not_a_formula(self):
+        from quill.bridge.grid_bridge import _looks_like_formula
+        self.assertFalse(_looks_like_formula("-5"))
+        self.assertFalse(_looks_like_formula("+3.5"))
+        self.assertFalse(_looks_like_formula("Navy"))

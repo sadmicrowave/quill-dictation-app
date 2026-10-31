@@ -18,6 +18,7 @@ The platform calls are injectable so the logic is testable on any machine.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, QTimer
+import contextlib
 import sys
 from typing import Callable
 
@@ -194,10 +195,8 @@ def _extend_frame(hwnd: int) -> None:
 
 
 def _quietly(set_attribute: DwmSetter, *args) -> None:
-    try:
+    with contextlib.suppress(Exception):     # an attribute this Windows build doesn't know
         set_attribute(*args)
-    except Exception:
-        pass     # an attribute this Windows build doesn't know
 
 
 def _dwm_setter() -> DwmSetter | None:
@@ -379,6 +378,7 @@ class TitlebarButton:
         self._button.performClick_(None)
 
     def remove(self) -> None:
+        """Take the icons out of the title bar."""
         self._controller.removeFromParentViewController()
 
 

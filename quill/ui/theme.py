@@ -226,6 +226,8 @@ QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 QLabel[heading="true"] {{ color: {t['muted']}; }}
 QLabel[chip="warn"] {{ background: {rgba(t['accent'], 0.14)}; color: {t['accent']}; border: 1px solid {rgba(t['accent'], 0.42)};
               border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
+QLabel[placeholder="true"] {{ font-style: italic; color: {t['muted']}; }}
+QTextEdit, QPlainTextEdit {{ placeholder-text-color: {t['muted']}; }}
 QLabel[note="true"] {{ font-size: {max(font_size - 2, 7)}pt; font-style: italic; color: {t['muted']}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}

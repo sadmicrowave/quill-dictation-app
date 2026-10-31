@@ -250,20 +250,20 @@ class TestVoiceStreamInTheApp(unittest.TestCase):
 
     def test_words_are_shown_while_listening_and_known_ones_are_flagged(self):
         self.app.controller.handle_transcript("start listening")
-        self.app._heard("hello there")
+        self.app._on_phrase_heard("hello there")
         self.assertEqual(self.app.window.stream_text(), "hello there")
         known = self.app._known_words(["next", "row", "zzzz"])
         self.assertEqual(known, [True, True, False])
 
     def test_nothing_is_shown_while_not_listening(self):
-        self.app._heard("hello there")
-        self.app._hearing("hello")
+        self.app._on_phrase_heard("hello there")
+        self.app._on_partial_heard("hello")
         self.assertEqual(self.app.window.stream_text(), "")
 
     def test_the_stream_restarts_after_listening_stops_and_starts_again(self):
         self.app.controller.handle_transcript("start listening")
-        self.app._heard("black")
+        self.app._on_phrase_heard("black")
         self.app.controller.handle_transcript("stop listening")
         self.app.controller.handle_transcript("start listening")
-        self.app._heard("navy")
+        self.app._on_phrase_heard("navy")
         self.assertEqual(self.app.window.stream_text(), "navy")
