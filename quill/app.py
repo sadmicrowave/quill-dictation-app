@@ -15,7 +15,7 @@ import pathlib
 import threading
 from typing import Callable
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
@@ -30,7 +30,7 @@ from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.chrome import add_titlebar_button, apply_chrome
+from quill.ui.chrome import add_titlebar_button, apply_chrome, set_dock_icon_visible
 from quill.ui.theme import apply_opacity, apply_spacing, apply_theme, colors_for, is_dark
 from quill.ui.tray import TrayIcon
 
@@ -131,6 +131,7 @@ class QuillApp:
         self.relay.progress.connect(self._on_progress)
         self.relay.model_ready.connect(self._on_model_ready)
         qapp.styleHints().colorSchemeChanged.connect(self._system_scheme_changed)
+        qapp.applicationStateChanged.connect(self._app_state_changed)
 
     # ------------------------------------------------------------------ #
     # Startup                                                              #
@@ -144,6 +145,7 @@ class QuillApp:
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
         self.window.show()
+        self._apply_dock()
         self._install_titlebar_button()
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
         self._start_listener()
@@ -410,6 +412,16 @@ class QuillApp:
         if str(self.settings.preferences["theme"]) == "auto":
             self._apply_look()
 
+    def _apply_dock(self) -> None:
+        """Show or hide the Dock icon to match the setting (macOS; a no-op elsewhere)."""
+        set_dock_icon_visible(not bool(self.settings.preferences["hide_dock_icon"]))
+
+    def _app_state_changed(self, state) -> None:
+        """Clicking Quill's Dock icon (or opening it from Finder) with no window up brings the window back."""
+        if state == Qt.ApplicationState.ApplicationActive and self.window.widget is not None \
+                and not self.window.widget.isVisible():
+            self.window.show()
+
     def _log_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the log."""
         self.settings.preferences["log_collapsed"] = collapsed
@@ -441,6 +453,7 @@ class QuillApp:
         self.speaker.enabled = bool(self.settings.preferences["speak_prompts"])
         self.controller.apply_settings()
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
+        self._apply_dock()
         self._sync_mic()
         self.controller.lead_in_s = self.feedback.lead_in_s()
         self.refresh_sorting()

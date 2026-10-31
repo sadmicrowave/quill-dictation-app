@@ -14,5 +14,7 @@ pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Quill", console=False)
 coll = COLLECT(exe, a.binaries, a.datas, name="Quill")
 app = BUNDLE(coll, name="Quill.app", icon="quill/assets/Quill.icns", bundle_identifier="com.quill.app",
-    info_plist={"CFBundleShortVersionString":"0.1.0","LSUIElement":True,
-        "NSMicrophoneUsageDescription":"Quill needs the microphone to hear your voice."})
+    info_plist={"CFBundleShortVersionString":"0.1.0",
+        # no LSUIElement: Quill shows in the Dock and the menu bar; Settings has "Hide the Dock Icon"
+        "NSMicrophoneUsageDescription":"Quill needs the microphone to hear your voice.",
+        "NSAppleEventsUsageDescription":"Quill needs to control Excel to read your lists and fill in your rows."})

@@ -100,7 +100,9 @@ class SettingsDialog:
             original values back and calls it again; only OK saves.
     """
 
-    def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None) -> None:
+    def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
+                 on_open_logs=None) -> None:
+        self._on_open_logs = on_open_logs or self._open_log_folder
         self._on_preview = on_preview or (lambda mode, pack, echo: None)
         self._on_change = on_change or (lambda: None)
         self._original: dict = {}
@@ -130,6 +132,7 @@ class SettingsDialog:
         self.auto_sort_check: ToggleSwitch | None = None
         self.mic_check: ToggleSwitch | None = None
         self.mini_top_check: ToggleSwitch | None = None
+        self.dock_check: ToggleSwitch | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -209,7 +212,8 @@ class SettingsDialog:
             button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
         self._original = copy.deepcopy(self._settings.preferences)
-        for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check):
+        for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
+                        self.dock_check):
             control.toggled.connect(self._live)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
                         self.pack_combo, self.echo_combo):
@@ -239,6 +243,7 @@ class SettingsDialog:
         prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
         prefs["mic_always_on"] = self.mic_check.isChecked()
         prefs["mini_on_top"] = self.mini_top_check.isChecked()
+        prefs["hide_dock_icon"] = self.dock_check.isChecked()
         prefs["accent"] = self.accent_combo.currentData()
         prefs["spacing"] = self.spacing_combo.currentData()
         prefs["font_size"] = self.font_spin.value()
@@ -377,6 +382,12 @@ class SettingsDialog:
         self._add("General", page, "Sort by Voice Automatically",
                   "Start answering the Needs-sorting list by voice as soon as terms need sorting.",
                   self.auto_sort_check, "voice sorting")
+        self.dock_check = ToggleSwitch()
+        self.dock_check.setChecked(bool(prefs["hide_dock_icon"]))
+        self._add("General", page, "Hide the Dock Icon",
+                  "macOS. Quill stays in the menu bar; open it from the menu bar icon (or by opening the app "
+                  "again). Off by default: Quill shows in both the Dock and the menu bar.",
+                  self.dock_check, "dock menu bar macos")
         self.mini_top_check = ToggleSwitch()
         self.mini_top_check.setChecked(bool(prefs["mini_on_top"]))
         self._add("General", page, "Keep the Mini View on Top",
@@ -387,6 +398,11 @@ class SettingsDialog:
         self._add("General", page, "Keep the Microphone Open When Not Listening",
                   "Lets you say “start listening”. Off (the default): the microphone is only on while "
                   "Quill is listening, so nothing is heard otherwise.", self.mic_check, "privacy mic always on")
+        logs = QPushButton("Open Log Folder")
+        logs.setToolTip("Quill writes what it does, and any error, to a log file here")
+        logs.clicked.connect(lambda: self._on_open_logs())
+        self._add("General", page, "Troubleshooting",
+                  "If something goes wrong, the log file shows what happened.", logs, "log file errors diagnostics")
         self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
         self.history_spin.setValue(int(prefs["history_limit"]))
@@ -491,6 +507,14 @@ class SettingsDialog:
         self._keyword_box = keyword_box
         self._keyword_row = _KeywordSearch(keyword_box, self)
         self._page_rows["Keywords"].append(self._keyword_row)
+
+    @staticmethod
+    def _open_log_folder() -> None:
+        """Show the folder holding quill.log in Finder / Explorer."""
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        from quill.diagnostics import log_dir
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir())))
 
     def _update_feedback_choices(self) -> None:
         """Only the choice that applies to the selected way of confirming is enabled."""

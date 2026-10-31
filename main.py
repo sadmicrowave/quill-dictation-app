@@ -16,6 +16,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workbook", help="path to an .xlsx file to use instead of live Excel")
     args = parser.parse_args(argv)
 
+    from quill.diagnostics import setup_logging
+    setup_logging()                      # a packaged app has no console: keep a log file instead
+
     from quill.config.settings import Settings
     settings = Settings.load()
 

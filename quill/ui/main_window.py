@@ -13,6 +13,7 @@ passed to the constructor; it holds no dictation logic.
 """
 from __future__ import annotations
 import datetime as dt
+import logging
 from typing import Callable
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt
@@ -560,7 +561,8 @@ class MainWindow:
         self.last_label.setFullText("Last Saved: " + " · ".join(p for p in parts if p), tip)
 
     def append_log(self, text: str) -> None:
-        """Add a timestamped line to the log."""
+        """Add a timestamped line to the log (and to the log file, for troubleshooting)."""
+        logging.getLogger("quill").info(text)
         self.log.appendPlainText(f"{dt.datetime.now():%H:%M:%S}  {text}")
 
     def set_listening_indicator(self, active: bool) -> None:

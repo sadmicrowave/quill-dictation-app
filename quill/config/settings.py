@@ -57,6 +57,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "font_size": 12,          # base text size in points
     "log_collapsed": False,   # the main window's log starts hidden
     "row_collapsed": False,   # the main window's Current row section starts hidden
+    "hide_dock_icon": False,  # macOS: keep Quill out of the Dock (it stays in the menu bar)
     "mini_mode": False,       # the main window starts as the small overlay
     "mini_on_top": True,      # the mini view floats above other windows
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)

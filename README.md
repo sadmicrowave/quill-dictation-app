@@ -215,9 +215,24 @@ There is no Refresh button. Every 3 seconds Quill compares the workbook file's m
 
 ### App icon
 
-The chosen design (idea 66: a violet icon, a pale tiled sheet set to the right, a deep small box on the left holding the white sound lines, centred vertically) is built by `tools/make_app_icon.py` into `quill/assets/`: `icon.svg`, `icon-small.svg`, `icon-16` to `icon-1024.png`, `Quill.icns` (macOS, through `iconutil`) and `Quill.ico` (Windows, seven PNG sizes written directly). At 48 px and below the sound lines are drawn as five bold lines instead of seven thin ones, which would blur into a smudge. `QuillApp` sets it as the application icon (this is the Dock icon on macOS, verified on a real run) and both PyInstaller specs use it and ship `quill/assets`. The menu bar icon is separate: the small box on its own (see above). Note that the packaged macOS build is marked `LSUIElement` (a menu bar app with no Dock icon); remove that line from `packaging/quill_mac.spec` if it should also appear in the Dock.
+The chosen design (idea 66: a violet icon, a pale tiled sheet set to the right, a deep small box on the left holding the white sound lines, centred vertically) is built by `tools/make_app_icon.py` into `quill/assets/`: `icon.svg`, `icon-small.svg`, `icon-16` to `icon-1024.png`, `Quill.icns` (macOS, through `iconutil`) and `Quill.ico` (Windows, seven PNG sizes written directly). At 48 px and below the sound lines are drawn as five bold lines instead of seven thin ones, which would blur into a smudge. `QuillApp` sets it as the application icon (this is the Dock icon on macOS, verified on a real run) and both PyInstaller specs use it and ship `quill/assets`. The menu bar icon is separate: the small box on its own (see above). The packaged macOS app shows in both the Dock and the menu bar (no `LSUIElement`).
 
-### Capitalisation
+### Dock icon
+
+macOS shows Quill in the Dock and the menu bar. **Settings > General > Hide the Dock Icon** (off by default, remembered) turns Quill into a menu bar app, live, without restarting (`NSApp.setActivationPolicy_`: regular or accessory; verified on a real run). With the Dock icon hidden you open Quill from the menu bar icon (**Open Quill**), or by opening the app again: clicking its Dock icon or reopening it from Finder with no window showing brings the window back (`QuillApp._app_state_changed`). Closing the window never quits Quill.
+
+### Running as a packaged app (no terminal)
+
+Real users double-click an app; nothing is run from a command line. So: a log file replaces the console (`quill/diagnostics.py`: `quill.log` in the per-user log folder, rotating, with every log line and any uncaught error from the main or a background thread; **Settings > General > Open Log Folder** shows it); first launch unpacks the speech model by itself; settings, aliases and the model live in per-user folders (`platformdirs`); and the macOS `Info.plist` carries the microphone and Apple Events (Excel) usage descriptions that the permission prompts need.
+
+### Development workflow
+
+- **Day to day: run from source** (`python main.py`) with the test suite: instant feedback, no rebuild.
+- **Build the packaged app now, once, as a smoke test, then at milestones** (`sh tools/build_mac.sh`, `tools\build_win.bat`). Packaging fails in ways source runs never show: missing hidden imports (PyObjC, Vosk's native libraries), data files not found inside the bundle (`sys._MEIPASS`: model zip, sounds, assets, `defaults.json`), per-user folders, and **permissions**. When run from a terminal, macOS attributes the microphone and Excel-automation prompts to Terminal / Python; the packaged app has its own identity and must be tested getting them itself (reset with `tccutil reset Microphone com.quill.app` and `tccutil reset AppleEvents com.quill.app`).
+- **Rebuild when something packaging-related changes** (a new dependency, data file, `Info.plist` key, icon, entitlement) and before anyone else tries it. Not after every code edit.
+- **Always test the packaged app by double-clicking it**, never from a terminal, because that is what a user does.
+- **Before release**: a clean build, then sign with a Developer ID certificate and notarise (macOS) or sign the `.exe` (Windows); otherwise Gatekeeper / SmartScreen warn. Expect an app of roughly 300 MB (Qt, Vosk, the 68 MB unpacked model).
+- Optional: on macOS, `py2app -A` ("alias mode") builds a real `.app` that points back at the source files, so code edits take effect without rebuilding while still giving the app its own bundle identity for permissions. Not set up yet.
 
 Titles, labels, buttons, menu items, setting names and the like use Title Case throughout: two-word titles have both words capitalised (**Last Saved**, **Current Row**, **Not Listening**, **Needs Sorting**, **Sound Set**), and longer ones capitalise every word except small joining words (**Sort by Voice Automatically**, **Keep the Mini View on Top**). Descriptions, tooltips and log sentences stay sentence case.
 

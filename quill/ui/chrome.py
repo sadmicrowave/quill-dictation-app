@@ -355,3 +355,34 @@ def _target_class(appkit, objc):
 
         _TARGET_CLASS = QuillTitlebarTarget
     return _TARGET_CLASS
+
+
+# --------------------------------------------------------------------------- #
+# The Dock icon                                                                #
+# --------------------------------------------------------------------------- #
+
+#: NSApplicationActivationPolicy: a normal app (Dock icon, Cmd-Tab) or an accessory (menu bar only).
+_POLICY_REGULAR, _POLICY_ACCESSORY = 0, 1
+
+
+def set_dock_icon_visible(visible: bool, platform: str | None = None, appkit=None) -> bool:
+    """Show or hide the app's Dock icon (macOS), without restarting.
+
+    Hiding makes Quill a menu bar app: it is still reachable from its menu bar icon.
+
+    Returns:
+        True if the change was made; False elsewhere (other platforms, headless runs, no PyObjC).
+    """
+    platform = platform or sys.platform
+    try:
+        if platform != "darwin" or not _native_platform(platform):
+            return False
+        if appkit is None:
+            import AppKit as appkit                      # noqa: F811 (PyObjC, optional)
+        app = appkit.NSApplication.sharedApplication()
+        ok = app.setActivationPolicy_(_POLICY_REGULAR if visible else _POLICY_ACCESSORY)
+        if visible:
+            app.activateIgnoringOtherApps_(True)         # a regular app that is not frontmost would look dead
+        return bool(ok) if ok is not None else True
+    except Exception:
+        return False
