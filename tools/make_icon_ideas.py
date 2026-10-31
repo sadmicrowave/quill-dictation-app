@@ -7,6 +7,7 @@
     python tools/make_icon_ideas.py --ring [contact-sheet.png]     # a fifth round: 51-56, the ring with vertical sound lines in purples
     python tools/make_icon_ideas.py --clip [contact-sheet.png]     # a sixth round: 57-59, idea 47 on purples
     python tools/make_icon_ideas.py --sheet [contact-sheet.png]    # a seventh round: 60-63, the Excel-style tiled sheet in purples
+    python tools/make_icon_ideas.py --offset [contact-sheet.png]   # an eighth round: 64-67, the Excel offset layout
     python tools/make_icon_ideas.py --all [contact-sheet.png]      # the first forty, one sheet
 
 Writes ``assets/icon-ideas/NN-name.svg`` (the full-colour app icon) and
@@ -286,13 +287,15 @@ def rrect(x, y, w, h, tl=0, tr=0, br=0, bl=0):
             + f"V{y + tl}" + (f"A{tl} {tl} 0 0 1 {x + tl} {y}" if tl else "") + "Z")
 
 
-def tiled_sheet(color: str, x: float, y: float, w: float, h: float, radius: float, rows: int = 4, cols: int = 3) -> str:
+def tiled_sheet(color: str, x: float, y: float, w: float, h: float, radius: float, rows: int = 4, cols: int = 3,
+                light: bool = False) -> str:
     """A rounded block of tiles in shades of *color*: lighter at the top, darker at the bottom, with a
     darker first column, like the sheet in the Excel icon."""
     out, tw, th = [], w / cols, h / rows
     for r in range(rows):
         for c in range(cols):
-            amount = 0.30 - 0.17 * r - (0.07 if c == 0 else 0.0)
+            amount = ((0.80 - 0.09 * r - (0.05 if c == 0 else 0.0)) if light
+                      else (0.30 - 0.17 * r - (0.07 if c == 0 else 0.0)))
             tl = radius if (r == 0 and c == 0) else 0
             tr = radius if (r == 0 and c == cols - 1) else 0
             br = radius if (r == rows - 1 and c == cols - 1) else 0
@@ -346,6 +349,55 @@ IDEAS_SHEET = [
 ]
 
 
+def offset_box(color: str, x=16.0, y=40.0, size=48.0) -> str:
+    """The small front box (Excel's X box) holding the white sound lines."""
+    deep = shade(color, -0.22)
+    return (f'<rect x="{x}" y="{y + 3}" width="{size}" height="{size}" rx="11" fill="#000" opacity=".22"/>'
+            f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="11" fill="{deep}"/>'
+            f'<rect x="{x + .6}" y="{y + .6}" width="{size - 1.2}" height="{size - 1.2}" rx="10.4" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="1.2"/>'
+            + sound_lines(x + size / 2, y + size / 2, 0.44))
+
+
+def sheet_offset_plate(color: str) -> str:
+    """The Excel layout: a light plate, a tiled sheet set to the right, and a small box on the left that
+    pushes the sheet off-centre; the sound lines are in the small box. No text."""
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
+            '<linearGradient id="plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F4F5FA"/><stop offset="1" stop-color="#DDE0EE"/></linearGradient>'
+            '<linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".9"/>'
+            '<stop offset=".2" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#8A90B0" stop-opacity=".35"/></linearGradient></defs>'
+            '<rect x="6" y="9" width="116" height="116" rx="29" fill="#5A6088" opacity=".16"/>'
+            '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#plate)"/>'
+            '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
+            '<rect x="42" y="22" width="68" height="86" rx="10" fill="#000" opacity=".12" transform="translate(0 3)"/>'
+            + tiled_sheet(color, 42, 20, 68, 86, 10)
+            + offset_box(color, 16, 44, 50) + '</svg>')
+
+
+def sheet_offset_body(color: str) -> str:
+    """The same layout on a purple icon body: pale tiles, a deep small box, white sound lines."""
+    top, bottom = shade(color, 0.10), shade(color, -0.12)
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
+            f'<linearGradient id="base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
+            '<linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".32"/>'
+            '<stop offset=".18" stop-color="#FFFFFF" stop-opacity="0"/><stop offset=".85" stop-color="#000" stop-opacity="0"/>'
+            '<stop offset="1" stop-color="#000" stop-opacity=".16"/></linearGradient></defs>'
+            '<rect x="6" y="8" width="116" height="116" rx="29" fill="#000" opacity=".10"/>'
+            '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#base)"/>'
+            '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
+            '<rect x="42" y="22" width="68" height="86" rx="10" fill="#000" opacity=".16" transform="translate(0 3)"/>'
+            + tiled_sheet(color, 42, 20, 68, 86, 10, light=True)
+            + offset_box(color, 16, 44, 50) + '</svg>')
+
+
+#: Round eight: the Excel layout (an offset sheet behind a small front box that holds the sound lines).
+IDEAS_OFFSET = [
+    ("offset-plate-violet", "Offset sheet and small box on a light plate, violet", None, lambda: sheet_offset_plate("#7A55C2")),
+    ("offset-plate-indigo", "Offset sheet and small box on a light plate, indigo", None, lambda: sheet_offset_plate("#5B4BC4")),
+    ("offset-body-violet", "Offset sheet and small box on a violet icon", None, lambda: sheet_offset_body("#7A55C2")),
+    ("offset-body-indigo", "Offset sheet and small box on an indigo icon", None, lambda: sheet_offset_body("#5B4BC4")),
+]
+
+
 def app_icon(color: str, draw) -> str:
     """A dock-style icon in the modern macOS manner: a flat colour with only a *hint* of depth.
 
@@ -386,7 +438,7 @@ def write_all(more: bool = False, batch: str = "") -> list[tuple[str, str, str, 
     """Write one batch of ideas: 01-10, *more* (11-20), ``batch="new"`` (21-40) or ``batch="mix"`` (41-50)."""
     OUT.mkdir(parents=True, exist_ok=True)
     made = []
-    ideas, first = ((IDEAS_SHEET, 60) if batch == "sheet" else (IDEAS_CLIP, 57) if batch == "clip" else (IDEAS_RING, 51) if batch == "ring" else (IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
+    ideas, first = ((IDEAS_OFFSET, 64) if batch == "offset" else (IDEAS_SHEET, 60) if batch == "sheet" else (IDEAS_CLIP, 57) if batch == "clip" else (IDEAS_RING, 51) if batch == "ring" else (IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
                     else (IDEAS_MORE, 11) if more else (IDEAS, 1))
     for i, (slug, title, color, draw) in enumerate(ideas, first):
         if color is None:                                   # a ready-made icon (no glyph function)
@@ -444,10 +496,10 @@ def render_png(svg: str, path: str, size: int = 1024) -> None:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    made = (write_all(batch="sheet") if "--sheet" in sys.argv else write_all(batch="clip") if "--clip" in sys.argv else write_all(batch="ring") if "--ring" in sys.argv else write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
+    made = (write_all(batch="offset") if "--offset" in sys.argv else write_all(batch="sheet") if "--sheet" in sys.argv else write_all(batch="clip") if "--clip" in sys.argv else write_all(batch="ring") if "--ring" in sys.argv else write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
             else write_all(more="--more" in sys.argv))
     print(f"Wrote {len(made) * 2} icons to {OUT}")
-    if ("--ring" in sys.argv or "--clip" in sys.argv or "--sheet" in sys.argv) and len(args) > 1:
+    if ("--ring" in sys.argv or "--clip" in sys.argv or "--sheet" in sys.argv or "--offset" in sys.argv) and len(args) > 1:
         render_png(made[0][2], args[1])                 # the first ring at 1024 px
     if args:
         contact_sheet(args[0], made)
