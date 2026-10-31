@@ -360,7 +360,7 @@ def offset_box(color: str, x=16.0, y=39.0, size=50.0, simple: bool = False) -> s
     return (f'<rect x="{x}" y="{y + 3}" width="{size}" height="{size}" rx="11" fill="#000" opacity=".22"/>'
             f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="11" fill="{deep}"/>'
             f'<rect x="{x + .6}" y="{y + .6}" width="{size - 1.2}" height="{size - 1.2}" rx="10.4" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="1.2"/>'
-            + sound_lines(x + size / 2, y + size / 2, 0.44 if not simple else 0.52, simple))
+            + sound_lines(x + size / 2, y + size / 2, (0.44 if not simple else 0.52) * size / 50, simple))
 
 
 def sheet_offset_plate(color: str) -> str:
@@ -378,8 +378,11 @@ def sheet_offset_plate(color: str) -> str:
             + offset_box(color, 16, 39, 50) + '</svg>')
 
 
-def sheet_offset_body(color: str, simple: bool = False) -> str:
-    """The same layout on a purple icon body: pale tiles, a deep small box, white sound lines."""
+def sheet_offset_body(color: str, simple: bool = False, box: tuple[int, int, int] = (16, 39, 50)) -> str:
+    """The same layout on a purple icon body: pale tiles, a deep small box, white sound lines.
+
+    *box* is the small front box as (x, y, size); a larger one stays readable at Dock sizes.
+    """
     top, bottom = shade(color, 0.10), shade(color, -0.12)
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
             f'<linearGradient id="base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
@@ -391,7 +394,7 @@ def sheet_offset_body(color: str, simple: bool = False) -> str:
             '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
             '<rect x="42" y="21" width="68" height="86" rx="10" fill="#000" opacity=".16" transform="translate(0 3)"/>'
             + tiled_sheet(color, 42, 21, 68, 86, 10, light=True)
-            + offset_box(color, 16, 39, 50, simple) + '</svg>')
+            + offset_box(color, *box, simple) + '</svg>')
 
 
 #: Round eight: the Excel layout (an offset sheet behind a small front box that holds the sound lines).

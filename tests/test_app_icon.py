@@ -56,16 +56,16 @@ class TestIconFiles(unittest.TestCase):
 
     def test_the_svg_matches_the_chosen_design(self):
         sys.path.insert(0, str(ROOT / "tools"))
-        import make_icon_ideas
+        import make_app_icon, make_icon_ideas
         self.assertEqual(assets.asset_path("icon.svg").read_text(encoding="utf-8"),
-                         make_icon_ideas.sheet_offset_body("#7A55C2"))
+                         make_icon_ideas.sheet_offset_body("#7A55C2", box=make_app_icon.BOX))
 
     def test_the_small_box_is_centred_vertically_in_the_icon(self):
         svg = assets.asset_path("icon.svg").read_text(encoding="utf-8")
         import re
-        box = re.search(r'<rect x="16" y="([\d.]+)" width="50" height="50" rx="11" fill="#5F4297"', svg)
+        box = re.search(r'<rect x="11" y="([\d.]+)" width="64" height="64" rx="11" fill="#5F4297"', svg)
         self.assertIsNotNone(box)
-        self.assertAlmostEqual(float(box.group(1)) + 25, 64.0, places=1)
+        self.assertAlmostEqual(float(box.group(1)) + 32, 64.0, places=1)
 
     def test_the_tile_sheet_behind_it_is_centred_too(self):
         sys.path.insert(0, str(ROOT / "tools"))

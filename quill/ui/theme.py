@@ -66,6 +66,13 @@ def colors_for(dark: bool, accent: str = DEFAULT_ACCENT) -> dict[str, str]:
     return t
 
 
+def mix(base: str, other: str, amount: float) -> str:
+    """*base* nudged toward *other* by *amount* (0 to 1), as ``"#RRGGBB"``."""
+    a = [int(base[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(other[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * amount):02X}" for x, y in zip(a, b))
+
+
 def rgba(hex_color: str, alpha: float) -> str:
     """``"#RRGGBB"`` as a style-sheet ``rgba(...)`` colour (alpha 0 to 1)."""
     r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
@@ -133,7 +140,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot {{ background: {win}; }}
-QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
+QToolTip {{ background: {mix(t['surface'], t['text'], 0.10)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
            border-radius: 8px; padding: 5px 9px; }}
 
 QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['border']};

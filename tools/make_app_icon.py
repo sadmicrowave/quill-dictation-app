@@ -26,12 +26,14 @@ from quill.assets import ICON_SIZES  # noqa: E402
 OUT = ROOT / "quill" / "assets"
 COLOR = "#7A55C2"                      # violet
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+#: The small front box as (x, y, size): bigger than the first design (16, 39, 50) so the sound lines read in the Dock.
+BOX = (11, 32, 64)
 SMALL = 48                              # at this size and below the simplified sound lines are used
 
 
 def svg_for(size: int) -> str:
     """The icon's SVG for *size* px: seven thin sound lines are fine large, five bold ones read better small."""
-    return sheet_offset_body(COLOR, simple=size <= SMALL)
+    return sheet_offset_body(COLOR, simple=size <= SMALL, box=BOX)
 
 
 def write_ico(path: pathlib.Path, svg: str | None = None) -> None:
@@ -67,8 +69,8 @@ def write_icns(path: pathlib.Path) -> bool:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "icon.svg").write_text(sheet_offset_body(COLOR), encoding="utf-8")
-    (OUT / "icon-small.svg").write_text(sheet_offset_body(COLOR, simple=True), encoding="utf-8")
+    (OUT / "icon.svg").write_text(sheet_offset_body(COLOR, box=BOX), encoding="utf-8")
+    (OUT / "icon-small.svg").write_text(sheet_offset_body(COLOR, simple=True, box=BOX), encoding="utf-8")
     for size in ICON_SIZES:
         render_png(svg_for(size), str(OUT / f"icon-{size}.png"), size)
     write_ico(OUT / "Quill.ico")
