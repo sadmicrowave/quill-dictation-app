@@ -67,6 +67,7 @@ class TestLiveUpdate(LiveCase):
         self.assertEqual((p["history_limit"], p["speak_sort_prompts"], p["auto_voice_sort"]), (20, True, True))
 
     def test_the_running_window_follows_the_slider(self):
+        self.d.blur_slider.setValue(0)
         self.d.opacity_slider.setValue(50)
         self.assertAlmostEqual(self.app.window.widget.windowOpacity(), 0.5, 2)
         self.d.opacity_slider.setValue(100)
@@ -108,6 +109,7 @@ class TestLiveUpdate(LiveCase):
         self.assertEqual(self.settings.keywords, before)
 
     def test_the_settings_window_follows_opacity_but_never_below_the_floor(self):
+        self.d.blur_slider.setValue(0)
         self.d.opacity_slider.setValue(30)
         self.assertAlmostEqual(self.d._dialog.windowOpacity(), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
         self.d.opacity_slider.setValue(85)
@@ -122,13 +124,14 @@ class TestLiveUpdate(LiveCase):
         captured = {}
 
         class Probe(SettingsDialog):
-            def exec(self):
+            def open(self, on_done=None):
                 self.build()
+                self._on_done = on_done
+                self._dialog.finished.connect(self._finished)
                 captured["dialog"] = self
                 self.accent_combo.setCurrentIndex(self.accent_combo.findData("violet"))
                 captured["live"] = self._settings.preferences["accent"]
                 self._dialog.reject()
-                return False
 
         original_class = app_module.SettingsDialog
         app_module.SettingsDialog = Probe
@@ -137,7 +140,9 @@ class TestLiveUpdate(LiveCase):
         finally:
             app_module.SettingsDialog = original_class
         self.assertEqual(captured["live"], "violet")
-        self.assertEqual(self.settings.preferences, original)
+        remembered = ("settings_page", "settings_width", "settings_height")      # kept even when cancelled
+        self.assertEqual({k: v for k, v in self.settings.preferences.items() if k not in remembered},
+                         {k: v for k, v in original.items() if k not in remembered})
 
 
 class TestWheelSafety(unittest.TestCase):

@@ -27,6 +27,7 @@ from PySide6.QtCore import (
     QVariantAnimation,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -169,6 +170,7 @@ class MainWindow:
         self._log_grew = 0                   # window height added to make room for the open log (given back on close)
         self._log_animation: QVariantAnimation | None = None
         self._log_busy = False               # the log is sliding open or shut
+        self._density = ""                   # the spacing mode last given to apply_density ("" = the application's)
         self._mini_detail = False            # the mini view is tall enough to show the stream and the row
         self._mini_base = 0                  # the mini view's own (compact) height
         self._mini_size: QSize | None = None  # the size the user left the mini view at
@@ -192,6 +194,9 @@ class MainWindow:
     def setup(self) -> None:
         """Build the widgets. Call once, after the QApplication exists."""
         window = QMainWindow()
+        # Per-pixel transparency (opacity below 100, blur) needs this *before* anything creates the native
+        # window; set later it is ignored and the window stays solid.
+        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         window.setWindowTitle("Quill")
         window.resize(360, 520)
         self._size_timer = QTimer(window)                       # tells the app the window's size once resizing stops
@@ -278,8 +283,7 @@ class MainWindow:
         )
         self.sheet_label = QLabel("Sheet: –")
         self.sheet_label.setProperty("note", True)               # small, italic, muted: it sits under the file box
-        self.sheet_label.setContentsMargins(0, 0, 2, 0)
-        self.sheet_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.sheet_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         # Shown instead of the sheet name while no spreadsheet is connected: a technical warning chip.
         # (It sits inside the empty workbook picker; the mini view, which has no picker, has its own.)
         self.workbook_row = QWidget()                   # the picker row and the sheet name under it; the mini view hides it whole
@@ -302,7 +306,7 @@ class MainWindow:
         self._workbook_block = QVBoxLayout(self.workbook_row)
         self._workbook_block.setContentsMargins(0, 0, 0, 0)
         self._workbook_block.addWidget(self.picker_row)
-        self._workbook_block.addWidget(self.sheet_label, 0, Qt.AlignmentFlag.AlignRight)   # under the right end of the file box
+        self._workbook_block.addWidget(self.sheet_label, 0, Qt.AlignmentFlag.AlignLeft)   # under the left end of the file box
         self._tighten_sheet_label()
         layout.addWidget(self.workbook_row)
         layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
@@ -387,7 +391,6 @@ class MainWindow:
         self.use_excel_action = file_menu.addAction("Use Open Excel Workbook", lambda: self._on_use_excel())
         self.use_excel_action.setEnabled(False)
         window.setCentralWidget(central)
-        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)   # lets opacity < 100 show through
         self._window = window
         self.refresh_icons()
         self._set_collapsed("log", self._log_collapsed)
@@ -574,6 +577,7 @@ class MainWindow:
         """Apply the spacing setting to this window (the mini view keeps its own tight margins)."""
         if self._window is None:
             return
+        self._density = spacing or ""
         apply_spacing(self._window, spacing)
         self._tighten_sheet_label()
         if self._view_mini:
@@ -581,9 +585,16 @@ class MainWindow:
         else:
             self._log_bottom_margin()
 
+    #: The sheet name's gap under the file box, and the space left of and below it, per spacing setting (px).
+    SHEET_LABEL_GAPS = {"compact": (1, 8, 0), "comfortable": (6, 10, 5)}
+
     def _tighten_sheet_label(self) -> None:
-        """Keep the sheet name close under the file box, whatever the spacing setting says."""
-        self._workbook_block.setSpacing(1)
+        """Place the sheet name just under the file box: close in compact spacing, with more room in comfortable."""
+        app = QApplication.instance()
+        mode = self._density or (str(app.property("quillSpacing")) if app is not None else "compact")
+        gap, left, below = self.SHEET_LABEL_GAPS.get(mode, self.SHEET_LABEL_GAPS["compact"])
+        self._workbook_block.setSpacing(gap)
+        self.sheet_label.setContentsMargins(left, 0, 0, below)
 
     def _set_margins(self, mini: bool) -> None:
         if mini:
@@ -1110,6 +1121,12 @@ class MainWindow:
         self.countdown_label.setVisible(seconds is not None)
         if seconds is not None:
             self.countdown_label.setText(f"{seconds}s" if self._view_mini else f"Stops in {seconds}s")
+
+    def add_demo_menu(self, scenarios) -> None:
+        """Add a **Demo** menu with one entry per ``(label, action)`` (only in demo mode; see :mod:`quill.demo`)."""
+        menu = self._window.menuBar().addMenu("Demo")
+        for label, action in scenarios:
+            menu.addAction(label, action)
 
     def _icon(self, name: str, color: str):
         return make_icon(name, color)

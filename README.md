@@ -433,3 +433,9 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Quitting:** `QuillApplication` turns the system quit request (Dock menu, Cmd-Q) into `QuillApp.quit_app`, which closes an open Settings window and every other window, releases the microphone and timers, quits, and has a fail-safe (`quit_failsafe_ms`). The tray's Quit uses it too. Settings opens once at a time.
 - **Settings:** remembers the open page and size (`settings_page`, `settings_width/height`), the Theme icons are redrawn in the current text colour, number boxes keep their text clear of the edges, and toggling **Hide the Dock Icon** gives the focus back to the window that had it.
 
+### Phase 47 notes (blur, sample data, Sheet label)
+- **Blur** is now a frosted-glass window: the translucent attribute is set before the native window exists (`main_window` setup), `apply_opacity` runs before `apply_chrome`, and the macOS blur layer is an `NSVisualEffectView`. With blur above 0 the background fades but controls stay crisp; with blur 0 the whole window fades.
+- **Picking a sound plays it** (no Play Sample row); clips for every spoken word render in the background at start.
+- **Settings is non-modal**, so the Dock's Quit always reaches `QuillApp.quit_app`.
+- **Sheet label** is left-aligned and roomier in comfortable mode.
+- **Demo mode** (`python main.py --demo`, `QUILL_DEMO=1`, or `tools/quill-demo.command`): opens a sample workbook and adds a **Demo** menu (`quill/demo.py`) whose scenarios feed text through the same relay a spoken phrase uses, so the real screens fill with pills, the row grid, Term Helper terms and Last Saved without recording anything.

@@ -276,14 +276,24 @@ class TestOpacityAndBlur(unittest.TestCase):
         self.assertEqual(self.faded(app.window.root), 0.6)
         self.assertEqual(self.faded(app.sorting.root), 0.6)
 
-    def test_opacity_changes_live_and_returns_to_solid(self):
-        app = self.make_app()
+    def test_without_blur_the_whole_window_fades_and_returns_to_solid(self):
+        app = self.make_app(blur=0)
         app.settings.preferences["opacity"] = 35
         app.apply_settings(quiet=True)
         self.assertEqual(self.faded(app.window.root), 0.35)
         app.settings.preferences["opacity"] = 100
         app.apply_settings(quiet=True)
-        self.assertIsNone(app.window.root.graphicsEffect())
+        self.assertIsNone(self.faded(app.window.root))
+
+    def test_with_blur_the_window_stays_opaque_and_only_its_background_thins(self):
+        app = self.make_app(blur=80)
+        app.settings.preferences["opacity"] = 35
+        app.apply_settings(quiet=True)
+        self.assertIsNone(self.faded(app.window.root))                    # not faded as a whole: that would let the sharp desktop leak
+        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.35)       # the background is see-through instead
+        app.settings.preferences["opacity"] = 100
+        app.apply_settings(quiet=True)
+        self.assertEqual(_app.property("quillBackdrop"), 1.0)
 
     def test_opacity_is_the_windows_own_and_never_a_graphics_effect(self):
         root = QWidget()
@@ -303,12 +313,12 @@ class TestOpacityAndBlur(unittest.TestCase):
         theme.apply_opacity(root, 500)
         self.assertEqual(root.windowOpacity(), 1.0)
 
-    def test_the_backdrop_thins_only_with_blur_and_only_as_the_window_fades(self):
+    def test_the_background_thins_only_when_blur_is_on(self):
         self.assertEqual(theme.backdrop_alpha(100, 100), 1.0)             # solid window: solid background
-        self.assertEqual(theme.backdrop_alpha(50, 0), 1.0)                # no blur: solid background
+        self.assertEqual(theme.backdrop_alpha(50, 0), 1.0)                # no blur: the window fades as a whole instead
+        self.assertEqual(theme.backdrop_alpha(50, 100), 0.5)
         self.assertLess(theme.backdrop_alpha(50, 100), theme.backdrop_alpha(80, 100))
-        self.assertLess(theme.backdrop_alpha(50, 100), theme.backdrop_alpha(50, 30))
-        self.assertGreater(theme.backdrop_alpha(10, 100), 0.1)            # never fully clear
+        self.assertGreater(theme.backdrop_alpha(0, 100), 0.05)            # never fully clear
 
     def test_a_windows_background_is_painted_with_the_backdrop_alpha_and_changing_it_does_not_restyle(self):
         theme.apply_theme(_app, "light", "violet", "compact", backdrop=1.0)

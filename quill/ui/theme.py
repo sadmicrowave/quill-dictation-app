@@ -144,14 +144,15 @@ _ICON_CACHE: dict[tuple[str, str, str], dict[str, str]] = {}
 
 
 def backdrop_alpha(opacity: int, blur: int) -> float:
-    """How solid a window's own background paint is, so the blur behind it can show.
+    """How solid a window's own background paint is.
 
-    With no blur, or a fully opaque window, the background is solid (1.0). Otherwise it thins out as the window
-    is made more see-through, in proportion to the blur, so the frosted desktop shows through the background
-    (the window as a whole is faded separately: see :func:`apply_opacity`).
+    With no blur the whole window is faded by its opacity (see :func:`apply_opacity`) and the background stays
+    solid (1.0). With blur on, the window is "frosted glass": the background thins out as opacity drops, so the
+    blurred desktop behind shows through it, while the controls stay crisp.
     """
-    fade = 1 - max(0, min(100, int(opacity))) / 100
-    return round(1 - 0.85 * max(0, min(100, int(blur))) / 100 * fade, 3)
+    if int(blur) <= 0:
+        return 1.0
+    return round(max(0.08, min(100, max(0, int(opacity))) / 100), 3)
 
 
 ROOT_NAMES = ("mainRoot", "settingsRoot", "sortingRoot", "helpRoot")
@@ -428,18 +429,20 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
         app.setProperty("quillThemeHooked", True)
 
 
-def apply_opacity(root: QWidget, percent: int) -> None:
-    """Fade a whole window (background, controls and text together) to *percent*.
+def apply_opacity(root: QWidget, percent: int, blur: int = 0) -> None:
+    """Make a window see-through to *percent* opacity.
 
-    This is the window's own opacity, done by the operating system's compositor, so every pixel follows
-    the setting uniformly, instantly and without re-drawing anything. (An earlier version faded the root widget
-    with a graphics effect; on macOS that left ghost copies of the text and stale pieces of the previous theme
-    when the theme changed.) *root* may be any widget of the window.
+    Without blur the whole window (background, controls and text together) is faded with the window's own
+    opacity, done by the compositor. (An earlier version faded the root widget with a graphics effect; on macOS
+    that left ghost copies of the text and stale pieces of the previous theme.) With blur on the window stays
+    fully opaque as an object and only its background thins (see :func:`backdrop_alpha`), because a faded
+    window would let the *sharp* desktop leak through instead of the blurred one. *root* may be any widget of
+    the window.
     """
     percent = max(0, min(100, int(percent)))
     if root.graphicsEffect() is not None:
         root.setGraphicsEffect(None)                       # no effect may be left over from before
-    root.window().setWindowOpacity(percent / 100)
+    root.window().setWindowOpacity(1.0 if int(blur) > 0 else percent / 100)
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:

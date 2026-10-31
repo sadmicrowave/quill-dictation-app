@@ -62,7 +62,7 @@ class TestLayout(DialogCase):
                          {"Speak Sort Term Prompts", "Sort by Voice Automatically", "Undo Remembers", "Theme",
                           "Keep the Microphone Open When Not Listening", "Keep the Mini View on Top", "Hide the Dock Icon", "Troubleshooting",
                           "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur",
-                          "Confirm With", "Sound Set", "Spoken Word", "Preview", "Stop Listening When Quiet",
+                          "Confirm With", "Sound Set", "Spoken Word", "Stop Listening When Quiet",
                           "Quiet Time Before Stopping"})
 
     def test_the_keyword_table_gets_the_spare_height(self):
@@ -443,3 +443,18 @@ class TestSettingsOpensQuickly(unittest.TestCase):
         rows = [SettingRow(f"Title {i}", "A wrapped description. " * 8, ToggleSwitch()) for i in range(40)]
         self.assertLess(time.perf_counter() - start, 1.0, "making 40 rows took too long")
         self.assertEqual(len(rows), 40)
+
+
+class TestChoosingASoundPlaysIt(unittest.TestCase):
+    def test_there_is_no_play_button_or_preview_row_and_every_choice_plays_when_picked(self):
+        from PySide6.QtWidgets import QPushButton
+        dialog = SettingsDialog(Settings.defaults())
+        widget = dialog.build()
+        titles = {row.title for row in dialog.rows}
+        self.assertNotIn("Preview", titles)
+        self.assertNotIn("Play Sample", [b.text() for b in widget.findChildren(QPushButton)])
+        played = []
+        dialog._on_preview = lambda mode, pack, echo: played.append((mode, pack, echo))
+        for combo in (dialog.feedback_combo, dialog.pack_combo, dialog.echo_combo):
+            combo.activated.emit(0)
+        self.assertEqual(len(played), 3)

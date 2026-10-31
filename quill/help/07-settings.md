@@ -21,7 +21,7 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 - **Accent:** Violet (default), Terracotta, Ocean, Forest, Rose
 - **Spacing:** Compact or Comfortable
 - **Text size:** 9–20 pt
-- **Opacity & blur:** see-through, frosted window
+- **Opacity & blur:** with blur on, the window background turns frosted glass (text and controls stay crisp); with blur at 0 the whole window fades
 
 ## 🗝️ Keywords
 

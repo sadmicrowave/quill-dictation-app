@@ -380,16 +380,20 @@ class TestAlignment(unittest.TestCase):
             _app.processEvents()
             self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.toggle_button, self.w.root), spacing)
 
-    def test_the_sheet_name_is_right_aligned_under_the_file_box_and_open_file_button(self):
+    def test_the_sheet_name_is_left_aligned_under_the_file_box_with_more_room_in_comfortable(self):
+        gaps = {}
         for spacing in ("compact", "comfortable"):
             self.w.apply_density(spacing)
             self.w.update_sheet("Inventory")
             _app.processEvents()
-            right_edge = self.w.open_file_button.mapTo(self.w.root, QPoint(0, 0)).x() + self.w.open_file_button.width()
             label = self.w.sheet_label
-            label_right = label.mapTo(self.w.root, QPoint(0, 0)).x() + label.width()
-            self.assertAlmostEqual(label_right, right_edge, delta=3, msg=spacing)
-            self.assertTrue(bool(label.alignment() & Qt.AlignmentFlag.AlignRight))
+            self.assertTrue(bool(label.alignment() & Qt.AlignmentFlag.AlignLeft), spacing)
+            box_left = self.w.workbook_combo.mapTo(self.w.root, QPoint(0, 0)).x()
+            self.assertGreater(label.mapTo(self.w.root, QPoint(0, 0)).x(), box_left - 1, spacing)
+            self.assertLess(label.x(), 40, spacing)                            # at the left, not the right
+            combo_bottom = self.w.workbook_combo.mapTo(self.w.root, QPoint(0, self.w.workbook_combo.height())).y()
+            gaps[spacing] = (label.mapTo(self.w.root, QPoint(0, 0)).y() - combo_bottom, label.contentsMargins().bottom())
+        self.assertGreater(gaps["comfortable"][0] + gaps["comfortable"][1], gaps["compact"][0] + gaps["compact"][1] + 4)
 
     def test_open_file_ends_where_start_ends(self):
         for spacing in ("compact", "comfortable"):

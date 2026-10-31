@@ -50,9 +50,9 @@ from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
 from quill.ui.theme import (
     apply_opacity,
+    backdrop_alpha,
     apply_spacing,
     apply_theme,
-    backdrop_alpha,
     colors_for,
     is_dark,
 )
@@ -635,17 +635,18 @@ class QuillApp:
         self.help.show(topic)
 
     def open_settings(self) -> None:
-        """Show the settings dialog; apply the result if saved."""
+        """Show the Settings window (not modal: the app stays usable, and can be quit, while it is open)."""
         if self._settings_dialog is not None:                 # already open: bring it forward, never a second one
             self._settings_dialog.bring_forward()
             return
-        dialog = self._settings_dialog = SettingsDialog(
+        self._settings_dialog = SettingsDialog(
             self.settings, self.window.widget, on_preview=self.preview_feedback,
             on_change=lambda: self.apply_settings(quiet=True))
-        try:
-            accepted = dialog.exec()
-        finally:
-            self._settings_dialog = None
+        self._settings_dialog.open(on_done=self._settings_closed)
+
+    def _settings_closed(self, accepted: bool) -> None:
+        """The Settings window closed: forget it, and apply the result if it was saved."""
+        self._settings_dialog = None
         if accepted and not self._quitting:
             self.apply_settings()
 
@@ -794,8 +795,8 @@ class QuillApp:
                     self.window.apply_density(str(prefs["spacing"]))
                 else:
                     apply_spacing(window, str(prefs["spacing"]))
-                apply_chrome(window, dark, colors, opacity=opacity, blur=blur)
-                apply_opacity(root, opacity)
+                apply_opacity(root, opacity, blur)                  # first: Qt marks a fully opaque window opaque
+                apply_chrome(window, dark, colors, opacity=opacity, blur=blur)    # ... which the chrome may undo
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         self.sorting.refresh_icons(colors["text"])
         if self.help is not None:
@@ -998,8 +999,8 @@ class QuillApp:
         preload = getattr(self.sound_player, "preload", None)
         if preload is not None:
             preload(self.feedback.sound_files(all_packs=True))
-        if self.feedback.mode == "echo":
-            self.clips.make_in_background(spoken_words(), done=self._clips_ready)
+        self.clips.make_in_background(spoken_words(), done=self._clips_ready)       # always: choosing Spoken Word in
+                                                                                    # Settings must play at once
 
     def _mute_for(self, seconds: float) -> None:
         """Keep the microphone muted while a cue is sounding."""

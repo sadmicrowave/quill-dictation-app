@@ -18,7 +18,7 @@ Short sounds tell you what happened, so your eyes can stay on your hands.
 - Pick one of **five sound sets**
 - Or a **spoken word**: *Okay*, *Done*, *Got it*
 - Or turn confirmations **off**
-- **Play Sample** to hear your choice. Spoken words are prepared the first time and then play instantly, like the sounds.
+- **Picking a sound plays it straight away**, so there is no Play button. Spoken words are prepared the first time and then play instantly, like the sounds.
 
 ## 🤐 Spoken guidance (off by default)
 

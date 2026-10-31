@@ -248,20 +248,24 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
     window.setTitlebarAppearsTransparent_(True)
     strength = max(0, min(100, blur)) / 100
     window.setOpaque_(not (strength > 0 or opacity < 100))   # a see-through window must not be marked opaque
-    # The window fades as a whole (theme.apply_opacity); here only the window's own backdrop, which sits
-    # under the title bar, thins out when blur is on so the frosted desktop shows through it.
-    from quill.ui.theme import backdrop_alpha
-    alpha = backdrop_alpha(opacity, blur)
+    # The window fades as a whole (theme.apply_opacity); its blur is the window server's own (see _set_blur).
+    # No blur: the window fades as a whole (theme.apply_opacity) over a solid backing. Blur: the backing is
+    # clear, so the vibrancy layer (the blurred desktop) is what shows through the see-through background.
+    alpha = 0.0 if strength > 0 and opacity < 100 else 1.0
     window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
-    _set_blur(view, appkit, strength)
+    _set_blur(view, appkit, strength, window)
     window.invalidateShadow()               # the shadow follows the visible shape
     return True
 
 
-def _set_blur(view, appkit, strength: float) -> None:
-    """Add, fade or remove a vibrancy view behind Qt's content view (*strength* 0 to 1)."""
+def _set_blur(view, appkit, strength: float, window=None) -> None:
+    """Blur the desktop behind the window by *strength* (0 to 1; 0 = off).
+
+    A vibrancy view is added, faded or removed behind Qt's content view. It shows through wherever the
+    content's own background is see-through (see ``theme.backdrop_alpha``).
+    """
     holder = view.superview()
     if holder is None:
         return

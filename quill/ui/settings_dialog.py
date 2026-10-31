@@ -141,6 +141,7 @@ class SettingsDialog:
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
                  on_open_logs=None, on_help=None) -> None:
         self._on_help = on_help
+        self._on_done = None                      # called when the non-modal window closes (see open)
         self._on_open_logs = on_open_logs or self._open_log_folder
         self._on_preview = on_preview or (lambda mode, pack, echo: None)
         self._on_change = on_change or (lambda: None)
@@ -183,8 +184,28 @@ class SettingsDialog:
     MIN_DIALOG_OPACITY = 70
 
     def exec(self) -> bool:
-        """Show modally. Returns True if the user saved changes."""
-        QGuiApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)   # the pointer stays steady while the window is made
+        """Show modally and wait. Returns True if the user saved changes. (The app itself uses :meth:`open`.)"""
+        self._prepare()
+        try:
+            return self._dialog.exec() == QDialog.DialogCode.Accepted
+        finally:
+            self._remember_position()
+
+    def open(self, on_done=None) -> None:
+        """Show the window without blocking, so the rest of the application (and quitting it) stays available.
+
+        Args:
+            on_done: Called with True (saved) or False (cancelled) once the window closes.
+        """
+        self._prepare()
+        self._on_done = on_done
+        self._dialog.finished.connect(self._finished)
+        self._dialog.setModal(False)
+        self._dialog.show()
+
+    def _prepare(self) -> None:
+        """Build and dress the window (the pointer is held steady while that happens)."""
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.ArrowCursor)
         try:
             self.build(lazy=True)
             self._restore_position()
@@ -192,10 +213,11 @@ class SettingsDialog:
             self._install_help_icon()
         finally:
             QGuiApplication.restoreOverrideCursor()
-        try:
-            return self._dialog.exec() == QDialog.DialogCode.Accepted
-        finally:
-            self._remember_position()
+
+    def _finished(self, result: int) -> None:
+        self._remember_position()
+        if self._on_done is not None:
+            self._on_done(result == QDialog.DialogCode.Accepted)
 
     def bring_forward(self) -> None:
         """Raise this window (it is already open)."""
@@ -260,8 +282,8 @@ class SettingsDialog:
         dark = is_dark(app)
         opacity = max(int(prefs["opacity"]), self.MIN_DIALOG_OPACITY)
         colors = colors_for(dark, str(prefs["accent"]))
+        apply_opacity(self.root, opacity, int(prefs["blur"]))        # first: Qt marks a fully opaque window opaque
         apply_chrome(self._dialog, dark, colors, opacity=opacity, blur=int(prefs["blur"]))
-        apply_opacity(self.root, opacity)
         self.theme_combo.refresh_icons(colors["text"])               # the Theme icons follow the light / dark colours
 
     def build(self, lazy: bool = False) -> QDialog:
@@ -593,7 +615,7 @@ class SettingsDialog:
         for mode in MODES:
             self.feedback_combo.addItem(MODE_LABELS[mode], mode)
         self.feedback_combo.setCurrentIndex(MODES.index(prefs["feedback"]))
-        self._add("Sounds", page, "Confirm With", "How Quill tells you it has done something.",
+        self._add("Sounds", page, "Confirm With", "How Quill tells you it has done something. Choosing one plays it.",
                   self.feedback_combo, "feedback audio sound echo")
         self.pack_combo = FlatCombo()
         for key, label in PACKS.items():
@@ -608,12 +630,9 @@ class SettingsDialog:
                   self.echo_combo, "echo voice")
         self.feedback_combo.currentIndexChanged.connect(self._update_feedback_choices)
         self._update_feedback_choices()
-        self.pack_combo.activated.connect(lambda _=0: self.play_sample())    # picking one plays it
+        self.feedback_combo.activated.connect(lambda _=0: self.play_sample())    # picking a choice plays it, so there is
+        self.pack_combo.activated.connect(lambda _=0: self.play_sample())        # no separate Play button to press
         self.echo_combo.activated.connect(lambda _=0: self.play_sample())
-        sample = QPushButton("Play Sample")
-        sample.setToolTip("Hear the sound set (or word) selected above")
-        sample.clicked.connect(self.play_sample)
-        self._add("Sounds", page, "Preview", "Plays the selected sound, or says the selected word.", sample)
         page.addStretch(1)
 
         # --- Keywords (the table gets all the height the window has)

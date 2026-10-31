@@ -22,7 +22,7 @@
 | A word keeps showing in Term Helper | Choose **Add** or **Same As…** once; Quill remembers |
 | *"Which column is …?"* | Say a column name, e.g. **"Color"** |
 | *"I don't have …"* | That value isn't in the list: say it again, or **"ignore"** |
-| No sounds | **Settings > Sounds**: check it isn't *Off*; press **Play Sample** |
+| No sounds | **Settings > Sounds**: check it isn't *Off*; pick another sound to hear it |
 | Undo does nothing | Nothing left to undo, or you changed sheets |
 | Nothing is typed | You may still be voice sorting: say **"done"** |
 | Quill hears itself | Turn off **Speak Sort Term Prompts** (off by default) in **Settings > General**, or wear headphones |

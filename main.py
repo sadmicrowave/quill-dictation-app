@@ -6,6 +6,7 @@ Entry point: python main.py  (or double-click the packaged .app / .exe)
 Options:
   --workbook PATH   Dictate into an .xlsx file directly (no Excel needed).
   --verbose, -v     Log debug detail to the log file and the terminal (same as QUILL_DEBUG=1).
+  --demo            Open a sample workbook and add a Demo menu that fills the screens with data (QUILL_DEMO=1).
 """
 from __future__ import annotations
 import argparse
@@ -17,6 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Quill dictation utility")
     parser.add_argument("--workbook", help="path to an .xlsx file to use instead of live Excel")
     parser.add_argument("--verbose", "-v", action="store_true", help="log debug detail (also QUILL_DEBUG=1)")
+    parser.add_argument("--demo", action="store_true", help="sample workbook and a Demo menu (also QUILL_DEMO=1)")
     args = parser.parse_args(argv)
 
     from quill.diagnostics import setup_logging
@@ -33,6 +35,10 @@ def main(argv: list[str] | None = None) -> int:
     app.setQuitOnLastWindowClosed(False)  # lives in tray after window closes
 
     from quill.bridge.factory import startup_bridge
+    from quill.demo import demo_requested, make_demo_workbook
+    demo = demo_requested(args.demo)
+    if demo:
+        args.workbook = str(make_demo_workbook())
     try:
         bridge = startup_bridge(settings, args.workbook)
     except NotImplementedError as exc:
@@ -42,6 +48,10 @@ def main(argv: list[str] | None = None) -> int:
     from quill.app import QuillApp
     quill = QuillApp(app, settings, bridge)
     quill.start()
+    if demo:
+        from quill.demo import Demo
+        quill.demo = Demo(quill)
+        quill.window.add_demo_menu(quill.demo.scenarios())
     return app.exec()
 
 

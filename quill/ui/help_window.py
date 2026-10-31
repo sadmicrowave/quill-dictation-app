@@ -294,8 +294,8 @@ class HelpWindow:
         from quill.ui.chrome import apply_chrome
         from quill.ui.theme import apply_opacity, colors_for, is_dark
         dark = is_dark(qapp)
+        apply_opacity(self.root, int(prefs["opacity"]), int(prefs["blur"]))       # first: Qt marks a fully opaque window opaque
         apply_chrome(self._window, dark, colors_for(dark, str(prefs["accent"])),
                      opacity=int(prefs["opacity"]), blur=int(prefs["blur"]))
-        apply_opacity(self.root, int(prefs["opacity"]))
         if self.current is not None:
             self._render(self.current)                        # restyle for the new colours
