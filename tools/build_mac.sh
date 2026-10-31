@@ -4,6 +4,6 @@
 set -e
 cd "$(dirname "$0")/.."
 python tools/make_app_icon.py            # keep the icon files in step with the design
-pyinstaller --noconfirm packaging/quill_mac.spec
+pyinstaller --noconfirm --distpath dist --workpath build packaging/quill_mac.spec
 echo "Built: $(pwd)/dist/Quill.app ($(du -sh dist/Quill.app | cut -f1))"
 echo "Open it by double-clicking in Finder, not from a terminal, so you test what a user gets."
