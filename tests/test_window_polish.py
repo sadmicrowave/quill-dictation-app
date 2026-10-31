@@ -10,7 +10,7 @@ import quill.ui.chrome as chrome
 from quill.config.settings import Settings
 from quill.ui import theme
 from quill.ui.main_window import (
-    LOG_BOTTOM_MARGIN, NOT_CONNECTED_HINT, NOT_CONNECTED_TEXT, ROW_EMPTY_HEIGHT, ROW_MAX_FULL, ROW_MAX_MINI,
+    CHIP_HEIGHT, LOG_BOTTOM_MARGIN, NOT_CONNECTED_HINT, NOT_CONNECTED_TEXT, ROW_EMPTY_HEIGHT, ROW_MAX_FULL, ROW_MAX_MINI,
     MainWindow,
 )
 from quill.ui.settings_widgets import SettingRow, ToggleSwitch
@@ -40,9 +40,9 @@ def right(widget, root):
 
 class TestConnectionChip(unittest.TestCase):
     def test_says_file_stream_not_connected(self):
-        self.assertEqual(NOT_CONNECTED_TEXT, "File stream not connected.")
+        self.assertEqual(NOT_CONNECTED_TEXT, "File stream not connected")
         w = window()
-        self.assertEqual(w.connection_chip.text(), "File stream not connected.")
+        self.assertEqual(w.connection_chip.text(), "File stream not connected")
 
     def test_shown_in_place_of_the_empty_sheet_message(self):
         w = window()
@@ -69,7 +69,9 @@ class TestConnectionChip(unittest.TestCase):
         self.assertIn("Excel", hint)
         self.assertIn(".xlsx", hint)
         self.assertIn("File > Open Spreadsheet File", hint)
-        self.assertEqual(window().connection_chip.toolTip(), hint)
+        tip = window().connection_chip.toolTip()
+        self.assertEqual(tip.replace("\n", " "), hint.replace("\n", " "))
+        self.assertLessEqual(max(len(line) for line in tip.splitlines()), 56)     # wrapped: never a screen-wide strip
 
     def test_the_app_supplied_hint_has_no_first_person_either(self):
         from quill.controller import NO_WORKBOOK_HELP
@@ -78,14 +80,30 @@ class TestConnectionChip(unittest.TestCase):
     def test_a_custom_hint_replaces_the_tooltip(self):
         w = window()
         w.set_not_connected(True, "Custom hint")
-        self.assertEqual(w.connection_chip.toolTip(), "Custom hint")
+        self.assertEqual((w.connection_chip.toolTip(), w.mini_chip.toolTip()), ("Custom hint",) * 2)
 
     def test_still_shown_in_the_mini_view_where_the_sheet_name_is_not(self):
         w = window()
         w.set_not_connected(True)
         w.set_mini(True)
         _app.processEvents()
-        self.assertTrue(w.connection_chip.isVisibleTo(w.widget))
+        self.assertTrue(w.mini_chip.isVisibleTo(w.widget))
+        self.assertFalse(w.connection_chip.isVisibleTo(w.widget))
+
+    def test_the_chip_sits_inside_the_picker_and_never_stretches(self):
+        w = window()
+        w.set_not_connected(True)
+        w.widget.show()
+        w.widget.resize(360, 900)
+        _app.processEvents()
+        chip, combo = w.connection_chip, w.workbook_combo
+        self.assertTrue(chip.isVisibleTo(w.widget))
+        self.assertTrue(combo.geometry().contains(chip.geometry()))        # laid over the picker
+        self.assertEqual(chip.height(), CHIP_HEIGHT)
+        w.widget.resize(360, 400)
+        _app.processEvents()
+        self.assertEqual(chip.height(), CHIP_HEIGHT)
+        self.assertEqual(w.mini_chip.height(), CHIP_HEIGHT)
 
     def test_nothing_about_the_connection_appears_at_the_bottom(self):
         w = window()
@@ -126,7 +144,7 @@ class TestLogAtTheBottom(unittest.TestCase):
             w.apply_density(spacing)
             _app.processEvents()
             self.assertEqual(self.gap(w), LOG_BOTTOM_MARGIN, spacing)
-            self.assertTrue(10 <= LOG_BOTTOM_MARGIN <= 15)
+            self.assertTrue(5 <= LOG_BOTTOM_MARGIN <= 10)
 
     def test_nothing_at_all_is_below_the_log_heading(self):
         w = window(log_collapsed=True)
@@ -344,7 +362,7 @@ class TestAlignment(unittest.TestCase):
             self.w.apply_density(spacing)
             _app.processEvents()
             self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.sheet_label, self.w.root), spacing)
-            self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.dot, self.w.root), spacing)
+            self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.toggle_button, self.w.root), spacing)
 
     def test_open_file_ends_where_start_ends(self):
         for spacing in ("compact", "comfortable"):
@@ -374,6 +392,37 @@ class TestAlignment(unittest.TestCase):
         QVBoxLayout(plain)
         theme.apply_spacing(plain, "comfortable")
         self.assertEqual(plain.layout().contentsMargins().left(), 20)
+
+
+class TestResizingKeepsAlignment(unittest.TestCase):
+    """Making the window taller must not open gaps between sections or stretch any of them."""
+
+    def positions(self, w):
+        root = w.root
+        names = ("toggle_button", "workbook_row", "row_toggle", "row_table", "last_label", "log_toggle")
+        return {n: (getattr(w, n).mapTo(root, getattr(w, n).rect().topLeft()).y(), getattr(w, n).height())
+                for n in names}
+
+    def test_sections_keep_their_places_and_sizes_and_log_stays_at_the_bottom(self):
+        w = window(log_collapsed=True)
+        w.set_not_connected(True)
+        _app.processEvents()
+        before = self.positions(w)
+        w.widget.resize(360, 1000)
+        _app.processEvents()
+        after = self.positions(w)
+        for name in ("toggle_button", "workbook_row", "row_toggle", "row_table", "last_label"):
+            self.assertEqual(before[name], after[name], name)                   # same place, same size
+        bottom = w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y()
+        self.assertEqual(w.root.height() - bottom - 1, LOG_BOTTOM_MARGIN)       # Log hugs the bottom edge
+
+    def test_an_open_log_takes_the_extra_height(self):
+        w = window(log_collapsed=False)
+        before = self.positions(w)
+        w.widget.resize(360, 1000)
+        _app.processEvents()
+        self.assertEqual(before["row_table"], self.positions(w)["row_table"])
+        self.assertGreater(w.log.height(), 300)
 
 
 if __name__ == "__main__":

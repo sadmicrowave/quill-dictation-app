@@ -15,7 +15,7 @@ from __future__ import annotations
 import pathlib
 import tempfile
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLayout, QWidget
 
@@ -36,10 +36,10 @@ TOKENS = {
 #: Accent colours: name -> (label, light scheme (accent, hover), dark scheme (accent, hover)).
 #: Text on the accent is white on the light variants and near-black on the dark ones.
 ACCENTS = {
+    "violet":     ("Violet",     ("#7A55C2", "#6644A8"), ("#A58BE0", "#B6A0E8")),
     "terracotta": ("Terracotta", ("#C9623F", "#B5552F"), ("#D97757", "#E58A6B")),
     "ocean":      ("Ocean",      ("#2F6FB5", "#255C9A"), ("#5B9BD5", "#75ADE0")),
     "forest":     ("Forest",     ("#3E7D4F", "#316A41"), ("#6BB383", "#82C197")),
-    "violet":     ("Violet",     ("#7A55C2", "#6644A8"), ("#A58BE0", "#B6A0E8")),
     "rose":       ("Rose",       ("#C0446B", "#A93A5D"), ("#E57A9B", "#EC93AE")),
 }
 
@@ -52,13 +52,13 @@ DENSITIES = {
                         header="10px", cell="7px", radius=14, margin=20, gap=12),
 }
 
-DEFAULT_ACCENT = "terracotta"
+DEFAULT_ACCENT = "violet"
 DEFAULT_FONT_SIZE = 12
 DEFAULT_SPACING = "compact"
 
 
 def colors_for(dark: bool, accent: str = DEFAULT_ACCENT) -> dict[str, str]:
-    """All colour tokens for a scheme and accent (unknown accents fall back to terracotta)."""
+    """All colour tokens for a scheme and accent (unknown accents fall back to the default, violet)."""
     t = dict(TOKENS["dark" if dark else "light"])
     _, light, night = ACCENTS.get(accent, ACCENTS[DEFAULT_ACCENT])
     t["accent"], t["accent_hover"] = night if dark else light
@@ -133,8 +133,8 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot {{ background: {win}; }}
-QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
-           border-radius: 6px; padding: 4px 8px; }}
+QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
+           border-radius: 8px; padding: 5px 9px; }}
 
 QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['border']};
               border-radius: 8px; padding: {d['button']}; }}
@@ -273,6 +273,19 @@ def _restyle(app: QApplication) -> None:
     app.setStyleSheet(stylesheet_for(dark, accent, spacing, size))
 
 
+class _TooltipRounder(QObject):
+    """Lets tooltips have rounded corners: Qt draws them in a square window, so make that window transparent.
+
+    The style sheet then paints the rounded, softly bordered box and nothing square shows behind it.
+    """
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Polish and obj.inherits("QTipLabel"):
+            obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
+        return False
+
+
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
                 spacing: str = DEFAULT_SPACING, font_size: int = DEFAULT_FONT_SIZE) -> None:
     """Set the colour scheme, accent and spacing, and apply Quill's look.
@@ -301,6 +314,10 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
     app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
     _restyle(app)
+    if not app.property("quillTooltips"):
+        rounder = _TooltipRounder(app)             # parented to the app, which keeps it alive
+        app.installEventFilter(rounder)
+        app.setProperty("quillTooltips", True)
     if not app.property("quillThemeHooked"):
         app.styleHints().colorSchemeChanged.connect(lambda *_: _restyle(app))
         app.setProperty("quillThemeHooked", True)

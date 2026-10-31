@@ -16,7 +16,7 @@ import datetime as dt
 import logging
 from typing import Callable
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSize, Qt
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
     QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
@@ -25,20 +25,21 @@ from PySide6.QtWidgets import (
 from quill.ui.chrome import set_always_on_top
 from quill.ui.icons import make_icon
 from quill.ui.theme import apply_spacing
-from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, tooltip_lines
+from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, tooltip_lines, wrap_tip
 
 #: Active-light colours (the same hues are used by the tray icon).
 COLOR_ACTIVE = "#34c759"
 COLOR_IDLE = "#8e8e93"
 
 #: The chip that replaces the sheet name while no spreadsheet is connected, and its tooltip.
-NOT_CONNECTED_TEXT = "File stream not connected."
+NOT_CONNECTED_TEXT = "File stream not connected"
 NOT_CONNECTED_HINT = (
     "No spreadsheet is connected, so there is nothing to read lists from or write rows to.\n"
     "Quill works through a workbook open in Excel (it attaches automatically within a few seconds of "
     "the workbook opening) or through an .xlsx file chosen with File > Open Spreadsheet File.\n"
     "Open a workbook or choose a file; listening can start once the connection is made."
 )
+CHIP_HEIGHT = 22
 
 #: Heights (px) of the Current Row box: when empty, and the most it grows to before it scrolls inside itself.
 ROW_EMPTY_HEIGHT = 42
@@ -46,10 +47,35 @@ ROW_MAX_FULL = 150
 ROW_MAX_MINI = 66
 
 #: Space left below the "Log" heading when the log is minimized, in pixels.
-LOG_BOTTOM_MARGIN = 12
+LOG_BOTTOM_MARGIN = 7
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
+
+
+class _ChipPlacer(QObject):
+    """Keeps a chip laid over the left of a combo box (in the space its text would use) as the box moves or resizes.
+
+    The chip is a sibling of the box, not a child: a label inside a combo box is not given the style sheet.
+    """
+
+    def __init__(self, combo: QComboBox, chip: QLabel) -> None:
+        super().__init__(combo)
+        self._combo, self._chip = combo, chip
+        combo.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show):
+            self.place()
+        return False
+
+    def place(self) -> None:
+        gap = 8
+        room = max(self._combo.width() - 2 * gap - 22, 40)          # leave the drop-down arrow clear
+        width = min(self._chip.sizeHint().width(), room)
+        box = self._combo.geometry()                                  # in the shared parent's coordinates
+        self._chip.setGeometry(box.x() + gap, box.y() + (box.height() - CHIP_HEIGHT) // 2, width, CHIP_HEIGHT)
+        self._chip.raise_()
 
 
 class MainWindow:
@@ -116,7 +142,7 @@ class MainWindow:
         self._not_connected = False
         self._native_settings_button = False
         self._text_color = "#1F1E1D"
-        self._accent = "#C9623F"
+        self._accent = "#7A55C2"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
         self._freed: dict[str, int] = {}     # window height each collapsed section gave back
         self._window: QMainWindow | None = None
@@ -144,10 +170,23 @@ class MainWindow:
         central.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
 
         # --- status row
+        # One button is the whole control: the light, the state and the play / stop glyph. Pressing it
+        # starts or stops listening; it fills with the accent colour while listening.
         self.dot = QLabel("●")
         self.state_label = QLabel()
+        self.toggle_icon = QLabel()
         self.toggle_button = QPushButton()
-        self.toggle_button.setProperty("accent", True)
+        self.toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_button.setProperty("keepMargins", True)
+        inner = QHBoxLayout(self.toggle_button)
+        inner.setContentsMargins(14, 0, 14, 0)
+        inner.setSpacing(8)
+        for part, stretch in ((self.dot, 0), (self.state_label, 0), (None, 1), (self.toggle_icon, 0)):
+            if part is None:
+                inner.addStretch(stretch)
+                continue
+            part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)   # clicks reach the button
+            inner.addWidget(part, 0, Qt.AlignmentFlag.AlignVCenter)
         self.toggle_button.clicked.connect(lambda: self._on_toggle(not self._listening))
         self.settings_button = QPushButton()            # icon only; refresh_icons() draws it
         self.settings_button.setProperty("iconOnly", True)
@@ -161,10 +200,7 @@ class MainWindow:
         self.mini_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mini_button.clicked.connect(lambda: self.set_mini(not self._mini, notify=True))
         row = QHBoxLayout()
-        for widget in (self.dot, self.state_label):
-            row.addWidget(widget)
-        row.addStretch(1)
-        row.addWidget(self.toggle_button)
+        row.addWidget(self.toggle_button, 1)
         row.addWidget(self.settings_button)
         row.addWidget(self.mini_button)
         layout.addLayout(row)
@@ -178,15 +214,17 @@ class MainWindow:
         )
         self.sheet_label = QLabel("Sheet: –")
         # Shown instead of the sheet name while no spreadsheet is connected: a technical warning chip.
-        self.connection_chip = QLabel(NOT_CONNECTED_TEXT)
-        self.connection_chip.setProperty("chip", "warn")
-        self.connection_chip.setToolTip(NOT_CONNECTED_HINT)
-        self.connection_chip.setVisible(False)
-        self.open_file_button = QPushButton("Open File…")
-        self.open_file_button.setToolTip("Work on an .xlsx file directly (no Excel needed)")
+        # (It sits inside the empty workbook picker; the mini view, which has no picker, has its own.)
+        self.workbook_row = QWidget()                   # one widget so the mini view can hide the row whole
+        self.connection_chip = self._make_chip(self.workbook_row)
+        self._chip_placer = _ChipPlacer(self.workbook_combo, self.connection_chip)
+        self.mini_chip = self._make_chip(None)
+        self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
+        self.open_file_button.setProperty("iconOnly", True)
+        self.open_file_button.setToolTip("Open Spreadsheet File\nWork on an .xlsx file directly (no Excel needed)")
+        self.open_file_button.setAccessibleName("Open Spreadsheet File")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self._on_open_file())
-        self.workbook_row = QWidget()                   # one widget so the mini view can hide the row whole
         self.workbook_row.setProperty("keepMargins", True)    # flush with the content above and below
         row = QHBoxLayout(self.workbook_row)
         row.setContentsMargins(0, 0, 0, 0)
@@ -194,7 +232,7 @@ class MainWindow:
         row.addWidget(self.open_file_button)
         layout.addWidget(self.workbook_row)
         layout.addWidget(self.sheet_label)
-        layout.addWidget(self.connection_chip, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
         # --- current row
         self.row_toggle = self._section_toggle("row", "Show or hide the row being built")
@@ -259,7 +297,11 @@ class MainWindow:
         layout.addWidget(self.footer)
         layout.addWidget(self.download_button)
 
-        # --- log (last)
+        # --- log (last). While it is minimized a spring above it takes any extra height, so resizing the
+        # window never opens gaps between the other sections: they keep their spacing and the Log
+        # heading stays at the bottom.
+        layout.addStretch(1)
+        self._spring_index = layout.count() - 1
         self.log_toggle = self._section_toggle("log", "Show or hide the log")
         layout.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         self.log = QPlainTextEdit()
@@ -284,6 +326,17 @@ class MainWindow:
         else:
             self._refresh_visibility()
         self.set_listening_indicator(False)
+
+    @staticmethod
+    def _make_chip(parent: QWidget | None) -> QLabel:
+        """The "File stream not connected" warning chip: a fixed-height pill that never stretches."""
+        chip = QLabel(NOT_CONNECTED_TEXT, parent)
+        chip.setProperty("chip", "warn")
+        chip.setToolTip(wrap_tip(NOT_CONNECTED_HINT))
+        chip.setFixedHeight(CHIP_HEIGHT)
+        chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        chip.setVisible(False)
+        return chip
 
     @staticmethod
     def _heading(text: str) -> QLabel:
@@ -376,7 +429,6 @@ class MainWindow:
     def _apply_view(self, mini: bool) -> None:
         """Put the contents of the full window or the mini view on screen (the size is separate)."""
         self._view_mini = mini
-        self.toggle_button.setText("" if mini else ("Stop" if self._listening else "Start"))
         self._place_sorting_button(mini)
         self._set_margins(mini)
         self._refresh_visibility()
@@ -386,7 +438,8 @@ class MainWindow:
         """Show the "File stream not connected." chip (instead of the sheet name) while there is no spreadsheet."""
         self._not_connected = not_connected
         if hint:
-            self.connection_chip.setToolTip(hint)
+            for chip in (self.connection_chip, self.mini_chip):
+                chip.setToolTip(wrap_tip(hint))
         self._refresh_visibility()
 
     def set_native_settings_button(self, native: bool) -> None:
@@ -428,7 +481,7 @@ class MainWindow:
         in_row = self._status_row.indexOf(self.sorting_button) >= 0
         if mini and not in_row:
             self._layout.removeWidget(self.sorting_button)
-            self._status_row.insertWidget(self._status_row.indexOf(self.toggle_button), self.sorting_button)
+            self._status_row.insertWidget(self._status_row.indexOf(self.toggle_button) + 1, self.sorting_button)
         elif not mini and in_row:
             self._status_row.removeWidget(self.sorting_button)
             self._layout.insertWidget(self._sorting_index, self.sorting_button)
@@ -508,7 +561,13 @@ class MainWindow:
         full = not self._view_mini
         self.state_label.setVisible(True)                                   # "Listening" / "Not Listening" shows in both views
         self.sheet_label.setVisible(full and not self._not_connected)
-        self.connection_chip.setVisible(self._not_connected)                # a missing connection matters in both views
+        self.connection_chip.setVisible(full and self._not_connected)       # inside the workbook picker ...
+        self.mini_chip.setVisible(self._view_mini and self._not_connected)  # ... or alone in the mini view
+        side = self.workbook_combo.sizeHint().height()
+        self.open_file_button.setFixedSize(side, side)                       # a square the height of the picker
+        self._chip_placer.place()
+        tall = self.sorting_button.fontMetrics().height() * 2 + 4
+        self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
         for widget in (self.workbook_row,
@@ -523,8 +582,8 @@ class MainWindow:
         self.sorting_title.setVisible(full)                               # just the count pill when mini
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
         self._fit_row_table(animate=False)
-        self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini
-                                             else (self.sorting_button.fontMetrics().height() * 2 + 4))
+        self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini else tall)
+        self._layout.setStretch(self._spring_index, 0 if (full and not self._log_collapsed) else 1)
         self.sorting_button.setToolTip("Needs Sorting" if self._view_mini else "")
 
     def _section_toggle(self, name: str, tip: str) -> HeadingToggle:
@@ -675,16 +734,26 @@ class MainWindow:
         self._listening = active
         self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
         self.state_label.setText("Listening" if active else "Not Listening")
-        self.toggle_button.setText("" if self._view_mini else ("Stop" if active else "Start"))
         self.toggle_button.setToolTip("Stop Listening" if active else "Start Listening")
         self.toggle_button.setAccessibleName("Stop Listening" if active else "Start Listening")
-        self.toggle_button.setIcon(self._icon("stop" if active else "play", self._on_accent))
+        self.toggle_button.setProperty("accent", active)          # filled with the accent while listening
+        style = self.toggle_button.style()
+        style.unpolish(self.toggle_button)
+        style.polish(self.toggle_button)
+        self._draw_toggle_icon()
 
     def _icon(self, name: str, color: str):
         return make_icon(name, color)
 
+    def _draw_toggle_icon(self) -> None:
+        """The play / stop glyph at the right of the Start / Stop button, in the colour that suits its fill."""
+        if self._window is None:
+            return
+        color = self._on_accent if self._listening else self._text_color
+        self.toggle_icon.setPixmap(make_icon("stop" if self._listening else "play", color, 16).pixmap(16, 16))
+
     def refresh_icons(self, text_color: str = "#1F1E1D", on_accent: str = "#FFFFFF",
-                      accent: str = "#C9623F") -> None:
+                      accent: str = "#7A55C2") -> None:
         """Redraw the button icons and the count pill for the current theme colours."""
         self._on_accent, self._text_color, self._accent = on_accent, text_color, accent
         if self._window is None:
@@ -694,7 +763,8 @@ class MainWindow:
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
-        self.toggle_button.setIcon(make_icon("stop" if self._listening else "play", on_accent, 16))
+        self.open_file_button.setIcon(make_icon("folder", text_color, 18))
+        self._draw_toggle_icon()
 
     def set_undo_count(self, count: int) -> None:
         """Show "Undo (n)" while there is a sorting answer to take back."""

@@ -63,7 +63,7 @@ class TestMiniWindow(unittest.TestCase):
     def test_the_buttons_shrink_to_icons(self):
         self.w.set_mini(True)
         self.assertEqual(self.w.toggle_button.text(), "")
-        self.assertFalse(self.w.toggle_button.icon().isNull())
+        self.assertFalse(self.w.toggle_icon.pixmap().isNull())
         self.assertEqual(self.w.toggle_button.toolTip(), "Start Listening")
         self.assertFalse(self.w.sorting_title.isVisibleTo(self.w.widget))
         self.assertEqual(self.w.badge_label.text(), "3")                  # just the count pill
@@ -81,14 +81,14 @@ class TestMiniWindow(unittest.TestCase):
         self.w.set_mini(False)
         _app.processEvents()
         self.assertEqual(self.w.widget.size(), full)
-        self.assertEqual(self.w.toggle_button.text(), "Start")
+        self.assertEqual(self.w.state_label.text(), "Not Listening")
 
     def test_the_needs_sorting_count_moves_into_the_status_row(self):
         row = self.w._status_row
         self.assertEqual(row.indexOf(self.w.sorting_button), -1)
         self.w.set_mini(True)
         self.assertGreaterEqual(row.indexOf(self.w.sorting_button), 0)
-        self.assertLess(row.indexOf(self.w.sorting_button), row.indexOf(self.w.toggle_button))
+        self.assertGreater(row.indexOf(self.w.sorting_button), row.indexOf(self.w.toggle_button))
         self.w.set_mini(False)
         self.assertEqual(row.indexOf(self.w.sorting_button), -1)
         self.assertEqual(self.w._layout.indexOf(self.w.sorting_button), self.w._sorting_index)

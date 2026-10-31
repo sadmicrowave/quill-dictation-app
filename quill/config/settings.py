@@ -53,7 +53,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "sound_pack": "chime",    # one of feedback.PACKS
     "echo_style": "okay",     # one of feedback.ECHO_WORDS
     "history_limit": 100,     # how many sorting answers undo remembers
-    "accent": "terracotta",   # one of ACCENTS (ui/theme.py)
+    "accent": "violet",   # one of ACCENTS (ui/theme.py)
     "spacing": "compact",     # "compact" | "comfortable"
     "font_size": 12,          # base text size in points
     "log_collapsed": True,    # the main window's log starts hidden (a click on "Log" opens it)
@@ -79,7 +79,7 @@ FONT_SIZE_RANGE = (9, 20)
 HISTORY_LIMIT_RANGE = (5, 500)
 
 THEMES = ("auto", "light", "dark")
-ACCENTS = ("terracotta", "ocean", "forest", "violet", "rose")   # same keys as ui/theme.ACCENTS
+ACCENTS = ("violet", "terracotta", "ocean", "forest", "rose")   # same keys as ui/theme.ACCENTS
 SPACINGS = ("compact", "comfortable")                          # same keys as ui/theme.DENSITIES
 
 

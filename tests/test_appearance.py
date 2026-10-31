@@ -23,9 +23,9 @@ class TestAccents(unittest.TestCase):
         self.assertEqual(len(cfg.ACCENTS), 5)
         self.assertEqual(tuple(theme.DENSITIES), cfg.SPACINGS)
 
-    def test_terracotta_is_the_default_and_unchanged(self):
+    def test_violet_is_the_default(self):
         self.assertEqual(colors_light("terracotta")["accent"], "#C9623F")
-        self.assertEqual(theme.DEFAULT_ACCENT, "terracotta")
+        self.assertEqual(theme.DEFAULT_ACCENT, "violet")
 
     def test_every_accent_themes_every_scheme(self):
         seen = set()
@@ -39,7 +39,7 @@ class TestAccents(unittest.TestCase):
         self.assertEqual(len(seen), 10)                      # all distinct
 
     def test_unknown_accent_falls_back(self):
-        self.assertEqual(theme.colors_for(False, "nope"), theme.colors_for(False, "terracotta"))
+        self.assertEqual(theme.colors_for(False, "nope"), theme.colors_for(False, "violet"))
 
     def test_text_on_the_accent_is_light_on_light_scheme_and_dark_on_dark(self):
         self.assertEqual(theme.colors_for(False, "ocean")["on_accent"], "#FFFFFF")
@@ -108,14 +108,14 @@ class TestSettings(unittest.TestCase):
 
     def test_defaults_round_trip_and_repair(self):
         s = Settings.load(self.dir)
-        self.assertEqual((s.preferences["accent"], s.preferences["spacing"]), ("terracotta", "compact"))
+        self.assertEqual((s.preferences["accent"], s.preferences["spacing"]), ("violet", "compact"))
         s.preferences.update(accent="violet", spacing="comfortable")
         s.save()
         again = Settings.load(self.dir).preferences
         self.assertEqual((again["accent"], again["spacing"]), ("violet", "comfortable"))
         (self.dir / "keywords.toml").write_text('[preferences]\naccent = "lime"\nspacing = "huge"\n')
         again = Settings.load(self.dir).preferences
-        self.assertEqual((again["accent"], again["spacing"]), ("terracotta", "compact"))
+        self.assertEqual((again["accent"], again["spacing"]), ("violet", "compact"))
 
     def test_dialog_offers_the_choices_and_saves_them(self):
         s = Settings.load(self.dir)

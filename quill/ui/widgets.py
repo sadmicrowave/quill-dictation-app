@@ -61,7 +61,7 @@ class Pill(QLabel):
     def __init__(self, text: str = "") -> None:
         super().__init__(text)
         self.fill = QColor("#FFFFFF")
-        self.ink = QColor("#C9623F")
+        self.ink = QColor("#7A55C2")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         font = self.font()
@@ -129,3 +129,9 @@ class HeadingToggle(QLabel):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+
+
+def wrap_tip(text: str, width: int = 52) -> str:
+    """*text* with its lines wrapped at *width* characters, so a tooltip stays a readable block, not a long strip."""
+    import textwrap
+    return "\n".join(textwrap.fill(line, width) if line else "" for line in text.splitlines())

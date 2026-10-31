@@ -291,6 +291,11 @@ class TitlebarButton:
         self._controller.removeFromParentViewController()
 
 
+#: Widths (pt) of the title bar icons and the gap between them. The right-most one is narrower so its
+#: glyph sits close to the window edge.
+_ICON_WIDTH, _LAST_ICON_WIDTH, _ICON_GAP = 30, 22, 14
+
+
 def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False,
                         platform: str | None = None, appkit=None,
                         extra: list[tuple[str, str, Callable[[], None]]] | None = None) -> TitlebarButton | None:
@@ -323,15 +328,15 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         window = view.window()
         if window is None:
             return None
-        def make_button(action):
+        def make_button(action, width=_ICON_WIDTH):
             target = target_class.alloc().initWithCallback_(action)
-            button = appkit.NSButton.alloc().initWithFrame_(((0, 0), (34, 24)))
+            button = appkit.NSButton.alloc().initWithFrame_(((0, 0), (width, 24)))
             button.setBordered_(False)
             button.setTarget_(target)
             button.setAction_("toggle:")
             return button, target
 
-        button, target = make_button(callback)
+        button, target = make_button(callback, _LAST_ICON_WIDTH)    # the right-most icon sits close to the edge
         extras = []
         for symbol, tip, action in extra or []:
             extra_button, extra_target = make_button(action)
@@ -344,8 +349,9 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         if extras:                                    # extra icons first (left), the resize icon last (right)
             views = [e[0] for e in extras] + [button]
             row = appkit.NSStackView.stackViewWithViews_(views)
-            row.setSpacing_(2)
-            row.setFrame_(((0, 0), (36 * len(views), 24)))    # an accessory view needs a size of its own
+            row.setSpacing_(_ICON_GAP)
+            width = _ICON_WIDTH * len(extras) + _LAST_ICON_WIDTH + _ICON_GAP * len(extras)
+            row.setFrame_(((0, 0), (width, 24)))    # an accessory view needs a size of its own
             controller.setView_(row)
         else:
             controller.setView_(button)

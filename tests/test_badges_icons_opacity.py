@@ -40,23 +40,26 @@ class TestIcons(unittest.TestCase):
         self.assertEqual(w.settings_button.text(), "")             # icon only
         self.assertEqual(w.settings_button.toolTip(), "Settings")
         self.assertEqual(w.settings_button.accessibleName(), "Settings")
-        self.assertFalse(w.toggle_button.icon().isNull())
-        self.assertEqual(w.toggle_button.text(), "Start")
+        self.assertFalse(w.open_file_button.icon().isNull())      # a folder icon, no text
+        self.assertEqual(w.open_file_button.text(), "")
+        self.assertFalse(w.toggle_icon.pixmap().isNull())
+        self.assertEqual(w.toggle_button.text(), "")             # the label is inside the button: dot, state, glyph
 
     def test_start_and_stop_draw_different_icons(self):
         w = MainWindow()
         w.setup()
-        start = w.toggle_button.icon().pixmap(16, 16).toImage()
+        start = w.toggle_icon.pixmap().toImage()
         w.set_listening_indicator(True)
-        stop = w.toggle_button.icon().pixmap(16, 16).toImage()
-        self.assertEqual(w.toggle_button.text(), "Stop")
+        stop = w.toggle_icon.pixmap().toImage()
+        self.assertEqual(w.state_label.text(), "Listening")
         self.assertNotEqual(start, stop)
 
     def test_icons_take_the_theme_colours(self):
         w = MainWindow()
         w.setup()
+        w.set_listening_indicator(True)                  # the glyph is drawn in the on-accent colour while listening
         w.refresh_icons("#00FF00", "#FF0000")
-        image = w.toggle_button.icon().pixmap(16, 16).toImage()
+        image = w.toggle_icon.pixmap().toImage()
         reds = [image.pixelColor(x, y) for x in range(image.width()) for y in range(image.height())
                 if image.pixelColor(x, y).alpha() > 200]
         self.assertTrue(reds and all(c.red() > 200 and c.green() < 60 for c in reds))

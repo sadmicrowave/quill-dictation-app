@@ -23,6 +23,8 @@ SHAPES = {
                 '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></g>',
     "maximize": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
                 '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></g>',
+    "folder": '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5Z" '
+              'fill="none" stroke="COLOR" stroke-width="1.8" stroke-linejoin="round"/>',
     "search": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round">'
               '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g>',
     # Three sliders: the usual "settings" glyph, simple enough to stay crisp when small.

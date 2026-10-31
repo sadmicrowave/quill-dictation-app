@@ -81,7 +81,7 @@ def _glyph(painter: QPainter, listening: bool, ink: QColor) -> None:
             painter.drawRoundedRect(bar, width / 2, width / 2)
 
 
-def make_icon(listening: bool, badge: int = 0, badge_color: str = "#C9623F", dark: bool = False) -> QIcon:
+def make_icon(listening: bool, badge: int = 0, badge_color: str = "#7A55C2", dark: bool = False) -> QIcon:
     """Draw the tray icon (see :func:`_glyph`), with an optional count badge.
 
     Without a badge the icon is a *mask* (black shapes the system tints to suit the
@@ -147,7 +147,7 @@ class TrayIcon:
         self._menu: QMenu | None = None
         self._listening = False
         self._badge = 0
-        self._badge_color = "#C9623F"
+        self._badge_color = "#7A55C2"
 
     def set_dark(self, dark: bool) -> None:
         """Tell the tray whether the menu bar is dark (only matters while a count badge is shown)."""

@@ -34,13 +34,15 @@ class TestMainWindow(unittest.TestCase):
 
     def test_starts_not_listening(self):
         self.assertEqual(self.w.state_label.text(), "Not Listening")
-        self.assertEqual(self.w.toggle_button.text(), "Start")
+        self.assertEqual(self.w.toggle_button.toolTip(), "Start Listening")
+        self.assertFalse(self.w.toggle_button.property("accent"))
         self.assertIn(COLOR_IDLE, self.w.dot.styleSheet())
 
     def test_listening_indicator(self):
         self.w.set_listening_indicator(True)
-        self.assertEqual((self.w.state_label.text(), self.w.toggle_button.text()),
-                         ("Listening", "Stop"))
+        self.assertEqual((self.w.state_label.text(), self.w.toggle_button.toolTip()),
+                         ("Listening", "Stop Listening"))
+        self.assertTrue(self.w.toggle_button.property("accent"))
         self.assertIn(COLOR_ACTIVE, self.w.dot.styleSheet())
         self.assertTrue(self.w.listening)
 
