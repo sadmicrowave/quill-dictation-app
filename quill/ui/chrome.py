@@ -16,6 +16,8 @@ The platform calls are injectable so the logic is testable on any machine.
 """
 
 from __future__ import annotations
+
+from PySide6.QtCore import QEvent, QObject, QTimer
 import sys
 from typing import Callable
 
@@ -93,6 +95,16 @@ def no_window_shadow(widget, platform: str | None = None) -> bool:
 _TITLE_ID = "quillWindowTitle"
 
 
+class _TitleFilter(QObject):
+    """Re-applies the plain title whenever its window is shown (the native window may be rebuilt on show)."""
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Show:
+            for delay in (0, 250):                                   # again once the system has finished laying the bar out
+                QTimer.singleShot(delay, lambda: plain_title(obj))
+        return False
+
+
 def plain_title(widget) -> bool:
     """Show the window's title in the regular weight, centred in the (macOS) title bar.
 
@@ -104,32 +116,37 @@ def plain_title(widget) -> bool:
             return False
         import AppKit
         import objc
+        if getattr(widget, "_quill_title_filter", None) is None:
+            widget._quill_title_filter = _TitleFilter(widget)
+            widget.installEventFilter(widget._quill_title_filter)
         window = objc.objc_object(c_void_p=int(widget.winId())).window()
         if window is None:
             return False
-        bar = window.standardWindowButton_(0).superview()          # the close button's container: the title bar
+        close = window.standardWindowButton_(0)
+        bar = close.superview()                                      # the frame view that holds the title bar
         label = next((v for v in bar.subviews() if v.identifier() == _TITLE_ID), None)
         if label is None:
             label = AppKit.NSTextField.labelWithString_(widget.windowTitle())
             label.setIdentifier_(_TITLE_ID)
             label.setFont_(AppKit.NSFont.systemFontOfSize_weight_(13, 0.0))
             label.setTextColor_(AppKit.NSColor.secondaryLabelColor())
-            label.setAutoresizingMask_(45)                           # flexible on every side: stays centred
+            label.setAutoresizingMask_(13)                           # centred sideways, fixed distance from the top
             bar.addSubview_(label)
             window.setTitleVisibility_(1)                            # hide the bold system title
-            widget.windowTitleChanged.connect(lambda text, v=label, b=bar: _retitle(v, b, text))
-        _retitle(label, bar, widget.windowTitle())
+            widget.windowTitleChanged.connect(lambda text, v=label, c=close: _retitle(v, c, text))
+        _retitle(label, close, widget.windowTitle())
         return True
     except Exception:
         return False
 
 
-def _retitle(label, bar, text: str) -> None:
-    """Set the label's text and centre it in the title bar."""
+def _retitle(label, close, text: str) -> None:
+    """Set the label's text and centre it across the window, level with the close button."""
     label.setStringValue_(text)
     label.sizeToFit()
-    size, bounds = label.frame().size, bar.bounds().size
-    label.setFrameOrigin_(((bounds.width - size.width) / 2, (bounds.height - size.height) / 2))
+    size, bounds, button = label.frame().size, close.superview().bounds().size, close.frame()
+    label.setFrameOrigin_(((bounds.width - size.width) / 2,
+                           button.origin.y + (button.size.height - size.height) / 2))
 
 
 def _native_platform(platform: str) -> bool:
