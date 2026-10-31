@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from quill.config.settings import (
     BLUR_RANGE, FONT_SIZE_RANGE, HISTORY_LIMIT_RANGE, OPACITY_RANGE, SPACINGS, THEMES,
 )
+from quill.licensing import LicenseService
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
@@ -99,6 +100,13 @@ class SettingsDialog:
             ``settings.preferences``, so the app can show them live. Cancel puts the
             original values back and calls it again; only OK saves.
     """
+
+    #: The Account page is built but kept out of the window until subscriptions launch.
+    SHOW_ACCOUNT = False
+
+    @property
+    def _groups(self) -> list:
+        return GROUPS + ([("Account", ["Account"])] if self.SHOW_ACCOUNT else [])
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
                  on_open_logs=None, on_help=None) -> None:
@@ -305,7 +313,7 @@ class SettingsDialog:
         return side
 
     def _fill_nav(self) -> None:
-        for caption, titles in GROUPS:
+        for caption, titles in self._groups:
             head = QListWidgetItem(caption)
             head.setFlags(Qt.ItemFlag.NoItemFlags)           # a caption, not selectable
             head.setData(Qt.ItemDataRole.UserRole, None)
@@ -344,12 +352,12 @@ class SettingsDialog:
             self._nav_items[title].setHidden(bool(query) and hits == 0)
             total += hits
         shown = {t for t, item in self._nav_items.items() if not item.isHidden()}
-        for head, (_, titles) in zip(self._captions, GROUPS):
+        for head, (_, titles) in zip(self._captions, self._groups):
             head.setHidden(not any(t in shown for t in titles))
         self.empty_label.setVisible(bool(query) and total == 0)
         current = self.nav.currentItem()
         if query and (current is None or current.isHidden()) and shown:
-            first = next(t for _, titles in GROUPS for t in titles if t in shown)
+            first = next(t for _, titles in self._groups for t in titles if t in shown)
             self.nav.setCurrentRow(self._nav_row(first))
         return total
 
@@ -528,6 +536,37 @@ class SettingsDialog:
         self._keyword_box = keyword_box
         self._keyword_row = _KeywordSearch(keyword_box, self)
         self._page_rows["Keywords"].append(self._keyword_row)
+        if self.SHOW_ACCOUNT:
+            self._build_account_page()
+
+    def _build_account_page(self) -> None:
+        """Wireframe of the Account page (sign-in, plan, billing). Hidden until ``SHOW_ACCOUNT`` is on.
+
+        It only shows what ``Settings.account`` holds and opens the website's pages; signing in itself
+        goes through :class:`~quill.licensing.LicenseService` once the service exists.
+        """
+        service = LicenseService(self._settings)
+        standing = service.standing()
+        page = self._page("Account", "Your Quill account, plan and billing.")
+        self.account_label = QLabel(standing.email or "Not signed in")
+        self._add("Account", page, "Account", "Sign in to use Quill on this device.", self.account_label,
+                  "sign in email login")
+        self.sign_in_button = QPushButton("Sign Out" if standing.signed_in else "Sign In…")
+        self.sign_in_button.setEnabled(service.configured)
+        self.sign_in_button.setToolTip("" if service.configured else "Accounts are not available yet")
+        self._add("Account", page, "Sign In", "Opens the sign-in form.", self.sign_in_button, "log in out")
+        self.plan_label = QLabel(" · ".join(p for p in (standing.plan_label, standing.status_text) if p))
+        self._add("Account", page, "Plan", "What you have and when it renews.", self.plan_label,
+                  "subscription license renew trial")
+        self.plan_button = QPushButton("Choose a Plan…")
+        self.plan_button.setEnabled(bool(service.checkout_url("monthly")))
+        self._add("Account", page, "Change Plan", "Monthly, yearly or a one-time purchase, paid securely "
+                  "on the Quill website.", self.plan_button, "buy purchase upgrade monthly yearly lifetime")
+        self.billing_button = QPushButton("Manage Billing…")
+        self.billing_button.setEnabled(bool(service.manage_url()))
+        self._add("Account", page, "Billing", "Payment method, receipts and cancellation.",
+                  self.billing_button, "payment invoice receipt cancel")
+        page.addStretch(1)
 
     @staticmethod
     def _open_log_folder() -> None:

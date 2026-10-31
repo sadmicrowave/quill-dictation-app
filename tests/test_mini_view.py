@@ -34,7 +34,18 @@ class TestMiniWindow(unittest.TestCase):
         self.w.set_footer("Some status", offer_download=True)
         self.w.set_undo_count(2)
         self.w.set_sorting_count(3)
+        self.w.set_last_saved("Row 4", {"Type": "Fern"})
         _app.processEvents()
+
+    def test_last_saved_stays_hidden_until_something_was_saved(self):
+        fresh = MainWindow()
+        fresh.setup()
+        fresh.widget.show()
+        _app.processEvents()
+        self.assertFalse(shown(fresh, "last_label"))
+        fresh.set_last_saved("Row 2")
+        _app.processEvents()
+        self.assertTrue(shown(fresh, "last_label"))
 
     def test_the_full_view_shows_everything(self):
         for name in HIDDEN_IN_MINI:

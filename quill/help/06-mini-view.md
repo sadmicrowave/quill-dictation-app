@@ -1,5 +1,22 @@
 # 🪟 Mini view
 
-## Mini view: Quill out of the way
+A small box that floats over your spreadsheet.
 
-Quill can shrink to a small box that sits on top of your spreadsheet. Click the arrows icon in the title bar at the top right of Quill's window (on Windows it sits beside the sliders button). You keep a light, the same Start / Stop button, a small box showing the row you are dictating, and a Term Helper button that shows just the count. Everything else (the log, last saved row, workbook name, settings) is tucked away. Click the arrows again to get the full window back, exactly as you left it. In Settings you can choose whether the mini view stays above other windows (it does by default).
+![The mini view](images/mini-view.png)
+
+## 🔄 Switch
+
+- ↘️ Click the **arrows icon** in the title bar to shrink.
+- ↖️ Click it again to get the full window back, exactly as it was.
+
+## 👀 What stays
+
+- ▶️ The **Start / Stop** button and light
+- 📄 The **Current Row**
+- 🔢 A **Term Helper** badge with the count
+
+## 🙈 What hides
+
+Log, Last Saved, sheet name, settings.
+
+> 💡 **Settings > General > Keep the Mini View on Top** controls whether it floats above other windows (on by default).

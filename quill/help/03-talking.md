@@ -1,46 +1,50 @@
 # 🎤 Talking to Quill
 
-## Talking to it
+Speak naturally. Quill picks out the words it knows.
 
-### The basics
+## 🗣️ The basics
 
-| Say | What happens |
-|-----|--------------|
-| **"Start listening"** | Quill is now taking notes. The light in the window turns green and the menu bar icon fills in. |
-| *(describe your item)* | Quill fills the matching columns. |
-| **"Next row"** | The item is saved as a new row. Start describing the next one. |
-| **"Stop listening"** | Quill stops taking notes. The light goes grey and the menu bar icon goes back to an outline. |
+| Say | Quill |
+|---|---|
+| **"Start listening"** | 🟢 starts taking notes |
+| *describe the item* | ✍️ fills the columns |
+| **"Next row"** | 💾 saves the row, starts a new one |
+| **"Stop listening"** | ⚪ stops |
 
-You can also press the wide button at the top of the window: it shows the light and whether Quill is listening, with a play or stop symbol at its right, and it fills with the accent colour while listening. The menu bar icon works too.
+> 💡 Prefer buttons? Press the wide **Start / Stop** button, or use the menu bar icon.
 
-### Describing an item
-
-Just talk naturally. Quill picks out the words it knows:
+## ✍️ Describing an item
 
 > "Black t-shirt, large, good condition, appraisal thirty five dollars. Next row."
 
-- **Words from your drop-down lists** go to their column by themselves ("black" → Color).
-- **Say the column name first** to be sure, or when a word could belong to two columns: "size medium", "color navy blue".
-- **Amounts**: "appraisal thirty five", "price twelve dollars and fifty cents", or just "thirty five dollars".
-- **Dates**: "acquired today", "date march 3", "date october 30 2026".
-- **Notes and comments**: "notes needs a new button" (everything up to the next column name goes in).
-- Extra words like "this next item is an…" are ignored, so you can speak in sentences.
+- 📋 **List words** go to their column by themselves: *"black"* → Color
+- 🏷️ **Column name first** when it's ambiguous: *"size medium"*
+- 💲 **Amounts:** *"appraisal thirty five"*, *"twelve dollars fifty"*
+- 📅 **Dates:** *"acquired today"*, *"date march 3"*
+- 📝 **Notes:** *"notes needs a new button"*
+- 🫧 Filler like *"this next one is a…"* is ignored
 
-### Fixing mistakes
+## 🛠️ Fixing mistakes
 
-| Say | What happens |
-|-----|--------------|
-| **"Cancel"** or **"Delete row"** | Throws away the item you're still describing (nothing was written yet). |
-| *Edit in Excel* | A saved row is an ordinary row; fix it in Excel as usual. |
+| Say | Quill |
+|---|---|
+| **"Cancel"** / **"Delete row"** | 🗑️ drops the row you're still describing |
+| **"Undo"** | ↩️ takes back the last Term Helper answer |
+| *(saved rows)* | ✏️ fix them in your spreadsheet as usual |
 
-### Other keywords
+## 🔍 Search
 
-| Say | What happens |
-|-----|--------------|
-| **"Search for black blouses under 50"** | Filters your sheet so you only see matching rows. |
-| **"Clear search"** (or "Reset filters") | Shows every row again and takes you back to where you were. |
-| **"Sort terms"** | Starts answering the Needs-sorting list by voice (see below). |
+| Say | Quill |
+|---|---|
+| **"Search for black blouses under 50"** | filters the sheet |
+| **"Clear search"** | shows every row again |
 
-Searching understands "under / below / less than", "over / above / more than", "at least", "at most / up to" and "exactly". "Black or navy skirts" matches either color. If you say a price without naming a column, Quill uses your price-type column and tells you which in the log.
+Understands *under, over, at least, at most, exactly* and *"black **or** navy"*.
 
-You can change any of these phrases in **Settings** (the button in the window). Quill won't let you pick a phrase that clashes with "yes" or "no".
+## 🧩 Other phrases
+
+| Say | Quill |
+|---|---|
+| **"Sort terms"** | starts [voice sorting](help:term-helper) |
+
+You can change every phrase in [Settings](help:settings).

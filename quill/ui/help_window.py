@@ -204,6 +204,15 @@ class HelpWindow:
                 return
             block = block.next()
 
+    @staticmethod
+    def _holds_image(block) -> bool:
+        it = block.begin()
+        while not it.atEnd():
+            if it.fragment().charFormat().isImageFormat():
+                return True
+            it += 1
+        return False
+
     def _style_document(self) -> None:
         """Make the Markdown read nicely: airy lines, sized headings, code pills, bordered tables, quotes."""
         doc = self.page.document()
@@ -214,6 +223,8 @@ class HelpWindow:
         tint.setAlpha(40)
         panel = QColor(text)
         panel.setAlpha(26)
+        edge = QColor(text)
+        edge.setAlpha(60)                                   # a quiet table border
         cursor = QTextCursor(doc)
         cursor.beginEditBlock()
         block = doc.begin()
@@ -228,7 +239,8 @@ class HelpWindow:
                 bf.setTopMargin(26 if level == 2 else (6 if level == 1 else 14))
                 bf.setBottomMargin(10)
             else:
-                bf.setLineHeight(158, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+                if not self._holds_image(block):               # a tall line height would stretch a picture's block
+                    bf.setLineHeight(158, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
                 bf.setBottomMargin(9)
                 if block.blockFormat().indent() or block.blockFormat().hasProperty(
                         QTextBlockFormat.Property.BlockQuoteLevel):
@@ -262,7 +274,7 @@ class HelpWindow:
                 tf.setCellPadding(9)
                 tf.setCellSpacing(0)
                 tf.setBorder(1)
-                tf.setBorderBrush(muted)
+                tf.setBorderBrush(edge)
                 tf.setBorderStyle(QTextFrameFormat.BorderStyle.BorderStyle_Solid)
                 tf.setTopMargin(6)
                 tf.setBottomMargin(14)

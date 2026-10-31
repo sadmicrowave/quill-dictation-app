@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
+from quill.bridge.hosts import HostApp, SpreadsheetHosts
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
@@ -45,6 +46,12 @@ class Relay(QObject):
     error = Signal(str)
     progress = Signal(int, int)
     model_ready = Signal(object)   # pathlib.Path on success, None on failure
+
+
+#: How long after the last write the program showing the file is asked to reload it, and how many
+#: watcher ticks pass between looks for a file open in another spreadsheet program.
+HOST_RELOAD_MS = 1500
+HOST_PROBE_EVERY = 3
 
 
 class QuillApp:
@@ -79,10 +86,19 @@ class QuillApp:
         echo_speaker=None,
         file_chooser: Callable[[], str | None] | None = None,
         live_bridge_factory: Callable[[], WorkbookBridge] = get_bridge,
+        hosts: SpreadsheetHosts | None = None,
     ) -> None:
         self.qapp = qapp
         self._file_chooser = file_chooser or self._ask_for_file
         self._live_bridge_factory = live_bridge_factory
+        self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
+        self._host: HostApp | None = None            # the program showing the file Quill is writing to
+        self._probe_ticks = 0
+        self._host_noted = False
+        self._host_reload = QTimer()
+        self._host_reload.setSingleShot(True)
+        self._host_reload.setInterval(HOST_RELOAD_MS)
+        self._host_reload.timeout.connect(self._reload_host)
         qapp.setWindowIcon(app_icon())               # the Dock / taskbar / window icon
         self.settings = settings
         self.relay = Relay()
@@ -119,6 +135,7 @@ class QuillApp:
         self._mic_open = False
         self._seen_mtime: int | None = None      # last known state of the workbook file
         self._titlebar = None                    # the resize icon in the title bar, where supported
+        self._titlebar_left = None               # Help and Undo, beside the close / zoom buttons
         self.help: HelpWindow | None = None      # created the first time a ? icon is pressed
         self._expiry = QTimer()
         self._expiry.setSingleShot(True)
@@ -221,11 +238,50 @@ class QuillApp:
             self.window.update_workbooks([])
             self.window.append_log(f"'{closed}' was closed.")
             self.window.set_not_connected(True)
+        if not names and not self.connected:
+            self._attach_host_file()
+            if self.connected:
+                return
         if names and not self.connected:
             preferred = str(self.settings.preferences["last_workbook"])
             self.connect_workbook(preferred if preferred in names else None, quiet=True)
             if self.connected:
                 self.window.append_log(f"Attached to {bridge.workbook_name} automatically.")
+
+    def _attach_host_file(self) -> None:
+        """No Excel workbook is open: if another spreadsheet program has an Excel file open, work on that file.
+
+        Looks every few ticks only (it asks the system what is running), and never when the user
+        chose a program in the settings or is already working on a file.
+        """
+        if isinstance(self.controller.bridge, XlsxBridge) or \
+                str(self.settings.preferences["spreadsheet_app"]) not in ("auto", ""):
+            return
+        self._probe_ticks += 1
+        if self._probe_ticks % HOST_PROBE_EVERY != 1:
+            return
+        for app, path in self.hosts.open_excel_files():
+            if self.open_workbook_file(path, remember=False):
+                self._host = app
+                self.window.append_log(f"Found {path.name} open in {app.name}: working on it directly.")
+                return
+
+    def _reload_host(self) -> None:
+        """Ask the program showing the file to load what Quill just saved (or say what to do by hand)."""
+        bridge = self.controller.bridge
+        if not isinstance(bridge, XlsxBridge) or not bridge.workbook_path:
+            return
+        app = self._host
+        if app is None:
+            hits = [a for a, p in self.hosts.open_excel_files() if str(p.resolve()) == bridge.workbook_path]
+            app = self._host = hits[0] if hits else None
+        if app is None or app.reloads is False:
+            if app is not None and app.note and not self._host_noted:
+                self._host_noted = True
+                self.window.append_log(f"{app.name}: {app.note}")
+            return
+        if not self.hosts.reload(app, bridge.workbook_path):
+            self.window.append_log(f"Couldn't refresh {app.name}. {app.note}")
 
     #: Events after which Quill itself has just written to the workbook file.
     _WRITE_EVENTS = frozenset({"committed", "add_values", "alias_added", "undone", "searched", "cleared"})
@@ -399,7 +455,7 @@ class QuillApp:
         if path:
             self.open_workbook_file(path)
 
-    def open_workbook_file(self, path: str | pathlib.Path) -> bool:
+    def open_workbook_file(self, path: str | pathlib.Path, remember: bool = True) -> bool:
         """Switch to working on the .xlsx at *path* through the file bridge.
 
         The file is edited in place and saved after every change, so close it in other
@@ -426,8 +482,9 @@ class QuillApp:
             if was_connected:
                 self.connect_workbook(quiet=True)
             return False
-        self.settings.preferences["workbook_file"] = str(path)
-        self.settings.save()
+        if remember:
+            self.settings.preferences["workbook_file"] = str(path)
+            self.settings.save()
         self.window.set_file_mode(True)
         self.window.append_log(f"Working directly on the file {path.name} (no Excel needed)")
         return True
@@ -474,10 +531,13 @@ class QuillApp:
             return
         self._titlebar = add_titlebar_button(
             self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
-            mini=self.window.mini,
-            extra=[(SYMBOL_HELP, "Help", lambda: self.open_help("welcome")),
-                   (SYMBOL_UNDO, "Undo the Last Answer", self.undo), (SYMBOL_SETTINGS, "Settings", self.open_settings)])
+            mini=self.window.mini, extra=[(SYMBOL_SETTINGS, "Settings", self.open_settings)])
         native = self._titlebar is not None
+        # Help, then Undo, sit right beside the window's close / minimise / zoom buttons.
+        self._titlebar_left = add_titlebar_button(
+            self.window.widget, self.undo, symbol=SYMBOL_UNDO, tip="Undo the Last Answer",
+            extra=[(SYMBOL_HELP, "Help", lambda: self.open_help("welcome"))], side="left") if native else None
+        native = native and self._titlebar_left is not None
         self.window.set_native_help_button(native)
         self.window.set_native_undo_button(native)
         self._sync_titlebar_undo()
@@ -486,8 +546,8 @@ class QuillApp:
 
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
-        if self._titlebar is not None:
-            self._titlebar.set_extra_enabled(1, len(self.controller.history) > 0)
+        if self._titlebar_left is not None:
+            self._titlebar_left.set_enabled(len(self.controller.history) > 0)
 
     def _mini_toggled(self, mini: bool) -> None:
         """Remember the view and keep the tray menu and the title-bar icon in step.
@@ -501,7 +561,7 @@ class QuillApp:
             self._titlebar.set_mini(mini)
         if self.window.native_window_recreated:
             self.window.native_window_recreated = False
-            self._titlebar = None
+            self._titlebar = self._titlebar_left = None
             self._apply_look()
             self._install_titlebar_button()
 
@@ -570,6 +630,8 @@ class QuillApp:
         self._handle_event(event)
         if event.kind in self._WRITE_EVENTS:
             self._remember_mtime()
+            if isinstance(self.controller.bridge, XlsxBridge):
+                self._host_reload.start()                 # after a quiet moment, so a burst of rows reloads once
         self._sync_mic()
 
     def _handle_event(self, event: Event) -> None:

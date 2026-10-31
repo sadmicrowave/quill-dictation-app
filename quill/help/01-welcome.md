@@ -1,25 +1,32 @@
 # 👋 Welcome to Quill
 
-Quill listens to you and types into your spreadsheet. Everything you need is in the pages on the left; the **?** icon in any window opens the page about that part of Quill.
+**Talk. Quill types.** It fills your spreadsheet row by row while your hands stay busy.
 
-![Quill's main window](images/main-window.png)
+![The main window while listening](images/main-window.png)
 
-## What Quill does
+## ⚡ Quick start
 
-Quill listens to you and types into the Excel spreadsheet you already have open.
-You say what an item is; Quill puts each piece in the right column and moves
-to the next row when you say so. It's good for inventories, collections,
-catalogs, or any list where your hands are busy (sorting stock, handling
-items, photographing things).
+1. 📂 **Open your spreadsheet** in Excel, Numbers, LibreOffice… any of them.
+2. ▶️ **Press Start** (the wide button at the top).
+3. 🗣️ **Describe an item:** *"black t-shirt, large, good, appraisal thirty five"*
+4. ➡️ **Say "next row"** to save it and start the next.
+5. ⏹️ **Say "stop listening"** when you're done.
 
-- It learns your words **from your own spreadsheet**: the drop-down lists and the column headings. Nothing to set up. A plant collection, a coin catalog and a clothing stock sheet all work.
-- It listens **only on your computer**. Nothing is sent over the internet.
-- It only writes when you've told it to start listening, so a chat across the room won't end up in your sheet.
+> 💡 First launch: allow the **microphone** (and on a Mac, **Automation** for Excel). That's it. There's nothing to set up.
 
-You need: Microsoft Excel (the desktop app), a microphone, and a spreadsheet whose columns have drop-down lists for the things you'd like to say by name (Type, Size, Color…).
+## ✅ Why it just works
 
-## Starting Quill
+- 🧠 **Learns your words** from your own drop-down lists and column headings.
+- 🔒 **Private**: speech stays on your computer.
+- 🛡️ **Only writes while listening**, so room chatter never lands in your sheet.
+- 🔄 **Notices changes**: save a new list value and Quill picks it up within seconds.
 
-1. **Open your spreadsheet in Excel.** Order doesn't matter: if you open Quill first, it notices the sheet a few seconds after you open it.
-2. **Open Quill.** (Packaged version: double-click it. For now your helper starts it from the code folder with `python main.py`.) A small window appears and an icon shows in your menu bar (Mac) or system tray (Windows).
-3. **First time only:** Your computer may ask permission to use the microphone, and on a Mac to let Quill control Excel. Say yes to both.
+## 🧭 Where to next
+
+| I want to… | Go to |
+|---|---|
+| Use Numbers, LibreOffice or another app | [Your spreadsheet](help:spreadsheet) |
+| Learn what to say | [Talking to Quill](help:talking) |
+| Handle words Quill doesn't know | [Term Helper](help:term-helper) |
+| Change sounds, colours, shortcuts | [Settings](help:settings) |
+| Fix something | [Troubleshooting](help:troubleshooting) |

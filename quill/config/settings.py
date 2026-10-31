@@ -36,6 +36,7 @@ except ImportError:
     except ImportError:
         tomllib = None  # type: ignore[assignment]
 
+from quill.licensing import DEFAULT_ACCOUNT, clean_account
 from quill.feedback import ECHO_WORDS, MODES, PACKS
 from quill.parser.commands import RESERVED_ANSWER_WORDS, Action
 from quill.parser.tokens import tokenize
@@ -47,6 +48,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "model_path": "",         # Vosk model folder; empty = search the usual places
     "last_workbook": "",      # re-selected on launch when still open
     "workbook_file": "",      # an .xlsx opened with Open Spreadsheet File (no Excel needed); "" = live Excel
+    "spreadsheet_app": "auto",  # "auto" finds Excel, Numbers, LibreOffice ... by itself; reserved for a picker
     "prompt_timeout_s": 20,   # seconds to wait for a yes/no answer
     "auto_voice_sort": False,  # start voice sorting as soon as terms need sorting
     "feedback": "sounds",     # "off" | "sounds" | "echo": how Quill confirms what it did
@@ -140,6 +142,7 @@ class Settings:
         self.keywords = keywords          # phrase -> Action
         self.aliases: dict[str, dict[str, str]] = aliases or {}
         self.preferences: dict[str, object] = {**DEFAULT_PREFERENCES, **(preferences or {})}
+        self.account: dict[str, object] = clean_account(None)    # licence / subscription facts (licensing.py)
         self._config_dir = config_dir
 
     # ------------------------------------------------------------------ #
@@ -173,6 +176,7 @@ class Settings:
                 # Keep a value only if it has the same type as the default (bool is not int).
                 if value is not None and type(value) is type(default):
                     settings.preferences[key] = value
+        settings.account = clean_account(data.get("account") if isinstance(data.get("account"), dict) else None)
         raw_aliases = data.get("aliases")
         if isinstance(raw_aliases, dict):
             for column, mapping in raw_aliases.items():
@@ -291,6 +295,9 @@ class Settings:
         lines.append("\n[preferences]\n")
         for key in DEFAULT_PREFERENCES:
             lines.append(f"{key} = {_toml_value(self.preferences[key])}\n")
+        lines.append("\n[account]\n")
+        for key in DEFAULT_ACCOUNT:
+            lines.append(f"{key} = {_toml_value(self.account[key])}\n")
         for column, mapping in sorted(self.aliases.items()):
             if mapping:
                 lines.append(f"\n[aliases.{json.dumps(column)}]\n")

@@ -3,6 +3,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QUILL_NO_SOUND", "1")   # tests must never make noise
+os.environ.setdefault("QUILL_NO_HOSTS", "1")   # ... and never ask the system which programs are running
 
 
 import pytest

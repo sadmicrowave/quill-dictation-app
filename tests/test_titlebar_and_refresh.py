@@ -261,7 +261,8 @@ class TitlebarCase(DemoCase):
     def setUp(self):
         super().setUp()
         self.fake_button = type("B", (), {"mini": None, "set_mini": lambda s, m: setattr(s, "mini", m),
-                                          "set_extra_enabled": lambda s, i, f: None})()
+                                          "set_extra_enabled": lambda s, i, f: None,
+                                          "set_enabled": lambda s, f: None})()
         self.made = []
         original = app_module.add_titlebar_button
         app_module.add_titlebar_button = lambda widget, callback, mini=False, **kw: (
@@ -274,7 +275,7 @@ class TitlebarCase(DemoCase):
 
 class TestTitlebarInTheApp(TitlebarCase):
     def test_the_title_bar_icon_replaces_the_in_window_one(self):
-        self.assertEqual(len(self.made), 1)
+        self.assertEqual(len(self.made), 2)       # resize + Settings on the right, Help + Undo on the left
         self.assertFalse(self.app.window.mini_button.isVisibleTo(self.app.window.widget))
 
     def test_its_callback_toggles_the_mini_view_and_remembers_it(self):
@@ -300,7 +301,7 @@ class TestTitlebarInTheApp(TitlebarCase):
         self.app.window.native_window_recreated = True
         self.app._mini_toggled(True)
         self.assertEqual(calls, ["look"])
-        self.assertEqual(len(self.made), 2)
+        self.assertEqual(len(self.made), 4)
         self.assertFalse(self.app.window.native_window_recreated)
 
     def test_a_native_level_change_needs_no_restyling(self):

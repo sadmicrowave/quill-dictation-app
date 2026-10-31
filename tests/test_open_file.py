@@ -273,3 +273,49 @@ class TestStartup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeHosts:
+    """A spreadsheet program other than Excel that has ``path`` open."""
+
+    def __init__(self, app, path):
+        self.app, self.path, self.reloaded = app, path, []
+
+    def open_excel_files(self):
+        return [(self.app, self.path)]
+
+    def reload(self, app, path):
+        self.reloaded.append((app.key, str(path)))
+        return True
+
+
+class TestOtherSpreadsheetPrograms(FileCase):
+    def setUp(self):
+        super().setUp()
+        from quill.bridge.hosts import NUMBERS
+        self.hosts = self.app.hosts = FakeHosts(NUMBERS, self.plants)
+
+    def test_a_file_open_in_another_program_is_picked_up_without_any_action(self):
+        self.app.poll_workbooks()
+        self.assertTrue(self.app.connected)
+        self.assertEqual(self.app.controller.bridge.workbook_name, "plants.xlsx")
+        self.assertIn("open in Numbers", self.log.toPlainText())
+        self.assertEqual(self.settings.preferences["workbook_file"], "")      # found, not chosen: not remembered
+
+    def test_a_program_chosen_in_the_settings_stops_the_search(self):
+        self.settings.preferences["spreadsheet_app"] = "excel"
+        self.app.poll_workbooks()
+        self.assertFalse(self.app.connected)
+
+    def test_the_program_is_asked_to_reload_after_quill_saved(self):
+        self.app.poll_workbooks()
+        self.app._reload_host()
+        self.assertEqual(self.hosts.reloaded, [("numbers", str(self.plants.resolve()))])
+
+    def test_a_program_that_cannot_reload_is_explained_once(self):
+        from quill.bridge.hosts import LIBREOFFICE
+        self.app.poll_workbooks()
+        self.app._host = LIBREOFFICE
+        self.app._reload_host()
+        self.app._reload_host()
+        self.assertEqual(self.log.toPlainText().count("File > Reload"), 1)

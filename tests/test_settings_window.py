@@ -287,3 +287,24 @@ class TestSoundVariety(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAccountPageWireframe(unittest.TestCase):
+    def build(self, shown):
+        class Dialog(SettingsDialog):
+            SHOW_ACCOUNT = shown
+        dialog = Dialog(Settings.defaults())
+        dialog.build()
+        return dialog
+
+    def test_the_account_page_is_not_in_the_window_yet(self):
+        dialog = self.build(False)
+        self.assertNotIn("Account", dialog._nav_items)
+        self.assertFalse(hasattr(dialog, "sign_in_button"))
+
+    def test_the_wireframe_shows_the_account_state_when_switched_on(self):
+        dialog = self.build(True)
+        self.assertIn("Account", dialog._nav_items)
+        self.assertEqual(dialog.account_label.text(), "Not signed in")
+        self.assertFalse(dialog.sign_in_button.isEnabled())           # no service to sign in to yet
+        self.assertFalse(dialog.plan_button.isEnabled())

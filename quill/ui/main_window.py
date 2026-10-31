@@ -308,7 +308,8 @@ class MainWindow:
         holder.setContentsMargins(4, 0, 4, 0)
         holder.addWidget(self.row_placeholder)
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
-        self.last_label = ElidedLabel("Last Saved: –")      # one line however much was saved
+        self._has_last_saved = False                       # the line shows only once a row has been saved
+        self.last_label = ElidedLabel("")                  # one line however much was saved
         self.last_label.setProperty("note", True)          # smaller italic supporting text
         layout.addWidget(self.last_label)
 
@@ -631,8 +632,9 @@ class MainWindow:
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
-        for widget in (self.workbook_row, self.row_heading, self.last_label, self.log_toggle):
+        for widget in (self.workbook_row, self.row_heading, self.log_toggle):
             widget.setVisible(full)
+        self.last_label.setVisible(full and self._has_last_saved)
         self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
         self.undo_button.setEnabled(self._undo_count > 0)
@@ -783,6 +785,8 @@ class MainWindow:
             parts.append(", ".join(f"{k}: {v}" for k, v in items))
             tip = f"{row}\n{tooltip_lines(items)}"
         self.last_label.setFullText("Last Saved: " + " · ".join(p for p in parts if p), tip)
+        self._has_last_saved = True
+        self._refresh_visibility()
 
     def append_log(self, text: str) -> None:
         """Add a timestamped line to the log (and to the log file, for troubleshooting)."""
