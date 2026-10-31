@@ -13,7 +13,7 @@ A small box that floats over your spreadsheet.
 
 - The **Start / Stop** button and light
 - A **Term Helper** badge with the count
-- The quiet countdown, shortened to just the seconds
+- The quiet countdown ("Stops in 7s")
 
 ## 🙈 What hides
 

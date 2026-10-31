@@ -403,12 +403,12 @@ class TestQuietCountdownLabel(unittest.TestCase):
         self.app._on_partial_heard("black")
         self.assertEqual(self.label.text(), "Stops in 10s")                 # back to the full setting
 
-    def test_it_uses_the_users_seconds_and_a_short_form_in_the_mini_view(self):
+    def test_it_uses_the_users_seconds_with_the_word_in_both_views(self):
         self.settings.preferences["auto_stop_seconds"] = 25
         self.app.controller.handle_transcript("start listening")
         self.assertEqual(self.label.text(), "Stops in 25s")
         self.app.window.set_mini(True)
-        self.assertEqual(self.label.text(), "25s")
+        self.assertEqual(self.label.text(), "Stops in 25s")
 
     def test_it_disappears_when_listening_stops_or_the_setting_is_off(self):
         self.app.controller.handle_transcript("start listening")
@@ -418,12 +418,12 @@ class TestQuietCountdownLabel(unittest.TestCase):
         self.app.controller.handle_transcript("start listening")
         self.assertFalse(self.label.isVisibleTo(self.app.window.widget))
 
-    def test_it_is_small_muted_and_italic(self):
+    def test_it_is_muted_and_italic(self):
         from quill.ui.theme import stylesheet_for
         sheet = stylesheet_for(True)
         rule = sheet[sheet.index('QLabel[countdown="true"]'):].split("}")[0]
         self.assertIn("font-style: italic", rule)
-        self.assertIn("font-size:", rule)
+        self.assertNotIn("font-size", rule)           # the same size as every other text
         self.assertIn("color:", rule)
 
 

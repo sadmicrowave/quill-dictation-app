@@ -106,6 +106,48 @@ class _TitleFilter(QObject):
         return False
 
 
+def native_window_rebuilt(widget) -> bool:
+    """True if the (macOS) native window was replaced since the chrome was applied, so its styling and icons are gone.
+
+    Closing a window to the tray and showing it again makes Qt build a new native window; the title bar label
+    that :func:`plain_title` adds is how a window that was styled is told from one that was not.
+    """
+    try:
+        if not _native_platform("darwin") or getattr(widget, "_quill_title_filter", None) is None:
+            return False
+        import objc
+        window = objc.objc_object(c_void_p=int(widget.winId())).window()
+        if window is None:
+            return False
+        bar = window.standardWindowButton_(0).superview()
+        return not any(v.identifier() == _TITLE_ID for v in bar.subviews())
+    except Exception:
+        return False
+
+
+class _RebuildWatcher(QObject):
+    """Calls *on_rebuilt* when a window is shown on a new native window (see :func:`native_window_rebuilt`)."""
+
+    def __init__(self, widget, on_rebuilt: Callable[[], None]) -> None:
+        super().__init__(widget)
+        self._widget, self._on_rebuilt = widget, on_rebuilt
+        widget.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self._widget and event.type() == QEvent.Type.Show:
+            QTimer.singleShot(0, self._check)
+        return False
+
+    def _check(self) -> None:
+        if self._widget.isVisible() and native_window_rebuilt(self._widget):
+            self._on_rebuilt()
+
+
+def watch_native_window(widget, on_rebuilt: Callable[[], None]) -> QObject:
+    """Run *on_rebuilt* whenever *widget* comes back on a rebuilt native window (to style it and add its icons again)."""
+    return _RebuildWatcher(widget, on_rebuilt)
+
+
 def plain_title(widget) -> bool:
     """Show the window's title in the regular weight, centred in the (macOS) title bar.
 
@@ -217,11 +259,13 @@ def _dwm_setter() -> DwmSetter | None:
 
 #: Identifier of the blur view Quill adds, so it can be found and removed again.
 BLUR_ID = "quillBlur"
+TINT_ID = "quillTint"
 
 #: NSVisualEffectView settings: Sidebar material, blend with what is behind the window, always active.
 _MATERIAL_SIDEBAR, _BEHIND_WINDOW, _STATE_ACTIVE = 7, 0, 1
 _NS_WINDOW_BELOW = -1
 _NS_VIEW_SIZABLE = 2 | 16                  # width and height
+_NS_VIEW_WIDTH, _NS_VIEW_MIN_Y_MARGIN = 2, 8
 
 
 def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, opacity: int = 100,
@@ -255,36 +299,53 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
     window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
-    _set_blur(view, appkit, strength, window)
+    tint = (r, g, b, max(0.08, opacity / 100)) if opacity < 100 else (r, g, b, 1.0)
+    # the frosted layer fades with the window, or a dark one would stay dark however low the opacity
+    glass = max(0.03, strength * min(1.0, opacity / 100)) if strength > 0 else 0.0
+    _set_blur(view, appkit, glass, window, tint)
     window.invalidateShadow()               # the shadow follows the visible shape
     return True
 
 
-def _set_blur(view, appkit, strength: float, window=None) -> None:
+def _set_blur(view, appkit, strength: float, window=None, tint=None) -> None:
     """Blur the desktop behind the window by *strength* (0 to 1; 0 = off).
 
-    A vibrancy view is added, faded or removed behind Qt's content view. It shows through wherever the
-    content's own background is see-through (see ``theme.backdrop_alpha``).
+    A vibrancy view is added, faded or removed behind Qt's content view; it covers the whole window, title
+    bar included. It shows through wherever the content's own background is see-through (see
+    ``theme.backdrop_alpha``). The title bar is not Qt's, so a strip in the window's colour (*tint*, an
+    ``(r, g, b, alpha)`` tuple) over it makes the title bar fade like the rest of the window.
     """
     holder = view.superview()
     if holder is None:
         return
-    existing = [v for v in holder.subviews() if v.identifier() == BLUR_ID]
+    existing = [v for v in holder.subviews() if v.identifier() in (BLUR_ID, TINT_ID)]
     if strength <= 0:
         for v in existing:
             v.removeFromSuperview()
         return
-    if existing:
-        existing[0].setAlphaValue_(strength)
-        return
-    effect = appkit.NSVisualEffectView.alloc().initWithFrame_(view.frame())
-    effect.setIdentifier_(BLUR_ID)
-    effect.setMaterial_(_MATERIAL_SIDEBAR)
-    effect.setBlendingMode_(_BEHIND_WINDOW)
-    effect.setState_(_STATE_ACTIVE)
-    effect.setAutoresizingMask_(_NS_VIEW_SIZABLE)
+    effect = next((v for v in existing if v.identifier() == BLUR_ID), None)
+    if effect is None:
+        effect = appkit.NSVisualEffectView.alloc().initWithFrame_(holder.bounds())
+        effect.setIdentifier_(BLUR_ID)
+        effect.setMaterial_(_MATERIAL_SIDEBAR)
+        effect.setBlendingMode_(_BEHIND_WINDOW)
+        effect.setState_(_STATE_ACTIVE)
+        effect.setAutoresizingMask_(_NS_VIEW_SIZABLE)
+        holder.addSubview_positioned_relativeTo_(effect, _NS_WINDOW_BELOW, view)
     effect.setAlphaValue_(strength)          # fades the blur in: 0 = none, 1 = full
-    holder.addSubview_positioned_relativeTo_(effect, _NS_WINDOW_BELOW, view)
+    if tint is None:
+        return
+    height = holder.bounds().size.height - view.frame().size.height     # the title bar
+    strip = next((v for v in existing if v.identifier() == TINT_ID), None)
+    if strip is None:
+        strip = appkit.NSView.alloc().initWithFrame_(((0, 0), (0, 0)))
+        strip.setIdentifier_(TINT_ID)
+        strip.setWantsLayer_(True)
+        strip.setAutoresizingMask_(_NS_VIEW_WIDTH | _NS_VIEW_MIN_Y_MARGIN)   # follows the width, stays at the top
+        holder.addSubview_positioned_relativeTo_(strip, _NS_WINDOW_BELOW, view)
+    strip.setFrame_(((0, holder.bounds().size.height - height), (holder.bounds().size.width, height)))
+    r, g, b, a = tint
+    strip.layer().setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a).CGColor())
 
 
 # --------------------------------------------------------------------------- #

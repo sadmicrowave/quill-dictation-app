@@ -231,9 +231,9 @@ class MainWindow:
         self.toggle_button.setProperty("keepMargins", True)
         self.toggle_button.setProperty("outline", True)           # outlined in the accent colour until listening fills it
         inner = QHBoxLayout(self.toggle_button)
-        inner.setContentsMargins(14, 0, 14, 0)
+        inner.setContentsMargins(16, 0, 14, 0)         # room before the light
         inner.setSpacing(8)
-        for part, stretch in ((self.toggle_icon, 0), (None, 1), (self.countdown_label, 0), (self.dot, 0), (self.state_label, 0)):
+        for part, stretch in ((self.dot, 0), (self.toggle_icon, 0), (self.countdown_label, 0), (None, 1), (self.state_label, 0)):
             if part is None:
                 inner.addStretch(stretch)
                 continue
@@ -1120,7 +1120,7 @@ class MainWindow:
         seconds = self._countdown_seconds
         self.countdown_label.setVisible(seconds is not None)
         if seconds is not None:
-            self.countdown_label.setText(f"{seconds}s" if self._view_mini else f"Stops in {seconds}s")
+            self.countdown_label.setText(f"Stops in {seconds}s")
 
     def add_demo_menu(self, scenarios) -> None:
         """Add a **Demo** menu with one entry per ``(label, action)`` (only in demo mode; see :mod:`quill.demo`)."""

@@ -5,8 +5,8 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QSlider, QSpinBox,
-    QToolButton, QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QSlider, QSpinBox, QStyle,
+    QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget,
 )
 
 from quill.ui.icons import make_icon
@@ -115,16 +115,60 @@ class GuardedSpinBox(_WheelGuard, QSpinBox):
         super().__init__()
         self.setProperty("flat", True)                           # drawn like the flat drop-downs (see theme.py)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.lineEdit().setTextMargins(2, 0, 6, 0)               # the text never touches the edge or the arrows
+        self.lineEdit().setTextMargins(11, 0, 6, 0)              # the text starts where a drop-down's does (theme.TEXT_INSET)
 
 
 class GuardedSlider(_WheelGuard, QSlider):
-    """A QSlider that ignores the wheel until focused, with a pointing-hand cursor."""
+    """A QSlider that ignores the wheel until focused, with a pointing-hand cursor.
+
+    A press anywhere along (and around) the slider moves the handle there at once and can then be dragged, so
+    it does not take a precise click on the thin groove.
+    """
+
+    HEIGHT = 30                                                  # a tall target; the groove itself stays thin
 
     def __init__(self, orientation=Qt.Orientation.Horizontal) -> None:
         super().__init__(orientation)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumHeight(self.HEIGHT)
+
+    def _value_at(self, position: QPoint) -> int:
+        """The value under a mouse position (along the slider's length)."""
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        style = self.style()
+        groove = style.subControlRect(QStyle.ComplexControl.CC_Slider, option, QStyle.SubControl.SC_SliderGroove, self)
+        handle = style.subControlRect(QStyle.ComplexControl.CC_Slider, option, QStyle.SubControl.SC_SliderHandle, self)
+        if self.orientation() == Qt.Orientation.Horizontal:
+            span, offset = groove.width() - handle.width(), position.x() - groove.x() - handle.width() // 2
+        else:
+            span, offset = groove.height() - handle.height(), position.y() - groove.y() - handle.height() // 2
+        return QStyle.sliderValueFromPosition(self.minimum(), self.maximum(), offset, max(span, 1),
+                                              option.upsideDown)
+
+    def mousePressEvent(self, event) -> None:                    # noqa: N802 (Qt name)
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self.setSliderDown(True)
+        self.setSliderPosition(self._value_at(event.position().toPoint()))
+        self.setFocus()
+        event.accept()
+
+    def mouseMoveEvent(self, event) -> None:                     # noqa: N802 (Qt name)
+        if self.isSliderDown():
+            self.setSliderPosition(self._value_at(event.position().toPoint()))
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:                  # noqa: N802 (Qt name)
+        if self.isSliderDown() and event.button() == Qt.MouseButton.LeftButton:
+            self.setSliderDown(False)                            # emits the final value
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 
 class FlatCombo(GuardedCombo):

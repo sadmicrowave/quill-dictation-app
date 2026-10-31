@@ -21,7 +21,8 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 - **Accent:** Violet (default), Terracotta, Ocean, Forest, Rose
 - **Spacing:** Compact or Comfortable
 - **Text size:** 9–20 pt
-- **Opacity & blur:** with blur on, the window background turns frosted glass (text and controls stay crisp); with blur at 0 the whole window fades
+- **Term Helper Follows Window Opacity** (off by default): the Term Helper stays solid so it is easy to read; turn this on to make it see-through like the main window
+- **Opacity & blur:** drag a slider, or click anywhere along it to jump there. With blur on, the window background turns frosted glass (text and controls stay crisp); with blur at 0 the whole window fades
 
 ## 🗝️ Keywords
 
@@ -31,7 +32,7 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 
 ## 🎙️ Microphone
 
-- **Stop Listening When Quiet** (on by default): if nothing is said for **10 seconds**, listening stops by itself, so the microphone is never left open by accident. While it counts down, a small grey italic **Stops in 7s** shows inside the Start / Stop button. Say anything and it starts again from the full time. Change the seconds (3 to 3600) or turn it off in **General**. It also ends voice sorting and a wait for a spoken answer; the questions stay on the **Term Helper** list for later.
+- **Stop Listening When Quiet** (on by default): if nothing is said for **10 seconds**, listening stops by itself, so the microphone is never left open by accident. While it counts down, a small italic **Stops in 7s** shows inside the Start / Stop button, beside the play / stop icon (and in the Term Helper's voice button). Say anything and it starts again from the full time. Change the seconds (3 to 3600) or turn it off in **General**. It also ends voice sorting and a wait for a spoken answer; the questions stay on the **Term Helper** list for later.
 
 - **Off** until you press Start, and off again when you stop.
 - Want to say **"start listening"**? Turn on **Keep the Microphone Open When Not Listening**. Your Mac's orange mic dot will show.

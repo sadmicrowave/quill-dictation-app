@@ -175,6 +175,7 @@ class SettingsDialog:
         self.auto_stop_spin: QSpinBox | None = None
         self.mini_top_check: ToggleSwitch | None = None
         self.dock_check: ToggleSwitch | None = None
+        self.sorting_opacity_check: ToggleSwitch | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -346,7 +347,7 @@ class SettingsDialog:
         self.nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
         self._original = copy.deepcopy(self._settings.preferences)
         for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
-                        self.dock_check, self.auto_stop_check):
+                        self.dock_check, self.auto_stop_check, self.sorting_opacity_check):
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
@@ -384,6 +385,7 @@ class SettingsDialog:
         prefs["spacing"] = self.spacing_combo.currentData()
         prefs["font_size"] = self.font_spin.value()
         prefs["opacity"] = self.opacity_slider.value()
+        prefs["sorting_follows_opacity"] = self.sorting_opacity_check.isChecked()
         prefs["blur"] = self.blur_slider.value()
         prefs["history_limit"] = self.history_spin.value()
         prefs["feedback"] = self.feedback_combo.currentData()
@@ -607,6 +609,12 @@ class SettingsDialog:
                   "Frosts what you see through the window (macOS and Windows 11). Only visible when opacity is "
                   "below 100%, since a solid window hides it. 0% is off.", box,
                   "glass vibrancy acrylic")
+        self.sorting_opacity_check = ToggleSwitch()
+        self.sorting_opacity_check.setChecked(bool(prefs["sorting_follows_opacity"]))
+        self._add("Appearance", page, "Term Helper Follows Window Opacity",
+                  "The Term Helper asks you to do something, so it stays solid and easy to read. Turn this on to "
+                  "make it see-through like the main window.", self.sorting_opacity_check,
+                  "term helper sorting transparent follow")
         page.addStretch(1)
 
         # --- Sounds

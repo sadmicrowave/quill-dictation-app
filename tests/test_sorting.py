@@ -276,7 +276,7 @@ class TestSortingWindow(unittest.TestCase):
     def test_spoken_words_are_code_pills(self):
         self.win.set_items([("Era", "bit")])
         self.assertIn("&nbsp;bit&nbsp;", self.win.rows[0].prompt.text())
-        self.assertIn("font-family:Menlo", self.win.rows[0].prompt.text())
+        self.assertNotIn("font-family", self.win.rows[0].prompt.text())      # the pill uses the app's own font
         self.assertEqual(question_for("Era", "bit"), "You said ‘bit’ — is that an Era?")      # the plain text is unchanged
 
     def test_a_row_needing_a_column_opens_its_list_when_it_is_the_active_one(self):

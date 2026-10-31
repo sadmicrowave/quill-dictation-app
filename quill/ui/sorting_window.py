@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 from typing import Callable
 
+import shiboken6
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
@@ -89,6 +90,7 @@ class TermRow(QFrame):
         self.setObjectName("termRow")
         self.key = key
         self._on_activate = on_activate
+        self.chosen = False                           # a column was picked by voice (the row blinks after the list does)
         self._vocab = vocab
         self._on_resolve = on_resolve
         column, term = key
@@ -191,6 +193,41 @@ class TermRow(QFrame):
         "ignored": ("#8E8E93", "rgba(142, 142, 147, 0.16)"),     # grey: a deliberate "no", nothing was added
         "error": ("#FF3B30", "rgba(255, 59, 48, 0.14)"),         # red: the answer could not be carried out
     }
+
+    #: How long the chosen column is shown lit in the drop-down before the row itself blinks (ms).
+    CHOICE_MS = 240
+
+    def choose(self, column: str) -> None:
+        """A column was picked by voice: select it and blink it in the drop-down list, then (see the window) the row blinks.
+
+        Two quick, back-to-back signals that the word was heard: the choice lights up in the list, then the
+        whole row confirms it was satisfied.
+        """
+        index = self.combo.findData(column)
+        if index < 0:
+            return
+        self.chosen = True
+        self.combo.setCurrentIndex(index)
+        view = self.combo.view()
+        if view.isVisible():
+            view.setCurrentIndex(view.model().index(index, 0))
+        on = ("QAbstractItemView::item:selected { background: #34C759; color: #FFFFFF; border-radius: 6px; }"
+              if view.isVisible() else "")
+        combo_on = "QComboBox { border: 2px solid #34C759; }"
+        for delay, lit in ((0, True), (80, False), (120, True)):
+            QTimer.singleShot(delay, lambda lit=lit: self._light(view, on if lit else "", combo_on if lit else ""))
+        QTimer.singleShot(self.CHOICE_MS, self._close_choice)
+
+    def _light(self, view, view_style: str, combo_style: str) -> None:
+        if shiboken6.isValid(self):
+            view.setStyleSheet(view_style)
+            self.combo.setStyleSheet(combo_style)
+
+    def _close_choice(self) -> None:
+        if shiboken6.isValid(self):
+            self.combo.hidePopup()
+            self.combo.view().setStyleSheet("")
+            self.combo.setStyleSheet("")
 
     def flash(self, outcome: str = "accepted") -> None:
         """Blink the row's border and tint it: green when accepted, grey when ignored, red on an error."""
@@ -319,6 +356,14 @@ class SortingWindow:
         self.voice_button.clicked.connect(lambda: self._on_voice())
         self.voice_button.setToolTip(self.VOICE_HINT)
         voice_row.addWidget(self.voice_button, 1)
+        inside = QHBoxLayout(self.voice_button)             # the quiet countdown sits at the button's right edge
+        inside.setContentsMargins(12, 0, 12, 0)
+        inside.addStretch(1)
+        self.voice_countdown = QLabel()
+        self.voice_countdown.setProperty("countdown", True)
+        self.voice_countdown.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.voice_countdown.setVisible(False)
+        inside.addWidget(self.voice_countdown)
         # Help ("?"): in the title bar on macOS (install_titlebar), otherwise this small icon button.
         self.help_button = QToolButton()
         self.help_button.setProperty("flatIcon", True)
@@ -433,6 +478,12 @@ class SortingWindow:
             if not items and not self._retiring:
                 self._window.hide()
 
+    def note_choice(self, key: TermKey, column: str) -> None:
+        """The user picked *column* for *key* by voice: show it chosen in the row's list."""
+        for row in self.rows:
+            if row.key == key:
+                row.choose(column)
+
     def note_outcome(self, key: TermKey, outcome: str) -> None:
         """Say how *key* was answered: ``"accepted"``, ``"ignored"`` or ``"error"``.
 
@@ -461,7 +512,15 @@ class SortingWindow:
             return
         self._retiring = True
         row = self._queue.pop(0)
-        row.flash(self._outcomes.pop(row.key, "accepted"))
+        wait = TermRow.CHOICE_MS if row.chosen else 0                # let the picked column show in the list first
+        outcome = self._outcomes.pop(row.key, "accepted")
+        if wait:
+            QTimer.singleShot(wait, lambda: self._flash_then_collapse(row, outcome))
+        else:
+            self._flash_then_collapse(row, outcome)
+
+    def _flash_then_collapse(self, row: TermRow, outcome: str) -> None:
+        row.flash(outcome)
         QTimer.singleShot(self.FLASH_MS, lambda: self._collapse(row))
 
     def _collapse(self, row: TermRow) -> None:
@@ -517,9 +576,15 @@ class SortingWindow:
         self.voice_status.setText(pillify(text))
         self.voice_status.setVisible(bool(text))
 
+    def set_voice_countdown(self, seconds: int | None) -> None:
+        """Show the seconds left before voice sorting stops because it is quiet (None hides it)."""
+        self.voice_countdown.setVisible(seconds is not None and self._voice_active)
+        if seconds is not None:
+            self.voice_countdown.setText(f"Stops in {seconds}s")
+
     def _render_voice(self) -> None:
         self.voice_button.setChecked(self._voice_active)
-        self.voice_button.setText("🎤 Listening… (click to stop)" if self._voice_active
+        self.voice_button.setText("🎤 Listening (click to stop)" if self._voice_active
                                   else "🎤 Sort by Voice")
 
     def show(self) -> None:

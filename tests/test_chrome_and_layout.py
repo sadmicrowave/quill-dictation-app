@@ -49,6 +49,31 @@ class TestWindowsChrome(unittest.TestCase):
         self.assertFalse(chrome.windows_chrome(1, True, COLORS))      # no ctypes.windll here
 
 
+class Rect:
+    def __init__(self, width, height):
+        self.size = type("S", (), {"width": width, "height": height})()
+
+
+class Colour(tuple):
+    def CGColor(self): return self
+
+
+class FakeStrip:
+    """The title bar tint: a plain view with a layer."""
+    instances = []
+
+    def __init__(self): self.props, self._layer = {}, type("L", (), {"setBackgroundColor_": lambda s, c: self.props.__setitem__("colour", c)})()
+    def alloc(self): s = FakeStrip(); FakeStrip.instances.append(s); return s
+    def initWithFrame_(self, frame): return self
+    def setIdentifier_(self, v): self.props["id"] = v
+    def identifier(self): return self.props.get("id")
+    def setWantsLayer_(self, v): pass
+    def setAutoresizingMask_(self, v): self.props["mask"] = v
+    def setFrame_(self, frame): self.props["frame"] = frame
+    def layer(self): return self._layer
+    def removeFromSuperview(self): self.props["removed"] = True
+
+
 class FakeView:
     def __init__(self, identifier=None):
         self._id, self.removed = identifier, False
@@ -62,7 +87,7 @@ class FakeView:
     def setState_(self, v): self.props["state"] = v
     def setAutoresizingMask_(self, v): self.props["mask"] = v
     def setAlphaValue_(self, v): self.props["alpha"] = v
-    def frame(self): return "frame"
+    def frame(self): return Rect(100, 80)
     def initWithFrame_(self, frame): return self
     def alloc(self): return self
 
@@ -72,6 +97,7 @@ class FakeHolder:
         self._subviews, self.added = list(subviews), []
 
     def subviews(self): return self._subviews
+    def bounds(self): return Rect(100, 100)
     def addSubview_positioned_relativeTo_(self, view, where, relative): self.added.append((view, where, relative))
 
 
@@ -91,15 +117,17 @@ class FakeAppKit:
         self._window = window
         self.holder = holder if holder is not None else FakeHolder()
         self.NSColor = type("C", (), {"colorWithSRGBRed_green_blue_alpha_":
-                                      staticmethod(lambda r, g, b, a: (round(r, 2), round(g, 2), round(b, 2), round(a, 2)))})
+                                      staticmethod(lambda r, g, b, a: Colour((round(r, 2), round(g, 2), round(b, 2), round(a, 2))))})
         self.NSAppearance = type("A", (), {"appearanceNamed_": staticmethod(lambda n: n)})
         self.effect = FakeView()
         self.NSVisualEffectView = self.effect
+        FakeStrip.instances = []
+        self.NSView = FakeStrip()
 
     def view_for(self, view_id):
         window, holder = self._window, self.holder
         return type("V", (), {"window": lambda s: window, "superview": lambda s: holder,
-                              "frame": lambda s: "frame"})()
+                              "frame": lambda s: Rect(100, 80)})()
 
 
 class TestMacChrome(unittest.TestCase):
@@ -122,7 +150,7 @@ class TestMacChrome(unittest.TestCase):
         window, kit = FakeWindow(), FakeAppKit(FakeWindow())
         window = kit._window
         chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=60)
-        self.assertEqual(len(kit.holder.added), 1)
+        self.assertEqual(len(kit.holder.added), 2)                    # the frosted layer and the title bar tint
         view, where, _ = kit.holder.added[0]
         self.assertEqual(where, -1)                                   # below the content
         self.assertEqual(view.identifier(), chrome.BLUR_ID)
@@ -131,12 +159,15 @@ class TestMacChrome(unittest.TestCase):
         self.assertIn(("opaque", False), window.calls)                # blur needs a see-through window
         self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), window.calls)         # title bar solid at 100% opacity
         self.assertEqual(view.props["alpha"], 0.6)                           # the blur's strength
+        tint, where, _ = kit.holder.added[1]
+        self.assertEqual(tint.props["colour"][3], 1.0)                       # the title bar tint is solid at full opacity
+        self.assertEqual(tint.props["frame"], ((0, 80), (100, 20)))          # over the title bar only
 
     def test_blur_is_not_added_twice_but_its_strength_updates(self):
         existing = FakeView(chrome.BLUR_ID)
         kit = FakeAppKit(FakeWindow(), FakeHolder([existing]))
         chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=30)
-        self.assertEqual(kit.holder.added, [])
+        self.assertEqual([v.identifier() for v, *_ in kit.holder.added], [chrome.TINT_ID])   # only the tint is new
         self.assertEqual(existing.props["alpha"], 0.3)
 
     def test_zero_blur_is_solid_and_has_no_view(self):
@@ -320,9 +351,10 @@ class TestFontSize(unittest.TestCase):
         theme.apply_theme(_app, "light", font_size=16)
         self.assertEqual(_app.font().pointSize(), 16)
 
-    def test_the_sorting_question_is_three_points_larger(self):
-        self.assertIn("QLabel#termPrompt { font-size: 15pt", theme.stylesheet_for(False, font_size=12))
-        self.assertIn("font-size: 19pt", theme.stylesheet_for(False, font_size=16))
+    def test_every_text_is_the_same_size(self):
+        """Titles, buttons, notes, values and placeholders differ in colour and style, never in size."""
+        self.assertNotIn("font-size", theme.stylesheet_for(False, font_size=12))
+        self.assertNotIn("font-size", theme.stylesheet_for(True, font_size=16))
 
     def test_dialog_has_a_text_size_box_that_saves(self):
         settings = Settings.load(self.dir)

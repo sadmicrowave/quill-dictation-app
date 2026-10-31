@@ -61,7 +61,7 @@ class TestLayout(DialogCase):
         self.assertEqual({r.title for r in self.d.rows},
                          {"Speak Sort Term Prompts", "Sort by Voice Automatically", "Undo Remembers", "Theme",
                           "Keep the Microphone Open When Not Listening", "Keep the Mini View on Top", "Hide the Dock Icon", "Troubleshooting",
-                          "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur",
+                          "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur", "Term Helper Follows Window Opacity",
                           "Confirm With", "Sound Set", "Spoken Word", "Stop Listening When Quiet",
                           "Quiet Time Before Stopping"})
 

@@ -52,6 +52,9 @@ DENSITIES = {
                         header="10px", cell="7px", radius=14, margin=20, gap=12),
 }
 
+#: Space between a drop-down's or number box's left edge and its text, the same in every one (and every density).
+TEXT_INSET = 12
+
 DEFAULT_ACCENT = "violet"
 DEFAULT_FONT_SIZE = 12
 DEFAULT_SPACING = "compact"
@@ -172,7 +175,8 @@ class _BackdropPainter(QObject):
                 colors = colors_for(is_dark(app), str(app.property("quillAccent") or DEFAULT_ACCENT))
                 color = QColor(colors["bg"])
                 alpha = app.property("quillBackdrop")
-                color.setAlphaF(1.0 if alpha is None else float(alpha))
+                solid = obj.property("quillSolid")                  # a window that opts out of the opacity setting
+                color.setAlphaF(1.0 if alpha is None or solid else float(alpha))
                 painter = QPainter(obj)
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
                 painter.fillRect(obj.rect(), color)
@@ -231,7 +235,7 @@ QLineEdit, QSpinBox, QComboBox {{ background: {surf}; color: {t['text']};
               selection-background-color: {t['accent']}; selection-color: {t['on_accent']}; }}
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{ border: 1px solid {t['accent']}; }}
 QComboBox:disabled, QSpinBox:disabled {{ color: {t['disabled']}; background: {t['bg']}; }}
-QComboBox {{ combobox-popup: 0; padding-right: 32px; }}
+QComboBox {{ combobox-popup: 0; padding-left: {TEXT_INSET}px; padding-right: 32px; }}
 QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 30px;
               border: none; background: transparent; }}
 QComboBox::down-arrow {{ image: url({icon['down']}); width: 14px; height: 14px; }}
@@ -286,23 +290,22 @@ QLabel[chip="warn"] {{ background: {rgba(t['accent'], 0.14)}; color: {t['accent'
               border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
 QLabel[placeholder="true"] {{ font-style: italic; color: {t['muted']}; }}
 QTextEdit, QPlainTextEdit {{ placeholder-text-color: {t['muted']}; }}
-QLabel[note="true"] {{ font-size: {max(font_size - 2, 7)}pt; font-style: italic; color: {t['muted']}; }}
+QLabel[note="true"] {{ font-style: italic; color: {t['muted']}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
-QLabel[countdown="true"] {{ background: transparent; color: {t['muted']}; font-size: {max(font_size - 3, 7)}pt; font-style: italic; font-weight: 400; }}
-QPushButton[accent="true"] QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.72)}; font-weight: 400; }}
+QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.78)}; font-style: italic; font-weight: 400; }}
+QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
 QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}
 QSlider::handle:horizontal {{ width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;
               background: {t['accent']}; border: 2px solid {t['surface']}; }}
-QLabel#termPrompt {{ font-size: {font_size + 3}pt; font-weight: 500; }}
+QLabel#termPrompt {{ font-weight: 500; }}
 QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2px 0; margin: 0; min-width: 0;
-              font-size: {font_size}pt;
               color: {t['muted']}; }}
 QToolButton[flatIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[flatIcon="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
-QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; font-size: {max(font_size - 2, 8)}pt; }}
+QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; }}
 QLabel[staticHeading="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; }}
 QLabel[info="true"] {{ background: {rgba(t['accent'], 0.12)}; color: {t['text']}; border: 1px solid {rgba(t['accent'], 0.38)};
               border-radius: 12px; padding: 8px 14px; }}
@@ -327,7 +330,7 @@ QListWidget#settingsNav::item:disabled {{ color: {t['muted']}; padding: 14px 12p
 QScrollArea#settingsPage, QWidget#settingsPageBody {{ background: transparent; }}
 QWidget#settingsFooter {{ border-top: 1px solid {t['border']}; }}
 QFrame#settingsDivider {{ background: {t['border']}; border: none; }}
-QLabel#pageTitle {{ font-size: {font_size + 3}pt; padding-bottom: 4px; }}
+QLabel#pageTitle {{ padding-bottom: 4px; }}
 QLabel[muted="true"] {{ color: {t['muted']}; }}
 QComboBox[flat="true"], QSpinBox[flat="true"] {{ background: transparent; border: 1px solid transparent;
               border-radius: 8px; padding: 6px 34px 6px 12px; }}

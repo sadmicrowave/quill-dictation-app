@@ -20,7 +20,7 @@ _VOWELS = "aeiou"
 #: Spelling rules applied in order before the vowels are dropped (a small Metaphone).
 _RULES = (
     (r"^kn|^gn|^pn|^wr", lambda m: m.group()[1]),
-    (r"ph", "f"), (r"gh(?=t)", ""), (r"ck", "k"), (r"dg", "j"), (r"tch", "ch"),
+    (r"igh", "i"), (r"ph", "f"), (r"gh(?=t)", ""), (r"ck", "k"), (r"dg", "j"), (r"tch", "ch"),
     (r"sch", "sk"), (r"c(?=[eiy])", "s"), (r"c", "k"), (r"q", "k"), (r"x", "ks"),
     (r"z", "s"), (r"wh", "w"), (r"mb$", "m"),
 )
@@ -52,6 +52,35 @@ def sounds_like(heard: str, known: str, min_length: int = 4) -> bool:
     if ratio >= 0.9 or (ratio >= 0.85 and min(len(a), len(b)) >= 6):
         return True
     return sound_key(a) == sound_key(b) and ratio >= 0.7
+
+
+def closest_choice(heard: str, choices: list[str]) -> str | None:
+    """Which of a short list of *choices* a heard word was probably meant to be, or None.
+
+    The choices are what the user can see on screen (the Choose Column list), so the answer is far more
+    likely to be one of them than a random word: "sighs" is "Size" there. The bar is lower than for an open
+    guess, but the winner must be clearly ahead of the runner-up and nothing is chosen on a tie.
+    """
+    spoken = re.sub(r"[^a-z]", "", heard.lower())
+    if len(spoken) < 3:
+        return None
+    scored = []
+    for choice in choices:
+        # the whole name, and each word of it ("depart" for Departure Date)
+        parts = [re.sub(r"[^a-z]", "", choice.lower())] + [re.sub(r"[^a-z]", "", w) for w in choice.lower().split()]
+        best = 0.0
+        for letters in {p for p in parts if p}:
+            spelling = difflib.SequenceMatcher(None, spoken, letters).ratio()
+            key_a, key_b = sound_key(spoken), sound_key(letters)
+            sound = difflib.SequenceMatcher(None, key_a, key_b).ratio() * 0.95
+            best = max(best, max(spelling, sound) + (0.15 if key_a == key_b else 0.0))
+        scored.append((best, choice))
+    scored.sort(reverse=True)
+    if not scored or scored[0][0] < 0.8:
+        return None
+    if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.15:
+        return None
+    return scored[0][1]
 
 
 #: Endings removed to find a word's stem, longest first ("migrated", "migration" and "migrates" all give "migrat").

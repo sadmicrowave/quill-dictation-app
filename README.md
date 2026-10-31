@@ -439,3 +439,13 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Settings is non-modal**, so the Dock's Quit always reaches `QuillApp.quit_app`.
 - **Sheet label** is left-aligned and roomier in comfortable mode.
 - **Demo mode** (`python main.py --demo`, `QUILL_DEMO=1`, or `tools/quill-demo.command`): opens a sample workbook and adds a **Demo** menu (`quill/demo.py`) whose scenarios feed text through the same relay a spoken phrase uses, so the real screens fill with pills, the row grid, Term Helper terms and Last Saved without recording anything.
+
+### Phase 48 notes (chrome on reopen, opacity, controls, Term Helper)
+- **Closing to the tray rebuilds the macOS native window**, which lost the title bar icons, title and styling. `chrome.watch_native_window` notices a window shown on a rebuilt native window (the title bar label from `plain_title` is missing) and `QuillApp._native_rebuilt` styles it and adds the icons again; it covers the Term Helper too.
+- **Frosted glass covers the title bar**: the vibrancy view fills the whole frame, and a strip in the window colour (`TINT_ID`) over the title bar fades with the opacity setting, so the title bar no longer shows the sharp desktop. The frosted layer's own strength scales with opacity so a dark window does not stay dark at low opacity.
+- **Start button**: light, play / stop icon, then the "Stops in Ns" countdown (readable colour, also in the mini view); the Term Helper's voice button has the same countdown and reads "Listening (click to stop)".
+- **Term Helper stays solid** unless `sorting_follows_opacity` (Settings > Appearance); its root has the `quillSolid` property and is applied with opacity 100 / blur 0.
+- **Voice sorting context**: `sounds.closest_choice` reads an unrecognised word against the Choose Column list ("sighs" is Size). `Controller.note_choice` announces the pick (`choice` event) so the list lights the column green, then the row blinks (`TermRow.choose`, `CHOICE_MS`).
+- **Controls**: one text inset (`theme.TEXT_INSET`) for drop-downs and number boxes; `GuardedSlider` jumps and drags from anywhere along a 30 px tall target.
+- **One text size**: no style rule sets a font size any more (notes, countdowns, Log, Term Helper question and page titles use the app's size); spoken-word pills use the app font instead of a monospace one. Help-page headings still scale.
+- **Microphone permission**: `tools/build_mac.sh` signs with the requirement `designated => identifier "com.quill.app"`, so a granted permission survives rebuilds.

@@ -75,6 +75,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "auto_stop_seconds": 10,  # ... for this many seconds of quiet
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
+    "sorting_follows_opacity": False,   # the Term Helper fades like the main window (off: it stays solid and easy to read)
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
 }
 

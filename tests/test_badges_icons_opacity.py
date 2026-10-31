@@ -192,8 +192,7 @@ class TestNoteStyle(unittest.TestCase):
         w.setup()
         self.assertTrue(w.last_label.property("note"))
         sheet = theme.stylesheet_for(False, font_size=12)
-        self.assertIn('QLabel[note="true"] { font-size: 10pt; font-style: italic;', sheet)
-        self.assertIn("font-size: 14pt; font-style: italic", theme.stylesheet_for(False, font_size=16))
+        self.assertIn('QLabel[note="true"] { font-style: italic;', sheet)
 
 
 class TestOpacityAndBlur(unittest.TestCase):
@@ -274,7 +273,11 @@ class TestOpacityAndBlur(unittest.TestCase):
     def test_lower_opacity_fades_the_whole_window_content(self):
         app = self.make_app(opacity=60, blur=0)
         self.assertEqual(self.faded(app.window.root), 0.6)
-        self.assertEqual(self.faded(app.sorting.root), 0.6)
+        self.assertIsNone(self.faded(app.sorting.root))               # the Term Helper stays solid by default
+        app.settings.preferences["sorting_follows_opacity"] = True
+        app.apply_settings(quiet=True)
+        self.assertEqual(self.faded(app.sorting.root), 0.6)           # ... unless it is told to follow
+        self.assertFalse(app.sorting.root.property("quillSolid"))
 
     def test_without_blur_the_whole_window_fades_and_returns_to_solid(self):
         app = self.make_app(blur=0)

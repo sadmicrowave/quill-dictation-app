@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 
 from quill.parser.commands import YES_WORDS
 from quill.parser.numbers import parse_number
+from quill.parser.sounds import closest_choice
 from quill.parser.tokens import display_name, tokenize
 from quill.session import Decision
 
@@ -184,7 +185,24 @@ class VoiceSorter:
 
         if word in SAME_WORDS:
             return self._same(tokens, i + 1, key, suggested, result)
+        heard = self._choice_at(tokens, i, term)
+        if heard:                                   # a mis-heard column name ("sighs" for Size)
+            self._add(key, heard, result)
+            return i + 1
         return None
+
+    def _choice_at(self, tokens: list[str], i: int, term: str) -> str | None:
+        """The column in the Choose Column list that the (unrecognised) word at ``tokens[i]`` was probably meant to be.
+
+        The list on screen is what the user is choosing from, so it supplies the context: a word that matches
+        nothing else is compared with just those names.
+        """
+        word = tokens[i]
+        if word in FILLERS or len(word) < 3 or any(ch.isdigit() for ch in word) or self._is_command(word):
+            return None
+        vocab = self._ctl.vocab
+        choices = [c for c in vocab.columns_for(term) if vocab.is_list_column(c)]
+        return closest_choice(word, choices)
 
     # ------------------------------------------------------------------ #
 
@@ -209,6 +227,7 @@ class VoiceSorter:
             result.problem = True
             result.messages.append(f"Which column is ‘{term}’? Say a column name.")
             return
+        self._announce(key, column)
         hint = self._ctl.vocab.abbreviation_for(term) if accept_alias else None
         if hint and hint[0] == column:
             self._ctl.resolve_term(key, Decision.alias(column, hint[1]))
@@ -218,6 +237,12 @@ class VoiceSorter:
         self._ctl.resolve_term(key, Decision.add(column, display_name(term)))
         result.resolved += 1
         result.messages.append(f"Added ‘{term}’ to {column}")
+
+    def _announce(self, key, column: str) -> None:
+        """Let the window show the picked column before the term leaves the list."""
+        note = getattr(self._ctl, "note_choice", None)
+        if note is not None:
+            note(key, column)
 
     def _same(self, tokens: list[str], j: int, key, column: str | None,
               result: VoiceSortResult) -> int:

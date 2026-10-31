@@ -343,3 +343,23 @@ class TestAutoStart(AppVoiceCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHeardFromTheVisibleChoices(VoiceCase):
+    """A word that is not a column but sounds like one in the Choose Column list is read as that column."""
+
+    def test_sighs_is_size(self):
+        self.say("sighs")
+        self.assertIn("Jumbo", self.ctl.bridge.get_lists()["Size"])
+        self.assertEqual(len(self.pending()), 2)
+
+    def test_an_unrelated_word_is_not_forced_onto_a_column(self):
+        event = self.sort("banana")
+        self.assertEqual(len(self.pending()), 3)
+        self.assertTrue(event.record["problem"])
+
+    def test_the_picked_column_is_announced_before_the_term_leaves(self):
+        self.say("sighs")
+        kinds = [e.kind for e in self.events]
+        self.assertLess(kinds.index("choice"), kinds.index("add_values"))
+        self.assertEqual([e.detail for e in self.events if e.kind == "choice"], ["Size"])

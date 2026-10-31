@@ -306,6 +306,10 @@ class Controller:
             self.voice_sorter = None
             self._on_event(Event("sort_voice_ended", detail=detail))
 
+    def note_choice(self, key: TermKey, column: str) -> None:
+        """Tell the window which column a spoken answer picked, just before the term is resolved (so it can be shown)."""
+        self._on_event(Event("choice", detail=column, record={"key": key}))
+
     def _voice_sort(self, text: str) -> None:
         result = self.voice_sorter.handle(text)
         self._on_event(Event("sorting", detail="; ".join(result.messages), record={"heard": text, "problem": result.problem}))

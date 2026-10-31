@@ -131,8 +131,8 @@ class HeadingToggle(QLabel):
         super().mousePressEvent(event)
 
 
-#: The look of spoken words and commands wherever they appear in text: a small monospaced pill.
-PILL_STYLE = "background-color:#5E4A99; color:#FFFFFF; font-family:Menlo,Consolas,monospace"
+#: The look of spoken words and commands wherever they appear in text: a pill in the app's own font and size.
+PILL_STYLE = "background-color:#5E4A99; color:#FFFFFF"
 
 
 def pill(text: str) -> str:

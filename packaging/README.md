@@ -12,7 +12,10 @@ Neither spec has been build-tested yet; see the To Do's Phase 10 checklist.
 
 The first time Quill drives Excel, macOS asks to allow Automation access to
 Microsoft Excel. Choose OK (System Settings > Privacy & Security > Automation).
-The first time it listens, macOS asks for microphone access.
+The first time it listens, macOS asks for microphone access. `tools/build_mac.sh` signs the app with a
+requirement that names only its identifier (`com.quill.app`), so that choice is remembered across rebuilds;
+without that step every rebuild looks like a new app and asks again. (The first run after this change asks
+once more, because the earlier permission was tied to an older build.)
 
 ## Windows (.exe)
 

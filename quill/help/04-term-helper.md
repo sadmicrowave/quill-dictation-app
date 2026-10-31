@@ -25,9 +25,13 @@ The word is already capitalised for you, and whatever you type is capitalised wh
 
 The **Choose Column** list opens by itself when Quill needs one.
 
+The Term Helper asks you to do something, so it stays **solid and easy to read** even when the main window is see-through. (To make it fade with the main window, turn on **Term Helper Follows Window Opacity** in [Settings](help:settings).)
+
 ## 🎙️ Answer by voice
 
-Press **🎤 Sort by Voice** (or say **"sort terms"**), then talk. Quill answers the **top row** and moves on.
+Press **🎤 Sort by Voice** (or say **"sort terms"**), then talk. Quill answers the **top row** and moves on. The button reads **Listening (click to stop)** with a small **Stops in …s** countdown at its right edge: stay quiet for the set time and voice sorting ends by itself.
+
+The columns on screen are the context: if you say a word that isn't a column but sounds like one in the list (*"sighs"* for **Size**), Quill picks that column.
 
 | Say | Does |
 |---|---|
@@ -44,9 +48,10 @@ Press **🎤 Sort by Voice** (or say **"sort terms"**), then talk. Quill answers
 
 ## ✨ What you'll see
 
-1. The row **blinks**: **green** when the word was added, **grey** when you ignored it, **red** if the answer couldn't be carried out.
-2. It **fades and closes**, then the next row moves up.
-3. The window **closes** when none are left.
+1. If you said a column, it **lights up green in the Choose Column list** (you hear and see that the word was understood).
+2. Straight after, the row **blinks**: **green** when the word was added, **grey** when you ignored it, **red** if the answer couldn't be carried out.
+3. It **fades and closes**, then the next row moves up.
+4. The window **closes** when none are left.
 
 ## ↩️ Changed your mind?
 

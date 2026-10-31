@@ -42,6 +42,7 @@ from quill.ui.chrome import (
     add_titlebar_button,
     apply_chrome,
     set_dock_icon_visible,
+    watch_native_window,
 )
 from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import MainWindow
@@ -231,6 +232,8 @@ class QuillApp:
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
+        self._rebuild_watchers = [watch_native_window(w, self._native_rebuilt)
+                                  for w in (self.window.widget, self.sorting.widget) if w is not None]
         self.window.set_stream_classifier(self._match_heard_words)
         self.window.restore_mini_size(int(self.settings.preferences["mini_width"]),
                                       int(self.settings.preferences["mini_height"]))
@@ -669,6 +672,15 @@ class QuillApp:
         if self.quit_failsafe_ms:
             QTimer.singleShot(self.quit_failsafe_ms, lambda: self.qapp.exit(0))    # fail-safe if a nested event loop lingers
 
+    def _native_rebuilt(self) -> None:
+        """A window came back after being closed on a new native window: style it and add its title bar icons again."""
+        self._titlebar = self._titlebar_left = None
+        self.sorting._titlebar = None
+        self._apply_look()
+        self._install_titlebar_button()
+        self.sorting.install_titlebar()
+        self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
+
     def _install_titlebar_button(self) -> None:
         """Put the resize icon in the title bar (macOS); the in-window one is then hidden."""
         if self._titlebar is not None or self.window.widget is None:
@@ -788,9 +800,16 @@ class QuillApp:
                     int(prefs["font_size"]), backdrop=backdrop_alpha(int(prefs["opacity"]), int(prefs["blur"])))
         dark = is_dark(self.qapp)
         colors = colors_for(dark, str(prefs["accent"]))
-        opacity, blur = int(prefs["opacity"]), int(prefs["blur"])
+        follows = bool(prefs["sorting_follows_opacity"])
+        if self.sorting.root is not None:
+            self.sorting.root.setProperty("quillSolid", not follows)     # the Term Helper asks for action: solid unless chosen
+            self.sorting.root.update()
         for window, root in ((self.window.widget, self.window.root), (self.sorting.widget, self.sorting.root)):
             if window is not None:
+                if window is self.sorting.widget and not follows:
+                    opacity, blur = 100, 0
+                else:
+                    opacity, blur = int(prefs["opacity"]), int(prefs["blur"])
                 if window is self.window.widget:
                     self.window.apply_density(str(prefs["spacing"]))
                 else:
@@ -869,6 +888,9 @@ class QuillApp:
             self.sorting.set_voice_active(False)
             self.sorting.set_voice_status("", event.detail)
             self.window.append_log(event.detail)
+            return
+        elif kind == "choice":
+            self.sorting.note_choice(event.record["key"], event.detail)
             return
         elif kind == "sorting":
             self.sorting.set_voice_status((event.record or {}).get("heard", ""), event.detail)
@@ -950,11 +972,13 @@ class QuillApp:
             limit = int(self.settings.preferences["auto_stop_seconds"])
             seconds = min(max(-(-self._quiet_timer.remainingTime() // 1000), 0), limit)   # rounded up, never above the setting
             self.window.set_quiet_countdown(seconds)
+            self.sorting.set_voice_countdown(seconds)
             if not self._countdown_timer.isActive():
                 self._countdown_timer.start()
         else:
             self._countdown_timer.stop()
             self.window.set_quiet_countdown(None)
+            self.sorting.set_voice_countdown(None)
 
     def _quiet_for_too_long(self) -> None:
         """Nothing was said for the set time: the user has forgotten the microphone or been called away.
