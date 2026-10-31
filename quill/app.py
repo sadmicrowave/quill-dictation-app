@@ -115,6 +115,7 @@ class QuillApp:
         self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
         self._probe_ticks = 0
+        self._error_in_footer = ""                    # the error currently shown in the window's footer, if any
         self._host_probe_running = False             # a look for files in other programs is under way
         self._host_noted = False
         self._host_reload = QTimer()
@@ -783,8 +784,14 @@ class QuillApp:
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
+        elif kind == "error":
+            self.window.set_footer(event.detail)                   # visible even with the log hidden
+            self._error_in_footer = event.detail
         elif kind == "committed":
             self.window.set_last_saved(event.detail, event.record)
+            if self._error_in_footer:                              # the problem that was shown is over
+                self.window.set_footer("")
+                self._error_in_footer = ""
         elif kind == "confirm":
             self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)
             self.refresh_sorting(reveal=True)

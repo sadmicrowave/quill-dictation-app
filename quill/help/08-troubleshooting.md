@@ -11,6 +11,7 @@
 
 | Problem | Try |
 |---|---|
+| *Could not save the row…* shown under the window | The row is **kept** (nothing is lost). The sheet in front doesn't have your columns, or several sheets do. Open the sheet you are filling in, then say **"next row"** again |
 | Listening stopped by itself | Nothing was said for 10 seconds. Say **"start listening"** again, or change **Stop Listening When Quiet** in **Settings > General** |
 | Nothing happens when I talk | Say **"start listening"**; check microphone permission in your computer's privacy settings |
 | *File stream not connected* | Open your spreadsheet. Quill finds it in a few seconds |

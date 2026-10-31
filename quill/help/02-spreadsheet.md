@@ -23,6 +23,10 @@ No spreadsheet app open? Quill can fill a file by itself.
 
 **File > Use Open Excel Workbook** goes back to live Excel.
 
+## 📑 Which sheet gets the row
+
+Quill writes to the sheet that is open if it has the columns you filled. If a dashboard or settings tab is in front, it uses the one other sheet that has them. If several sheets fit (a tab per year, say), it uses the one your last row went to, or asks you to open the one you mean and say **"next row"** again. Your words stay in the grid until the row is saved.
+
 ## 🪟 What the window shows
 
 ![Not connected](images/not-connected.png)
