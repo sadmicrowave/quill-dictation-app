@@ -113,6 +113,7 @@ class QuillApp:
             on_use_excel=self.use_live_excel,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
             on_undo=self.undo, on_help=self.open_help, on_log_toggled=self._log_toggled,
+            on_resized=self._window_resized,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
@@ -171,7 +172,10 @@ class QuillApp:
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
+        self.window.restore_size(int(self.settings.preferences["window_width"]),
+                                 int(self.settings.preferences["window_height"]))
         self.window.show()
+        self.qapp.aboutToQuit.connect(self.window.report_size)      # a size changed just before quitting counts
         self._apply_dock()
         self._install_titlebar_button()
         self.window.set_file_mode(isinstance(self.controller.bridge, XlsxBridge))
@@ -579,6 +583,12 @@ class QuillApp:
         if state == Qt.ApplicationState.ApplicationActive and self.window.widget is not None \
                 and not self.window.widget.isVisible():
             self.window.show()
+
+    def _window_resized(self, width: int, height: int) -> None:
+        """Remember the window's size, so the next launch opens the way the user left it."""
+        self.settings.preferences["window_width"] = width
+        self.settings.preferences["window_height"] = height
+        self.settings.save()
 
     def _log_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the log."""

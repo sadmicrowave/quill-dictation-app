@@ -294,8 +294,8 @@ def tiled_sheet(color: str, x: float, y: float, w: float, h: float, radius: floa
     out, tw, th = [], w / cols, h / rows
     for r in range(rows):
         for c in range(cols):
-            if banded:                       # strongly alternating rows, so it still reads as a grid when small
-                amount = (0.90 if r % 2 == 0 else 0.58) - (0.07 if c == 0 else 0.0)
+            if banded:                       # every row a clear step darker than the one above (like the Excel icon)
+                amount = 0.90 - 0.24 * r - (0.08 if c == 0 else 0.0)
             else:
                 amount = ((0.80 - 0.09 * r - (0.05 if c == 0 else 0.0)) if light
                           else (0.30 - 0.17 * r - (0.07 if c == 0 else 0.0)))
@@ -307,9 +307,9 @@ def tiled_sheet(color: str, x: float, y: float, w: float, h: float, radius: floa
     if banded:                               # grid lines between the cells
         line = shade(color, 0.12)
         for r in range(1, rows):
-            out.append(f'<rect x="{x}" y="{y + r * th - 0.9:.1f}" width="{w}" height="1.8" fill="{line}"/>')
+            out.append(f'<rect x="{x}" y="{y + r * th - 0.6:.1f}" width="{w}" height="1.2" fill="{line}" opacity=".55"/>')
         for c in range(1, cols):
-            out.append(f'<rect x="{x + c * tw - 0.9:.1f}" y="{y}" width="1.8" height="{h}" fill="{line}"/>')
+            out.append(f'<rect x="{x + c * tw - 0.6:.1f}" y="{y}" width="1.2" height="{h}" fill="{line}" opacity=".55"/>')
     return "".join(out)
 
 

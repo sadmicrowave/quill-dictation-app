@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from quill.config.settings import Settings
 from quill.ui import theme
-from quill.ui.main_window import MainWindow
+from quill.ui.main_window import LOG_OPEN_HEIGHT, MainWindow
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.settings_widgets import ToggleSwitch
 from quill.ui.tray import TrayIcon
@@ -141,16 +141,31 @@ class TestLogCollapseResizes(unittest.TestCase):
         self.w.widget.show()
         _app.processEvents()
 
-    def test_window_shrinks_when_the_log_is_hidden_and_returns_when_shown(self):
-        full = self.w.widget.height()
-        self.w.log_toggle.click()
-        _app.processEvents()
-        shrunk = self.w.widget.height()
-        self.assertLess(shrunk, full - 100)
-        self.assertEqual(self.w.widget.width(), 360)
+    def test_a_roomy_window_keeps_its_size_and_the_row_box_gives_the_room(self):
+        full, table = self.w.widget.height(), self.w.row_table.height()
         self.w.log_toggle.click()
         _app.processEvents()
         self.assertEqual(self.w.widget.height(), full)
+        self.assertGreater(self.w.row_table.height(), table)         # the box takes the log's room
+        self.w.log_toggle.click()
+        _app.processEvents()
+        self.assertEqual((self.w.widget.height(), self.w.row_table.height()), (full, table))
+
+    def test_a_snug_window_grows_by_the_shortfall_and_shrinks_back(self):
+        w = MainWindow(log_collapsed=True)
+        w.setup()
+        w.widget.show()
+        _app.processEvents()
+        snug = w.widget.height()
+        w.log_toggle.click()
+        _app.processEvents()
+        grown = w.widget.height()
+        self.assertGreater(grown, snug)
+        self.assertLessEqual(grown - snug, LOG_OPEN_HEIGHT + 20)
+        self.assertEqual(w.log.height(), LOG_OPEN_HEIGHT)
+        w.log_toggle.click()
+        _app.processEvents()
+        self.assertAlmostEqual(w.widget.height(), snug, delta=3)       # (the content's own minimum may be a pixel or two more)
 
     def test_no_empty_gap_below_the_last_control(self):
         self.w.log_toggle.click()

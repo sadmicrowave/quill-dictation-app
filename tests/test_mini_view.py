@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
-from quill.ui.main_window import MainWindow
+from quill.ui.main_window import LOG_OPEN_HEIGHT, MainWindow
 from quill.ui.settings_dialog import SettingsDialog
 from tests.test_app import FakeListener, FakeSpeaker
 from tests.test_sorting import SENTENCE, DemoCase
@@ -249,15 +249,26 @@ class TestResizeAnimation(unittest.TestCase):
         self.wait()
         self.assertEqual((self.w.widget.width(), self.w.widget.height()), (360, 620))
 
-    def test_collapsing_the_log_eases_too_and_reopening_restores_exactly(self):
-        full = self.w.widget.height()
+    def test_opening_the_log_slides_it_up_without_moving_the_window(self):
         self.w.set_log_collapsed(True)
-        self.assertGreater(self.w.widget.height(), full - 50)
         self.wait()
-        self.assertLess(self.w.widget.height(), full - 100)
+        full, table = self.w.widget.height(), self.w.row_table.height()
         self.w.set_log_collapsed(False)
         self.wait()
-        self.assertEqual(self.w.widget.height(), full)
+        self.assertEqual(self.w.widget.height(), full)               # the Current Row box gave the room
+        self.assertLess(self.w.row_table.height(), table)
+        self.assertEqual(self.w.log.height(), LOG_OPEN_HEIGHT)
+        self.w.set_log_collapsed(True)
+        self.wait()
+        self.assertEqual((self.w.widget.height(), self.w.row_table.height()), (full, table))
+
+    def test_the_log_grows_a_little_at_a_time(self):
+        self.w.set_log_collapsed(True)
+        self.wait()
+        self.w.set_log_collapsed(False)
+        self.assertLess(self.w.log.height(), LOG_OPEN_HEIGHT)        # not there at once
+        self.wait()
+        self.assertEqual(self.w.log.height(), LOG_OPEN_HEIGHT)
 
     def test_a_hidden_window_resizes_at_once(self):
         w = MainWindow()
@@ -355,3 +366,42 @@ class TestMiniInTheApp(DemoCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRememberedSize(unittest.TestCase):
+    def setUp(self):
+        self.sizes = []
+        self.w = MainWindow(on_resized=lambda w, h: self.sizes.append((w, h)))
+        self.w.setup()
+        self.w.widget.show()
+        _app.processEvents()
+
+    def test_the_settled_size_is_reported(self):
+        from PySide6.QtTest import QTest
+        self.w.widget.resize(430, 640)
+        QTest.qWait(600)
+        self.assertEqual(self.sizes[-1], (430, 640))
+
+    def test_a_remembered_size_is_used_and_is_where_the_mini_view_returns_to(self):
+        self.assertTrue(self.w.restore_size(420, 600))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (420, 600))
+        self.w.set_mini(True)
+        self.w.set_mini(False)
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (420, 600))
+
+    def test_nothing_saved_or_a_tiny_size_changes_nothing(self):
+        before = self.w.widget.size()
+        self.assertFalse(self.w.restore_size(0, 0))
+        self.assertFalse(self.w.restore_size(100, 100))
+        self.assertEqual(self.w.widget.size(), before)
+
+    def test_the_mini_views_size_is_never_reported(self):
+        self.w.set_mini(True)
+        self.sizes.clear()
+        self.w.report_size()
+        self.assertEqual(self.sizes, [])
+
+    def test_a_size_bigger_than_the_screen_is_trimmed(self):
+        self.w.restore_size(90000, 90000)
+        room = self.w.widget.screen().availableGeometry()
+        self.assertLessEqual(self.w.widget.width(), room.width())

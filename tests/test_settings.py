@@ -120,3 +120,16 @@ class TestValidation(SettingsCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWindowSizePreference(unittest.TestCase):
+    def test_a_saved_size_round_trips_and_defaults_to_unset(self):
+        import tempfile, pathlib
+        from quill.config.settings import Settings
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Settings.load(pathlib.Path(tmp))
+            self.assertEqual((settings.preferences["window_width"], settings.preferences["window_height"]), (0, 0))
+            settings.preferences["window_width"], settings.preferences["window_height"] = 410, 630
+            settings.save()
+            again = Settings.load(pathlib.Path(tmp))
+            self.assertEqual((again.preferences["window_width"], again.preferences["window_height"]), (410, 630))

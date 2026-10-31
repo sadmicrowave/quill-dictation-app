@@ -16,7 +16,7 @@ import datetime as dt
 import logging
 from typing import Callable
 
-from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSize, Qt
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSize, Qt, QTimer, QVariantAnimation
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
     QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
@@ -51,6 +51,9 @@ ROW_MAX_MINI = 66
 
 #: Space left below the "Log" heading when the log is minimized, in pixels.
 LOG_BOTTOM_MARGIN = 7
+SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
+MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
+LOG_OPEN_HEIGHT = 120       # height of the log while it is open
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
@@ -79,6 +82,19 @@ class _ChipPlacer(QObject):
         box = self._combo.geometry()                                  # in the shared parent's coordinates
         self._chip.setGeometry(box.x() + gap, box.y() + (box.height() - CHIP_HEIGHT) // 2, width, CHIP_HEIGHT)
         self._chip.raise_()
+
+
+class _ResizeWatcher(QObject):
+    """Restarts a timer every time the window is resized, so the size is reported once it has settled."""
+
+    def __init__(self, window: QWidget, timer: QTimer) -> None:
+        super().__init__(window)
+        self._timer = timer
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Resize:
+            self._timer.start()
+        return False
 
 
 class _WorkbookCombo(QComboBox):
@@ -145,6 +161,7 @@ class MainWindow:
         on_open_file: Callable[[], None] | None = None,
         on_use_excel: Callable[[], None] | None = None,
         on_help: Callable[[str], None] | None = None,
+        on_resized: Callable[[int, int], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
     ) -> None:
@@ -160,6 +177,7 @@ class MainWindow:
         self._on_open_file = on_open_file or (lambda: None)
         self._on_use_excel = on_use_excel or (lambda: None)
         self._on_help = on_help or (lambda topic: None)
+        self._on_resized = on_resized or (lambda width, height: None)
         self._native_help_button = False
         self._mini = mini                          # the state asked for (may still be animating there)
         self._view_mini = False                    # what is actually on screen (set by _apply_view)
@@ -177,7 +195,9 @@ class MainWindow:
         self._text_color = "#1F1E1D"
         self._accent = "#7A55C2"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
-        self._freed: dict[str, int] = {}     # window height each collapsed section gave back
+        self._log_grew = 0                   # window height added to make room for the open log (given back on close)
+        self._log_animation: QVariantAnimation | None = None
+        self._log_busy = False               # the log is sliding open or shut
         self._window: QMainWindow | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
         self._listening = False
@@ -192,6 +212,11 @@ class MainWindow:
         window = QMainWindow()
         window.setWindowTitle("Quill")
         window.resize(360, 520)
+        self._size_timer = QTimer(window)                       # tells the app the window's size once resizing stops
+        self._size_timer.setSingleShot(True)
+        self._size_timer.setInterval(SIZE_SETTLE_MS)
+        self._size_timer.timeout.connect(self.report_size)
+        window.installEventFilter(_ResizeWatcher(window, self._size_timer))
         central = QWidget()
         central.setObjectName("mainRoot")                       # paints the background; opacity applies to it
         central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -353,7 +378,7 @@ class MainWindow:
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(MAX_LOG_LINES)
-        layout.addWidget(self.log, 1)
+        layout.addWidget(self.log)
 
         # File menu (the global menu bar on macOS): Open Spreadsheet File, and back to live Excel.
         file_menu = window.menuBar().addMenu("File")
@@ -585,7 +610,7 @@ class MainWindow:
         button appears, and the sections would draw on top of each other.
         """
         animation = getattr(self, "_animation", None)
-        if (self._window is None or not self._window.isVisible()
+        if (self._window is None or not self._window.isVisible() or self._log_busy
                 or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
             return
         layout = self._window.centralWidget().layout()
@@ -595,6 +620,8 @@ class MainWindow:
 
     def _settle_minimum(self) -> None:
         """Stop the user dragging the window smaller than its content (applied once a resize is done)."""
+        if self._log_busy:                             # the log is still sliding; its final size is not known yet
+            return
         self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize())
 
     def set_mini_on_top(self, on_top: bool) -> None:
@@ -638,7 +665,9 @@ class MainWindow:
         self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
         self.undo_button.setEnabled(self._undo_count > 0)
-        self.log.setVisible(full and not self._log_collapsed)
+        self.log.setVisible(full and (not self._log_collapsed or self._log_closing()))
+        if self.log.isVisibleTo(self._window) and not self._log_busy:
+            self.log.setFixedHeight(LOG_OPEN_HEIGHT)
         self.footer.setVisible(full and bool(self._footer_text))
         self.download_button.setVisible(full and self._offer_download)
         self.sorting_button.setVisible(self._sorting_count > 0)
@@ -647,8 +676,8 @@ class MainWindow:
         self._fit_row_table(animate=False)
         self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini else tall)
         log_open = full and not self._log_collapsed
-        self._layout.setStretchFactor(self.row_table, 2 if log_open else 1)     # with the log open they share extra height
-        self._layout.setStretchFactor(self.log, 1)
+        self._layout.setStretchFactor(self.row_table, 1)       # extra height always goes to the Current Row box;
+        self._layout.setStretchFactor(self.log, 0)             # the log keeps its own height
         self._keep_minimum()
         self.sorting_button.setToolTip("Term Helper: terms that were heard but not placed yet")
 
@@ -658,35 +687,140 @@ class MainWindow:
         button.clicked.connect(lambda: self._set_collapsed("log", not self._log_collapsed, notify=True))
         return button
 
-    def _set_collapsed(self, name: str, collapsed: bool, notify: bool = False) -> None:
-        """Collapse or expand the log, and resize the window so no blank gap is left.
+    # ------------------------------------------------------------------ #
+    # Remembering the size                                                 #
+    # ------------------------------------------------------------------ #
 
-        The window gives back the height the log used when it collapses and
-        takes the same height again when it reopens.
+    def restore_size(self, width: int, height: int) -> bool:
+        """Use a remembered size for the full window (kept on screen; ignored if it is implausibly small).
+
+        Returns:
+            True if the size was used.
         """
-        body, toggle, title = self.log, self.log_toggle, "Log"
+        if self._window is None or width < MIN_REMEMBERED[0] or height < MIN_REMEMBERED[1]:
+            return False
+        screen = self._window.screen()
+        if screen is not None:
+            room = screen.availableGeometry()
+            width, height = min(width, room.width()), min(height, room.height())
+        self._full_size = QSize(width, height)
+        if not self._mini:
+            self._window.resize(width, height)
+        return True
+
+    def report_size(self) -> None:
+        """Tell the app the full window's size (not while it is the mini view or in the middle of a resize)."""
+        window = self._window
+        animation = getattr(self, "_animation", None)
+        if (window is None or self._mini or self._view_mini or self._log_busy
+                or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
+            return
+        self._full_size = QSize(window.width(), window.height())
+        self._on_resized(window.width(), window.height())
+
+    def _log_opening(self) -> bool:
+        return self._log_animation is not None and self._log_animation.property("opening") is True \
+            and self._log_animation.state() == QVariantAnimation.State.Running
+
+    def _log_closing(self) -> bool:
+        return self._log_animation is not None and self._log_animation.property("opening") is False \
+            and self._log_animation.state() == QVariantAnimation.State.Running
+
+    def _finish_log_animation(self) -> None:
+        """If the log is still sliding open or shut, jump to the end of it."""
+        animation = self._log_animation
+        if animation is not None and animation.state() == QVariantAnimation.State.Running:
+            animation.setCurrentTime(animation.duration())
+            animation.stop()
+            animation.finished.emit()
+
+    def _set_collapsed(self, name: str, collapsed: bool, notify: bool = False) -> None:
+        """Show or hide the log.
+
+        Opening takes the room from the Current Row box (the log slides up from the bottom and the
+        window keeps its size). Only when that box has no height to spare does the window grow, by
+        just the shortfall; closing gives the same height back (the box grows again, or the window
+        shrinks again if it had grown).
+        """
         was = self._applied.get(name, False)      # what is on screen now (not the saved preference)
         window = self._window
-        shown = window is not None and window.isVisible()
-        height = self._height_now() if window is not None else 0
-        spacing = window.centralWidget().layout().spacing() if window is not None else 0
-        used = body.height() + max(spacing, 0)
+        self._finish_log_animation()
+        self._log_busy = False
+        shown = window is not None and window.isVisible() and not self._view_mini
         self._log_collapsed = collapsed
         self._applied[name] = collapsed
-        self._refresh_visibility()
-        if window is not None and not self._view_mini:
-            self._set_margins(False)           # a minimized log leaves only a small margin beneath it
+        if window is None or self._view_mini or collapsed == was:
+            self._refresh_visibility()
+        elif not shown:                                     # not on screen: just fit the window to the content
+            self._refresh_visibility()
+            self._set_margins(False)
             window.centralWidget().layout().activate()
-            if collapsed and not was:
-                target = max(self._fit_height(), height - used) if shown else self._fit_height()
-                self._resize_to(window.width(), target)
-                self._freed[name] = max(height - target, 0) if shown else 0   # what it gave back
-            elif was and not collapsed:
-                self._resize_to(window.width(), max(height + self._freed.pop(name, 0), self._fit_height()))
-        toggle.setText(f"{title}  {'▾' if collapsed else '▴'}")
-        toggle.setToolTip(f"Show the {title.lower()}" if collapsed else f"Hide the {title.lower()}")
+            self._resize_to(window.width(), self._fit_height())
+        elif collapsed:
+            self._close_log(window)
+        else:
+            self._open_log(window)
+        self.log_toggle.setText(f"Log  {'▾' if collapsed else '▴'}")
+        self.log_toggle.setToolTip("Show the log" if collapsed else "Hide the log")
         if notify:
             self._on_log_toggled(collapsed)
+
+    def _slide_log(self, start: int, end: int, opening: bool, then) -> None:
+        """Move the log's height from *start* to *end* (instantly when animation is off)."""
+        if self.animation_ms <= 0:
+            self.log.setFixedHeight(end)
+            then()
+            return
+        animation = QVariantAnimation(self._window)
+        animation.setDuration(self.animation_ms)
+        animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        animation.setStartValue(start)
+        animation.setEndValue(end)
+        animation.setProperty("opening", opening)
+        animation.valueChanged.connect(lambda value: self.log.setFixedHeight(int(value)))
+        animation.finished.connect(then)
+        self._log_animation = animation
+        self.log.setFixedHeight(start)
+        animation.start()
+
+    def _open_log(self, window) -> None:
+        layout = window.centralWidget().layout()
+        spacing = max(layout.spacing(), 0)
+        self._log_busy = True
+        slack = max(self.row_table.height() - self.row_table.minimumHeight(), 0)    # what the box can give up
+        grow = max(LOG_OPEN_HEIGHT + spacing - slack, 0)
+        self._log_grew = grow
+        height, width = self._height_now(), window.width()
+        self.log.setFixedHeight(0)
+        self._set_margins(False)
+        self._refresh_visibility()
+        self.log.setVisible(True)
+        if grow:
+            self._resize_to(width, height + grow)
+        self._slide_log(0, LOG_OPEN_HEIGHT, True, self._log_settled)
+
+    def _close_log(self, window) -> None:
+        grew, height, width = self._log_grew, self._height_now(), window.width()
+        self._log_busy = True
+        self._log_grew = 0
+        self._set_margins(False)                       # the small margin that follows a minimized log
+        if grew:
+            self.log.setVisible(False)
+            floor = self._fit_height()
+            self.log.setVisible(True)
+            self._resize_to(width, max(floor, height - grew))
+        self._slide_log(self.log.height(), 0, False, self._log_hidden)
+
+    def _log_settled(self) -> None:
+        self._log_busy = False
+        self._refresh_visibility()
+        self._keep_minimum()
+
+    def _log_hidden(self) -> None:
+        self._log_busy = False
+        self._refresh_visibility()
+        self._set_margins(False)           # a minimized log leaves only a small margin beneath it
+        self._keep_minimum()
 
     # ------------------------------------------------------------------ #
     # Window                                                               #
