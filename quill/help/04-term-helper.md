@@ -21,6 +21,7 @@ For each word choose:
 | **Add** | New choice in that column's list |
 | **Same As…** | Another name for a value you already have ("extra large" = XL) |
 | **Ignore** | Forget it |
+| **Same As M** *(an example)* | Shown when what you said spells out a short code in the list, like *medium* for **M** or *extra large* for **XL**. One click makes it another name for that code |
 
 The **Choose Column** list opens by itself when Quill needs one.
 

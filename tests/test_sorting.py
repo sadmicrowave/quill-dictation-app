@@ -24,7 +24,7 @@ _spec = importlib.util.spec_from_file_location(
 demo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(demo)
 
-SENTENCE = ("this next item is an extra large t-shirt made in the 90s "
+SENTENCE = ("this next item is an jumbo t-shirt made in the 90s "
             "mainly teal and could sell for thirty five dollars")
 
 
@@ -52,7 +52,7 @@ class DemoCase(unittest.TestCase):
 
 
 class TestTheExample(DemoCase):
-    """'an extra large t-shirt made in the 90s, mainly teal, could sell for $35'."""
+    """'an jumbo t-shirt made in the 90s, mainly teal, could sell for $35'."""
 
     def setUp(self):
         super().setUp()
@@ -67,7 +67,7 @@ class TestTheExample(DemoCase):
         pending = self.ctl.pending_terms()
         self.assertIn(("Era", "90s"), pending)          # looks like the Era values
         self.assertIn((None, "teal"), pending)           # nothing to go on: ask
-        self.assertIn((None, "extra large"), pending)
+        self.assertIn((None, "jumbo"), pending)
         self.assertEqual(len(pending), 3)
 
     def test_filler_words_are_not_treated_as_terms(self):
@@ -76,7 +76,7 @@ class TestTheExample(DemoCase):
 
     def test_sorting_them_adds_values_and_fills_the_saved_row(self):
         self.ctl.resolve_term((None, "teal"), Decision.add("Color"))
-        self.ctl.resolve_term((None, "extra large"), Decision.alias("Size", "XL"))
+        self.ctl.resolve_term((None, "jumbo"), Decision.alias("Size", "XL"))
         self.ctl.resolve_term(("Era", "90s"), Decision.alias("Era", "1990s"))
         self.assertEqual(self.ctl.pending_terms(), [])
         row = self.cells(6)
@@ -85,12 +85,12 @@ class TestTheExample(DemoCase):
         self.assertIn("filled Size on row 6", " ".join(e.detail for e in self.events))
 
     def test_aliases_persist_and_work_next_time(self):
-        self.ctl.resolve_term((None, "extra large"), Decision.alias("Size", "XL"))
-        self.assertEqual(Settings.load(self.dir / "cfg").aliases, {"Size": {"extra large": "XL"}})
+        self.ctl.resolve_term((None, "jumbo"), Decision.alias("Size", "XL"))
+        self.assertEqual(Settings.load(self.dir / "cfg").aliases, {"Size": {"jumbo": "XL"}})
         again = Controller(XlsxBridge(self.path), Settings.load(self.dir / "cfg"), None)
         again.connect()
         again.handle_transcript("start listening")
-        again.handle_transcript("extra large jeans")
+        again.handle_transcript("jumbo jeans")
         self.assertEqual(again.session.record["Size"], "XL")
         self.assertEqual(again.session.record["Type"], "Jeans")
 
@@ -164,11 +164,11 @@ class TestSettingsAliases(unittest.TestCase):
     def test_roundtrip_and_tolerance(self):
         with tempfile.TemporaryDirectory() as tmp:
             s = Settings.load(pathlib.Path(tmp))
-            s.add_alias("Size", " Extra Large ", "XL")
+            s.add_alias("Size", " Jumbo ", "XL")
             s.add_alias('Odd "col"', "x y", "Z")
             s.save()
             self.assertEqual(Settings.load(pathlib.Path(tmp)).aliases,
-                             {"Size": {"extra large": "XL"}, 'Odd "col"': {"x y": "Z"}})
+                             {"Size": {"jumbo": "XL"}, 'Odd "col"': {"x y": "Z"}})
             (pathlib.Path(tmp) / Settings.KEYWORDS_FILE).write_text(
                 '[aliases]\nSize = "not a table"\n[aliases.Ok]\n"a" = "b"\n"n" = 5\n', encoding="utf-8")
             self.assertEqual(Settings.load(pathlib.Path(tmp)).aliases, {"Ok": {"a": "b"}})

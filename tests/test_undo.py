@@ -63,7 +63,7 @@ class TestUndoDecisions(DemoCase):
     def setUp(self):
         super().setUp()
         self.say("start listening", SENTENCE, "next row")
-        self.before = self.ctl.pending_terms()          # extra large, teal, 90s
+        self.before = self.ctl.pending_terms()          # jumbo, teal, 90s
 
     def lists(self):
         return self.ctl.bridge.get_lists()
@@ -108,24 +108,24 @@ class TestUndoDecisions(DemoCase):
         self.assertEqual(self.cells(6)["Color"], "Navy")
 
     def test_undo_a_same_as_forgets_the_synonym(self):
-        self.ctl.resolve_term((None, "extra large"), Decision.alias("Size", "XL"))
+        self.ctl.resolve_term((None, "jumbo"), Decision.alias("Size", "XL"))
         self.assertEqual(self.cells(6)["Size"], "XL")
-        self.assertEqual(self.settings.aliases["Size"]["extra large"], "XL")
+        self.assertEqual(self.settings.aliases["Size"]["jumbo"], "XL")
         self.ctl.undo()
         self.assertNotIn("Size", self.settings.aliases)
         self.assertIsNone(self.cells(6)["Size"])
         self.assertEqual(self.ctl.pending_terms(), self.before)
         saved = (self.dir / "cfg" / "keywords.toml").read_text()
-        self.assertNotIn("extra large", saved)
-        self.say("extra large next row")                  # no longer understood
-        self.assertIn((None, "extra large"), self.ctl.pending_terms())
+        self.assertNotIn("jumbo", saved)
+        self.say("jumbo next row")                  # no longer understood
+        self.assertIn((None, "jumbo"), self.ctl.pending_terms())
 
     def test_undo_restores_the_synonym_it_replaced(self):
-        self.settings.add_alias("Size", "extra large", "L")
-        self.ctl.vocab.add_alias("Size", "extra large", "L")
-        self.ctl.resolve_term((None, "extra large"), Decision.alias("Size", "XL"))
+        self.settings.add_alias("Size", "jumbo", "L")
+        self.ctl.vocab.add_alias("Size", "jumbo", "L")
+        self.ctl.resolve_term((None, "jumbo"), Decision.alias("Size", "XL"))
         self.ctl.undo()
-        self.assertEqual(self.settings.aliases["Size"]["extra large"], "L")
+        self.assertEqual(self.settings.aliases["Size"]["jumbo"], "L")
 
     def test_undo_a_defer(self):
         self.ctl.defer_term(self.before[0])

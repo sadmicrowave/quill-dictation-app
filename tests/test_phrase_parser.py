@@ -200,3 +200,48 @@ class TestProseUseOfHeaderWords(unittest.TestCase):
         vocab.load({"Type": ["T-Shirt"]}, ["Type"])
         result = parse("ten dollars", vocab, TODAY)
         self.assertEqual((result.updates, result.unmatched), ({}, ["ten dollars"]))
+
+
+class TestSmarterInterpretation(unittest.TestCase):
+    """Mis-heard words, filler verbs and short forms (the sentence that confused the first version)."""
+
+    def setUp(self):
+        from quill.parser.vocab import Vocabulary
+        self.v = Vocabulary()
+        self.v.load({"Category": ["Shirt", "Jeans"], "Color": ["Brown", "Navy"],
+                     "Size": ["XS", "S", "M", "L", "XL", "XXL", "One Size"]}, ["Waist", "Purchase Price"])
+
+    def parse(self, text):
+        import datetime as dt
+        from quill.parser.phrase_parser import parse
+        return parse(text, self.v, dt.date(2026, 10, 31))
+
+    def test_a_misheard_column_name_is_taken_as_the_one_it_sounds_like(self):
+        result = self.parse("brown shirt with a medium waste thirty five dollars got it yesterday")
+        self.assertEqual(result.updates["Waist"], 35.0)
+        self.assertEqual(result.corrections, {"waste": "waist"})
+        self.assertIn("heard 'waste' as 'waist'", result.assumptions)
+
+    def test_the_key_word_is_sorted_on_its_own_not_glued_to_its_neighbour(self):
+        result = self.parse("brown shirt with a medium waste thirty five dollars")
+        self.assertEqual([c.term for c in result.candidates], ["medium"])
+
+    def test_everyday_verbs_and_time_words_are_never_sorted(self):
+        result = self.parse("brown shirt got it yesterday and then I really picked it up")
+        self.assertEqual(result.candidates, [])
+
+    def test_a_long_form_of_a_short_code_is_suggested_for_that_code(self):
+        result = self.parse("brown shirt medium")
+        (candidate,) = result.candidates
+        self.assertEqual((candidate.column, candidate.alias_of), ("Size", ("Size", "M")))
+        result = self.parse("navy jeans extra large")
+        self.assertEqual(result.candidates[0].alias_of, ("Size", "XL"))
+
+    def test_a_word_that_only_vaguely_resembles_a_known_one_is_left_alone(self):
+        result = self.parse("brown shirt west")                      # sounds a little like "waist"
+        self.assertNotIn("Waist", result.updates)
+        self.assertEqual([c.term for c in result.candidates], ["west"])
+
+    def test_the_spans_say_which_words_filled_which_column(self):
+        result = self.parse("brown shirt waist thirty five")
+        self.assertEqual(sorted(result.spans), [(0, 1, "Color"), (1, 2, "Category"), (2, 5, "Waist")])

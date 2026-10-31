@@ -42,20 +42,29 @@ def _join(items: list[str]) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
-def prompt_text(pending: list[TermKey]) -> str:
+def prompt_text(pending: list[TermKey], alias_hints: dict[TermKey, str] | None = None) -> str:
     """Build the spoken question when every pending term has a suggested column.
+
+    Terms that look like the long form of a short code (``medium`` for ``M``) are asked about as a pair
+    ("Medium looks like M in the Size list. Same thing?"); the rest are asked about as new values.
 
     Example:
         "I heard a new value. Obsidian isn't in the Color list. Add it? Say yes or no."
     """
+    alias_hints = alias_hints or {}
+    plain = [key for key in pending if key not in alias_hints]
+    sentences = [f"{display_name(term)} looks like {alias_hints[(column, term)]} in the {column} list."
+                 for column, term in pending if (column, term) in alias_hints]
     groups: dict[str, list[str]] = {}
-    for column, term in pending:
+    for column, term in plain:
         groups.setdefault(column or "", []).append(display_name(term))
-    sentences = [
+    sentences += [
         f"{_join(terms)} {'isn' if len(terms) == 1 else 'aren'}'t in the {column} list."
         for column, terms in groups.items()
     ]
     many = len(pending) > 1
+    if not plain:
+        return " ".join(sentences) + f" {'Same things' if many else 'Same thing'}? Say yes or no."
     return (
         f"I heard {'new values' if many else 'a new value'}. "
         + " ".join(sentences)
@@ -134,6 +143,7 @@ class Session:
     committed: int = 0
     ignored_while_stopped: int = 0
     pool: dict = field(default_factory=dict)        # TermKey -> times heard, not yet shown
+    alias_hints: dict = field(default_factory=dict)  # TermKey -> the short code it probably spells out ("M" for "medium")
     row_terms: set = field(default_factory=set)     # pool keys heard in the current row
     pending: list | None = None                     # TermKey list awaiting a decision
     origins: dict = field(default_factory=dict)     # TermKey -> (sheet, row) it was heard in
@@ -266,6 +276,8 @@ class Session:
             key = (cand.column, cand.term)
             self.pool[key] = self.pool.get(key, 0) + 1
             self.row_terms.add(key)
+            if cand.alias_of:
+                self.alias_hints[key] = cand.alias_of[1]
         events: list[Event] = []
         if result.updates or result.candidates:
             detail = ", ".join(f"{k}={_show(v)}" for k, v in result.updates.items())
@@ -337,7 +349,7 @@ class Session:
         suggested = all(column for column, _ in pending)
         self._voice_open = suggested
         if suggested:
-            detail = prompt_text(pending)
+            detail = prompt_text(pending, self.alias_hints)
         else:
             n = len(pending)
             detail = f"{n} term{'s' if n != 1 else ''} to sort"       # shown, never spoken: the sorting cue says it
@@ -347,7 +359,9 @@ class Session:
         """Handle a spoken yes/no: yes accepts every suggestion, no ignores them all."""
         events: list[Event] = []
         for key in list(self.pending or []):
-            if yes and key[0]:
+            if yes and key in self.alias_hints:
+                events += self.resolve(key, Decision.alias(key[0], self.alias_hints[key]))
+            elif yes and key[0]:
                 events += self.resolve(key, Decision.add(key[0]))
             elif not yes:
                 events += self.resolve(key, Decision.ignore())

@@ -252,7 +252,7 @@ class TestVoiceStreamInTheApp(unittest.TestCase):
         self.app.controller.handle_transcript("start listening")
         self.app._on_phrase_heard("hello there")
         self.assertEqual(self.app.window.stream_text(), "hello there")
-        known = self.app._known_words(["next", "row", "zzzz"])
+        known = [m.known for m in self.app._match_heard_words(["next", "row", "zzzz"])]
         self.assertEqual(known, [True, True, False])
 
     def test_nothing_is_shown_while_not_listening(self):
@@ -267,3 +267,18 @@ class TestVoiceStreamInTheApp(unittest.TestCase):
         self.app.controller.handle_transcript("start listening")
         self.app._on_phrase_heard("navy")
         self.assertEqual(self.app.window.stream_text(), "navy")
+
+
+    def test_deleting_a_grid_row_removes_it_from_the_record_and_unmarks_its_words(self):
+        self.app.controller.handle_transcript("start listening")
+        self.app.controller.session.record.update({"Type": "Fern"})
+        self.app.window.update_current_row({"Type": "Fern"})
+        self.app.window.set_stream_classifier(
+            lambda words: [__import__("quill.stream", fromlist=["WordMatch"]).WordMatch(w == "fern", "Type" if w == "fern" else None)
+                           for w in words])
+        self.app._on_phrase_heard("a fern")
+        self.app.window._remove_row_requested("Type")
+        self.assertNotIn("Type", self.app.controller.session.record)
+        self.assertEqual(self.app.window.row_table.rowCount(), 0)
+        self.assertNotIn("fern", self.app.window.stream.toHtml().split("background-color")[-1:][0][:5])   # no pill left
+        self.assertIn("Removed Type", self.app.window.log.toPlainText())

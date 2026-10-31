@@ -21,7 +21,7 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
-from quill.stream import recognized_words
+from quill.stream import match_words
 from quill.bridge.hosts import HostApp, SpreadsheetHosts
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
@@ -121,6 +121,7 @@ class QuillApp:
             on_download_model=self.download_model, on_sorting=self.show_sorting,
             on_undo=self.undo, on_help=self.open_help, on_log_toggled=self._log_toggled,
             on_resized=self._window_resized, on_mini_resized=self._mini_window_resized,
+            on_field_removed=self.remove_field,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
@@ -182,7 +183,7 @@ class QuillApp:
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
-        self.window.set_stream_classifier(self._known_words)
+        self.window.set_stream_classifier(self._match_heard_words)
         self.window.restore_mini_size(int(self.settings.preferences["mini_width"]),
                                       int(self.settings.preferences["mini_height"]))
         self.window.restore_size(int(self.settings.preferences["window_width"]),
@@ -652,9 +653,15 @@ class QuillApp:
             self.listener.stop()
             self._mic_open = False
 
-    def _known_words(self, words: list[str]) -> list[bool]:
-        """Which of the words heard are already understood (drawn as pills in the Voice Stream)."""
-        return recognized_words(words, self.controller.vocab, self.settings.keywords.keys())
+    def remove_field(self, column: str) -> None:
+        """The user deleted a line of the row being built because Quill got it wrong."""
+        if self.controller.remove_field(column):
+            self.window.append_log(f"Removed {column} from the row")
+        self.window.update_current_row(self.controller.session.record)
+
+    def _match_heard_words(self, words: list[str]):
+        """What Quill makes of each word heard (understood words are drawn as pills in the Voice Stream)."""
+        return match_words(words, self.controller.vocab, self.settings.keywords.keys())
 
     def _on_phrase_heard(self, text: str) -> None:
         """A finished phrase: add it to the Voice Stream while Quill is listening."""

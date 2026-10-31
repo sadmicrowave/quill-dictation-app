@@ -29,7 +29,7 @@ No spreadsheet app open? Quill can fill a file by itself.
 
 - **File stream not connected**: no sheet found yet. Hover it for what to do.
 - **Voice Stream**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
-- **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row".
+- **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover it).
 - **Last Saved**: the row written last. It only appears after the first save.
 - **Log**: click to open a record of what happened.
 

@@ -9,6 +9,8 @@ import difflib
 import re
 from dataclasses import dataclass
 
+from quill.parser.fillers import is_filler
+from quill.parser.sounds import initials_match, sounds_like
 from quill.parser.tokens import tokenize
 
 
@@ -240,6 +242,45 @@ class Vocabulary:
                     found.append((entry.column, entry.canonical, n))
                     break
         return found
+
+    def sound_alike_at(self, tokens: list[str], i: int) -> tuple[str, str, str | None, str] | None:
+        """A single heard word that is probably a mis-hearing of a column name or a list value.
+
+        Only called when nothing matched exactly. Returns ``(kind, column, canonical, known_word)`` with
+        *kind* ``"field"`` (``canonical`` is None) or ``"value"``, or None when there is no single clear
+        candidate (two different targets would be a guess). Fillers and numbers are never corrected.
+        """
+        word = tokens[i]
+        if len(word) < 4 or is_filler(word) or any(ch.isdigit() for ch in word):
+            return None
+        found: dict[tuple[str, str, str | None], str] = {}
+        for toks, column in self._fields:
+            if len(toks) == 1 and sounds_like(word, toks[0]):
+                found[("field", column, None)] = toks[0]
+        for entry in self._entries:
+            if len(entry.tokens) == 1 and sounds_like(word, entry.tokens[0]):
+                found[("value", entry.column, entry.canonical)] = entry.tokens[0]
+        if len(found) != 1:
+            return None
+        (kind, column, canonical), known = next(iter(found.items()))
+        return kind, column, canonical, known
+
+    def abbreviation_for(self, term: str) -> tuple[str, str] | None:
+        """The short code a spoken *term* is probably the long form of: "medium" for ``M``, "extra large" for ``XL``.
+
+        Only columns made up mostly of short codes (like sizes) are considered, and the answer must be the
+        only match. It is a suggestion for the Term Helper, never written without the user's yes.
+        """
+        words = tokenize(term)
+        if not 1 <= len(words) <= 3:
+            return None
+        hits = []
+        for column, values in self._by_column.items():
+            codes = [v for v in values if len(v) <= 3 and v.isalpha()]
+            if len(codes) * 10 < len(values) * 6:            # fewer than 60% of the values are short codes
+                continue
+            hits += [(column, v) for v in codes if initials_match(v, words)]
+        return hits[0] if len(hits) == 1 else None
 
     def fuzzy(self, term: str) -> tuple[str, str] | None:
         """Close-spelling match to a known value, e.g. ``"levi"`` for ``"Levi's"``.

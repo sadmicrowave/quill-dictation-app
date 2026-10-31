@@ -23,6 +23,7 @@ import datetime as dt
 import re
 from dataclasses import dataclass, field
 
+from quill.parser.fillers import FILLER_WORDS
 from quill.parser.numbers import parse_amount, parse_date, parse_number
 from quill.parser.tokens import tokenize
 from quill.parser.vocab import Vocabulary
@@ -38,6 +39,9 @@ COMMON_WORDS = frozenset({
     "make", "sell", "sells", "sold", "could", "would", "should", "will", "can", "next", "worth",
     "which", "who", "what", "when", "where", "then", "they", "them", "their", "these", "those",
 })
+
+#: Everything above plus the broad list of everyday words (see :mod:`quill.parser.fillers`).
+COMMON_WORDS = COMMON_WORDS | FILLER_WORDS
 
 #: Unit words that mark a spoken number as money ("thirty five dollars").
 CURRENCY_WORDS = frozenset({"dollar", "dollars", "buck", "bucks", "cent", "cents"})
@@ -76,6 +80,9 @@ class Candidate:
     hinted: bool
     """True when the speaker said the field word (so *column* is certain)."""
 
+    alias_of: tuple[str, str] | None = None
+    """``(column, value)`` when the term looks like the long form of a short code (``medium`` for ``M``)."""
+
 
 @dataclass
 class ParseResult:
@@ -92,6 +99,14 @@ class ParseResult:
 
     assumptions: list[str] = field(default_factory=list)
     """Human-readable notes about guesses made (e.g. ``'red' taken as Color``)."""
+
+    spans: list[tuple[int, int, str]] = field(default_factory=list)
+    """``(first_token, end_token, column)`` for each part of the phrase that filled a column (end is exclusive).
+    The Voice Stream uses these to colour the words that were understood, and to un-colour them if the
+    user removes the matching row."""
+
+    corrections: dict[str, str] = field(default_factory=dict)
+    """Words that were taken as a similar-sounding known word: ``{"waste": "waist"}``."""
 
 
 def parse(
@@ -126,6 +141,7 @@ class _Parser:
         self.result = ParseResult()
         self.run_words: list[str] = []   # consecutive unknown words
         self.i = 0
+        self._set_count = 0              # how many values were set so far (to notice that a step set one)
 
     # ------------------------------------------------------------------ #
     # Main loop                                                            #
@@ -143,9 +159,7 @@ class _Parser:
             if field_hit:
                 self._flush()
                 column, length = field_hit
-                field_start = self.i
-                self.i += length
-                self._read_field_value(column, field_start)
+                self._take_field(column, length)
                 continue
 
             matches = self.vocab.matches_at(self.tokens, self.i)
@@ -155,6 +169,9 @@ class _Parser:
                 continue
 
             if self._take_bare_amount():
+                continue
+
+            if self._take_sound_alike():
                 continue
 
             word = self.tokens[self.i]
@@ -168,6 +185,32 @@ class _Parser:
         self._flush()
         self._assign_guesses()
         return self.result
+
+    def _take_field(self, column: str, length: int) -> None:
+        """A column name was spoken: read the value that follows it."""
+        field_start = self.i
+        self.i += length
+        before = self._set_count
+        self._read_field_value(column, field_start)
+        if self._set_count > before:
+            self.result.spans.append((field_start, self.i, column))
+
+    def _take_sound_alike(self) -> bool:
+        """Take the word at the cursor as a similar-sounding column name or value ("waste" for "waist")."""
+        heard = self.vocab.sound_alike_at(self.tokens, self.i)
+        if heard is None:
+            return False
+        kind, column, canonical, known = heard
+        word = self.tokens[self.i]
+        self._flush()
+        self.result.corrections[word] = known
+        self.result.assumptions.append(f"heard '{word}' as '{known}'")
+        if kind == "field":
+            self._take_field(column, 1)
+        else:
+            self._set(column, canonical, self.i, self.i + 1)
+            self.i += 1
+        return True
 
     def _is_prose_use(self, column: str) -> bool:
         """True when a free-text header word is just a noun after "this", "the", ..."""
@@ -186,7 +229,7 @@ class _Parser:
         if column is None:
             self.result.unmatched.append(" ".join(self.tokens[self.i:self.i + used]))
         else:
-            self._set(column, amount)
+            self._set(column, amount, self.i, self.i + used)
             if note:
                 self.result.assumptions.append(note)
         self.i += used
@@ -205,12 +248,16 @@ class _Parser:
         columns = {m[0] for m in matches if m[2] == length}
         if len(columns) > 1:
             self.result.assumptions.append(f"'{phrase}' taken as {column}")
-        self._set(column, canonical)
+        self._set(column, canonical, self.i, self.i + length)
         self.i += length
 
-    def _set(self, column: str, value: object) -> None:
+    def _set(self, column: str, value: object, start: int | None = None, end: int | None = None) -> None:
+        """Record a value for *column*; *start* / *end* (token positions) say which words it came from."""
         self.result.updates[column] = value
         self.filled.add(column)
+        self._set_count += 1
+        if start is not None and end is not None:
+            self.result.spans.append((start, end, column))
 
     # ------------------------------------------------------------------ #
     # Field words                                                          #
@@ -252,7 +299,7 @@ class _Parser:
         if close and close[0] == column:
             self._set(column, close[1])
         else:
-            self.result.candidates.append(Candidate(term, column, True))
+            self.result.candidates.append(self._candidate(term, column, True))
 
     def _read_free_value(self, column: str, start: int) -> None:
         """Read an amount, date or free text for a column with no list."""
@@ -298,6 +345,7 @@ class _Parser:
             or self.vocab.field_at(self.tokens, j) is not None
             or bool(self.vocab.matches_at(self.tokens, j))
             or parse_number(self.tokens, j)[0] is not None
+            or self.vocab.sound_alike_at(self.tokens, j) is not None
         )
 
     # ------------------------------------------------------------------ #
@@ -318,14 +366,15 @@ class _Parser:
         for _ in words:
             self.result.unmatched.pop()
 
+        first = self.i - len(words)               # the run ends just before the cursor
         buffer: list[str] = []
-        for word in [*words, None]:
+        for offset, word in enumerate([*words, None]):
             close = self.vocab.fuzzy(word) if word else None
             if word is None or close:
                 self._emit(buffer)
                 buffer = []
                 if close:
-                    self._set(close[0], close[1])
+                    self._set(close[0], close[1], first + offset, first + offset + 1)
             else:
                 buffer.append(word)
 
@@ -335,7 +384,14 @@ class _Parser:
             if term:
                 self.result.unmatched.append(term)
             return
-        self.result.candidates.append(Candidate(term, None, False))
+        self.result.candidates.append(self._candidate(term, None, False))
+
+    def _candidate(self, term: str, column: str | None, hinted: bool) -> Candidate:
+        """A candidate for the Term Helper; when it looks like a short code's long form, say so ("medium" for M)."""
+        hint = self.vocab.abbreviation_for(term)
+        if hint and (column is None or column == hint[0]):
+            return Candidate(term, hint[0], hinted, alias_of=hint)
+        return Candidate(term, column, hinted)
 
     # ------------------------------------------------------------------ #
     # Guessing the column for unhinted candidates                          #

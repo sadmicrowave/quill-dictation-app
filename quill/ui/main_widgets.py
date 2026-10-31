@@ -11,8 +11,8 @@ Kept apart from :mod:`quill.ui.main_window` so that file holds the window's beha
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QLabel, QSizePolicy, QStyle, QTableWidget, QTextEdit, QWidget
 
 #: Height (px) of the "File stream not connected" chip.
@@ -128,11 +128,20 @@ class WorkbookCombo(QComboBox):
 
 
 class RowTable(QTableWidget):
-    """The Current Row box: it asks for just its minimum height, so it grows only when given room.
+    """The row being built: a column and its value per line, which the user can delete.
 
-    It only displays: the cells can't be selected, focused or edited (that would suggest an action
-    that isn't there), and the grid line at the far right edge is pushed out of view.
+    It asks for just its minimum height, so it grows only when given room. The cells can't be selected,
+    focused or edited (that would suggest an action that isn't there); the one thing that can be done is to
+    remove a line Quill got wrong: hovering a line shows a round "x" at its right end, and clicking it
+    emits :attr:`row_remove_requested` with the line's column name. The grid line at the far right edge
+    is not drawn.
     """
+
+    #: Emitted with the column name when the user clicks a line's delete button.
+    row_remove_requested = Signal(str)
+
+    DELETE_SIZE = 16          # px, the round delete button
+    DELETE_MARGIN = 9         # px from the right edge (the button sits in the right-most cell)
 
     def __init__(self, rows: int, columns: int) -> None:
         super().__init__(rows, columns)
@@ -140,22 +149,85 @@ class RowTable(QTableWidget):
         self.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.setShowGrid(False)                  # drawn in paintEvent, so there is no line at the far right
+        self.setMouseTracking(True)
+        self._hovered_row = -1
+        self._button_fill = QColor("#7A55C2")    # the theme colour; set with :meth:`set_delete_colors`
+        self._button_glyph = QColor("#FFFFFF")
+
+    def set_delete_colors(self, fill: str, glyph: str) -> None:
+        """Colour the delete button: a filled circle in *fill* with an "x" in *glyph* (the theme's accent colours)."""
+        self._button_fill, self._button_glyph = QColor(fill), QColor(glyph)
+        self.viewport().update()
+
+    # -- the delete button -------------------------------------------------
+
+    def delete_button_rect(self, row: int) -> QRect:
+        """Where the delete button of *row* is, in viewport coordinates."""
+        top = self.rowViewportPosition(row)
+        size = self.DELETE_SIZE
+        return QRect(self.viewport().width() - self.DELETE_MARGIN - size, top + (self.rowHeight(row) - size) // 2,
+                     size, size)
+
+    def _row_at(self, point: QPoint) -> int:
+        row = self.rowAt(point.y())
+        return row if 0 <= row < self.rowCount() and self.item(row, 0) is not None else -1
+
+    def _over_button(self, point: QPoint) -> bool:
+        return self._hovered_row >= 0 and self.delete_button_rect(self._hovered_row).contains(point)
+
+    def mouseMoveEvent(self, event) -> None:                         # noqa: N802 (Qt name)
+        super().mouseMoveEvent(event)
+        point = event.position().toPoint()
+        row = self._row_at(point)
+        if row != self._hovered_row:
+            self._hovered_row = row
+            self.viewport().update()
+        self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if self._over_button(point)
+                                  else Qt.CursorShape.ArrowCursor)
+
+    def leaveEvent(self, event) -> None:                             # noqa: N802
+        super().leaveEvent(event)
+        if self._hovered_row != -1:
+            self._hovered_row = -1
+            self.viewport().update()
+
+    def mousePressEvent(self, event) -> None:                        # noqa: N802
+        point = event.position().toPoint()
+        row = self._row_at(point)
+        if (event.button() == Qt.MouseButton.LeftButton and row >= 0
+                and self.delete_button_rect(row).contains(point)):
+            self._hovered_row = -1
+            self.row_remove_requested.emit(self.item(row, 0).text())
+            return
+        super().mousePressEvent(event)
+
+    # -- painting ----------------------------------------------------------
 
     def paintEvent(self, event) -> None:                             # noqa: N802 (Qt name)
         super().paintEvent(event)
-        if self.columnCount() < 2 or not self.rowCount():
+        if not self.rowCount():
             return
-        color = QColor.fromRgba(self.style().styleHint(QStyle.StyleHint.SH_Table_GridLineColor, None, self) & 0xFFFFFFFF)
         painter = QPainter(self.viewport())
-        painter.setPen(color)
-        bottom = self.rowViewportPosition(self.rowCount() - 1) + self.rowHeight(self.rowCount() - 1)
-        divider = self.columnViewportPosition(0) + self.columnWidth(0) - 1
-        painter.drawLine(divider, 0, divider, bottom - 1)            # between the two columns
-        for row in range(self.rowCount()):
-            y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
-            painter.drawLine(0, y, self.viewport().width() - 1, y)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.columnCount() >= 2:
+            color = QColor.fromRgba(self.style().styleHint(QStyle.StyleHint.SH_Table_GridLineColor, None, self) & 0xFFFFFFFF)
+            painter.setPen(color)
+            bottom = self.rowViewportPosition(self.rowCount() - 1) + self.rowHeight(self.rowCount() - 1)
+            divider = self.columnViewportPosition(0) + self.columnWidth(0) - 1
+            painter.drawLine(divider, 0, divider, bottom - 1)        # between the two columns
+            for row in range(self.rowCount()):
+                y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
+                painter.drawLine(0, y, self.viewport().width() - 1, y)
+        if self._hovered_row >= 0:
+            box = self.delete_button_rect(self._hovered_row)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(self._button_fill)
+            painter.drawEllipse(box)
+            painter.setPen(QPen(self._button_glyph, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            inset = self.DELETE_SIZE * 0.31
+            painter.drawLine(box.left() + inset, box.top() + inset, box.right() - inset + 1, box.bottom() - inset + 1)
+            painter.drawLine(box.right() - inset + 1, box.top() + inset, box.left() + inset, box.bottom() - inset + 1)
         painter.end()
-
 
     def sizeHint(self) -> QSize:                                    # noqa: N802 (Qt name)
         return QSize(super().sizeHint().width(), self.minimumHeight())

@@ -24,6 +24,16 @@ Speak naturally. Quill picks out the words it knows.
 - **Notes:** *"notes needs a new button"*
 - Filler like *"this next one is a…"* is ignored
 
+## 👂 What Quill heard
+
+Everything you say shows up in the **Voice Stream** box, word by word, in italics.
+
+- Words Quill understood become **coloured pills** and appear in the grid below, in their column.
+- Words still being spoken are shown in the normal text colour; once the phrase is done, words that were **not understood** turn grey.
+- Everyday words (*got*, *really*, *yesterday*) are skipped, so Quill won't ask about them.
+- A word that sounds like one of your column names or list values is taken as that word. *"Waste"* becomes *Waist* if your sheet has a Waist column. The Log notes it.
+- Disagree with a match? Hover its line in the grid and click the round **x** at the right. The line is removed, its pills turn grey again and it will not be written.
+
 ## 🛠️ Fixing mistakes
 
 | Say | Quill |

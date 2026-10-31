@@ -20,10 +20,11 @@ import html
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, QVariantAnimation
 from PySide6.QtWidgets import (
     QGraphicsOpacityEffect, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLayout, QMainWindow, QPlainTextEdit, QSizePolicy,
-    QPushButton, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
+    QPushButton, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
 
 from quill.ui.chrome import set_always_on_top
+from quill.stream import WordMatch
 from quill.ui.icons import make_icon
 from quill.ui.main_widgets import (
     CHIP_HEIGHT, ROW_EMPTY_HEIGHT, STREAM_MIN_HEIGHT, ChipPlacer, ResizeWatcher, RowTable, StreamBox, WorkbookCombo,
@@ -97,6 +98,7 @@ class MainWindow:
         on_help: Callable[[str], None] | None = None,
         on_resized: Callable[[int, int], None] | None = None,
         on_mini_resized: Callable[[int, int], None] | None = None,
+        on_field_removed: Callable[[str], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
     ) -> None:
@@ -137,10 +139,12 @@ class MainWindow:
         self._mini_base = 0                  # the mini view's own (compact) height
         self._mini_size: QSize | None = None  # the size the user left the mini view at
         self._on_mini_resized = on_mini_resized or (lambda width, height: None)
-        self._stream_words: list[tuple[str, bool]] = []     # what was heard (final), with whether it is known
-        self._stream_partial: list[tuple[str, bool]] = []   # the phrase still being spoken
+        self._on_field_removed = on_field_removed or (lambda column: None)
+        self._row_fields: dict[str, object] = {}   # what the row grid shows now
+        self._stream_words: list[tuple[str, WordMatch]] = []     # what was heard (final), with what Quill made of each word
+        self._stream_partial: list[tuple[str, WordMatch]] = []   # the phrase still being spoken
         self._stream_done = False            # the row ended: the next words start a fresh stream
-        self._stream_known = lambda words: [False] * len(words)
+        self._classify_words = lambda words: [WordMatch(False) for _ in words]
         self._sorting_animation: QVariantAnimation | None = None
         self._window: QMainWindow | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
@@ -273,8 +277,7 @@ class MainWindow:
         self.row_table.horizontalHeader().setVisible(False)
         self.row_table.verticalHeader().setVisible(False)
         self.row_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.row_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.row_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.row_table.row_remove_requested.connect(self._remove_row_requested)
         self._row_height = self.row_table.verticalHeader().defaultSectionSize()
         self.row_table.setMinimumHeight(ROW_EMPTY_HEIGHT)           # starts small; grows with the fields heard
         self._row_target = ROW_EMPTY_HEIGHT
@@ -284,7 +287,7 @@ class MainWindow:
         self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         holder = QVBoxLayout(self.row_table.viewport())
-        holder.setContentsMargins(4, 4, 4, 0)             # the text starts where the Voice Stream box's text does
+        holder.setContentsMargins(6, 4, 4, 0)             # the text starts where the Voice Stream box's text does
         holder.addWidget(self.row_placeholder)
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
         self._has_last_saved = False                       # the line shows only once a row has been saved
@@ -910,6 +913,7 @@ class MainWindow:
 
     def update_current_row(self, fields: dict[str, object]) -> None:
         """Show the record being built, one column per line (the box grows with the fields, then scrolls)."""
+        self._row_fields = dict(fields)
         self.row_table.setRowCount(len(fields))
         self.row_placeholder.setVisible(not fields)
         for r, (column, value) in enumerate(fields.items()):
@@ -922,13 +926,20 @@ class MainWindow:
                 self.row_table.setItem(r, c, item)
         self._fit_row_table()
 
+    def _remove_row_requested(self, column: str) -> None:
+        """The user clicked a line's delete button: take it out of the grid, un-colour its words, tell the app."""
+        self._row_fields.pop(column, None)
+        self.update_current_row(self._row_fields)
+        self.unmatch_stream_column(column)
+        self._on_field_removed(column)
+
     # ------------------------------------------------------------------ #
     # Voice Stream                                                         #
     # ------------------------------------------------------------------ #
 
-    def set_stream_classifier(self, known) -> None:
-        """Tell the stream how to tell which words are already known: ``words -> [bool, ...]``."""
-        self._stream_known = known
+    def set_stream_classifier(self, classify) -> None:
+        """Tell the stream how to judge heard words: ``classify(words) -> [WordMatch, ...]`` (see :mod:`quill.stream`)."""
+        self._classify_words = classify
 
     def add_stream_text(self, text: str) -> None:
         """A phrase was finished: keep it in the stream (the words in the phrase still being spoken are replaced)."""
@@ -936,7 +947,7 @@ class MainWindow:
         if not words:
             return
         self._begin_stream()
-        self._stream_words += list(zip(words, self._stream_known(words)))
+        self._stream_words += [(word, match) for word, match in zip(words, self._classify_words(words))]
         self._stream_partial = []
         self._render_stream()
 
@@ -945,7 +956,13 @@ class MainWindow:
         words = text.split()
         if words:
             self._begin_stream()
-        self._stream_partial = list(zip(words, self._stream_known(words))) if words else []
+        self._stream_partial = list(zip(words, self._classify_words(words))) if words else []
+        self._render_stream()
+
+    def unmatch_stream_column(self, column: str) -> None:
+        """The user removed the row for *column*: the words that filled it lose their pill (and are muted again)."""
+        self._stream_words = [(word, WordMatch(False) if match.column == column else match)
+                              for word, match in self._stream_words]
         self._render_stream()
 
     def end_stream(self) -> None:
@@ -959,22 +976,28 @@ class MainWindow:
 
     def stream_text(self) -> str:
         """Everything in the stream, as plain text."""
-        return " ".join(w for w, _ in self._stream_words + self._stream_partial)
+        return " ".join(word for word, _ in self._stream_words + self._stream_partial)
 
     def _begin_stream(self) -> None:
         if self._stream_done:
             self._stream_words, self._stream_partial, self._stream_done = [], [], False
 
     def _render_stream(self) -> None:
-        """Draw the stream: italic text, known words as theme-coloured pills, the unfinished phrase muted."""
+        """Draw the stream in italics.
+
+        Understood words are pills in the theme colour. Words still being spoken start in the normal text
+        colour; once a phrase is final, the words that were not understood are muted.
+        """
         pill = f"background-color:{self._accent}; color:{self._on_accent}"
         muted = self.stream.palette().placeholderText().color().name()
-        def words(items, color):
+
+        def draw(items, unknown_color: str) -> str:
             return " ".join(
-                f'<span style="{pill}">&nbsp;{html.escape(w)}&nbsp;</span>' if known
-                else f'<span style="color:{color}">{html.escape(w)}</span>' for w, known in items)
-        text = self._text_color
-        parts = [p for p in (words(self._stream_words, text), words(self._stream_partial, muted)) if p]
+                f'<span style="{pill}">&nbsp;{html.escape(word)}&nbsp;</span>' if match.known
+                else f'<span style="color:{unknown_color}">{html.escape(word)}</span>'
+                for word, match in items)
+
+        parts = [p for p in (draw(self._stream_words, muted), draw(self._stream_partial, self._text_color)) if p]
         self.stream.setHtml(f'<div style="font-style:italic">{" ".join(parts)}</div>' if parts else "")
         self.stream.fit()
         bar = self.stream.verticalScrollBar()
@@ -1051,6 +1074,7 @@ class MainWindow:
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
+        self.row_table.set_delete_colors(accent, on_accent)
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.help_button.setIcon(make_icon("question", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))

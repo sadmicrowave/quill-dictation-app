@@ -458,7 +458,9 @@ class TestVoiceStream(unittest.TestCase):
         self.w.setup()
         self.w.widget.resize(360, 620)
         self.w.widget.show()
-        self.w.set_stream_classifier(lambda words: [word in ("black", "large") for word in words])
+        from quill.stream import WordMatch
+        self.w.set_stream_classifier(
+            lambda words: [WordMatch(word in ("black", "large"), "Color" if word == "black" else None) for word in words])
         _app.processEvents()
 
     def test_the_heading_and_the_box_are_there(self):
@@ -520,3 +522,115 @@ class TestSortingButtonSlidesIn(unittest.TestCase):
         self.assertGreater(end, mid - 1)
         self.assertLess(w.toggle_button.width(), start)                       # Start eased narrower
         self.assertIsNone(w.sorting_button.graphicsEffect())
+
+
+class TestStreamWordColours(unittest.TestCase):
+    def setUp(self):
+        from quill.stream import WordMatch
+        self.w = MainWindow()
+        self.w.setup()
+        self.w.widget.show()
+        self.w.refresh_icons("#EDEDED", "#FFFFFF", "#7A55C2")
+        self.w.set_stream_classifier(
+            lambda words: [WordMatch(word == "black", "Color" if word == "black" else None) for word in words])
+
+    def colours(self):
+        import re
+        found = re.findall(r'<span style="([^"]*)"[^>]*>([^<]*)', self.w.stream.toHtml())
+        return [(style, text.replace("&nbsp;", "").replace("\u00a0", "").strip()) for style, text in found]
+
+    def test_words_still_being_spoken_start_in_the_normal_colour(self):
+        self.w.set_stream_partial("hello")
+        (style, word), = [c for c in self.colours() if c[1] == "hello"]
+        self.assertIn("#ededed", style.lower())
+
+    def test_once_final_a_word_that_was_not_understood_is_muted(self):
+        self.w.set_stream_partial("hello")
+        self.w.add_stream_text("hello black")
+        styles = {word: style.lower() for style, word in self.colours()}
+        self.assertNotIn("#ededed", styles["hello"])                         # muted now
+        self.assertIn("background-color:#7a55c2", styles["black"])           # the pill
+
+    def test_removing_a_column_takes_the_pill_off_its_words(self):
+        self.w.add_stream_text("hello black")
+        self.w.unmatch_stream_column("Color")
+        self.assertNotIn("background-color:#7a55c2", self.w.stream.toHtml().lower())
+
+
+class TestDeletableRows(unittest.TestCase):
+    def setUp(self):
+        self.removed = []
+        self.w = MainWindow(on_field_removed=self.removed.append)
+        self.w.setup()
+        self.w.widget.resize(380, 560)
+        self.w.widget.show()
+        self.w.update_current_row({"Type": "Fern", "Size": "L"})
+        _app.processEvents()
+        self.table = self.w.row_table
+
+    def hover(self, row):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtTest import QTest
+        point = QPoint(self.table.viewport().width() - 40, self.table.rowViewportPosition(row) + 10)
+        QTest.mouseMove(self.table.viewport(), point)
+        _app.processEvents()
+
+    def click_button(self, row):
+        from PySide6.QtTest import QTest
+        QTest.mouseClick(self.table.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+                         self.table.delete_button_rect(row).center())
+
+    def test_hovering_a_line_shows_its_delete_button_and_clicking_it_removes_the_line(self):
+        self.hover(1)
+        self.assertEqual(self.table._hovered_row, 1)
+        self.click_button(1)
+        self.assertEqual(self.removed, ["Size"])
+        self.assertEqual(self.table.rowCount(), 1)
+        self.assertEqual(self.table.item(0, 0).text(), "Type")
+
+    def test_clicking_elsewhere_in_the_line_does_nothing(self):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtTest import QTest
+        self.hover(0)
+        QTest.mouseClick(self.table.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(20, 10))
+        self.assertEqual(self.removed, [])
+        self.assertEqual(self.table.rowCount(), 2)
+
+    def test_the_cells_cannot_be_selected_or_edited(self):
+        self.assertEqual(self.table.selectionMode(), self.table.SelectionMode.NoSelection)
+        self.assertEqual(self.table.editTriggers(), self.table.EditTrigger.NoEditTriggers)
+        self.assertEqual(self.table.focusPolicy(), Qt.FocusPolicy.NoFocus)
+
+
+class TestPlaceholdersMatchToThePixel(unittest.TestCase):
+    """The two empty boxes under "Voice Stream" must show their hints identically placed and styled."""
+
+    def inked_box(self, window, widget, image):
+        from PySide6.QtCore import QPoint
+        top_left = widget.mapTo(window.widget, QPoint(0, 0))
+        x0, y0, width, height = top_left.x(), top_left.y(), widget.width(), widget.height()
+        background = image.pixelColor(x0 + width // 2, y0 + height - 4)
+        xs, ys = [], []
+        for y in range(y0 + 3, y0 + height - 3):
+            for x in range(x0 + 3, x0 + width - 3):
+                pixel = image.pixelColor(x, y)
+                if (abs(pixel.red() - background.red()) + abs(pixel.green() - background.green())
+                        + abs(pixel.blue() - background.blue())) > 60:
+                    xs.append(x - x0)
+                    ys.append(y - y0)
+        return min(xs), min(ys), max(ys)
+
+    def test_text_starts_and_ends_at_the_same_offsets_in_both_spacings(self):
+        from quill.ui.theme import apply_spacing
+        for spacing in ("compact", "comfortable"):
+            window = MainWindow()
+            window.setup()
+            window.refresh_icons("#EDEDED", "#FFFFFF", "#7A55C2")
+            apply_spacing(window.widget, spacing)
+            window.widget.resize(380, 420)
+            window.widget.show()
+            _app.processEvents()
+            image = window.widget.grab().toImage()
+            stream = self.inked_box(window, window.stream, image)
+            grid = self.inked_box(window, window.row_table, image)
+            self.assertEqual(stream, grid, spacing)

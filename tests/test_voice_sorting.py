@@ -21,7 +21,7 @@ class VoiceCase(DemoCase):
     def setUp(self):
         super().setUp()
         self.say("start listening", SENTENCE, "next row")
-        # pending order: (None,'extra large'), (None,'teal'), ('Era','90s')
+        # pending order: (None,'jumbo'), (None,'teal'), ('Era','90s')
         self.assertTrue(self.ctl.start_voice_sort())
 
     def sort(self, text):
@@ -56,12 +56,12 @@ class TestChains(VoiceCase):
 
     def test_yes_without_a_column_asks_for_one_and_keeps_the_term(self):
         event = self.sort("yes")
-        self.assertIn("Which column is ‘extra large’", event.detail)
+        self.assertIn("Which column is ‘jumbo’", event.detail)
         self.assertEqual(len(self.pending()), 3)
 
     def test_add_to_named_column_variants(self):
         self.say("add to size")
-        self.assertIn("Extra Large", self.ctl.bridge.get_lists()["Size"])
+        self.assertIn("Jumbo", self.ctl.bridge.get_lists()["Size"])
         self.say("yes color")
         self.assertIn("Teal", self.ctl.bridge.get_lists()["Color"])
 
@@ -73,7 +73,7 @@ class TestChains(VoiceCase):
 
     def test_later_moves_term_to_the_end(self):
         self.say("later")
-        self.assertEqual(self.pending()[-1], (None, "extra large"))
+        self.assertEqual(self.pending()[-1], (None, "jumbo"))
         self.assertEqual(self.pending()[0], (None, "teal"))
 
     def test_ignore_all_and_add_all(self):
@@ -309,7 +309,7 @@ class TestAppVoiceSorting(AppVoiceCase):
     def test_voice_sort_is_logged(self):
         self.quill.sorting.voice_button.click()
         self.hear(self.quill, "ignore")
-        self.assertIn("Voice Sort: Ignored ‘extra large’", self.quill.window.log.toPlainText())
+        self.assertIn("Voice Sort: Ignored ‘jumbo’", self.quill.window.log.toPlainText())
 
     def test_button_with_nothing_to_sort(self):
         self.quill.sorting.set_items([])

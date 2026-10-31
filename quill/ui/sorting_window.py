@@ -55,9 +55,14 @@ def question_for(column: str | None, term: str) -> str:
     return f"You said ‘{term}’ — is that {article} {column}?"
 
 
-def question_html(column: str | None, term: str) -> str:
-    """:func:`question_for` as rich text, with the spoken term in a code pill."""
+def question_html(column: str | None, term: str, short_code: str | None = None) -> str:
+    """:func:`question_for` as rich text, with the spoken term in a code pill.
+
+    *short_code* is the value the term probably spells out ("M" for "medium"); the question is then about that.
+    """
     shown = pill(term)
+    if column and short_code:
+        return f"You said {shown} — same as {pill(short_code)}?"
     if not column:
         return f"You said {shown} — which column is that?"
     article = "an" if column[:1].lower() in "aeiou" else "a"
@@ -78,7 +83,11 @@ class TermRow(QFrame):
         column, term = key
         self.setFrameShape(QFrame.Shape.StyledPanel)
 
-        self.prompt = QLabel(question_html(column, term))
+        hint = vocab.abbreviation_for(term)
+        self.short_code = hint[1] if hint and column in (None, hint[0]) else None
+        if self.short_code:
+            column = hint[0]
+        self.prompt = QLabel(question_html(column, term, self.short_code))
         self.prompt.setTextFormat(Qt.TextFormat.RichText)
         self.prompt.setObjectName("termPrompt")      # larger than body text (see theme)
         self.prompt.setWordWrap(True)
@@ -104,8 +113,12 @@ class TermRow(QFrame):
         self.same_menu.aboutToShow.connect(self._fill_same_menu)
         self.same_button.setMenu(self.same_menu)
         self.ignore_button = QPushButton("Ignore")
+        self.match_button = QPushButton(f"Same As {self.short_code}" if self.short_code else "")
+        self.match_button.setProperty("accent", True)          # the likely answer, filled in the theme colour
+        self.match_button.setVisible(bool(self.short_code))
+        self.match_button.setToolTip("Another name for the short code Quill thinks this is")
 
-        for control in (self.edit, self.combo, self.add_button, self.same_button, self.ignore_button):
+        for control in (self.edit, self.combo, self.match_button, self.add_button, self.same_button, self.ignore_button):
             control.setMinimumHeight(CONTROL_HEIGHT)
         top = QVBoxLayout(self)
         top.addWidget(self.prompt)
@@ -114,13 +127,14 @@ class TermRow(QFrame):
         controls = QHBoxLayout()
         controls.addWidget(self.edit, 1)
         controls.addWidget(self.combo)
-        for button in (self.add_button, self.same_button, self.ignore_button):
+        for button in (self.match_button, self.add_button, self.same_button, self.ignore_button):
             controls.addWidget(button)
         top.addLayout(controls)
 
         apply_spacing(self)
         self.combo.currentIndexChanged.connect(self._update_enabled)
         self.add_button.clicked.connect(self.add)
+        self.match_button.clicked.connect(lambda: self.short_code and self.same_as(self.short_code))
         self.ignore_button.clicked.connect(self.ignore)
         self._update_enabled()
 
@@ -144,7 +158,8 @@ class TermRow(QFrame):
             if not names:
                 return f"🎤 Say {pill('ignore')} or {pill('later')}"
             return "🎤 Say a column: " + " ".join(pill(n) for n in names)
-        return (f"🎤 Say: {pill('yes')} (adds to {self.column}) {pill('same as …')} {pill('ignore')} "
+        meaning = f"same as {self.short_code}" if self.short_code else f"adds to {self.column}"
+        return (f"🎤 Say: {pill('yes')} ({meaning}) {pill('same as …')} {pill('ignore')} "
                 f"{pill('later')}")
 
     def flash(self) -> None:

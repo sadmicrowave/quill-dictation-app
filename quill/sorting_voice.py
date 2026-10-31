@@ -171,7 +171,7 @@ class VoiceSorter:
             named = self._list_column_at(tokens, j) if j < len(tokens) else None
             column = named[0] if named else suggested
             used = named[1] if named else 0
-            self._add(key, column, result)
+            self._add(key, column, result, accept_alias=named is None)
             return j + used if named else i + 1
 
         column_hit = self._list_column_at(tokens, i)
@@ -201,11 +201,19 @@ class VoiceSorter:
             k += 1
         return k < len(tokens) and self._match_value(tokens, k, column) is not None
 
-    def _add(self, key, column: str | None, result: VoiceSortResult) -> None:
+    def _add(self, key, column: str | None, result: VoiceSortResult, accept_alias: bool = False) -> None:
+        """Add the term to *column*; with *accept_alias*, a term that spells out a short code ("medium" for M) is
+        taken as another name for that code instead, which is what a plain "yes" to the suggestion means."""
         term = key[1]
         if not column:
             result.problem = True
             result.messages.append(f"Which column is ‘{term}’? Say a column name.")
+            return
+        hint = self._ctl.vocab.abbreviation_for(term) if accept_alias else None
+        if hint and hint[0] == column:
+            self._ctl.resolve_term(key, Decision.alias(column, hint[1]))
+            result.resolved += 1
+            result.messages.append(f"‘{term}’ now means {hint[1]} ({column})")
             return
         self._ctl.resolve_term(key, Decision.add(column, display_name(term)))
         result.resolved += 1

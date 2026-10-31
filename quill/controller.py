@@ -166,6 +166,21 @@ class Controller:
             self._carry_out(event)
             self._on_event(event)
 
+    def remove_field(self, column: str) -> bool:
+        """The user disagrees with one understood value of the row being built: drop it.
+
+        A row is written to the workbook only when "next row" is said, so a value still in the row being
+        built has not been written anywhere yet; removing it means it never will be.
+
+        Returns:
+            True if the row had that column.
+        """
+        if column not in self.session.record:
+            return False
+        value = self.session.record.pop(column)
+        log.debug("removed %s=%r from the row being built", column, value)
+        return True
+
     def pending_terms(self) -> list[TermKey]:
         """Terms waiting to be sorted: ``(suggested column or None, words)``."""
         return list(self.session.pending or [])
