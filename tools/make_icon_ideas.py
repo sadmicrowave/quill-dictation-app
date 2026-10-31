@@ -6,6 +6,7 @@
     python tools/make_icon_ideas.py --mix [contact-sheet.png]      # a fourth round: 41-50, recombining the liked parts
     python tools/make_icon_ideas.py --ring [contact-sheet.png]     # a fifth round: 51-56, the ring with vertical sound lines in purples
     python tools/make_icon_ideas.py --clip [contact-sheet.png]     # a sixth round: 57-59, idea 47 on purples
+    python tools/make_icon_ideas.py --sheet [contact-sheet.png]    # a seventh round: 60-63, the Excel-style tiled sheet in purples
     python tools/make_icon_ideas.py --all [contact-sheet.png]      # the first forty, one sheet
 
 Writes ``assets/icon-ideas/NN-name.svg`` (the full-colour app icon) and
@@ -277,6 +278,74 @@ IDEAS_CLIP = [
 ]
 
 
+def rrect(x, y, w, h, tl=0, tr=0, br=0, bl=0):
+    """A rectangle path with a separate corner radius on each corner."""
+    return (f"M{x + tl} {y}H{x + w - tr}" + (f"A{tr} {tr} 0 0 1 {x + w} {y + tr}" if tr else "")
+            + f"V{y + h - br}" + (f"A{br} {br} 0 0 1 {x + w - br} {y + h}" if br else "")
+            + f"H{x + bl}" + (f"A{bl} {bl} 0 0 1 {x} {y + h - bl}" if bl else "")
+            + f"V{y + tl}" + (f"A{tl} {tl} 0 0 1 {x + tl} {y}" if tl else "") + "Z")
+
+
+def tiled_sheet(color: str, x: float, y: float, w: float, h: float, radius: float, rows: int = 4, cols: int = 3) -> str:
+    """A rounded block of tiles in shades of *color*: lighter at the top, darker at the bottom, with a
+    darker first column, like the sheet in the Excel icon."""
+    out, tw, th = [], w / cols, h / rows
+    for r in range(rows):
+        for c in range(cols):
+            amount = 0.30 - 0.17 * r - (0.07 if c == 0 else 0.0)
+            tl = radius if (r == 0 and c == 0) else 0
+            tr = radius if (r == 0 and c == cols - 1) else 0
+            br = radius if (r == rows - 1 and c == cols - 1) else 0
+            bl = radius if (r == rows - 1 and c == 0) else 0
+            out.append(f'<path d="{rrect(x + c * tw, y + r * th, tw + .4, th + .4, tl, tr, br, bl)}" fill="{shade(color, amount)}"/>')
+    return "".join(out)
+
+
+def sound_lines(cx: float, cy: float, scale: float = 1.0) -> str:
+    """The white waveform overlay, with a soft shadow beneath it."""
+    xs = [-33, -22, -11, 0, 11, 22, 33]
+    hs = [14, 30, 46, 60, 40, 24, 12]
+    def one(fill, dy=0, opacity=1):
+        return "".join(f'<rect x="{cx + (x - 3.5) * scale:.1f}" y="{cy + (dy - h / 2) * scale:.1f}" width="{7 * scale:.1f}" '
+                       f'height="{h * scale:.1f}" rx="{3.5 * scale:.1f}" fill="{fill}" opacity="{opacity}"/>' for x, h in zip(xs, hs))
+    return f'<g>{one("#000", 3.5, .16)}{one("#000", 2, .2)}{one("#FFFFFF")}</g>'
+
+
+def sheet_icon_full(color: str) -> str:
+    """Idea A: the icon itself is the tiled sheet (full width, no offset box, no label) with white sound lines."""
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
+            '<linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".30"/>'
+            '<stop offset=".18" stop-color="#FFFFFF" stop-opacity="0"/><stop offset=".85" stop-color="#000" stop-opacity="0"/>'
+            '<stop offset="1" stop-color="#000" stop-opacity=".16"/></linearGradient></defs>'
+            '<rect x="6" y="8" width="116" height="116" rx="29" fill="#000" opacity=".10"/>'
+            f'{tiled_sheet(color, 4, 4, 120, 120, 28)}'
+            '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
+            + sound_lines(64, 64, 1.0) + '</svg>')
+
+
+def sheet_icon_plate(color: str) -> str:
+    """Idea B: a light plate (like the Excel icon) carrying the tiled sheet, with white sound lines on it."""
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
+            '<linearGradient id="plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F4F5FA"/><stop offset="1" stop-color="#DDE0EE"/></linearGradient>'
+            '<linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".9"/>'
+            '<stop offset=".2" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#8A90B0" stop-opacity=".35"/></linearGradient></defs>'
+            '<rect x="6" y="9" width="116" height="116" rx="29" fill="#5A6088" opacity=".16"/>'
+            '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#plate)"/>'
+            '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
+            '<rect x="26" y="26" width="76" height="80" rx="12" fill="#000" opacity=".12" transform="translate(0 3)"/>'
+            + tiled_sheet(color, 26, 24, 76, 80, 12)
+            + sound_lines(64, 64, 0.72) + '</svg>')
+
+
+#: Round seven: the Excel-style tiled sheet in purples, no small box, no label, white sound lines on top.
+IDEAS_SHEET = [
+    ("sheet-full-violet", "Tiled sheet fills the icon, violet", None, lambda: sheet_icon_full("#7A55C2")),
+    ("sheet-full-indigo", "Tiled sheet fills the icon, indigo", None, lambda: sheet_icon_full("#5B4BC4")),
+    ("sheet-plate-violet", "Tiled sheet on a light plate, violet", None, lambda: sheet_icon_plate("#7A55C2")),
+    ("sheet-plate-indigo", "Tiled sheet on a light plate, indigo", None, lambda: sheet_icon_plate("#5B4BC4")),
+]
+
+
 def app_icon(color: str, draw) -> str:
     """A dock-style icon in the modern macOS manner: a flat colour with only a *hint* of depth.
 
@@ -317,11 +386,15 @@ def write_all(more: bool = False, batch: str = "") -> list[tuple[str, str, str, 
     """Write one batch of ideas: 01-10, *more* (11-20), ``batch="new"`` (21-40) or ``batch="mix"`` (41-50)."""
     OUT.mkdir(parents=True, exist_ok=True)
     made = []
-    ideas, first = ((IDEAS_CLIP, 57) if batch == "clip" else (IDEAS_RING, 51) if batch == "ring" else (IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
+    ideas, first = ((IDEAS_SHEET, 60) if batch == "sheet" else (IDEAS_CLIP, 57) if batch == "clip" else (IDEAS_RING, 51) if batch == "ring" else (IDEAS_MIX, 41) if batch == "mix" else (IDEAS_NEW, 21) if batch == "new"
                     else (IDEAS_MORE, 11) if more else (IDEAS, 1))
     for i, (slug, title, color, draw) in enumerate(ideas, first):
-        big = app_icon(color, draw)
-        mono = menubar(draw("#000000", "#FFFFFF"))
+        if color is None:                                   # a ready-made icon (no glyph function)
+            big = draw()
+            mono = menubar(sound_lines(64, 64, 1.0).replace('"#FFFFFF"', '"#000000"').replace('fill="#000" opacity', 'fill="none" opacity'))
+        else:
+            big = app_icon(color, draw)
+            mono = menubar(draw("#000000", "#FFFFFF"))
         (OUT / f"{i:02d}-{slug}.svg").write_text(big, encoding="utf-8")
         (OUT / f"{i:02d}-{slug}-menubar.svg").write_text(mono, encoding="utf-8")
         made.append((f"{i:02d}", title, big, mono))
@@ -371,10 +444,10 @@ def render_png(svg: str, path: str, size: int = 1024) -> None:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    made = (write_all(batch="clip") if "--clip" in sys.argv else write_all(batch="ring") if "--ring" in sys.argv else write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
+    made = (write_all(batch="sheet") if "--sheet" in sys.argv else write_all(batch="clip") if "--clip" in sys.argv else write_all(batch="ring") if "--ring" in sys.argv else write_all(batch="mix") if "--mix" in sys.argv else write_all(batch="new") if "--new" in sys.argv else write_everything() if "--all" in sys.argv
             else write_all(more="--more" in sys.argv))
     print(f"Wrote {len(made) * 2} icons to {OUT}")
-    if ("--ring" in sys.argv or "--clip" in sys.argv) and len(args) > 1:
+    if ("--ring" in sys.argv or "--clip" in sys.argv or "--sheet" in sys.argv) and len(args) > 1:
         render_png(made[0][2], args[1])                 # the first ring at 1024 px
     if args:
         contact_sheet(args[0], made)
