@@ -62,7 +62,10 @@ def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | Non
         if platform == "win32":
             return "windows" if windows_chrome(handle, dark, colors, blur=blur) else None
         if platform == "darwin":
-            return "macos" if mac_chrome(handle, dark, colors, opacity=opacity, blur=blur) else None
+            if not mac_chrome(handle, dark, colors, opacity=opacity, blur=blur):
+                return None
+            plain_title(widget)
+            return "macos"
     except Exception:
         return None
     return None
@@ -85,6 +88,48 @@ def no_window_shadow(widget, platform: str | None = None) -> bool:
         return True
     except Exception:
         return False
+
+
+_TITLE_ID = "quillWindowTitle"
+
+
+def plain_title(widget) -> bool:
+    """Show the window's title in the regular weight, centred in the (macOS) title bar.
+
+    The system draws title bars in bold and offers no way to change that, so the real title is hidden
+    and an ordinary label shows the same text. It follows later changes of ``windowTitle``.
+    """
+    try:
+        if not _native_platform("darwin"):
+            return False
+        import AppKit
+        import objc
+        window = objc.objc_object(c_void_p=int(widget.winId())).window()
+        if window is None:
+            return False
+        bar = window.standardWindowButton_(0).superview()          # the close button's container: the title bar
+        label = next((v for v in bar.subviews() if v.identifier() == _TITLE_ID), None)
+        if label is None:
+            label = AppKit.NSTextField.labelWithString_(widget.windowTitle())
+            label.setIdentifier_(_TITLE_ID)
+            label.setFont_(AppKit.NSFont.systemFontOfSize_weight_(13, 0.0))
+            label.setTextColor_(AppKit.NSColor.secondaryLabelColor())
+            label.setAutoresizingMask_(45)                           # flexible on every side: stays centred
+            bar.addSubview_(label)
+            window.setTitleVisibility_(1)                            # hide the bold system title
+            widget.windowTitleChanged.connect(lambda text, v=label, b=bar: _retitle(v, b, text))
+        _retitle(label, bar, widget.windowTitle())
+        return True
+    except Exception:
+        return False
+
+
+def _retitle(label, bar, text: str) -> None:
+    """Set the label's text and centre it in the title bar."""
+    label.setStringValue_(text)
+    label.sizeToFit()
+    size, bounds = label.frame().size, bar.bounds().size
+    label.setFrameOrigin_(((bounds.width - size.width) / 2, (bounds.height - size.height) / 2))
 
 
 def _native_platform(platform: str) -> bool:
@@ -303,6 +348,10 @@ class TitlebarButton:
         if image is not None:
             self._button.setImage_(image)
         self._button.setToolTip_(text)
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Enable or grey out the main icon."""
+        self._button.setEnabled_(enabled)
 
     def set_extra_enabled(self, index: int, enabled: bool) -> None:
         """Enable or grey out the *index*-th extra icon (counting from the left)."""

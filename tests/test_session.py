@@ -206,7 +206,8 @@ class TestQuestionFlow(unittest.TestCase):
         self.assertIn("to sort: 'zorblax'", events[0].detail)
         confirm = self.s.feed("next row")[-1]
         self.assertEqual(confirm.values, [(None, "zorblax")])
-        self.assertIn("I need help sorting 1 term", confirm.detail)
+        self.assertEqual(confirm.detail, "1 term to sort")
+        self.assertNotIn("help", confirm.detail.lower())
         self.assertFalse(self.s._voice_open)     # a spoken yes can't answer this
 
     def test_spoken_yes_cannot_resolve_terms_without_a_column(self):

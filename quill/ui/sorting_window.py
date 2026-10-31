@@ -20,17 +20,16 @@ from __future__ import annotations
 import contextlib
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QTimer, Qt
-from PySide6.QtGui import QCursor
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt
 from PySide6.QtWidgets import (
-    QComboBox, QToolButton, QToolTip, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton,
+    QComboBox, QGraphicsOpacityEffect, QLayout, QToolButton, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
 
 from quill.parser.tokens import display_name
 from quill.parser.vocab import Vocabulary
 from quill.session import Decision, TermKey
-from quill.ui.chrome import SYMBOL_HELP, add_titlebar_button
+from quill.ui.chrome import SYMBOL_HELP, SYMBOL_UNDO, add_titlebar_button
 from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import apply_spacing
 from quill.ui.widgets import pill, pillify
@@ -39,6 +38,9 @@ from quill.ui.widgets import pill, pillify
 ResolveCallback = Callable[[TermKey, Decision, str], None]
 
 PLACEHOLDER = "Choose Column…"
+
+#: The help page the "?" icons open.
+HELP_TOPIC = "term-helper"
 
 #: Height (px) of the controls in a row, and the gap kept between a row's question and its controls.
 CONTROL_HEIGHT = 34
@@ -60,22 +62,6 @@ def question_html(column: str | None, term: str) -> str:
         return f"You said {shown} — which column is that?"
     article = "an" if column[:1].lower() in "aeiou" else "a"
     return f"You said {shown} — is that {article} {column}?"
-
-
-#: The help shown from the "?" icon in the title bar.
-HELP_HTML = (
-    '<div style="line-height:155%; letter-spacing:0.35px">'
-    '<b>🧩&nbsp;&nbsp;Term Helper</b><br>'
-    'These terms were <i>heard</i> but couldn\'t be <i>placed</i>.<br>'
-    'Decide what to do with each one:<br><br>'
-    '➕&nbsp;&nbsp;<b>Add</b>: save it as a <i>new value</i> in the chosen column<br>'
-    '🔁&nbsp;&nbsp;<b>Same As…</b>: it is another name for a value you <i>already have</i><br>'
-    '🚫&nbsp;&nbsp;<b>Ignore</b>: forget it<br><br>'
-    '🎤&nbsp;&nbsp;<b>Sort by Voice</b>: click it, then say<br>'
-    f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{pill("yes")} {pill("a column name")} {pill("same as …")}<br>'
-    f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{pill("ignore")} {pill("later")} {pill("undo")} {pill("done")}<br><br>'
-    '💡&nbsp;&nbsp;<i>Tip: you can fix the words in the box first.</i>'
-    '</div>')
 
 
 class TermRow(QFrame):
@@ -161,6 +147,10 @@ class TermRow(QFrame):
         return (f"🎤 Say: {pill('yes')} (adds to {self.column}) {pill('same as …')} {pill('ignore')} "
                 f"{pill('later')}")
 
+    def flash(self) -> None:
+        """Light the row's border (and tint it) green: the answer was heard and accepted."""
+        self.setStyleSheet("#termRow { border: 2px solid #34C759; background: rgba(52, 199, 89, 0.14); }")
+
     def mousePressEvent(self, event) -> None:
         """Clicking the (first) row starts answering it by voice."""
         if self._on_activate is not None:
@@ -218,16 +208,24 @@ class SortingWindow:
     MARGIN = 12
     SIDE_ALLOWANCE = 36
 
+    #: How long an answered row flashes, and how long it takes to ease away (ms; 0 = no animation).
+    FLASH_MS = 160
+    animation_ms = 220
+
     def __init__(self, vocab: Vocabulary, on_resolve: ResolveCallback,
                  on_voice: Callable[[], None] | None = None,
                  on_undo: Callable[[], None] | None = None,
-                 batch: Callable[[str], object] | None = None) -> None:
+                 batch: Callable[[str], object] | None = None,
+                 on_help: Callable[[str], None] | None = None) -> None:
+        self._on_help = on_help or (lambda topic: None)
         self._vocab = vocab
         self._on_resolve = on_resolve
         self._on_undo = on_undo or (lambda: None)
         self._batch = batch or (lambda label: contextlib.nullcontext())
         self._on_voice = on_voice or (lambda: None)
         self._voice_active = False
+        self._queue: list[TermRow] = []                    # answered rows waiting their turn to leave
+        self._retiring = False
         self._titlebar = None
         self._window: QWidget | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
@@ -270,7 +268,8 @@ class SortingWindow:
         self.help_button.setProperty("flatIcon", True)
         self.help_button.setAutoRaise(True)
         self.help_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.help_button.setToolTip(HELP_HTML)
+        self.help_button.setToolTip("Help")
+        self.help_button.clicked.connect(lambda: self._on_help(HELP_TOPIC))
         self.help_button.setAccessibleName("Help")
         voice_row.addWidget(self.help_button)
         layout.addLayout(voice_row)
@@ -321,45 +320,101 @@ class SortingWindow:
         self.help_button.setIcon(make_icon("question", color, 18))
 
     def install_titlebar(self) -> None:
-        """Put the "?" help icon in the title bar (macOS), beside the close and zoom buttons.
+        """Put Help ("?") and Undo in the title bar (macOS), beside the close and zoom buttons.
 
-        Hovering it shows the help; elsewhere the in-window icon does the same.
+        Elsewhere the window keeps its own in-window icon and Undo button.
         """
         if self._window is None or self._titlebar is not None:
             return
         self._titlebar = add_titlebar_button(
-            self._window, self.show_help, symbol=SYMBOL_HELP, tip="Help",
-            hover=(self.show_help, self.hide_help), side="left")
-        self.help_button.setVisible(self._titlebar is None)
-
-    def show_help(self) -> None:
-        """Show the help text next to the pointer."""
-        QToolTip.showText(QCursor.pos() + QPoint(0, 22), HELP_HTML, self._window)
-
-    def hide_help(self) -> None:
-        QToolTip.hideText()
+            self._window, lambda: self._on_undo(), symbol=SYMBOL_UNDO, tip="Undo the Last Answer",
+            extra=[(SYMBOL_HELP, "Help", lambda: self._on_help(HELP_TOPIC))], side="left")
+        native = self._titlebar is not None
+        self.help_button.setVisible(not native)
+        self.undo_button.setVisible(not native)
+        if native:
+            self._titlebar.set_enabled(self.undo_button.isEnabled())
 
     def set_items(self, items: list[TermKey]) -> None:
-        """Replace the list with *items*; hides the window when it is empty."""
+        """Make the list show *items*; the window hides when it is empty.
+
+        Rows for terms that are still waiting are kept (so anything typed in them stays). Rows for
+        terms that were just answered flash green, then ease away one after another, and the window
+        closes after the last one when nothing is left, so the answers can be seen being accepted.
+        """
+        old = {row.key: row for row in self.rows}
         for row in self.rows:
             self._list.removeWidget(row)
-            row.hide()               # leave the screen now, not when Qt gets to deleteLater
-            row.setParent(None)
-            row.deleteLater()
-        self.rows = []
+        rows = []
         for key in items:
-            first = not self.rows
-            row = TermRow(key, self._vocab, self._on_resolve,
-                          on_activate=self._start_voice if first and not self._voice_active else None)
+            first = not rows
+            row = old.pop(key, None)
+            if row is None:
+                row = TermRow(key, self._vocab, self._on_resolve)
+            row._on_activate = self._start_voice if first and not self._voice_active else None
             row.set_active(first and self._voice_active)
+            rows.append(row)
+        leaving = list(old.values())
+        animate = self.animation_ms > 0 and self._window is not None and self._window.isVisible()
+        for row in leaving + rows:                          # answered rows stay on top while they play out
             self._list.insertWidget(self._list.count() - 1, row)
-            self.rows.append(row)
+        self.rows = rows
+        if animate and leaving:
+            self._retire(leaving)
+        else:
+            for row in leaving:
+                self._drop(row)
         if self._window is not None:
             self._window.setWindowTitle(f"Term Helper ({len(items)})" if items else "Term Helper")
             self.add_all_button.setEnabled(bool(items))
             self.ignore_all_button.setEnabled(bool(items))
-            if not items:
+            if not items and not self._retiring:
                 self._window.hide()
+
+    # -- answered rows leaving ---------------------------------------------
+
+    def _retire(self, rows: list[TermRow]) -> None:
+        """Queue *rows* to flash and ease out, one after the other."""
+        self._queue.extend(rows)
+        if not self._retiring:
+            self._next_retire()
+
+    def _next_retire(self) -> None:
+        if not self._queue:
+            self._retiring = False
+            if not self.rows and self._window is not None:
+                self._window.hide()                        # nothing left: close the window
+            return
+        self._retiring = True
+        row = self._queue.pop(0)
+        row.flash()
+        QTimer.singleShot(self.FLASH_MS, lambda: self._collapse(row))
+
+    def _collapse(self, row: TermRow) -> None:
+        """Ease *row* shut (height and fade together), then remove it and go on to the next."""
+        row.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        row.setMinimumHeight(0)
+        effect = QGraphicsOpacityEffect(row)
+        row.setGraphicsEffect(effect)
+        height = QPropertyAnimation(row, b"maximumHeight", row)
+        height.setDuration(self.animation_ms)
+        height.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        height.setStartValue(row.height())
+        height.setEndValue(0)
+        fade = QPropertyAnimation(effect, b"opacity", row)
+        fade.setDuration(self.animation_ms)
+        fade.setStartValue(1.0)
+        fade.setEndValue(0.0)
+        height.finished.connect(lambda: (self._drop(row), self._next_retire()))
+        row._animations = (height, fade)                   # keep them alive
+        height.start()
+        fade.start()
+
+    def _drop(self, row: TermRow) -> None:
+        self._list.removeWidget(row)
+        row.hide()                                         # leave the screen now, not when Qt gets to deleteLater
+        row.setParent(None)
+        row.deleteLater()
 
     # -- voice sorting -----------------------------------------------------
 
@@ -426,3 +481,5 @@ class SortingWindow:
         if self._window is not None:
             self.undo_button.setEnabled(count > 0)
             self.undo_button.setText(f"↶ Undo ({count})" if count else "↶ Undo")
+            if self._titlebar is not None:
+                self._titlebar.set_enabled(count > 0)

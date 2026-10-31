@@ -255,7 +255,7 @@ class TestOpacityAndBlur(unittest.TestCase):
     def test_the_style_sheet_never_contains_a_see_through_colour_for_surfaces(self):
         for dark in (False, True):
             sheet = theme.stylesheet_for(dark)
-            for selector in ("QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot", "QPushButton", "QLineEdit, QSpinBox, QComboBox",
+            for selector in ("QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot", "QPushButton", "QLineEdit, QSpinBox, QComboBox",
                              "QPlainTextEdit, QTextEdit, QTableWidget", "QFrame#termRow"):
                 start = sheet.index(selector + " {")
                 rule = sheet[start: sheet.index("}", start)]

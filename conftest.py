@@ -37,10 +37,11 @@ def _no_window_animation():
     """Resize instantly in tests (the animation has its own test)."""
     try:
         from quill.ui.main_window import MainWindow
+        from quill.ui.sorting_window import SortingWindow
     except ImportError:
         yield
         return
-    saved = MainWindow.animation_ms
-    MainWindow.animation_ms = 0
+    saved = MainWindow.animation_ms, SortingWindow.animation_ms
+    MainWindow.animation_ms = SortingWindow.animation_ms = 0
     yield
-    MainWindow.animation_ms = saved
+    MainWindow.animation_ms, SortingWindow.animation_ms = saved

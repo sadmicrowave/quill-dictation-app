@@ -238,25 +238,40 @@ class TestSortingWindow(unittest.TestCase):
         from PySide6.QtCore import Qt
         self.assertFalse(win.widget.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
 
-    def test_the_guidance_lives_in_a_help_icon_with_a_rich_hover_text(self):
-        from quill.ui.sorting_window import HELP_HTML
-        self.assertFalse(hasattr(self.win, "intro"))
-        self.assertEqual(self.win.help_button.toolTip(), HELP_HTML)
-        for part in ("These terms were <i>heard</i>", "<b>Add</b>", "<b>Same As…</b>", "<b>Ignore</b>", "🎤", "line-height"):
-            self.assertIn(part, HELP_HTML)
+    def test_the_help_icon_opens_the_term_helper_page(self):
+        asked = []
+        win = SortingWindow(self.vocab, lambda *a: None, on_help=asked.append)
+        win.setup()
+        self.assertFalse(hasattr(win, "intro"))
+        win.help_button.click()
+        self.assertEqual(asked, ["term-helper"])
+        self.assertEqual(win.help_button.toolTip(), "Help")
 
-    def test_the_title_bar_icon_is_on_the_left_with_hover_help(self):
+    def test_undo_and_help_move_to_the_title_bar(self):
         calls = []
         import quill.ui.sorting_window as module
         original = module.add_titlebar_button
-        module.add_titlebar_button = lambda *a, **k: calls.append(k) or object()
+
+        class Fake:
+            enabled = None
+            def set_enabled(self, flag): self.enabled = flag
+
+        fake = Fake()
+        module.add_titlebar_button = lambda *a, **k: calls.append((a, k)) or fake
         try:
             self.win.install_titlebar()
         finally:
             module.add_titlebar_button = original
-        self.assertEqual(calls[0]["side"], "left")
-        self.assertEqual(calls[0]["hover"], (self.win.show_help, self.win.hide_help))
-        self.assertFalse(self.win.help_button.isVisibleTo(self.win.widget))     # the title bar has it now
+        args, kwargs = calls[0]
+        self.assertEqual(kwargs["side"], "left")
+        self.assertEqual(kwargs["symbol"], module.SYMBOL_UNDO)                       # the main icon is Undo ...
+        self.assertEqual([e[0] for e in kwargs["extra"]], [module.SYMBOL_HELP])      # ... with Help to its left
+        self.assertFalse(self.win.help_button.isVisibleTo(self.win.widget))
+        self.assertFalse(self.win.undo_button.isVisibleTo(self.win.widget))          # the window's own copies are hidden
+        self.win.set_undo_available(2)
+        self.assertTrue(fake.enabled)
+        self.win.set_undo_available(0)
+        self.assertFalse(fake.enabled)
 
     def test_spoken_words_are_code_pills(self):
         self.win.set_items([("Era", "bit")])
@@ -320,6 +335,32 @@ class TestSortingWindow(unittest.TestCase):
         self.assertEqual(self.win.scroll.frameShape(), QFrame.Shape.NoFrame)
         m = self.win.root.layout().contentsMargins()
         self.assertEqual((m.left(), m.right()), (SortingWindow.MARGIN, SortingWindow.MARGIN))
+
+    def test_answered_rows_flash_then_ease_away_in_turn_and_the_window_closes_last(self):
+        from PySide6.QtTest import QTest
+        SortingWindow.animation_ms, SortingWindow.FLASH_MS = 80, 60
+        try:
+            self.win.set_items([("Era", "90s"), ("Color", "teal")])
+            self.win.widget.show()
+            first, second = self.win.rows
+            self.win.set_items([])                                   # both answered at once
+            self.assertTrue(self.win.widget.isVisible())             # not closed yet
+            self.assertIn("#34C759", first.styleSheet())             # the first flashes green
+            self.assertNotIn("#34C759", second.styleSheet())         # the second waits its turn
+            self.assertEqual(self.win._queue, [second])              # in turn, not all at once
+            QTest.qWait(600)
+            self.assertFalse(self.win.widget.isVisible())            # closed after the last one left
+            self.assertEqual(self.win.rows, [])
+        finally:
+            SortingWindow.animation_ms, SortingWindow.FLASH_MS = 0, 160
+
+    def test_rows_still_waiting_are_kept_with_what_was_typed_in_them(self):
+        self.win.set_items([("Era", "90s"), (None, "teal")])
+        second = self.win.rows[1]
+        second.edit.setText("teal green")
+        self.win.set_items([(None, "teal")])
+        self.assertIs(self.win.rows[0], second)
+        self.assertEqual(second.edit.text(), "teal green")
 
     def test_prompts_match_the_experience(self):
         self.assertEqual(question_for("Era", "90s"), "You said ‘90s’ — is that an Era?")
@@ -393,9 +434,9 @@ class TestSortingWindow(unittest.TestCase):
 
     def test_removed_rows_leave_the_screen_immediately(self):
         self.win.set_items([("Era", "90s"), (None, "teal")])
-        old = list(self.win.rows)
+        removed = self.win.rows[0]
         self.win.set_items([(None, "teal")])
-        self.assertTrue(all(r.isHidden() and r.parent() is None for r in old))
+        self.assertTrue(removed.isHidden() and removed.parent() is None)
 
     def test_is_resizable_and_scrollable(self):
         self.win.set_items([(None, f"term{i}") for i in range(30)])

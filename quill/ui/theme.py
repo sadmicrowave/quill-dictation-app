@@ -154,7 +154,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
-QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot {{ background: {win}; }}
+QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: {win}; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.10)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
            border-radius: 8px; padding: 5px 9px; }}
 
@@ -250,6 +250,12 @@ QComboBox[single="true"]::down-arrow {{ image: none; width: 0px; height: 0px; }}
 QPushButton[outline="true"] {{ border: 1px solid {t['accent']}; }}
 QPushButton[outline="true"]:hover {{ background: {rgba(t['accent'], 0.14)}; }}
 QLabel[headingToggle="true"]:hover {{ color: {t['accent']}; }}
+QTreeWidget#helpNav {{ background: transparent; border: none; outline: none; padding: 0; }}
+QTreeWidget#helpNav::branch {{ background: transparent; image: none; }}
+QTreeWidget#helpNav::item {{ padding: 7px 10px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}
+QTreeWidget#helpNav::item:hover {{ background: {rgba(t['text'], 0.06)}; }}
+QTreeWidget#helpNav::item:selected {{ background: {rgba(t['text'], 0.10)}; color: {t['text']}; }}
+QTextBrowser#helpPage {{ background: transparent; border: none; }}
 QWidget#settingsSidebar {{ border-right: 1px solid {t['border']}; }}
 QListWidget#settingsNav {{ background: transparent; border: none; outline: none; padding: 0; }}
 QListWidget#settingsNav::item {{ padding: 8px 12px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}

@@ -101,7 +101,8 @@ class SettingsDialog:
     """
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
-                 on_open_logs=None) -> None:
+                 on_open_logs=None, on_help=None) -> None:
+        self._on_help = on_help
         self._on_open_logs = on_open_logs or self._open_log_folder
         self._on_preview = on_preview or (lambda mode, pack, echo: None)
         self._on_change = on_change or (lambda: None)
@@ -145,7 +146,27 @@ class SettingsDialog:
         """Show modally. Returns True if the user saved changes."""
         self.build()
         self._apply_dialog_look()
+        self._install_help_icon()
         return self._dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _install_help_icon(self) -> None:
+        """Put a "?" in the title bar (macOS) that opens the Settings help page."""
+        from quill.ui.chrome import SYMBOL_HELP, add_titlebar_button
+        self._help_icon = add_titlebar_button(self._dialog, lambda: self.open_help(), symbol=SYMBOL_HELP,
+                                              tip="Help", side="left")
+
+    def open_help(self, topic: str = "settings") -> None:
+        """Show the help window on the Settings page. It belongs to this dialog, which is modal, so it stays usable."""
+        if self._on_help is not None:
+            self._on_help(topic)
+            return
+        from PySide6.QtWidgets import QApplication
+        from quill.ui.help_window import HelpWindow
+        if getattr(self, "_help", None) is None:
+            self._help = HelpWindow(parent=self._dialog)
+            self._help.setup()
+            self._help.restyle(self._settings.preferences, QApplication.instance())
+        self._help.show(topic)
 
     def _apply_dialog_look(self) -> None:
         """Give this window the OS title-bar styling, blur and (floored) opacity."""

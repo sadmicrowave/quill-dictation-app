@@ -241,6 +241,7 @@ class TestStatusRowWithTheIconsInTheTitleBar(unittest.TestCase):
         w.set_native_mini_button(True)
         w.set_native_settings_button(True)
         w.set_native_undo_button(True)
+        w.set_native_help_button(True)
         _app.processEvents()
         row = w._status_row
         visible = [row.itemAt(i).widget() for i in range(row.count())
@@ -259,6 +260,7 @@ class TestStatusRowWithTheIconsInTheTitleBar(unittest.TestCase):
         w.set_native_mini_button(True)
         w.set_native_settings_button(True)
         w.set_native_undo_button(True)
+        w.set_native_help_button(True)
         _app.processEvents()
         self.assertEqual(right(w.toggle_button, w.root), w.root.width() - w.root.layout().contentsMargins().right() - 1)
 
@@ -359,6 +361,7 @@ class TestAlignment(unittest.TestCase):
         self.w.set_native_mini_button(True)
         self.w.set_native_settings_button(True)
         self.w.set_native_undo_button(True)
+        self.w.set_native_help_button(True)
         _app.processEvents()
 
     def test_the_file_row_has_no_inner_margin(self):

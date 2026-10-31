@@ -337,8 +337,7 @@ class Session:
             detail = prompt_text(pending)
         else:
             n = len(pending)
-            detail = (f"I need help sorting {n} term{'s' if n != 1 else ''}. "
-                      "Please check the Quill window.")
+            detail = f"{n} term{'s' if n != 1 else ''} to sort"       # shown, never spoken: the sorting cue says it
         return [Event("confirm", detail=detail, values=list(pending))]
 
     def _answer(self, yes: bool) -> list[Event]:

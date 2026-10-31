@@ -354,3 +354,9 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - Voice status sits under the Sort by Voice button, which keeps its size; nothing is shown once voice sorting is off.
 - Tooltip windows lose the OS shadow (`chrome.no_window_shadow`), which showed a faint square corner.
 - The main window re-applies its minimum size whenever widgets appear or disappear, so sections can no longer overlap.
+
+### Phase 34 notes (help, sorting animation, plain titles)
+- **Help** is Markdown: each `quill/help/NN-slug.md` is a topic (first `# ` line = title, `## ` lines = its sections, pictures in `quill/help/images/`). `helpdocs.load_topics()` reads them; `ui/help_window.HelpWindow` shows a Settings-style sidebar with search and a `QTextBrowser` reader (headings, code pills, tables and quotes styled after `setMarkdown`). `HelpWindow.show(topic, section)` selects and scrolls to the place; the ? icons (main window `welcome`, Term Helper `term-helper`, Settings `settings`) all call it. Adding a page is adding a file; the PyInstaller specs bundle the folder.
+- **Term Helper rows** flash green, ease shut one after another (`SortingWindow.FLASH_MS`, `animation_ms`) and the window closes after the last; rows still waiting are kept, not rebuilt, so edits in them survive. Undo and ? are title-bar icons on the window's left.
+- **Plain titles:** `chrome.plain_title` hides the bold system title and draws the same text, regular weight and centred, in the title bar.
+- The spoken "I need help sorting n terms" is gone: a confirm without suggested columns is shown but not spoken (the sorting cue says it).

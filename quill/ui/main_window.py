@@ -31,6 +31,9 @@ from quill.ui.widgets import ElidedLabel, HeadingToggle, Pill, connection_tip, t
 COLOR_ACTIVE = "#34c759"
 COLOR_IDLE = "#8e8e93"
 
+#: The help page the window's ? icon opens.
+HELP_TOPIC = "welcome"
+
 #: The chip that replaces the sheet name while no spreadsheet is connected, and its tooltip.
 NOT_CONNECTED_TEXT = "File stream not connected"
 NOT_CONNECTED_HINT = (
@@ -123,6 +126,7 @@ class MainWindow:
         on_mini_toggled: Called with True/False when the user enters/leaves the mini view.
         on_open_file: Called when the user chooses Open Spreadsheet File (button or File menu).
         on_use_excel: Called when the user chooses to go back to the open Excel workbook.
+        on_help: Called with a help topic when the user presses the ? icon.
         mini: Start in the mini view. mini_on_top: keep the mini view above other windows.
         log_collapsed: Start with the log collapsed.
     """
@@ -140,6 +144,7 @@ class MainWindow:
         on_mini_toggled: Callable[[bool], None] | None = None,
         on_open_file: Callable[[], None] | None = None,
         on_use_excel: Callable[[], None] | None = None,
+        on_help: Callable[[str], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
     ) -> None:
@@ -154,6 +159,8 @@ class MainWindow:
         self._on_mini_toggled = on_mini_toggled or (lambda mini: None)
         self._on_open_file = on_open_file or (lambda: None)
         self._on_use_excel = on_use_excel or (lambda: None)
+        self._on_help = on_help or (lambda topic: None)
+        self._native_help_button = False
         self._mini = mini                          # the state asked for (may still be animating there)
         self._view_mini = False                    # what is actually on screen (set by _apply_view)
         self._native_mini_button = False           # True once the title bar has its own resize icon
@@ -235,7 +242,14 @@ class MainWindow:
         self.undo_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.undo_button.setEnabled(False)
         self.undo_button.clicked.connect(lambda: self._on_undo())
+        self.help_button = QPushButton()                  # the title bar has its own on macOS
+        self.help_button.setProperty("iconOnly", True)
+        self.help_button.setToolTip("Help")
+        self.help_button.setAccessibleName("Help")
+        self.help_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.help_button.clicked.connect(lambda: self._on_help(HELP_TOPIC))
         row.addWidget(self.toggle_button, 1)
+        row.addWidget(self.help_button)
         row.addWidget(self.undo_button)
         row.addWidget(self.settings_button)
         row.addWidget(self.mini_button)
@@ -469,6 +483,11 @@ class MainWindow:
         self._native_settings_button = native
         self._refresh_visibility()
 
+    def set_native_help_button(self, native: bool) -> None:
+        """The title bar now has its own Help icon, so the one inside the window is hidden."""
+        self._native_help_button = native
+        self._refresh_visibility()
+
     def set_native_undo_button(self, native: bool) -> None:
         """The title bar now has its own Undo icon, so the one inside the window is hidden."""
         self._native_undo_button = native
@@ -614,6 +633,7 @@ class MainWindow:
         self.settings_button.setVisible(full and not self._native_settings_button)
         for widget in (self.workbook_row, self.row_heading, self.last_label, self.log_toggle):
             widget.setVisible(full)
+        self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
         self.undo_button.setEnabled(self._undo_count > 0)
         self.log.setVisible(full and not self._log_collapsed)
@@ -804,6 +824,7 @@ class MainWindow:
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
+        self.help_button.setIcon(make_icon("question", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self.open_file_button.setIcon(make_icon("folder", text_color, 18))
         self._draw_toggle_icon()

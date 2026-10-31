@@ -332,7 +332,8 @@ class Controller:
         elif event.kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self._say(event.detail)
         elif event.kind == "confirm":
-            self._say(event.detail, lead_in=self.lead_in_s)
+            if all(column for column, _ in event.values or []):         # only spoken when a spoken yes can answer it
+                self._say(event.detail, lead_in=self.lead_in_s)
 
     def _say(self, text: str, lead_in: float = 0.0) -> None:
         """Speak *text* if there is a speaker, muting the mic meanwhile."""

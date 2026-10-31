@@ -28,11 +28,12 @@ from quill.listener.listener import Listener
 from quill.listener.model import download_model, ensure_model, user_model_dir
 from quill.session import Decision, Event, TermKey
 from quill.speaker.speaker import Speaker
+from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.sorting_window import SortingWindow
-from quill.ui.chrome import SYMBOL_SETTINGS, SYMBOL_UNDO, add_titlebar_button, apply_chrome, set_dock_icon_visible
+from quill.ui.chrome import SYMBOL_HELP, SYMBOL_SETTINGS, SYMBOL_UNDO, add_titlebar_button, apply_chrome, set_dock_icon_visible
 from quill.ui.theme import apply_opacity, apply_spacing, apply_theme, colors_for, is_dark
 from quill.ui.tray import TrayIcon
 
@@ -95,14 +96,14 @@ class QuillApp:
             on_workbook=self.select_workbook, on_open_file=self.choose_spreadsheet_file,
             on_use_excel=self.use_live_excel,
             on_download_model=self.download_model, on_sorting=self.show_sorting,
-            on_undo=self.undo, on_log_toggled=self._log_toggled,
+            on_undo=self.undo, on_help=self.open_help, on_log_toggled=self._log_toggled,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
                                      on_voice=self.toggle_voice_sorting,
-                                     on_undo=self.undo, batch=self.controller.batch)
+                                     on_undo=self.undo, batch=self.controller.batch, on_help=self.open_help)
         self.tray = TrayIcon(
             qapp, self.window,
             on_start=lambda: self.toggle_listening(True),
@@ -118,6 +119,7 @@ class QuillApp:
         self._mic_open = False
         self._seen_mtime: int | None = None      # last known state of the workbook file
         self._titlebar = None                    # the resize icon in the title bar, where supported
+        self.help: HelpWindow | None = None      # created the first time a ? icon is pressed
         self._expiry = QTimer()
         self._expiry.setSingleShot(True)
         self._expiry.timeout.connect(self.controller.expire_prompt)
@@ -451,6 +453,14 @@ class QuillApp:
     def select_workbook(self, name: str) -> None:
         self.connect_workbook(name)
 
+    def open_help(self, topic: str | None = None) -> None:
+        """Open the help window on *topic* (a page's slug), creating it on first use."""
+        if self.help is None:
+            self.help = HelpWindow()
+            self.help.setup()
+            self.help.restyle(self.settings.preferences, self.qapp)
+        self.help.show(topic)
+
     def open_settings(self) -> None:
         """Show the settings dialog; apply the result if saved."""
         dialog = SettingsDialog(self.settings, self.window.widget, on_preview=self.preview_feedback,
@@ -465,8 +475,10 @@ class QuillApp:
         self._titlebar = add_titlebar_button(
             self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
             mini=self.window.mini,
-            extra=[(SYMBOL_UNDO, "Undo the Last Answer", self.undo), (SYMBOL_SETTINGS, "Settings", self.open_settings)])
+            extra=[(SYMBOL_HELP, "Help", lambda: self.open_help("welcome")),
+                   (SYMBOL_UNDO, "Undo the Last Answer", self.undo), (SYMBOL_SETTINGS, "Settings", self.open_settings)])
         native = self._titlebar is not None
+        self.window.set_native_help_button(native)
         self.window.set_native_undo_button(native)
         self._sync_titlebar_undo()
         self.window.set_native_mini_button(native)
@@ -475,7 +487,7 @@ class QuillApp:
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
         if self._titlebar is not None:
-            self._titlebar.set_extra_enabled(0, len(self.controller.history) > 0)
+            self._titlebar.set_extra_enabled(1, len(self.controller.history) > 0)
 
     def _mini_toggled(self, mini: bool) -> None:
         """Remember the view and keep the tray menu and the title-bar icon in step.
@@ -531,6 +543,8 @@ class QuillApp:
                 apply_opacity(root, opacity)
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         self.sorting.refresh_icons(colors["text"])
+        if self.help is not None:
+            self.help.restyle(prefs, self.qapp)
         self.tray.set_dark(dark)
         self.tray.set_badge(self.tray.badge, colors["accent"])
 

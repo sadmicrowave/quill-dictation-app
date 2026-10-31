@@ -13,7 +13,7 @@ a = Analysis(
     [r("main.py")], pathex=[ROOT],
     binaries=[*vosk_b, *sd_b],
     datas=[(r("quill", "config", "defaults.json"), "quill/config"), (r("quill", "sounds"), "quill/sounds"),
-           (r("quill", "model"), "quill/model"), (r("quill", "assets"), "quill/assets"),*vosk_d,*sd_d],
+           (r("quill", "model"), "quill/model"), (r("quill", "assets"), "quill/assets"), (r("quill", "help"), "quill/help"),*vosk_d,*sd_d],
     hiddenimports=[*vosk_h, *sd_h, *collect_submodules("quill"), *collect_submodules("xlwings"), "appscript", "aem", "mactypes", "psutil", "AppKit", "objc"],
 )
 pyz = PYZ(a.pure)

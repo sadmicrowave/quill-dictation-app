@@ -87,6 +87,11 @@ class TestUnknownValueFlow(ControllerCase):
         self.assertEqual(self.sheet("Config")["A6"].value, "Snake Plant")
         self.assertIn("Snake Plant", self.ctl.bridge.get_lists()["Species"])
 
+    def test_terms_without_a_suggested_column_are_never_announced_by_voice(self):
+        self.say("start listening", "zorblax", "next row")
+        self.assertIn("confirm", self.kinds())
+        self.assertEqual(self.speaker.said, [])                 # the sorting sound says it; no "help sorting" speech
+
     def test_added_value_is_then_recognised(self):
         self.say("start listening", "species snake plant", "next row", "yes")
         self.say("snake plant", "next row")
