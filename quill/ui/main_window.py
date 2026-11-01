@@ -64,6 +64,7 @@ from quill.ui.widgets import (
     ElidedLabel,
     HeadingToggle,
     Pill,
+    WaveMeter,
     connection_tip,
     tooltip_lines,
 )
@@ -221,7 +222,7 @@ class MainWindow:
         # One button is the whole control: the light, the state and the play / stop glyph. Pressing it
         # starts or stops listening; it fills with the accent colour while listening.
         self.dot = QLabel("●")
-        self.state_label = QLabel()
+        self.wave = WaveMeter()                       # the app icon's sound lines: still and muted, green and moving while listening
         self.countdown_label = QLabel()               # "Stops in 7s": the quiet timer counting down (hidden when not running)
         self.countdown_label.setProperty("countdown", True)
         self.countdown_label.setVisible(False)
@@ -234,7 +235,7 @@ class MainWindow:
         inner = QHBoxLayout(self.toggle_button)
         inner.setContentsMargins(16, 0, 14, 0)         # room before the light
         inner.setSpacing(8)
-        for part, stretch in ((self.dot, 0), (self.toggle_icon, 0), (self.countdown_label, 0), (None, 1), (self.state_label, 0)):
+        for part, stretch in ((self.dot, 0), (self.toggle_icon, 0), (self.countdown_label, 0), (None, 1), (self.wave, 0)):
             if part is None:
                 inner.addStretch(stretch)
                 continue
@@ -431,7 +432,7 @@ class MainWindow:
     def set_mini(self, mini: bool, notify: bool = False) -> None:
         """Switch between the full window and a small always-handy overlay.
 
-        The mini view keeps only a status row (light, state text, the Needs-sorting
+        The mini view keeps only a status row (light, sound lines, the Needs-sorting
         count, Start / Stop and a way back) and the row being built; the log, the
         saved-row line, the workbook details, Undo and Settings are hidden. It floats
         above other windows (unless turned off) so it can sit over a spreadsheet.
@@ -687,7 +688,6 @@ class MainWindow:
         if self._window is None:
             return
         full = not self._view_mini
-        self.state_label.setVisible(True)                                   # "Listening" / "Not Listening" shows in both views
         self._render_countdown()
         self.connection_chip.setVisible(full and self._not_connected)       # inside the workbook picker ...
         self.mini_chip.setVisible(self._view_mini and self._not_connected)  # ... or alone in the mini view
@@ -1100,7 +1100,7 @@ class MainWindow:
         """Update the active light, label and button."""
         self._listening = active
         self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
-        self.state_label.setText("Listening" if active else "Not Listening")
+        self.wave.set_active(active)
         self.toggle_button.setToolTip("Stop Listening" if active else "Start Listening")
         self.toggle_button.setAccessibleName("Stop Listening" if active else "Start Listening")
         self.toggle_button.setProperty("accent", active)          # filled with the accent while listening,
@@ -1135,7 +1135,6 @@ class MainWindow:
         if self._window is None:
             return
         color = self._on_accent if self._listening else self._accent
-        self.state_label.setStyleSheet(f"color: {self._on_accent};" if self._listening else "")   # the fill is the accent
         self.toggle_icon.setPixmap(make_icon("stop" if self._listening else "play", color, 16).pixmap(16, 16))
 
     def refresh_icons(self, text_color: str = "#1F1E1D", on_accent: str = "#FFFFFF",
@@ -1155,6 +1154,9 @@ class MainWindow:
         self.help_button.setIcon(make_icon("question", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self.open_file_button.setIcon(make_icon("folder", text_color, 18))
+        muted = QColor(text_color)
+        muted.setAlpha(110)
+        self.wave.set_colors(muted.name(QColor.NameFormat.HexArgb), COLOR_ACTIVE)
         self._draw_toggle_icon()
 
     def set_undo_count(self, count: int) -> None:

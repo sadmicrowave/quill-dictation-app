@@ -2,7 +2,7 @@
 
 ## 🚦 Quick checks
 
-1. Is the button showing **Listening**?
+1. Is the button filled and are its sound lines green and moving? (Still and grey means Quill is not listening.)
 2. Is a spreadsheet open? (no orange *File stream not connected*)
 3. Is Quill allowed to use the **microphone**?
 4. Is your volume up?

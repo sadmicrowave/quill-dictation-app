@@ -179,7 +179,7 @@ A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a pa
 
 - **Menu bar / tray badge.** While terms wait, the icon carries a round badge with the count ("9+" past nine) in the **accent colour**, like the unread count on other menu bar apps. The tray menu also gets a **Needs sorting (n)…** line that opens the list. Both vanish at zero.
 - **Needs sorting button.** Filled with the accent colour (like Start/Stop) while terms wait, with the count as an inline **pill** in the sentence: `Needs sorting (3)`. The pill is painted by hand (`ui/widgets.Pill`) because a style-sheet radius was square on macOS.
-- **Start / Stop is one button** (`toggle_button`): the light, `Listening` / `Not Listening` and a play or stop glyph live inside it, and it fills with the accent colour while listening. The file row's **Open File** is an icon-only folder button the height of the picker.
+- **Start / Stop is one button** (`toggle_button`): the light, a play or stop glyph and the sound lines (`WaveMeter`: grey and still when idle, green and moving while listening, in place of the old Listening / Not Listening text) live inside it, and it fills with the accent colour while listening. The file row's **Open File** is an icon-only folder button the height of the picker.
 - **Icons.** Settings is an icon-only (sliders) button with a tooltip and accessible name. The icons are SVG redrawn in the theme's colours (`ui/icons.py`).
 - **Last saved** is a smaller italic supporting note (2 pt under the text size, muted colour).
 - **Window opacity** (Settings, 55 to 100 %, default 100) fades the *whole* window (`setWindowOpacity`): text, inputs, buttons, selection boxes and text areas all follow it together.

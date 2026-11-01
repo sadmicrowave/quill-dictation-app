@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QRectF, Qt, Signal
+import math
+
+from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
-from PySide6.QtWidgets import QLabel, QSizePolicy
+from PySide6.QtWidgets import QLabel, QSizePolicy, QWidget
 
 #: Lines of the full text shown in a tooltip before "…and n more".
 TOOLTIP_LINES = 40
@@ -49,6 +51,75 @@ def tooltip_lines(items: list[tuple[str, str]], limit: int = TOOLTIP_LINES) -> s
     if len(items) > limit:
         lines.append(f"…and {len(items) - limit} more")
     return "\n".join(lines)
+
+
+class WaveMeter(QWidget):
+    """The sound lines of the app icon: still and muted while idle, green and moving while listening.
+
+    The animation is a loop (each line rises and falls a little after its neighbour) driven by a timer that
+    only runs while the widget is :meth:`set_active`.
+    """
+
+    HEIGHTS = (8, 16, 24, 34, 22, 14, 8)         # the app icon's lines (relative heights)
+    FRAME_MS = 40
+    SPEED = 0.16                                 # radians per frame
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._active = False
+        self._phase = 0.0
+        self._idle, self._live = QColor("#8e8e93"), QColor("#34c759")
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.FRAME_MS)
+        self._timer.timeout.connect(self._tick)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setFixedSize(QSize(34, 22))
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    def set_colors(self, idle: str, live: str) -> None:
+        """*idle* is the muted still colour, *live* the colour while listening."""
+        self._idle, self._live = QColor(idle), QColor(live)
+        self.update()
+
+    def set_active(self, active: bool) -> None:
+        """Start (green, moving) or stop (muted, still)."""
+        self._active = active
+        self._phase = 0.0
+        if active:
+            self._timer.start()
+        else:
+            self._timer.stop()
+        self.update()
+
+    def _tick(self) -> None:
+        self._phase = (self._phase + self.SPEED) % (2 * math.pi)
+        self.update()
+
+    def bar_heights(self) -> list[float]:
+        """Each line's height as a share of the widget's (1 = full)."""
+        top = max(self.HEIGHTS)
+        shares = []
+        for i, h in enumerate(self.HEIGHTS):
+            base = h / top
+            if self._active:
+                base *= 0.55 + 0.45 * (0.5 + 0.5 * math.sin(self._phase - i * 0.8))
+            shares.append(max(base, 0.16))
+        return shares
+
+    def paintEvent(self, event) -> None:                             # noqa: N802 (Qt name)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._live if self._active else self._idle)
+        count, width = len(self.HEIGHTS), 3.0
+        step = (self.width() - width) / (count - 1)
+        for i, share in enumerate(self.bar_heights()):
+            h = share * (self.height() - 2)
+            painter.drawRoundedRect(QRectF(i * step, (self.height() - h) / 2, width, h), width / 2, width / 2)
+        painter.end()
 
 
 class Pill(QLabel):

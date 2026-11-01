@@ -59,7 +59,7 @@ class TestMiniWindow(unittest.TestCase):
     def test_the_mini_view_keeps_the_buttons_and_the_way_back(self):
         self.w.set_mini(True)
         _app.processEvents()
-        for name in ("dot", "state_label", "toggle_button", "sorting_button", "mini_button"):
+        for name in ("dot", "wave", "toggle_button", "sorting_button", "mini_button"):
             self.assertTrue(shown(self.w, name), name)
 
     def test_the_default_mini_size_has_no_stream_or_row_but_a_taller_one_does(self):
@@ -106,13 +106,13 @@ class TestMiniWindow(unittest.TestCase):
         _app.processEvents()
         self.assertEqual((self.w.widget.width(), self.w.widget.height()), (390, 310))
 
-    def test_the_state_text_is_still_there_in_the_mini_view(self):
+    def test_the_wave_is_still_there_in_the_mini_view(self):
         self.w.set_mini(True)
         _app.processEvents()
-        self.assertEqual(self.w.state_label.text(), "Not Listening")
+        self.assertFalse(self.w.wave.active)
         self.w.set_listening_indicator(True)
-        self.assertEqual(self.w.state_label.text(), "Listening")
-        self.assertTrue(shown(self.w, "state_label"))
+        self.assertTrue(self.w.wave.active)
+        self.assertTrue(shown(self.w, "wave"))
 
     def test_the_buttons_shrink_to_icons(self):
         self.w.set_mini(True)
@@ -135,7 +135,7 @@ class TestMiniWindow(unittest.TestCase):
         self.w.set_mini(False)
         _app.processEvents()
         self.assertEqual(self.w.widget.size(), full)
-        self.assertEqual(self.w.state_label.text(), "Not Listening")
+        self.assertFalse(self.w.wave.active)
 
     def test_the_needs_sorting_count_moves_into_the_status_row(self):
         row = self.w._status_row

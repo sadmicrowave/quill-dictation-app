@@ -51,7 +51,7 @@ class TestIcons(unittest.TestCase):
         start = w.toggle_icon.pixmap().toImage()
         w.set_listening_indicator(True)
         stop = w.toggle_icon.pixmap().toImage()
-        self.assertEqual(w.state_label.text(), "Listening")
+        self.assertTrue(w.wave.active)
         self.assertNotEqual(start, stop)
 
     def test_icons_take_the_theme_colours(self):

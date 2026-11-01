@@ -11,7 +11,7 @@ Speak naturally. Quill picks out the words it knows.
 | **"Next row"** | saves the row, starts a new one. Ending with just **"next"**, **"next item"** or **"stop"** does the same |
 | **"Stop listening"** | stops |
 
-> 💡 Prefer buttons? Press the wide **Start / Stop** button, or use the menu bar icon.
+> 💡 Prefer buttons? Press the wide **Start / Stop** button, or use the menu bar icon. Its sound lines are grey and still when Quill is not listening, and turn green and move while it is.
 
 ## ✍️ Describing an item
 

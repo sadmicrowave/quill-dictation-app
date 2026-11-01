@@ -60,13 +60,26 @@ class TestStartButton(unittest.TestCase):
     def test_the_play_icon_follows_the_theme_colour(self):
         self.assertEqual(self.icon_colour(), "#7A55C2")
 
-    def test_the_word_listening_is_white_on_the_filled_button_in_any_theme(self):
-        self.w.refresh_icons("#222222", "#FFFFFF", "#7A55C2")
+    def test_the_wave_is_muted_and_still_until_listening_then_green_and_moving(self):
+        from quill.ui.main_window import COLOR_ACTIVE
+        wave = self.w.wave
+        self.assertFalse(wave.active)
+        self.assertFalse(wave._timer.isActive())
+        idle = wave.bar_heights()
         self.w.set_listening_indicator(True)
-        self.assertIn("#FFFFFF", self.w.state_label.styleSheet().upper())
+        self.assertTrue(wave.active and wave._timer.isActive())
+        self.assertEqual(wave._live.name().lower(), COLOR_ACTIVE)
+        wave._tick()
+        self.assertNotEqual(idle, wave.bar_heights())               # it moves
         self.w.set_listening_indicator(False)
-        self.assertEqual(self.w.state_label.styleSheet(), "")
+        self.assertFalse(wave._timer.isActive())
+        self.assertEqual(idle, wave.bar_heights())                  # and is back to rest
+        self.assertLess(wave._idle.alpha(), 255)                    # muted
 
+    def test_there_is_no_listening_text_any_more(self):
+        self.assertFalse(hasattr(self.w, "state_label"))
+        self.w.set_listening_indicator(True)
+        self.assertEqual(self.w.toggle_button.toolTip(), "Stop Listening")
 
 class TestRowTable(unittest.TestCase):
     def test_no_line_under_the_last_row(self):
