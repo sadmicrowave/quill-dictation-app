@@ -189,7 +189,7 @@ class TestTwoPhaseAnimation(unittest.TestCase):
     def setUp(self):
         self.w = MainWindow()
         self.w.setup()
-        self.w.widget.resize(380, 620)
+        self.w.widget.resize(460, 620)
         self.w.widget.show()
         _app.processEvents()
         MainWindow.animation_ms = 150
@@ -218,7 +218,7 @@ class TestTwoPhaseAnimation(unittest.TestCase):
         self.wait()
         self.assertFalse(self.w._view_mini)
         self.assertTrue(self.w.log_toggle.isVisibleTo(self.w.widget))
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (380, 620))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (460, 620))
 
     def test_the_height_passes_through_in_between_values(self):
         seen = []
@@ -236,7 +236,7 @@ class TestTwoPhaseAnimation(unittest.TestCase):
         self.w.set_mini(False)
         self.wait()
         self.assertFalse(self.w._view_mini)
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (380, 620))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (460, 620))
 
     def test_the_wanted_state_is_known_immediately(self):
         self.w.set_mini(True)
@@ -424,10 +424,6 @@ class TestAutoRefresh(RefreshCase):
     def test_connecting_starts_from_the_file_as_it_is(self):
         self.assertEqual(self.app._seen_mtime, os.stat(self.path).st_mtime_ns)
 
-    def test_the_sheet_label_updates_after_a_refresh(self):
-        self.edit_file()
-        self.app.poll_workbooks()
-        self.assertTrue(self.app.window.sheet_label.text().startswith("Sheet:"))
 
 
 if __name__ == "__main__":

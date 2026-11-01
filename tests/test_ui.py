@@ -28,7 +28,6 @@ class TestMainWindow(unittest.TestCase):
             on_toggle=lambda a: self.calls.append(("toggle", a)),
             on_settings=lambda: self.calls.append(("settings",)),
             on_workbook=lambda n: self.calls.append(("workbook", n)),
-            on_download_model=lambda: self.calls.append(("download",)),
         )
         self.w.setup()
 
@@ -63,8 +62,12 @@ class TestMainWindow(unittest.TestCase):
 
     def test_log_is_timestamped_and_bounded(self):
         self.w.append_log("hello")
-        self.assertRegex(self.w.log.toPlainText(), r"^\d\d:\d\d:\d\d  hello$")
-        self.assertEqual(self.w.log.maximumBlockCount(), 500)
+        self.assertRegex(self.w.log.toPlainText(), r"^\d\d:\d\d:\d\d\thello$")
+        for i in range(600):
+            self.w.append_log(f"line {i}")
+        self.assertEqual(self.w.log.document().blockCount(), 500)
+        self.assertTrue(self.w.log.toPlainText().endswith("line 599"))
+        self.assertNotIn("line 99\n", self.w.log.toPlainText())
 
     def test_workbook_picker(self):
         self.w.update_workbooks(["a.xlsx", "b.xlsx"], "b.xlsx")
@@ -82,17 +85,9 @@ class TestMainWindow(unittest.TestCase):
         self.w.update_workbooks(["a.xlsx"], "a.xlsx")
         self.assertEqual(self.calls, [])
 
-    def test_sheet_saved_and_footer(self):
-        self.w.update_sheet("Inventory")
+    def test_last_saved(self):
         self.w.set_last_saved("Row 4")
-        self.w.set_footer("No model", offer_download=True)
-        self.assertEqual(self.w.sheet_label.text(), "Sheet: Inventory")
         self.assertEqual(self.w.last_label.text(), "Last Saved: Row 4")
-        self.assertFalse(self.w.download_button.isHidden())
-        self.w.download_button.click()
-        self.assertIn(("download",), self.calls)
-        self.w.set_footer("")
-        self.assertTrue(self.w.download_button.isHidden())
 
     def test_show_before_setup_is_harmless(self):
         MainWindow().show()

@@ -213,6 +213,16 @@ class GridBridge(WorkbookBridge):
     # Search                                                               #
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _is_number(value: object) -> bool:
+        """Whether a cell holds a number (a file bridge whose cells are all text overrides this)."""
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    @staticmethod
+    def _is_date(value: object) -> bool:
+        """Whether a cell holds a date."""
+        return isinstance(value, (dt.date, dt.datetime))
+
     #: A column is numeric when at least this share of its entries are numbers.
     _NUMERIC_SHARE = 0.8
     #: Rows sampled below the header when judging whether a column is numeric.
@@ -237,8 +247,7 @@ class GridBridge(WorkbookBridge):
             if is_blank(header):
                 continue
             entries = [r[index] for r in data if not is_blank(r[index])]
-            numbers = [v for v in entries
-                       if isinstance(v, (int, float)) and not isinstance(v, bool)]
+            numbers = [v for v in entries if self._is_number(v)]
             if entries and len(numbers) / len(entries) >= self._NUMERIC_SHARE:
                 found.append(str(header).strip())
         return found
@@ -262,7 +271,7 @@ class GridBridge(WorkbookBridge):
             if is_blank(header):
                 continue
             entries = [r[index] for r in data if not is_blank(r[index])]
-            dates = [v for v in entries if isinstance(v, (dt.date, dt.datetime))]
+            dates = [v for v in entries if self._is_date(v)]
             words = set(re.findall(r"[a-z]+", str(header).lower()))
             if (entries and len(dates) / len(entries) >= self._NUMERIC_SHARE) or (not entries and words & self._DATE_HEADER_WORDS):
                 found.append(str(header).strip())

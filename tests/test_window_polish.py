@@ -51,17 +51,13 @@ class TestConnectionChip(unittest.TestCase):
         w.set_not_connected(True)
         _app.processEvents()
         self.assertTrue(w.connection_chip.isVisibleTo(w.widget))
-        self.assertFalse(w.sheet_label.isVisibleTo(w.widget))             # no "Sheet: –" next to it
 
-    def test_hidden_again_and_the_sheet_name_returns_once_connected(self):
+    def test_hidden_again_once_connected(self):
         w = window()
         w.set_not_connected(True)
         w.set_not_connected(False)
-        w.update_sheet("Inventory")
         _app.processEvents()
         self.assertFalse(w.connection_chip.isVisibleTo(w.widget))
-        self.assertTrue(w.sheet_label.isVisibleTo(w.widget))
-        self.assertEqual(w.sheet_label.text(), "Sheet: Inventory")
 
     def test_the_tooltip_explains_in_technical_third_person_terms(self):
         hint = NOT_CONNECTED_HINT
@@ -115,8 +111,6 @@ class TestConnectionChip(unittest.TestCase):
     def test_nothing_about_the_connection_appears_at_the_bottom(self):
         w = window()
         w.set_not_connected(True)
-        self.assertEqual(w.footer.text(), "")
-        self.assertFalse(w.footer.isVisibleTo(w.widget))
 
     def test_chip_style_is_a_pill_in_the_theme_colour_in_both_themes(self):
         for dark in (False, True):
@@ -155,23 +149,12 @@ class TestLogAtTheBottom(unittest.TestCase):
 
     def test_nothing_at_all_is_below_the_log_heading(self):
         w = window(log_collapsed=True)
-        w.set_footer("Downloading speech model…", offer_download=True)
         w.set_sorting_count(2)
         w.set_undo_count(1)
         _app.processEvents()
         lowest = max(child.mapTo(w.root, child.rect().bottomLeft()).y()
                      for child in w.root.children() if hasattr(child, "isVisibleTo") and child.isVisibleTo(w.root))
         self.assertEqual(lowest, w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y())
-
-    def test_status_messages_sit_above_the_log(self):
-        w = window()
-        layout = w.root.layout()
-        w.set_footer("Some status", offer_download=True)
-        _app.processEvents()
-        top = lambda widget: widget.mapTo(w.root, widget.rect().topLeft()).y()        # noqa: E731
-        self.assertLess(top(w.footer), top(w.log_toggle))
-        self.assertLess(top(w.download_button), top(w.log_toggle))
-        self.assertEqual(layout.indexOf(w.log), layout.count() - 1)
 
     def test_opening_the_log_restores_the_normal_margin_and_closing_shrinks_it_again(self):
         w = window(log_collapsed=True)
@@ -379,21 +362,6 @@ class TestAlignment(unittest.TestCase):
             self.w.apply_density(spacing)
             _app.processEvents()
             self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.toggle_button, self.w.root), spacing)
-
-    def test_the_sheet_name_is_left_aligned_under_the_file_box_with_more_room_in_comfortable(self):
-        gaps = {}
-        for spacing in ("compact", "comfortable"):
-            self.w.apply_density(spacing)
-            self.w.update_sheet("Inventory")
-            _app.processEvents()
-            label = self.w.sheet_label
-            self.assertTrue(bool(label.alignment() & Qt.AlignmentFlag.AlignLeft), spacing)
-            box_left = self.w.workbook_combo.mapTo(self.w.root, QPoint(0, 0)).x()
-            self.assertGreater(label.mapTo(self.w.root, QPoint(0, 0)).x(), box_left - 1, spacing)
-            self.assertLess(label.x(), 40, spacing)                            # at the left, not the right
-            combo_bottom = self.w.workbook_combo.mapTo(self.w.root, QPoint(0, self.w.workbook_combo.height())).y()
-            gaps[spacing] = (label.mapTo(self.w.root, QPoint(0, 0)).y() - combo_bottom, label.contentsMargins().bottom())
-        self.assertGreater(gaps["comfortable"][0] + gaps["comfortable"][1], gaps["compact"][0] + gaps["compact"][1] + 4)
 
     def test_open_file_ends_where_start_ends(self):
         for spacing in ("compact", "comfortable"):

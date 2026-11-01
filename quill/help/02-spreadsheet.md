@@ -18,10 +18,19 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 No spreadsheet app open? Quill can fill a file by itself.
 
 1. Press the **folder** button (or **File > Open Spreadsheet File…**).
-2. Pick an `.xlsx` file.
+2. Pick an `.xlsx` or a `.csv` file.
 3. Dictate. Quill remembers the file next time.
 
 **File > Use Open Excel Workbook** goes back to live Excel.
+
+## 📄 Working on a .csv file
+
+A `.csv` file is plain text with no drop-down lists, so Quill learns from the file itself:
+
+- Each column whose entries **repeat** (not numbers, not dates, not long sentences) becomes a list. Its different entries, with duplicates removed, are what Quill matches your words against.
+- In a **brand new** file, with only a heading row, every word you say for a text column goes to the **Term Helper** to be sorted. That is how its lists begin.
+- **Search is not available** (a `.csv` file cannot be filtered). Saying "search for…" tells you so in the **Log**.
+- Rows are added to the end of the file. What was already there is left exactly as it was.
 
 ## 📑 Which sheet gets the row
 
@@ -31,12 +40,13 @@ Always the sheet that is **open** (the active tab). Quill never tries another sh
 
 ![Not connected](images/not-connected.png)
 
-- **Sheet:** the active sheet's name, in italics at the right under the file box.
 - **File stream not connected**: no sheet found yet. Hover it for what to do.
 - **The box that says "Words you say appear here…"**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
 - **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover it).
 - **Last Saved**: the row written last, on the right of the **Log** line. It only appears after the first save.
-- **Log**: click to open a record of what happened.
+- **Log**: click to open a record of what happened. Each line starts with its time; a long message wraps back to where the message starts, not under the time.
+
+The window opens at the smallest size it can be (and never gets smaller). The mini view remembers its own size; if you close Quill in the mini view, it opens in the mini view again.
 
 ## 🔘 The title bar
 

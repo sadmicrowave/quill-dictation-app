@@ -16,8 +16,8 @@ from tests.test_sorting import SENTENCE, DemoCase
 
 _app = QApplication.instance() or QApplication([])
 
-HIDDEN_IN_MINI = ("settings_button", "workbook_row", "sheet_label",
-                  "last_label", "log_toggle", "log", "footer", "download_button", "undo_button")
+HIDDEN_IN_MINI = ("settings_button", "workbook_row",
+                  "last_label", "log_toggle", "log", "undo_button")
 
 
 def shown(window, name):
@@ -29,9 +29,8 @@ class TestMiniWindow(unittest.TestCase):
         self.toggled = []
         self.w = MainWindow(on_mini_toggled=self.toggled.append)
         self.w.setup()
-        self.w.widget.resize(360, 620)
+        self.w.widget.resize(460, 620)
         self.w.widget.show()
-        self.w.set_footer("Some status", offer_download=True)
         self.w.set_undo_count(2)
         self.w.set_sorting_count(3)
         self.w.set_last_saved("Row 4", {"Type": "Fern"})
@@ -188,11 +187,11 @@ class TestMiniWindow(unittest.TestCase):
         self.assertFalse(shown(self.w, "log"))
         self.assertTrue(shown(self.w, "log_toggle"))
 
-    def test_footer_download_and_undo_come_back(self):
+    def test_undo_comes_back(self):
         self.w.set_mini(True)
         self.w.set_mini(False)
         _app.processEvents()
-        for name in ("footer", "download_button", "undo_button"):
+        for name in ("undo_button",):
             self.assertTrue(shown(self.w, name), name)
 
     def test_button_in_the_status_row_toggles_and_reports(self):
@@ -252,7 +251,7 @@ class TestResizeAnimation(unittest.TestCase):
     def setUp(self):
         self.w = MainWindow()
         self.w.setup()
-        self.w.widget.resize(360, 620)
+        self.w.widget.resize(460, 620)
         self.w.widget.show()
         MainWindow.animation_ms = 120
         _app.processEvents()
@@ -278,7 +277,7 @@ class TestResizeAnimation(unittest.TestCase):
         self.w.set_mini(False)
         self.assertLess(self.w.widget.height(), 200, "starts from the small size")
         self.wait()
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (360, 620))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (460, 620))
 
     def test_toggling_quickly_ends_in_the_right_place(self):
         for mini in (True, False, True):
@@ -290,7 +289,7 @@ class TestResizeAnimation(unittest.TestCase):
         self.w.set_mini(True)
         self.w.set_mini(False)                       # before the first animation finished
         self.wait()
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (360, 620))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (460, 620))
 
     def test_opening_the_log_slides_it_up_without_moving_the_window(self):
         self.w.set_log_collapsed(True)
@@ -428,11 +427,11 @@ class TestRememberedSize(unittest.TestCase):
         self.assertEqual(self.sizes[-1], (430, 640))
 
     def test_a_remembered_size_is_used_and_is_where_the_mini_view_returns_to(self):
-        self.assertTrue(self.w.restore_size(420, 600))
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (420, 600))
+        self.assertTrue(self.w.restore_size(500, 600))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (500, 600))
         self.w.set_mini(True)
         self.w.set_mini(False)
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (420, 600))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (500, 600))
 
     def test_nothing_saved_or_a_tiny_size_changes_nothing(self):
         before = self.w.widget.size()
@@ -456,7 +455,7 @@ class TestVoiceStream(unittest.TestCase):
     def setUp(self):
         self.w = MainWindow()
         self.w.setup()
-        self.w.widget.resize(360, 620)
+        self.w.widget.resize(460, 620)
         self.w.widget.show()
         from quill.stream import WordMatch
         self.w.set_stream_classifier(

@@ -51,7 +51,6 @@ def main() -> None:
     main_window = as_native(MainWindow())
     main_window.setup()
     main_window.update_workbooks(["Apparel Inventory.xlsx"], "Apparel Inventory.xlsx")
-    main_window.update_sheet("Inventory")
     main_window.set_listening_indicator(True)
     colors = colors_for(True, "violet")
     main_window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])

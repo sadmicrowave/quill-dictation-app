@@ -34,7 +34,7 @@ Everything you say shows up, word by word and in italics, in the box under the f
 - Everyday words (*got*, *really*) are skipped, so Quill won't ask about them.
 - A word that sounds like one of your column names or list values is taken as that word. *"Waste"* becomes *Waist* if your sheet has a Waist column. The Log notes it.
 - A word Quill doesn't know goes straight onto the **Term Helper** button as soon as the phrase ends.
-- Disagree with a match? Hover its line in the grid: a round **x** appears at the right (it turns red under the pointer). Click it and the line is removed, its pills turn grey again and it will not be written.
+- Disagree with a match? Hover its line in the grid: a round **x** appears at the right (it turns red under the pointer). Click it and the line is removed and will not be written.
 
 ## 📅 Dates
 

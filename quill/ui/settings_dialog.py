@@ -119,6 +119,14 @@ def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel,
     return slider, label, box
 
 
+#: The preferences the controls edit (Cancel puts back just these).
+EDITED_PREFERENCES = (
+    "theme", "speak_sort_prompts", "auto_voice_sort", "mic_always_on", "auto_stop", "auto_stop_seconds",
+    "mini_on_top", "hide_dock_icon", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity",
+    "blur", "history_limit", "feedback", "sound_pack", "echo_style",
+)
+
+
 class SettingsDialog:
     """Modal editor for keywords and preferences.
 
@@ -139,7 +147,9 @@ class SettingsDialog:
         return GROUPS + ([("Account", ["Account"])] if self.SHOW_ACCOUNT else [])
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
-                 on_open_logs=None, on_help=None) -> None:
+                 on_open_logs=None, on_help=None, on_download_model=None, model_installed=None) -> None:
+        self._on_download_model = on_download_model or (lambda: None)
+        self._model_installed = model_installed or (lambda: True)
         self._on_help = on_help
         self._on_done = None                      # called when the non-modal window closes (see open)
         self._on_open_logs = on_open_logs or self._open_log_folder
@@ -176,6 +186,8 @@ class SettingsDialog:
         self.mini_top_check: ToggleSwitch | None = None
         self.dock_check: ToggleSwitch | None = None
         self.sorting_opacity_check: ToggleSwitch | None = None
+        self.model_button: QPushButton | None = None
+        self.model_row: SettingRow | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -366,8 +378,9 @@ class SettingsDialog:
     def revert(self) -> None:
         """Cancel: put the settings back exactly as they were when the window opened."""
         prefs = self._settings.preferences
-        prefs.clear()
-        prefs.update(copy.deepcopy(self._original))
+        for key in EDITED_PREFERENCES:           # only what this window edits: the window may have changed size or view meanwhile
+            if key in self._original:
+                prefs[key] = copy.deepcopy(self._original[key])
         self._on_change()
 
     def _store_preferences(self) -> None:
@@ -511,6 +524,23 @@ class SettingsDialog:
         self.rows.append(row)
         return row
 
+    def set_model_state(self, note: str, busy: bool) -> None:
+        """Show whether the speech model is installed, or how its download is going (*note*, while *busy*)."""
+        if self.model_row is None:
+            return
+        installed = bool(self._model_installed())
+        if note:
+            text = note
+        elif installed:
+            text = "Installed. Quill listens on this computer; nothing you say is sent anywhere."
+        else:
+            text = ("Not installed. Quill needs it to hear you. It is about 40 MB, downloaded once, and "
+                    "then works without internet.")
+        self.model_row.description_label.setText(text)
+        self.model_row.description_label.setVisible(True)
+        self.model_button.setEnabled(not busy and not installed)
+        self.model_button.setText("Installed" if installed and not busy else "Download")
+
     def _build_pages(self) -> None:
         prefs = self._settings.preferences
         # --- General
@@ -562,6 +592,12 @@ class SettingsDialog:
         logs.clicked.connect(lambda: self._on_open_logs())
         self._add("General", page, "Troubleshooting",
                   "If something goes wrong, the log file shows what happened.", logs, "log file errors diagnostics")
+        self.model_button = QPushButton("Download")
+        self.model_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.model_button.clicked.connect(lambda: self._on_download_model())
+        self.model_row = self._add("General", page, "Speech Model", "", self.model_button,
+                                   "download vosk offline recognition voice model install")
+        self.set_model_state("", False)
         self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
         self.history_spin.setValue(int(prefs["history_limit"]))

@@ -2,7 +2,7 @@
 
 Layout (~340 px wide):
   status row:  [● Listening]  [Start/Stop]  [Settings…]
-  workbook row: [workbook picker]               Sheet: <name>
+  workbook row: [workbook picker]
   Current row (the fields being built, one line per column)
   Last saved row
   Scrolling action log
@@ -26,7 +26,7 @@ from PySide6.QtCore import (
     QTimer,
     QVariantAnimation,
 )
-from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QColor, QFontMetrics, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -36,9 +36,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QMainWindow,
-    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QTextEdit,
     QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
@@ -92,10 +92,12 @@ ROW_MAX_MINI = 66
 LOG_BOTTOM_MARGIN = 7
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
+MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and opens at it the first time
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
+LOG_TIME_GAP = 12           # px between the time and the message in the log
 
 #: How each kind of log message is shown: a label after the time (none for plain information) and a colour.
 LOG_LEVELS = {"info": (None, None), "warning": ("Warning", "#D98E04"), "error": ("Error", "#E5484D")}
@@ -109,7 +111,6 @@ class MainWindow:
             *desired* listening state.
         on_settings: Called when the user opens Settings.
         on_workbook: Called with a workbook name picked in the combo box.
-        on_download_model: Called when the user asks to download the speech model.
         on_sorting: Called when the user opens the Needs-sorting list.
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
         on_log_toggled: Called with True/False when the user collapses/expands the log.
@@ -126,7 +127,6 @@ class MainWindow:
         on_toggle: Callable[[bool], None] | None = None,
         on_settings: Callable[[], None] | None = None,
         on_workbook: Callable[[str], None] | None = None,
-        on_download_model: Callable[[], None] | None = None,
         on_sorting: Callable[[], None] | None = None,
         on_undo: Callable[[], None] | None = None,
         on_log_toggled: Callable[[bool], None] | None = None,
@@ -144,7 +144,6 @@ class MainWindow:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
         self._on_workbook = on_workbook or (lambda name: None)
-        self._on_download_model = on_download_model or (lambda: None)
         self._on_sorting = on_sorting or (lambda: None)
         self._on_undo = on_undo or (lambda: None)
         self._on_log_toggled = on_log_toggled or (lambda collapsed: None)
@@ -160,11 +159,9 @@ class MainWindow:
         self._native_mini_button = False           # True once the title bar has its own resize icon
         self.native_window_recreated = False       # set if a window flag had to be changed the old way
         self._mini_on_top = mini_on_top
-        self._full_size = QSize(360, 520)        # the size to return to when leaving the mini view
+        self._full_size = QSize(*MIN_WINDOW)     # the size to return to when leaving the mini view
         self._undo_count = 0
         self._sorting_count = 0
-        self._footer_text = ""
-        self._offer_download = False
         self._not_connected = False
         self._native_settings_button = False
         self._native_undo_button = False
@@ -202,7 +199,7 @@ class MainWindow:
         # window; set later it is ignored and the window stays solid.
         window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         window.setWindowTitle("Quill")
-        window.resize(360, 520)
+        window.resize(*MIN_WINDOW)
         self._size_timer = QTimer(window)                       # tells the app the window's size once resizing stops
         self._size_timer.setSingleShot(True)
         self._size_timer.setInterval(SIZE_SETTLE_MS)
@@ -285,9 +282,6 @@ class MainWindow:
         self.workbook_combo.activated.connect(
             lambda index: self._on_workbook(self.workbook_combo.itemText(index))
         )
-        self.sheet_label = QLabel("Sheet: –")
-        self.sheet_label.setProperty("note", True)               # small, italic, muted: it sits under the file box
-        self.sheet_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         # Shown instead of the sheet name while no spreadsheet is connected: a technical warning chip.
         # (It sits inside the empty workbook picker; the mini view, which has no picker, has its own.)
         self.workbook_row = QWidget()                   # the picker row and the sheet name under it; the mini view hides it whole
@@ -297,7 +291,7 @@ class MainWindow:
         self.mini_chip = self._make_chip(None)
         self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
         self.open_file_button.setProperty("iconOnly", True)
-        self.open_file_button.setToolTip("Open Spreadsheet File\nWork on an .xlsx file directly (no Excel needed)")
+        self.open_file_button.setToolTip("Open Spreadsheet File\nWork on an .xlsx or .csv file directly (no Excel needed)")
         self.open_file_button.setAccessibleName("Open Spreadsheet File")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self._on_open_file())
@@ -310,8 +304,6 @@ class MainWindow:
         self._workbook_block = QVBoxLayout(self.workbook_row)
         self._workbook_block.setContentsMargins(0, 0, 0, 0)
         self._workbook_block.addWidget(self.picker_row)
-        self._workbook_block.addWidget(self.sheet_label, 0, Qt.AlignmentFlag.AlignLeft)   # under the left end of the file box
-        self._tighten_sheet_label()
         layout.addWidget(self.workbook_row)
         layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -365,17 +357,6 @@ class MainWindow:
         layout.addWidget(self.sorting_button)
         self._sorting_index = layout.indexOf(self.sorting_button)
 
-        # --- status messages (the model download, and so on) sit above the log, so that
-        # nothing is ever below "Log" when it is minimized
-        self.footer = QLabel()
-        self.footer.setWordWrap(True)
-        self.footer.setVisible(False)
-        self.download_button = QPushButton("Download Speech Model")
-        self.download_button.clicked.connect(lambda: self._on_download_model())
-        self.download_button.setVisible(False)
-        layout.addWidget(self.footer)
-        layout.addWidget(self.download_button)
-
         # --- log (last). The Current Row box takes extra height when the window grows (and shares it with
         # the log while that is open), so no gaps open between sections and "Log" stays at the bottom.
         self.log_toggle = self._section_toggle("Show or hide the log")
@@ -383,9 +364,9 @@ class MainWindow:
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         footer_row.addWidget(self.last_label, 1)
         layout.addLayout(footer_row)
-        self.log = QPlainTextEdit()
+        self.log = QTextEdit()                # (not the plain-text kind: it can hang a long line's wrap under the message)
         self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(MAX_LOG_LINES)
+        self.log.document().setUndoRedoEnabled(False)
         layout.addWidget(self.log)
 
         # File menu (the global menu bar on macOS): Open Spreadsheet File, and back to live Excel.
@@ -583,22 +564,10 @@ class MainWindow:
             return
         self._density = spacing or ""
         apply_spacing(self._window, spacing)
-        self._tighten_sheet_label()
         if self._view_mini:
             self._set_margins(True)
         else:
             self._log_bottom_margin()
-
-    #: The sheet name's gap under the file box, and the space left of and below it, per spacing setting (px).
-    SHEET_LABEL_GAPS = {"compact": (1, 8, 0), "comfortable": (6, 10, 5)}
-
-    def _tighten_sheet_label(self) -> None:
-        """Place the sheet name just under the file box: close in compact spacing, with more room in comfortable."""
-        app = QApplication.instance()
-        mode = self._density or (str(app.property("quillSpacing")) if app is not None else "compact")
-        gap, left, below = self.SHEET_LABEL_GAPS.get(mode, self.SHEET_LABEL_GAPS["compact"])
-        self._workbook_block.setSpacing(gap)
-        self.sheet_label.setContentsMargins(left, 0, 0, below)
 
     def _set_margins(self, mini: bool) -> None:
         if mini:
@@ -606,7 +575,6 @@ class MainWindow:
             self._layout.setSpacing(6)
         else:
             apply_spacing(self._window)
-            self._tighten_sheet_label()
             self._log_bottom_margin()
 
     def _log_bottom_margin(self) -> None:
@@ -692,7 +660,8 @@ class MainWindow:
         if self._view_mini and self._mini_base:        # the mini view may shrink back to its compact size
             self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize().width(), self._mini_base)
             return
-        self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize())
+        content = self._window.centralWidget().layout().minimumSize()
+        self._window.setMinimumSize(max(content.width(), MIN_WINDOW[0]), max(content.height(), MIN_WINDOW[1]))
 
     def set_mini_on_top(self, on_top: bool) -> None:
         """Choose whether the mini view floats above other windows."""
@@ -720,7 +689,6 @@ class MainWindow:
         full = not self._view_mini
         self.state_label.setVisible(True)                                   # "Listening" / "Not Listening" shows in both views
         self._render_countdown()
-        self.sheet_label.setVisible(full and not self._not_connected)
         self.connection_chip.setVisible(full and self._not_connected)       # inside the workbook picker ...
         self.mini_chip.setVisible(self._view_mini and self._not_connected)  # ... or alone in the mini view
         side = self.workbook_combo.sizeHint().height()
@@ -742,8 +710,6 @@ class MainWindow:
         self.log.setVisible(full and (not self._log_collapsed or self._log_closing()))
         if self.log.isVisibleTo(self._window) and not self._log_busy:
             self.log.setFixedHeight(LOG_OPEN_HEIGHT)
-        self.footer.setVisible(full and bool(self._footer_text))
-        self.download_button.setVisible(full and self._offer_download)
         self.sorting_button.setVisible(self._sorting_count > 0)
         self.sorting_title.setVisible(full)                               # just the count pill when mini
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
@@ -776,6 +742,7 @@ class MainWindow:
         if screen is not None:
             room = screen.availableGeometry()
             width, height = min(width, room.width()), min(height, room.height())
+        width, height = max(width, MIN_WINDOW[0]), max(height, MIN_WINDOW[1])
         self._full_size = QSize(width, height)
         if not self._mini:
             self._window.resize(width, height)
@@ -914,6 +881,7 @@ class MainWindow:
             self._window.show()
             self._window.raise_()
             self._window.activateWindow()
+            self._keep_minimum()                      # from the first moment the window cannot be dragged smaller
 
     # ------------------------------------------------------------------ #
     # State                                                                #
@@ -941,10 +909,6 @@ class MainWindow:
             self.update_workbook(current)
         self.workbook_combo.blockSignals(False)
         self.workbook_combo.sync()
-
-    def update_sheet(self, name: str) -> None:
-        """Show the name of the sheet that is active in the workbook."""
-        self.sheet_label.setText(f"Sheet: {name}")
 
     def _row_table_height(self) -> int:
         """How tall the Current Row box should be: small when empty, growing with its rows up to a cap."""
@@ -1104,15 +1068,30 @@ class MainWindow:
         """
         label, color = LOG_LEVELS.get(level, LOG_LEVELS["info"])
         logging.getLogger("quill").log({"error": logging.ERROR, "warning": logging.WARNING}.get(level, logging.INFO), text)
-        line = f"{dt.datetime.now():%H:%M:%S}  {label + '  ' if label else ''}{text}"
+        stamp = f"{dt.datetime.now():%H:%M:%S}"
+        line = f"{stamp}\t{label + '  ' if label else ''}{text}"
         fmt = QTextCharFormat()                                   # a plain format: the colour never carries to the next line
         if color:
             fmt.setForeground(QColor(color))
+        # Two columns without borders: the time, then the message. A long message wraps back to where the
+        # message starts (a hanging indent), never under the time.
+        column = QFontMetrics(self.log.font()).horizontalAdvance("00:00:00") + LOG_TIME_GAP
+        block = QTextBlockFormat()
+        block.setLeftMargin(column)
+        block.setTextIndent(-column)
+        block.setTabPositions([QTextOption.Tab(column, QTextOption.TabType.LeftTab)])
         cursor = QTextCursor(self.log.document())
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        if not self.log.document().isEmpty():
-            cursor.insertBlock(cursor.blockFormat(), QTextCharFormat())
+        if self.log.document().isEmpty():
+            cursor.setBlockFormat(block)
+        else:
+            cursor.insertBlock(block, QTextCharFormat())
         cursor.insertText(line, fmt)
+        while self.log.document().blockCount() > MAX_LOG_LINES:      # keep the newest lines only
+            oldest = QTextCursor(self.log.document().begin())
+            oldest.select(QTextCursor.SelectionType.BlockUnderCursor)
+            oldest.removeSelectedText()
+            oldest.deleteChar()
         self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
         if level == "error" and self._log_collapsed:
             self._set_collapsed("log", False)
@@ -1155,7 +1134,8 @@ class MainWindow:
         """The play / stop glyph at the right of the Start / Stop button, in the colour that suits its fill."""
         if self._window is None:
             return
-        color = self._on_accent if self._listening else self._text_color
+        color = self._on_accent if self._listening else self._accent
+        self.state_label.setStyleSheet(f"color: {self._on_accent};" if self._listening else "")   # the fill is the accent
         self.toggle_icon.setPixmap(make_icon("stop" if self._listening else "play", color, 16).pixmap(16, 16))
 
     def refresh_icons(self, text_color: str = "#1F1E1D", on_accent: str = "#FFFFFF",
@@ -1220,13 +1200,6 @@ class MainWindow:
         animation.finished.connect(done)
         self._sorting_animation = animation
         animation.start()
-
-    def set_footer(self, text: str, offer_download: bool = False) -> None:
-        """Show a status message; optionally reveal the model-download button."""
-        self.footer.setText(text)
-        self._footer_text, self._offer_download = text, offer_download
-        self._refresh_visibility()              # an empty footer would leave a blank strip
-        self.download_button.setEnabled(True)
 
     @property
     def listening(self) -> bool:

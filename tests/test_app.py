@@ -91,7 +91,6 @@ class TestStartup(AppCase):
     def test_connects_and_reports_lists(self):
         self.assertTrue(self.quill.connected)
         self.assertIn("Connected to plants.xlsx", self.log())
-        self.assertEqual(self.quill.window.sheet_label.text(), "Sheet: Inventory")
         self.assertEqual(self.quill.window.workbook_combo.currentText(), "plants.xlsx")
 
     def test_last_workbook_remembered(self):
@@ -179,24 +178,24 @@ class TestModelHandling(AppCase):
     def test_missing_model_offers_download(self):
         quill = self.make(lambda c: None, None)
         self.assertIsNone(quill.listener)
-        self.assertFalse(quill.window.download_button.isHidden())
+        self.assertIn("No speech model found", quill.window.log.toPlainText())        # the download itself is in Settings
 
     def test_download_success_starts_listener(self):
         found = {"model": None}
         quill = self.make(lambda c: found["model"], lambda dest, progress: self.model)
         found["model"] = self.model
         quill._on_progress(50, 100)
-        self.assertIn("50%", quill.window.footer.text())
+        self.assertEqual(quill._model_note, "Downloading… 50%")
         quill._on_model_ready(self.model)
         self.assertIsNotNone(quill.listener)
         self.assertTrue(quill.listener.preloaded)
         self.assertFalse(quill.listener.started)          # the microphone waits for Start
-        self.assertEqual(quill.window.footer.text(), "")
+        self.assertEqual(quill._model_note, "")
 
     def test_download_failure_offers_retry(self):
         quill = self.make(lambda c: None, None)
         quill._on_model_ready(None)
-        self.assertFalse(quill.window.download_button.isHidden())
+        self.assertFalse(quill._model_busy)
         self.assertIn("failed", quill.window.log.toPlainText())          # the error is in the log
         self.assertIn("Error", quill.window.log.toPlainText().splitlines()[-1])
 
@@ -216,7 +215,6 @@ class TestModelHandling(AppCase):
     def test_listener_error_goes_to_the_log(self):
         self.quill._on_error("Listening stopped: no microphone")
         self.assertIn("no microphone", self.quill.window.log.toPlainText())
-        self.assertEqual(self.quill.window.footer.text(), "")
 
 
 class TestSettingsApplied(AppCase):

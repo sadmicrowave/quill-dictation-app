@@ -2,8 +2,9 @@
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QLabel, QSystemTrayIcon
 
 from quill.config.settings import Settings
 from quill.ui import theme
@@ -151,6 +152,7 @@ class TestLogCollapseResizes(unittest.TestCase):
         _app.processEvents()
         self.assertEqual((self.w.widget.height(), self.w.row_table.height()), (full, table))
 
+    @mock.patch("quill.ui.main_window.MIN_WINDOW", (0, 0))          # a snug window: no room to spare
     def test_a_snug_window_grows_by_the_shortfall_and_shrinks_back(self):
         w = MainWindow(log_collapsed=True)
         w.setup()
@@ -172,7 +174,7 @@ class TestLogCollapseResizes(unittest.TestCase):
         _app.processEvents()
         window = self.w.widget
         bottom = max(child.geometry().bottom() for child in window.centralWidget().findChildren(
-            type(self.w.footer)) if child.isVisible())
+            QLabel) if child.isVisible())
         self.assertLessEqual(window.height() - bottom, 80)
 
     def test_starting_collapsed_gives_a_compact_window(self):

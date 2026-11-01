@@ -167,7 +167,7 @@ def connection_tip(hint: str | None = None) -> str:
         '📗&nbsp;&nbsp;<b>Excel</b>: open a workbook, and Quill<br>'
         '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;attaches within a few seconds<br>'
         '📁&nbsp;&nbsp;<b>File ▸ Open Spreadsheet File…</b><br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and pick an <i>.xlsx</i> file'
+        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and pick an <i>.xlsx</i> or <i>.csv</i> file'
         '<br><br>▶&nbsp;&nbsp;Then press <b>Start</b> to listen.'
         '</div>')
 

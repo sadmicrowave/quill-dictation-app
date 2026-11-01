@@ -39,7 +39,7 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 
 ## 🧠 Speech model
 
-A small English model ships inside Quill (about 41 MB). It runs **on your computer**: nothing is sent online. If it's ever missing, press **Download speech model**.
+A small English model ships inside Quill (about 41 MB). It runs **on your computer**: nothing is sent online. If it's ever missing, **Settings > General > Speech Model** says so and has a **Download** button (it shows the progress there too).
 
 ## 🖥️ Dock and menu bar
 

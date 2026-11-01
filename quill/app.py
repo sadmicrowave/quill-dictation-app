@@ -25,6 +25,7 @@ from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
 from quill.bridge.hosts import HostApp, SpreadsheetHosts
+from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
@@ -138,6 +139,7 @@ class QuillApp:
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
         self._probe_ticks = 0
         self._settings_dialog: SettingsDialog | None = None    # the open Settings window, if any
+        self._model_busy, self._model_note = False, ""          # the speech model download, shown in Settings
         self._quitting = False
         self._host_probe_running = False             # a look for files in other programs is under way
         self._host_noted = False
@@ -163,7 +165,7 @@ class QuillApp:
             on_toggle=self.toggle_listening, on_settings=self.open_settings,
             on_workbook=self.select_workbook, on_open_file=self.choose_spreadsheet_file,
             on_use_excel=self.use_live_excel,
-            on_download_model=self.download_model, on_sorting=self.show_sorting,
+            on_sorting=self.show_sorting,
             on_undo=self.undo, on_help=self.open_help, on_log_toggled=self._log_toggled,
             on_resized=self._window_resized, on_mini_resized=self._mini_window_resized,
             on_field_removed=self.remove_field,
@@ -239,6 +241,7 @@ class QuillApp:
         self.window.restore_size(int(self.settings.preferences["window_width"]),
                                  int(self.settings.preferences["window_height"]))
         self.window.show()
+        self.qapp.aboutToQuit.connect(self._remember_view)
         self.qapp.aboutToQuit.connect(self.window.report_size)      # a size changed just before quitting counts
         self.qapp.aboutToQuit.connect(self.shutdown)
         if hasattr(self.qapp, "quit_requested"):                          # Quit from the Dock or Cmd-Q goes the same way
@@ -272,7 +275,6 @@ class QuillApp:
             return
         self.connected = True
         self.window.update_workbooks(names, bridge.workbook_name)
-        self.window.update_sheet(bridge.active_sheet_name())
         count = sum(len(v) for v in bridge.get_lists().values())
         self.window.append_log(
             f"Connected to {bridge.workbook_name}: {len(bridge.get_lists())} lists, {count} values"
@@ -280,7 +282,6 @@ class QuillApp:
         warning = getattr(bridge, "discovery_warning", None)
         if warning:
             self.window.append_log(warning, "warning")
-        self.window.set_footer("")
         self.window.set_not_connected(False)
         self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
         self.settings.preferences["last_workbook"] = bridge.workbook_name
@@ -367,7 +368,7 @@ class QuillApp:
     def _reload_host(self) -> None:
         """Ask the program showing the file to load what Quill just saved (or say what to do by hand)."""
         bridge = self.controller.bridge
-        if not isinstance(bridge, XlsxBridge) or not bridge.workbook_path:
+        if not isinstance(bridge, XlsxBridge) or not bridge.workbook_path or not getattr(bridge, "host_reload", True):
             return
         path = bridge.workbook_path
 
@@ -429,7 +430,6 @@ class QuillApp:
         except BridgeError:
             return                                   # probably being saved right now; try again next tick
         self._seen_mtime = mtime
-        self.window.update_sheet(self._safe_sheet())
         self.window.append_log("Workbook changed: lists and columns re-read")
 
     def show_workbook(self) -> None:
@@ -442,10 +442,8 @@ class QuillApp:
     def _start_listener(self) -> None:
         model = self._model_finder(str(self.settings.preferences["model_path"]))
         if model is None:
-            self.window.set_footer(
-                "No speech model found. Download one (about 40 MB) to start dictating.",
-                offer_download=True,
-            )
+            self.window.append_log("No speech model found. Download one (about 40 MB) in Settings, under General, "
+                                   "to start dictating.", "warning")
             return
         self.listener = self._listener_factory(model, self.relay.transcript.emit, self.relay.error.emit)
         set_partial = getattr(self.listener, "set_partial_callback", None)
@@ -516,7 +514,6 @@ class QuillApp:
             return
         self.window.update_workbooks(self.controller.bridge.open_workbooks(),
                                      self.controller.bridge.workbook_name)
-        self.window.update_sheet(self.controller.bridge.active_sheet_name())
         self.window.append_log("Workbook re-read")
 
     def resolve_term(self, key: TermKey, decision: Decision, term: str) -> None:
@@ -558,22 +555,22 @@ class QuillApp:
     # ------------------------------------------------------------------ #
 
     def _ask_for_file(self) -> str | None:
-        """Show the standard file picker for an .xlsx workbook; None if the user cancels."""
+        """Show the standard file picker for a spreadsheet file (.xlsx, .csv, .tsv); None if the user cancels."""
         from PySide6.QtWidgets import QFileDialog
         remembered = str(self.settings.preferences["workbook_file"])
         start = str(pathlib.Path(remembered).parent) if remembered else str(pathlib.Path.home() / "Documents")
         path, _ = QFileDialog.getOpenFileName(self.window.widget, "Open Spreadsheet File", start,
-                                              "Excel Workbooks (*.xlsx)")
+                                              "Spreadsheets (*.xlsx *.csv *.tsv);;Excel Workbooks (*.xlsx);;Text Tables (*.csv *.tsv)")
         return path or None
 
     def choose_spreadsheet_file(self) -> None:
-        """File > Open Spreadsheet File…: pick an .xlsx and work on it directly (no Excel needed)."""
+        """File > Open Spreadsheet File…: pick an .xlsx or .csv and work on it directly (no Excel needed)."""
         path = self._file_chooser()
         if path:
             self.open_workbook_file(path)
 
     def open_workbook_file(self, path: str | pathlib.Path, remember: bool = True) -> bool:
-        """Switch to working on the .xlsx at *path* through the file bridge.
+        """Switch to working on the .xlsx or .csv at *path* through the file bridge.
 
         The file is edited in place and saved after every change, so close it in other
         programs while dictating (or reopen it afterwards to see the new rows). An old
@@ -583,15 +580,15 @@ class QuillApp:
             True if Quill is now working on the file; otherwise the previous workbook is kept.
         """
         path = pathlib.Path(path)
-        if path.suffix.lower() != ".xlsx" or not path.is_file():
-            self.window.append_log(f"Can't open '{path.name}': choose an Excel workbook (.xlsx).", "error")
+        if path.suffix.lower() not in (".xlsx", ".csv", ".tsv") or not path.is_file():
+            self.window.append_log(f"Can't open '{path.name}': choose an Excel workbook (.xlsx) or a .csv file.", "error")
             return False
         previous, was_connected = self.controller.bridge, self.connected
         if was_connected:
             self.controller.detach()                     # closes the listening gate on the old workbook
             self.connected = False
             self._set_listening(False)
-        self.controller.bridge = XlsxBridge(path)
+        self.controller.bridge = CsvBridge(path) if path.suffix.lower() in (".csv", ".tsv") else XlsxBridge(path)
         self.connect_workbook()
         if not self.connected:                           # unreadable file: go back to what we had
             self.controller.bridge = previous
@@ -642,7 +639,9 @@ class QuillApp:
             return
         self._settings_dialog = SettingsDialog(
             self.settings, self.window.widget, on_preview=self.preview_feedback,
-            on_change=lambda: self.apply_settings(quiet=True))
+            on_change=lambda: self.apply_settings(quiet=True),
+            on_download_model=self.download_model, model_installed=self.model_installed)
+        self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
 
     def _settings_closed(self, accepted: bool) -> None:
@@ -702,6 +701,11 @@ class QuillApp:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
         if self._titlebar_left is not None:
             self._titlebar_left.set_enabled(len(self.controller.history) > 0)
+
+    def _remember_view(self) -> None:
+        """On the way out, keep whether the mini view was showing, so the next launch opens the same way."""
+        self.settings.preferences["mini_mode"] = self.window.mini
+        self.settings.save()
 
     def _mini_toggled(self, mini: bool) -> None:
         """Remember the view and keep the tray menu and the title-bar icon in step.
@@ -844,7 +848,7 @@ class QuillApp:
         self._handle_event(event)
         if event.kind in self._WRITE_EVENTS:
             self._remember_mtime()
-            if isinstance(self.controller.bridge, XlsxBridge):
+            if isinstance(self.controller.bridge, XlsxBridge) and getattr(self.controller.bridge, "host_reload", True):
                 self._host_reload.start()                 # after a quiet moment, so a burst of rows reloads once
         self._sync_mic()
 
@@ -905,8 +909,6 @@ class QuillApp:
         if kind == "updated" and not event.detail:
             return
         self.window.append_log(self._describe(event), "error" if kind == "error" else "info")
-        if self.controller.bridge is not None and self.connected:
-            self.window.update_sheet(self._safe_sheet())
 
     @staticmethod
     def _describe(event: Event) -> str:
@@ -1049,8 +1051,10 @@ class QuillApp:
 
     def download_model(self) -> None:
         """Download the speech model on a background thread."""
-        self.window.download_button.setEnabled(False)
-        self.window.set_footer("Downloading speech model…")
+        self._model_busy = True
+        self._model_note = "Downloading…"
+        self._show_model_state()
+        self.window.append_log("Downloading the speech model")
 
         def work() -> None:
             try:
@@ -1065,12 +1069,26 @@ class QuillApp:
 
     def _on_progress(self, done: int, total: int) -> None:
         if total:
-            self.window.set_footer(f"Downloading speech model… {100 * done // total}%")
+            self._model_note = f"Downloading… {100 * done // total}%"
+            self._show_model_state()
 
     def _on_model_ready(self, path) -> None:
+        self._model_busy = False
         if path is None:
             self.window.append_log("Model download failed. Check your connection and try again.", "error")
-            self.window.set_footer("The speech model isn't installed.", offer_download=True)
+            self._model_note = ""
+            self._show_model_state()
             return
-        self.window.set_footer("")
+        self._model_note = ""
+        self._show_model_state()
+        self.window.append_log("Speech model installed")
         self._start_listener()
+
+    def model_installed(self) -> bool:
+        """Whether a speech model can be found (for the Settings page)."""
+        return self._model_finder(str(self.settings.preferences["model_path"])) is not None
+
+    def _show_model_state(self) -> None:
+        """Tell the open Settings window how the speech model download is going (nothing to do when it is closed)."""
+        if self._settings_dialog is not None:
+            self._settings_dialog.set_model_state(self._model_note, self._model_busy)

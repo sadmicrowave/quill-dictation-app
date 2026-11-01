@@ -8,6 +8,7 @@ A small box that floats over your spreadsheet.
 
 - Click the **arrows icon** in the title bar to shrink.
 - Click it again to get the full window back, exactly as it was.
+- Quit while in the mini view and Quill opens in the mini view next time.
 
 ## 👀 What stays
 
@@ -17,7 +18,7 @@ A small box that floats over your spreadsheet.
 
 ## 🙈 What hides
 
-Log, Last Saved, sheet name, settings, and (at its compact size) the Voice Stream and row grid.
+Log, Last Saved, settings, and (at its compact size) the Voice Stream and row grid.
 
 ## 📏 Make it taller
 

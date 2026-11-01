@@ -66,7 +66,6 @@ class TestOpeningAFile(FileCase):
         self.assertIsInstance(self.app.controller.bridge, XlsxBridge)
         self.assertEqual(self.app.window.workbook_combo.currentText(), "plants.xlsx")
         self.assertIn("Working directly on the file plants.xlsx", self.log.toPlainText())
-        self.assertEqual(self.app.window.footer.text(), "")
 
     def test_its_lists_are_learned(self):
         self.chosen[0] = str(self.plants)

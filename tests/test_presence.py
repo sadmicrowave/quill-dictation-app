@@ -111,7 +111,6 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
         self.assertFalse(quill.connected)
         self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
         self.assertIn("Not connected", quill.window.connection_chip.toolTip())
-        self.assertEqual(quill.window.footer.text(), "")                   # not repeated at the bottom of the window
 
     def test_start_button_informs_user_everywhere(self):
         quill = self.make_app()
@@ -130,8 +129,6 @@ class TestWatcher(AppPresenceCase):
         quill.poll_workbooks()
         self.assertTrue(quill.connected)
         self.assertIn("Attached to plants.xlsx automatically", quill.window.log.toPlainText())
-        self.assertEqual(quill.window.footer.text(), "")
-        self.assertEqual(quill.window.sheet_label.text(), "Sheet: Inventory")
 
     def test_attach_does_not_open_the_gate(self):
         quill = self.make_app()

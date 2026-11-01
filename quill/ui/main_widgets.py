@@ -175,7 +175,7 @@ class RowTable(QTableWidget):
     DELETE_SIZE = 16          # px, the round delete button
     DELETE_MARGIN = 9         # px from the right edge (the button sits in the right-most cell)
     DELETE_HOT_FILL = "#E5484D"   # the button turns red while the pointer is over it: it removes something
-    DELETE_TIP = "Remove this line from the row\nQuill will not write it, and its words turn grey again"
+    DELETE_TIP = "Remove this line from the row\nQuill will not write it"
 
     def __init__(self, rows: int, columns: int) -> None:
         super().__init__(rows, columns)
@@ -256,7 +256,7 @@ class RowTable(QTableWidget):
             bottom = self.rowViewportPosition(self.rowCount() - 1) + self.rowHeight(self.rowCount() - 1)
             divider = self.columnViewportPosition(0) + self.columnWidth(0) - 1
             painter.drawLine(divider, 0, divider, bottom - 1)        # between the two columns
-            for row in range(self.rowCount()):
+            for row in range(self.rowCount() - 1):     # no line under the last row
                 y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
                 painter.drawLine(0, y, self.viewport().width() - 1, y)
         if self._hovered_row >= 0:
@@ -265,8 +265,8 @@ class RowTable(QTableWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(self.DELETE_HOT_FILL) if self._button_hot else self._button_fill)
             painter.drawEllipse(box)
-            painter.setPen(QPen(self._button_glyph, 1.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            reach = self.DELETE_SIZE * 0.2625          # half the length of each stroke of the "x"
+            painter.setPen(QPen(self._button_glyph, 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            reach = self.DELETE_SIZE * 0.2          # half the length of each stroke of the "x"
             painter.drawLine(QPointF(centre.x() - reach, centre.y() - reach), QPointF(centre.x() + reach, centre.y() + reach))
             painter.drawLine(QPointF(centre.x() + reach, centre.y() - reach), QPointF(centre.x() - reach, centre.y() + reach))
         painter.end()

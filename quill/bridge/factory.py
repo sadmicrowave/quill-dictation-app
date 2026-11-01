@@ -25,13 +25,16 @@ def get_bridge(xlsx_path: str | pathlib.Path | None = None) -> WorkbookBridge:
     """Instantiate and return the appropriate bridge.
 
     Args:
-        xlsx_path: When given, return a file-based bridge for that workbook
+        xlsx_path: When given, return a file-based bridge for that workbook (or .csv file)
             instead of driving a live Excel (no Excel needed).
 
     Raises:
         NotImplementedError: on an unsupported platform (live Excel only).
     """
     if xlsx_path is not None:
+        if pathlib.Path(xlsx_path).suffix.lower() in (".csv", ".tsv"):
+            from quill.bridge.csv_bridge import CsvBridge
+            return CsvBridge(xlsx_path)
         from quill.bridge.xlsx_bridge import XlsxBridge
         return XlsxBridge(xlsx_path)
     if sys.platform == "win32":
