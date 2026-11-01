@@ -477,3 +477,16 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Term Helper batches**: Add All / Ignore All rows flash and collapse together (`_retire_together`); when the window closes it calls `on_done` and the main window comes to the front and clears a finished row's heard words (`MainWindow.sorting_finished`).
 - **Start while voice sorting** (`Controller.set_listening(True)`) ends voice sorting, so speech goes to the row (before, it was still being taken as Term Helper answers).
 - **Two values for one column in one phrase**: the parser keeps the first and notes the second (`_take_value`).
+
+### Phase 53 notes (sub rows, next arrow, voice-reactive lines)
+- **Several values for one column** go in one cell, one per line (`merge_values`; the parser marks `additive` columns; `Session` merges across phrases). The grid sizes a row to its lines (`_size_rows`); the xlsx/xlwings grids turn on wrap text. Saying the column name still replaces.
+- **Next arrow** (`next_button`, shown only while listening) = "next row" plus clearing the heard words (`QuillApp.next_row`, `Controller.next_row`). **"Open term helper" / "term helper"** keywords (`Action.OPEN_TERM_HELPER`; older keyword files get them once, via `keywords_version`).
+- **Mini collapse bug**: the Voice Stream's height callback and the row grid resized the window mid-animation, which cut the mini transition short (`_switching_view` now blocks that).
+- **Start button**: "Start Listening" and the "File stream not connected" notice are pills centred in the button (`text_pill`, warning-coloured notice); title-bar icons and the title are full strength (`labelColor`), and the right-hand icons are nudged (`_RIGHT_NUDGE`) to line up with the button's right edge.
+- **Sound lines follow the voice**: `Listener.loudness` per audio chunk (blocksize 1600) -> `Relay.level` -> `WaveMeter.set_level`; short loop when quiet, taller and faster with the voice.
+
+### Phase 54 notes
+- Help pictures come in `-light` and `-dark` versions (`tools/make_help_images.py` draws both); `HelpWindow._render` rewrites `images/x.png` to the current theme's file.
+- `sorting_sounds` preference (default on) silences the confirmation sound for Term Helper answers (`feedback.SORTING_KINDS`); Settings > Sounds.
+- `PopupClickThrough` (one per application): a click on a `ListenButton` while a drop-down is open closes it and presses the button.
+- The Term Helper's `ListenButton` can shrink to the room it has (no minimum width), so it never passes the margin.

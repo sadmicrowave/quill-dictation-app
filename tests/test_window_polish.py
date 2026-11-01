@@ -91,9 +91,9 @@ class TestConnectionChip(unittest.TestCase):
         w.set_mini(True)
         _app.processEvents()
         self.assertTrue(w.mini_chip.isVisibleTo(w.widget))                 # the same chip, inside the Start button
-        self.assertIs(w.mini_chip.parent(), w.toggle_button)
+        self.assertTrue(w.toggle_button.isAncestorOf(w.mini_chip))
 
-    def test_the_chip_stays_a_fixed_height_pill_at_the_left(self):
+    def test_the_chip_stays_a_fixed_height_pill_in_the_middle_of_the_button(self):
         w = window()
         w.set_not_connected(True)
         w.widget.show()
@@ -102,9 +102,10 @@ class TestConnectionChip(unittest.TestCase):
         chip = w.connection_chip
         self.assertTrue(chip.isVisibleTo(w.widget))
         self.assertEqual(chip.height(), CHIP_HEIGHT)
-        self.assertIs(chip.parent(), w.toggle_button)                      # inside the Start button ...
-        self.assertGreater(chip.x(), w.toggle_icon.x())                    # ... right of the play icon
-        self.assertEqual(w.toggle_button.text(), "")                       # (the centred text steps aside)
+        self.assertTrue(w.toggle_button.isAncestorOf(chip))                # inside the Start button ...
+        middle = chip.mapTo(w.toggle_button, chip.rect().center()).x()
+        self.assertAlmostEqual(middle, w.toggle_button.width() / 2, delta=3)   # ... in the middle of it
+        self.assertFalse(w.toggle_button.text_pill.isVisibleTo(w.widget))      # (the Start Listening pill steps aside)
         w.widget.resize(360, 400)
         _app.processEvents()
         self.assertEqual(chip.height(), CHIP_HEIGHT)
@@ -119,8 +120,8 @@ class TestConnectionChip(unittest.TestCase):
             sheet = theme.stylesheet_for(dark)
             start = sheet.index('QLabel[chip="warn"] {')
             rule = sheet[start: sheet.index("}", start)]
-            warn = theme.colors_for(dark)["accent"]
-            self.assertIn(warn, rule)
+            warn = theme.WARNING_DARK if dark else theme.WARNING_LIGHT          # a warning colour, not the accent
+            self.assertIn(theme.rgba(warn, 0.5), rule)
             self.assertIn("border-radius: 11px", rule)
             self.assertIn("rgba(", rule)
 
@@ -193,11 +194,12 @@ class TestTitlebarSettings(unittest.TestCase):
         kit = FakeAppKit()
         kit.NSStackView = type("S", (), {"stackViewWithViews_": staticmethod(lambda views: type(
             "Stack", (), {"views": views, "setSpacing_": lambda s, v: None,
-                          "setFrame_": lambda s, f: setattr(s, "frame", f)})())})
+                          "setFrame_": lambda s, f: setattr(s, "frame", f),
+                          "setFrameOrigin_": lambda s, o: None})())})
         opened, resized = [], []
         button = chrome.add_titlebar_button(_fake_widget(), lambda: resized.append(1), platform="darwin", appkit=kit,
                                             extra=[(chrome.SYMBOL_SETTINGS, "Settings", lambda: opened.append(1))])
-        stack = kit.window.accessories[0].view
+        stack = kit.window.accessories[0].view.subviews[0]            # the row sits in a plain holder view
         self.assertEqual(len(stack.views), 2)
         self.assertGreater(stack.frame[1][0], 40)                         # it has a width, or macOS would not show it
         settings, resize = stack.views

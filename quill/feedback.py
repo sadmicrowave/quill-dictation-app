@@ -44,6 +44,9 @@ _SUCCESS_KINDS = {"add_values", "alias_added", "searched", "cleared"}
 _DISMISS_KINDS = {"skipped", "undone", "discarded"}
 _ERROR_KINDS = {"error", "unsure"}
 
+#: Events that are answers given in the Term Helper (their confirmation sounds can be turned off in Settings).
+SORTING_KINDS = frozenset({"add_values", "alias_added", "skipped", "sorting"})
+
 
 def spoken_words() -> list[str]:
     """Every word Quill can say as a confirmation (so their clips can be made ahead of time)."""
@@ -127,6 +130,8 @@ class Feedback:
         hit = cue_for(event)
         if hit is None or self.mode == "off":
             return
+        if event.kind in SORTING_KINDS and not self._settings.preferences.get("sorting_sounds", True):
+            return                                           # the user turned off the Term Helper's completion sounds
         if self._wanted is None or PRIORITY[hit[0]] > PRIORITY[self._wanted[0]]:
             self._wanted = hit
 

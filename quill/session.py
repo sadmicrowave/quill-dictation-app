@@ -32,7 +32,7 @@ from quill.parser.commands import (
     CommandEvent,
     CommandMatcher,
 )
-from quill.parser.phrase_parser import parse
+from quill.parser.phrase_parser import merge_values, parse
 from quill.parser.tokens import display_name, tokenize
 from quill.parser.vocab import Vocabulary
 
@@ -260,7 +260,8 @@ class Session:
             detail = f"Added {value} to {column}"
         cells = [(origin[0], origin[1], column, self._canonical(column, value))] if origin else []
         if key in self.row_terms:                                   # answered before the row was saved: put it in the row
-            self.record[column] = self._canonical(column, value)
+            canonical = self._canonical(column, value)
+            self.record[column] = merge_values(self.record[column], canonical) if column in self.record else canonical
         self._forget_heard(key)
         return [Event(kind, detail=detail, values=values, cells=cells, resolved=info)]
 
@@ -285,7 +286,10 @@ class Session:
             return []
 
         result = parse(text, self.vocab, self.today(), filled=set(self.record))
-        self.record.update(result.updates)
+        for column, value in result.updates.items():
+            if column in result.additive and column in self.record:           # another value for it: under the first
+                value = merge_values(self.record[column], value)
+            self.record[column] = value
         for cand in result.candidates:
             key = (cand.column, cand.term)
             self.pool[key] = self.pool.get(key, 0) + 1
@@ -327,6 +331,8 @@ class Session:
             return [Event("clear_search")]
         if action is Action.SORT_TERMS:
             return [Event("sort_terms")]
+        if action is Action.OPEN_TERM_HELPER:
+            return [Event("open_term_helper")]
         if action is Action.UNDO:
             return [Event("undo")]
         return []

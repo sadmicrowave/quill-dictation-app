@@ -8,6 +8,8 @@ match the app.
 
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import QTimer, QUrl, Qt
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QTextBlockFormat, QTextCharFormat, QTextCursor
 from PySide6.QtGui import QTextFrameFormat, QTextTable
@@ -196,7 +198,11 @@ class HelpWindow:
 
     def _render(self, topic: Topic) -> None:
         self.current = topic
-        self.page.setMarkdown(topic.text)
+        from PySide6.QtWidgets import QApplication
+        from quill.ui.theme import is_dark
+        mode = "dark" if is_dark(QApplication.instance()) else "light"
+        # the pictures come in a light and a dark version (see tools/make_help_images.py): show the one for the theme
+        self.page.setMarkdown(re.sub(r"\(images/([\w-]+)\.png\)", rf"(images/\1-{mode}.png)", topic.text))
         self._style_document()
 
     def _scroll_to(self, heading: str) -> None:

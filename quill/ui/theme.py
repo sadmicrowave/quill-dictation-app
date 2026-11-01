@@ -91,6 +91,10 @@ def mix(base: str, other: str, amount: float) -> str:
     return "#" + "".join(f"{round(x + (y - x) * amount):02X}" for x, y in zip(a, b))
 
 
+#: The warning colour of notices ("File stream not connected"): an amber that reads on a light and on a dark window.
+WARNING_LIGHT, WARNING_DARK = "#B26A00", "#E0A030"
+
+
 def rgba(hex_color: str, alpha: float) -> str:
     """``"#RRGGBB"`` as a style-sheet ``rgba(...)`` colour (alpha 0 to 1)."""
     r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
@@ -286,8 +290,12 @@ QMenu::item:disabled {{ color: {t['disabled']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
 QLabel[heading="true"] {{ color: {t['muted']}; }}
-QLabel[chip="warn"] {{ background: {rgba(t['accent'], 0.14)}; color: {t['accent']}; border: 1px solid {rgba(t['accent'], 0.42)};
+QLabel[chip="warn"] {{ background: {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.16)}; color: {WARNING_DARK if dark else WARNING_LIGHT};
+              border: 1px solid {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.5)}; border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
+QLabel[chip="listen"] {{ background: {t['accent']}; color: {t['on_accent']}; border: 1px solid {t['accent']};
               border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
+QPushButton[accent="true"] QLabel[chip="listen"] {{ background: {rgba(t['on_accent'], 0.2)}; color: {t['on_accent']};
+              border: 1px solid {rgba(t['on_accent'], 0.55)}; font-weight: 500; }}
 QLabel[placeholder="true"] {{ font-style: italic; color: {t['muted']}; }}
 QTextEdit, QPlainTextEdit {{ placeholder-text-color: {t['muted']}; }}
 QLabel[note="true"] {{ font-style: italic; color: {t['muted']}; }}

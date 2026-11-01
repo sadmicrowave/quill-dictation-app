@@ -91,11 +91,11 @@ class TestRows(unittest.TestCase):
     def test_cancel_with_nothing(self):
         self.assertEqual(kinds(self.s.feed("cancel")), ["ignored"])
 
-    def test_record_accumulates_across_phrases_and_later_wins(self):
+    def test_record_accumulates_across_phrases_and_a_second_value_goes_under_the_first(self):
         self.s.feed("fern")
         self.s.feed("light low")
         self.s.feed("cactus")
-        self.assertEqual(self.s.record, {"Species": "Cactus", "Light": "Low"})
+        self.assertEqual(self.s.record, {"Species": "Fern\nCactus", "Light": "Low"})
 
     def test_amounts_and_dates_in_record(self):
         self.s.feed("price 5 dollars")

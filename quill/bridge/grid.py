@@ -139,7 +139,13 @@ class OpenpyxlGrid(Grid):
         return block
 
     def write(self, sheet: str, row: int, col: int, value: object) -> None:
-        self._ws(sheet).cell(row=row, column=col).value = value
+        cell = self._ws(sheet).cell(row=row, column=col)
+        cell.value = value
+        if isinstance(value, str) and "\n" in value:          # several values in one cell: one per line
+            from copy import copy
+            alignment = copy(cell.alignment)
+            alignment.wrap_text = True
+            cell.alignment = alignment
 
     def set_autofilter(self, sheet, header_row, first_col, last_col, last_row, criteria):
         """Record the filter in the file and hide non-matching rows.
@@ -221,7 +227,16 @@ class XlwingsGrid(Grid):
     def write(self, sheet: str, row: int, col: int, value: object) -> None:
         if isinstance(value, dt.date) and not isinstance(value, dt.datetime):
             value = dt.datetime(value.year, value.month, value.day)
-        self._book.sheets[sheet].range((row, col)).value = value
+        target = self._book.sheets[sheet].range((row, col))
+        target.value = value
+        if isinstance(value, str) and "\n" in value:          # several values in one cell: one per line
+            try:
+                if self._platform == "win32":
+                    target.api.WrapText = True
+                else:
+                    target.api.wrap_text.set(True)
+            except Exception:
+                pass                                         # cosmetic: the values are written either way
 
 
     # ---- filtering / navigation ------------------------------------------------

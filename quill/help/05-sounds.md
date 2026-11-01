@@ -27,3 +27,7 @@ Quill is silent apart from the sounds above. If you want a voice to guide you th
 Quill uses spoken words nowhere else. (The *Spoken word* choice under **Confirm With** is a different, optional way to confirm what you said.)
 
 > 💡 If you use speakers and Quill hears itself, leave this off or wear headphones.
+
+## 🧩 Sounds for the Term Helper
+
+**Settings > Sounds > Sounds for Term Helper Actions** (on by default) controls the confirmation sound when a term in the Term Helper is added, matched or ignored, including **Add All** and **Ignore All**. Turn it off to keep the Term Helper quiet while the rest of Quill still confirms rows.

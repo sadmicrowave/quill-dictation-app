@@ -48,6 +48,16 @@ class FakeButton:
     def performClick_(self, sender): self.target.toggle_(self)
 
 
+class FakeHolderView:
+    """A plain view the icons' row sits in (it is what the title bar gets)."""
+    def __init__(self): self.subviews = []
+
+    @classmethod
+    def alloc(cls): return cls()
+    def initWithFrame_(self, frame): self.frame = frame; return self
+    def addSubview_(self, view): self.subviews.append(view)
+
+
 class FakeController:
     def __init__(self): self.view, self.layout, self.removed = None, None, False
 
@@ -70,6 +80,7 @@ class FakeAppKit:
     TargetClass = FakeTarget
     NSButton = FakeButton
     NSTitlebarAccessoryViewController = FakeController
+    NSView = FakeHolderView
 
     def __init__(self, window=None):
         self.window = window or FakeNSWindow()

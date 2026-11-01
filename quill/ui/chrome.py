@@ -172,7 +172,7 @@ def plain_title(widget) -> bool:
             label = AppKit.NSTextField.labelWithString_(widget.windowTitle())
             label.setIdentifier_(_TITLE_ID)
             label.setFont_(AppKit.NSFont.systemFontOfSize_weight_(13, 0.0))
-            label.setTextColor_(AppKit.NSColor.secondaryLabelColor())
+            label.setTextColor_(AppKit.NSColor.labelColor())            # full strength, not the muted grey
             label.setAutoresizingMask_(13)                           # centred sideways, fixed distance from the top
             bar.addSubview_(label)
             window.setTitleVisibility_(1)                            # hide the bold system title
@@ -468,6 +468,8 @@ class TitlebarButton:
 #: Widths (pt) of the title bar icons and the gap between them. The right-most one is narrower so its
 #: glyph sits close to the window edge.
 _ICON_WIDTH, _LAST_ICON_WIDTH, _ICON_GAP = 30, 22, 14
+#: How far (pt) the right-hand icons are moved right, so their last glyph lines up with the Start button's right edge.
+_RIGHT_NUDGE = 24
 
 
 def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False,
@@ -514,6 +516,10 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             button = button_class.alloc().initWithFrame_(((0, 0), (width, 24)))
             button.hover_in, button.hover_out = hover_in, hover_out    # (used by the pointer-tracking button class)
             button.setBordered_(False)
+            try:
+                button.setContentTintColor_(appkit.NSColor.labelColor())      # full strength, even while the window is inactive
+            except Exception:
+                pass
             button.setTarget_(target)
             button.setAction_("toggle:")
             return button, target
@@ -543,7 +549,10 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             row.setSpacing_(_ICON_GAP)
             width = _ICON_WIDTH * len(extras) + _LAST_ICON_WIDTH + _ICON_GAP * len(extras)
             row.setFrame_(((0, 0), (width, 24)))    # an accessory view needs a size of its own
-            controller.setView_(row)
+            holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, 24)))
+            row.setFrameOrigin_((_RIGHT_NUDGE, 0))     # macOS keeps a gap at the right of the title bar: the row sits past it
+            holder.addSubview_(row)
+            controller.setView_(holder)
         else:
             controller.setView_(button)
         controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)

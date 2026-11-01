@@ -122,7 +122,7 @@ def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel,
 #: The preferences the controls edit (Cancel puts back just these).
 EDITED_PREFERENCES = (
     "theme", "speak_sort_prompts", "auto_voice_sort", "mic_always_on", "auto_stop", "auto_stop_seconds",
-    "mini_on_top", "hide_dock_icon", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity",
+    "mini_on_top", "hide_dock_icon", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity", "sorting_sounds",
     "blur", "history_limit", "feedback", "sound_pack", "echo_style",
 )
 
@@ -186,6 +186,7 @@ class SettingsDialog:
         self.mini_top_check: ToggleSwitch | None = None
         self.dock_check: ToggleSwitch | None = None
         self.sorting_opacity_check: ToggleSwitch | None = None
+        self.sorting_sounds_check: ToggleSwitch | None = None
         self.model_button: QPushButton | None = None
         self.model_row: SettingRow | None = None
 
@@ -359,7 +360,7 @@ class SettingsDialog:
         self.nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
         self._original = copy.deepcopy(self._settings.preferences)
         for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
-                        self.dock_check, self.auto_stop_check, self.sorting_opacity_check):
+                        self.dock_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check):
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
@@ -399,6 +400,7 @@ class SettingsDialog:
         prefs["font_size"] = self.font_spin.value()
         prefs["opacity"] = self.opacity_slider.value()
         prefs["sorting_follows_opacity"] = self.sorting_opacity_check.isChecked()
+        prefs["sorting_sounds"] = self.sorting_sounds_check.isChecked()
         prefs["blur"] = self.blur_slider.value()
         prefs["history_limit"] = self.history_spin.value()
         prefs["feedback"] = self.feedback_combo.currentData()
@@ -672,6 +674,11 @@ class SettingsDialog:
         self.echo_combo.setCurrentIndex(self.echo_combo.findData(prefs["echo_style"]))
         self._add("Sounds", page, "Spoken Word", "What Quill says for a success when it speaks instead.",
                   self.echo_combo, "echo voice")
+        self.sorting_sounds_check = ToggleSwitch()
+        self.sorting_sounds_check.setChecked(bool(prefs["sorting_sounds"]))
+        self._add("Sounds", page, "Sounds for Term Helper Actions",
+                  "Play the confirmation sound when a term in the Term Helper is added, matched or ignored (including "
+                  "Add All and Ignore All). On by default.", self.sorting_sounds_check, "term helper sorting sound mute quiet")
         self.feedback_combo.currentIndexChanged.connect(self._update_feedback_choices)
         self._update_feedback_choices()
         self.feedback_combo.activated.connect(lambda _=0: self.play_sample())    # picking a choice plays it, so there is

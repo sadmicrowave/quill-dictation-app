@@ -170,6 +170,12 @@ class Controller:
             self._carry_out(event)
             self._on_event(event)
 
+    def next_row(self) -> None:
+        """Save the row being built (if anything valid was heard) and start the next one: the button's "next row"."""
+        for event in self.session.apply(Action.NEXT_ROW):
+            self._carry_out(event)
+            self._on_event(event)
+
     def remove_field(self, column: str) -> bool:
         """The user disagrees with one understood value of the row being built: drop it.
 

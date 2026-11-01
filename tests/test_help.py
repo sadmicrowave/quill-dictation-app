@@ -31,7 +31,9 @@ class TestPages(unittest.TestCase):
     def test_pictures_named_in_the_pages_exist(self):
         for topic in self.topics:
             for name in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", topic.text):
-                self.assertTrue((helpdocs.help_dir() / name).exists(), f"{topic.slug}: {name}")
+                stem = name[:-len(".png")]                          # each picture comes in a light and a dark version
+                for theme in ("light", "dark"):
+                    self.assertTrue((helpdocs.help_dir() / f"{stem}-{theme}.png").exists(), f"{topic.slug}: {name} ({theme})")
 
     def test_pages_are_found_by_file_name_order_and_slug(self):
         self.assertEqual(self.topics[0].slug, "welcome")
@@ -90,7 +92,7 @@ class TestWindow(unittest.TestCase):
             block = block.next()
         self.assertIn(1, levels)
         self.assertIn(2, levels)
-        self.assertIn("main-window.png", doc.toHtml())
+        self.assertIn("main-window-", doc.toHtml())
 
     def test_only_the_open_page_lists_its_sections(self):
         self.help.show("welcome")
@@ -157,3 +159,21 @@ class TestIconsOpenTheRightPage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestThemedPictures(unittest.TestCase):
+    def test_the_page_shows_the_picture_for_the_current_theme(self):
+        from PySide6.QtWidgets import QApplication
+        from quill.ui.help_window import HelpWindow
+        from quill.ui.theme import apply_theme
+        app = QApplication.instance() or QApplication([])
+        window = HelpWindow()
+        window.setup()
+        for theme in ("light", "dark"):
+            apply_theme(app, theme, "violet", "compact")
+            window.show()
+            window._render(window.current)
+            html = window.page.document().toHtml()
+            self.assertIn(f"-{theme}.png", html)
+            other = "dark" if theme == "light" else "light"
+            self.assertNotIn(f"-{other}.png", html)

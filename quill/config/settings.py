@@ -75,6 +75,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "auto_stop_seconds": 10,  # ... for this many seconds of quiet
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
+    "sorting_sounds": True,   # Term Helper answers (added, ignored, a problem) play their confirmation sound
     "sorting_follows_opacity": False,   # the Term Helper fades like the main window (off: it stays solid and easy to read)
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
 }
@@ -112,6 +113,11 @@ def _config_dir() -> pathlib.Path:
 
 def _defaults_path() -> pathlib.Path:
     return pathlib.Path(__file__).parent / "defaults.json"
+
+
+#: Commands added after the first release: a keyword file saved earlier gets their shipped phrases too.
+NEW_ACTIONS = (Action.OPEN_TERM_HELPER,)
+KEYWORDS_VERSION = 2          # raised whenever shipped commands are added
 
 
 def _parse_keywords(table: dict) -> dict[str, Action]:
@@ -192,6 +198,10 @@ class Settings:
         keywords = data.get("keywords")
         if isinstance(keywords, dict):
             settings.keywords = _parse_keywords(keywords)
+            if int(data.get("keywords_version", 1) or 1) < KEYWORDS_VERSION:         # commands added since the file was saved
+                for phrase, action in cls.defaults(config_dir).keywords.items():
+                    if action in NEW_ACTIONS and phrase not in settings.keywords:
+                        settings.keywords[phrase] = action
         prefs = data.get("preferences")
         if isinstance(prefs, dict):
             for key, default in DEFAULT_PREFERENCES.items():
@@ -314,7 +324,7 @@ class Settings:
 
     def save(self) -> None:
         """Write keywords and preferences to TOML in the config dir."""
-        lines = ["[keywords]\n"]
+        lines = [f"keywords_version = {KEYWORDS_VERSION}\n\n[keywords]\n"]
         for phrase, action in sorted(self.keywords.items()):
             lines.append(f"{_toml_string(phrase)} = {_toml_string(action.name)}\n")
         lines.append("\n[preferences]\n")

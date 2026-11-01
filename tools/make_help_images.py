@@ -10,7 +10,8 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from PySide6.QtCore import Qt, QTimer                                  # noqa: E402
+from PySide6.QtCore import Qt                                          # noqa: E402
+from PySide6.QtTest import QTest                                       # noqa: E402
 from PySide6.QtWidgets import QApplication                              # noqa: E402
 
 from quill.config.settings import Settings                              # noqa: E402
@@ -25,19 +26,28 @@ OUT = pathlib.Path(__file__).resolve().parent.parent / "quill" / "help" / "image
 WIDTH = 560                                                              # pictures are shown at most this wide
 
 
-def save(widget, name: str, crop_top: int = 0) -> None:
+def save(widget, name: str, crop_top: int = 0, theme: str = "dark") -> None:
     pixmap = widget.grab()
     if crop_top:                                   # the in-window menu bar (macOS has it at the top of the screen)
         pixmap = pixmap.copy(0, crop_top, pixmap.width(), pixmap.height() - crop_top)
     if pixmap.width() > WIDTH:
         pixmap = pixmap.scaledToWidth(WIDTH, Qt.TransformationMode.SmoothTransformation)
+    name = f"{pathlib.Path(name).stem}-{theme}.png"            # one picture per theme: the help shows the one that matches
     pixmap.save(str(OUT / name))
     print("wrote", name, pixmap.width(), "x", pixmap.height())
 
 
 def main() -> None:
     app = QApplication(sys.argv)
-    apply_theme(app, "dark", "violet", "compact")
+    for old in OUT.glob("*.png"):
+        old.unlink()
+    for theme in ("light", "dark"):
+        shoot(app, theme)
+
+
+def shoot(app: QApplication, theme: str) -> None:
+    dark = theme == "dark"
+    apply_theme(app, theme, "violet", "compact")
     row = {"Type": "T-Shirt", "Color": "Black", "Size": "L", "Condition": "Good", "Appraisal": 35}
 
     def as_native(window: MainWindow) -> MainWindow:
@@ -46,13 +56,14 @@ def main() -> None:
         window.set_native_undo_button(True)
         window.set_native_settings_button(True)
         window.set_native_mini_button(True)
+        window.set_native_file_button(True)
         return window
 
     main_window = as_native(MainWindow())
     main_window.setup()
     main_window.update_workbooks(["Apparel Inventory.xlsx"], "Apparel Inventory.xlsx")
     main_window.set_listening_indicator(True)
-    colors = colors_for(True, "violet")
+    colors = colors_for(dark, "violet")
     main_window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
     main_window.set_stream_classifier(lambda words: [WordMatch(w in ('black', 't-shirt', 'large', 'good', 'appraisal', 'thirty', 'five'), 'Color') for w in words])
     main_window.add_stream_text('this next one is a black t-shirt large good appraisal thirty five')
@@ -95,17 +106,15 @@ def main() -> None:
         widget.show()
         dialogs[shown] = (dialog, widget)
 
-    def grab() -> None:
-        save(main_window.widget, "main-window.png", 24)
-        save(mini.widget, "mini-view.png", 24)
-        save(waiting.widget, "not-connected.png", 24)
-        save(helper.widget, "term-helper.png")
-        for shown, (dialog, widget) in dialogs.items():
-            save(widget, f"settings-{shown.lower()}.png")
-        app.quit()
-
-    QTimer.singleShot(1200, grab)
-    app.exec()
+    QTest.qWait(1200)
+    save(main_window.widget, "main-window.png", 24, theme)
+    save(mini.widget, "mini-view.png", 24, theme)
+    save(waiting.widget, "not-connected.png", 24, theme)
+    save(helper.widget, "term-helper.png", 0, theme)
+    for shown, (dialog, widget) in dialogs.items():
+        save(widget, f"settings-{shown.lower()}.png", 0, theme)
+    for window in (main_window.widget, mini.widget, waiting.widget, helper.widget, *(w for _, w in dialogs.values())):
+        window.close()
 
 
 if __name__ == "__main__":

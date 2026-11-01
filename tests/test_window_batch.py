@@ -170,3 +170,68 @@ class TestSettingsPieces(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVoiceReactiveWave(unittest.TestCase):
+    def test_a_quiet_room_is_a_short_loop_and_a_voice_makes_it_taller(self):
+        wave = WaveMeter()
+        wave.set_active(True)
+        for _ in range(12):
+            wave._tick()
+        quiet = max(wave.bar_heights())
+        for _ in range(12):
+            wave.set_level(1.0)
+            wave._tick()
+        loud = max(wave.bar_heights())
+        self.assertLess(quiet, 0.5)
+        self.assertGreater(loud, quiet + 0.3)
+        self.assertLessEqual(loud, 1.0)
+
+    def test_it_falls_back_when_the_voice_stops(self):
+        wave = WaveMeter()
+        wave.set_active(True)
+        wave.set_level(1.0)
+        for _ in range(3):
+            wave._tick()
+        high = wave.level
+        for _ in range(40):
+            wave._tick()
+        self.assertLess(wave.level, high / 3)
+
+    def test_the_listener_measures_loudness(self):
+        import struct
+
+        from quill.listener.listener import Listener
+        silence = struct.pack("<800h", *([0] * 800))
+        speech = struct.pack("<800h", *([3000, -3000] * 400))
+        self.assertEqual(Listener.loudness(silence), 0.0)
+        self.assertGreater(Listener.loudness(speech), 0.8)
+        self.assertEqual(Listener.loudness(b""), 0.0)
+
+
+from quill.ui.widgets import WaveMeter  # noqa: E402
+
+
+class TestTermHelperSoundsSetting(unittest.TestCase):
+    def make(self, on):
+        from quill.feedback import Feedback
+        from quill.session import Event
+        settings = Settings.defaults()
+        settings.preferences["sorting_sounds"] = on
+        played = []
+        fb = Feedback(settings, play=played.append, say=lambda w: None)
+        return fb, played, Event
+
+    def test_on_by_default_and_plays_for_an_added_term(self):
+        self.assertTrue(Settings.defaults().preferences["sorting_sounds"])
+        fb, played, Event = self.make(True)
+        fb.request(Event("add_values", detail="Added x"))
+        self.assertEqual(fb.flush(), "success")
+
+    def test_off_silences_term_helper_answers_but_not_other_cues(self):
+        fb, played, Event = self.make(False)
+        for kind in ("add_values", "alias_added", "skipped"):
+            fb.request(Event(kind))
+        self.assertIsNone(fb.flush())
+        fb.request(Event("committed", record={"a": 1}))
+        self.assertEqual(fb.flush(), "success")

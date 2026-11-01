@@ -61,14 +61,15 @@ class TestFolderIconInTheTitleBar(unittest.TestCase):
         self.addCleanup(restore)
         kit = FakeAppKit()
         kit.NSStackView = type("S", (), {"stackViewWithViews_": staticmethod(lambda views: type(
-            "Stack", (), {"views": views, "setSpacing_": lambda s, v: None, "setFrame_": lambda s, f: None})())})
+            "Stack", (), {"views": views, "setSpacing_": lambda s, v: None, "setFrame_": lambda s, f: None,
+                          "setFrameOrigin_": lambda s, o: None})())})
         from PySide6.QtCore import QPoint
         from PySide6.QtGui import QRegion
         from PySide6.QtWidgets import QWidget
         chrome.add_titlebar_button(QWidget(), lambda: None, platform="darwin", appkit=kit,
                                    extra=[(chrome.SYMBOL_FOLDER, "Open Spreadsheet File", lambda: None),
                                           (chrome.SYMBOL_SETTINGS, "Settings", lambda: None)])
-        views = kit.window.accessories[0].view.views
+        views = kit.window.accessories[0].view.subviews[0].views
         self.assertEqual(views[0].image, f"image:{chrome.SYMBOL_FOLDER}")
         self.assertEqual(views[1].image, f"image:{chrome.SYMBOL_SETTINGS}")
 
@@ -242,3 +243,127 @@ class TestTermHelperClosing(unittest.TestCase):
         w.set_stream_partial("black shirt")
         w.sorting_finished()
         self.assertEqual(w.stream_text(), "black shirt")
+
+
+class TestNextRowButton(unittest.TestCase):
+    def test_visible_only_while_listening_and_it_calls_back(self):
+        calls = []
+        w = MainWindow(on_next_row=lambda: calls.append(1))
+        w.setup()
+        w.widget.resize(460, 500)
+        w.widget.show()
+        _app.processEvents()
+        self.assertFalse(w.next_button.isVisibleTo(w.widget))
+        w.set_listening_indicator(True)
+        self.assertTrue(w.next_button.isVisibleTo(w.widget))
+        w.next_button.click()
+        self.assertEqual(calls, [1])
+        w.set_listening_indicator(False)
+        self.assertFalse(w.next_button.isVisibleTo(w.widget))
+
+
+class TestNextRowInTheApp(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        d = pathlib.Path(self._tmp.name)
+        from quill.demo import make_demo_workbook
+        self.app = QuillApp(_app, Settings.load(d / "cfg"), XlsxBridge(make_demo_workbook(d)),
+                            listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: d,
+                            speaker=FakeSpeaker(), sound_player=lambda p: None)
+        self.app.start()
+        self.app.toggle_listening(True)
+
+    def test_the_arrow_saves_the_row_clears_the_words_and_the_grid(self):
+        self.app._on_phrase_heard("black jeans medium")
+        self.app.controller.handle_transcript("black jeans medium")
+        self.assertTrue(self.app.controller.session.record)
+        before = self.app.controller.session.committed
+        self.app.next_row()
+        self.assertEqual(self.app.controller.session.committed, before + 1)
+        self.assertEqual(self.app.window.stream_text(), "")
+        self.assertEqual(self.app.window.row_table.rowCount(), 0)
+        self.assertTrue(self.app.controller.session.listening)               # ready for the next row
+
+    def test_with_nothing_heard_it_only_clears_the_words(self):
+        self.app.window.set_stream_partial("mumble")
+        self.app.next_row()
+        self.assertEqual(self.app.window.stream_text(), "")
+        self.assertEqual(self.app.controller.session.committed, 0)
+
+
+class TestOpenTermHelperByVoice(unittest.TestCase):
+    def test_the_keywords_exist_and_say_it_opens_the_window(self):
+        from quill.parser.commands import Action
+        settings = Settings.defaults()
+        self.assertEqual(settings.keywords["open term helper"], Action.OPEN_TERM_HELPER)
+        self.assertEqual(settings.keywords["term helper"], Action.OPEN_TERM_HELPER)
+
+    def test_the_command_becomes_an_event(self):
+        from quill.session import Session
+        from quill.parser.vocab import Vocabulary
+        from quill.parser.commands import CommandMatcher
+        settings = Settings.defaults()
+        session = Session(Vocabulary(), CommandMatcher(settings.keywords))
+        session.listening = True
+        kinds = [e.kind for e in session.feed("open term helper")]
+        self.assertIn("open_term_helper", kinds)
+
+
+class TestMiniCollapseWithContent(unittest.TestCase):
+    def test_a_long_stream_and_a_full_grid_do_not_stop_the_window_shrinking(self):
+        w = MainWindow()
+        w.setup()
+        w.widget.resize(460, 420)
+        w.widget.show()
+        w.animation_ms = 120
+        w.set_stream_partial("give me some things to say i don't have anything you talk a little bit you really good "
+                             "you feel this whole prompt up for stuff the red cat ugly matt add to the hat")
+        w.update_current_row({"Category": "Other", "Brand": "Things", "Condition": "Good", "Color": "Red"})
+        w.set_sorting_count(7)
+        _app.processEvents()
+        w.set_mini(True, notify=True)
+        end = QTimer()
+        end.setSingleShot(True)
+        end.timeout.connect(_app.quit)
+        end.start(700)
+        _app.exec()
+        self.assertTrue(w._view_mini)                                  # the switch finished (it used to be cut short)
+        self.assertLess(w.widget.height(), 200)
+
+
+class TestOneClickWithADropDownOpen(unittest.TestCase):
+    def test_a_click_on_the_listen_button_closes_the_popup_and_presses_it(self):
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QComboBox, QVBoxLayout, QWidget
+        from quill.ui.widgets import ListenButton, PopupClickThrough
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        combo = QComboBox()
+        combo.addItems(["a", "b"])
+        button = ListenButton()
+        pressed = []
+        button.clicked.connect(lambda: pressed.append(1))
+        layout.addWidget(combo)
+        layout.addWidget(button)
+        host.resize(300, 300)
+        host.show()
+        filt = PopupClickThrough(_app)
+        _app.installEventFilter(filt)
+        try:
+            combo.showPopup()
+            QTest.qWait(100)
+            if _app.activePopupWidget() is None:
+                self.skipTest("this platform does not open real popups")
+            global_pos = button.mapToGlobal(button.rect().center())
+            event = QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(button.rect().center()), QPointF(global_pos),
+                                Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+            self.assertTrue(filt.eventFilter(button, event))
+            QTest.qWait(100)
+            self.assertIsNone(_app.activePopupWidget())
+            self.assertEqual(pressed, [1])
+        finally:
+            _app.removeEventFilter(filt)
+            host.close()

@@ -107,6 +107,7 @@ class MainWindow:
             *desired* listening state.
         on_settings: Called when the user opens Settings.
         on_sorting: Called when the user opens the Needs-sorting list.
+        on_next_row: Called when the user presses the next-row arrow (the same as saying "next row").
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
         on_log_toggled: Called with True/False when the user collapses/expands the log.
         on_mini_toggled: Called with True/False when the user enters/leaves the mini view.
@@ -123,6 +124,7 @@ class MainWindow:
         on_settings: Callable[[], None] | None = None,
         on_sorting: Callable[[], None] | None = None,
         on_undo: Callable[[], None] | None = None,
+        on_next_row: Callable[[], None] | None = None,
         on_log_toggled: Callable[[bool], None] | None = None,
         log_collapsed: bool = False,
         on_mini_toggled: Callable[[bool], None] | None = None,
@@ -141,6 +143,7 @@ class MainWindow:
         self._on_file_state = on_file_state or (lambda has, name, sheet: None)
         self._on_sorting = on_sorting or (lambda: None)
         self._on_undo = on_undo or (lambda: None)
+        self._on_next_row = on_next_row or (lambda: None)
         self._on_log_toggled = on_log_toggled or (lambda collapsed: None)
         self._log_collapsed = log_collapsed
         self._on_mini_toggled = on_mini_toggled or (lambda mini: None)
@@ -258,7 +261,15 @@ class MainWindow:
         self.help_button.setAccessibleName("Help")
         self.help_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.help_button.clicked.connect(lambda: self._on_help(HELP_TOPIC))
+        self.next_button = QPushButton()                 # small next arrow beside Start: save this row and start the next
+        self.next_button.setProperty("iconOnly", True)
+        self.next_button.setToolTip("Next Row")
+        self.next_button.setAccessibleName("Next Row")
+        self.next_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.next_button.setVisible(False)
+        self.next_button.clicked.connect(lambda: self._on_next_row())
         row.addWidget(self.toggle_button, 1)
+        row.addWidget(self.next_button)
         row.addWidget(self.help_button)
         row.addWidget(self.undo_button)
         row.addWidget(self.settings_button)
@@ -294,8 +305,9 @@ class MainWindow:
         self.row_table.setMinimumHeight(ROW_EMPTY_HEIGHT)           # starts small; grows with the fields heard
         self._row_target = ROW_EMPTY_HEIGHT
         # a hint shown while no fields have been heard yet
-        self.row_placeholder = QLabel("Fields appear here as they are heard", self.row_table.viewport())
+        self.row_placeholder = QLabel("Words you say that match to columns in the selected file appear here as they are heard", self.row_table.viewport())
         self.row_placeholder.setProperty("placeholder", True)        # same look as the Voice Stream box's placeholder
+        self.row_placeholder.setWordWrap(True)
         self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.row_table.viewport().setProperty("keepMargins", True)     # the spacing setting must not resize this layout's margins
@@ -672,6 +684,7 @@ class MainWindow:
         self.connection_chip.setVisible(self._not_connected)
         self.toggle_button.set_notice(self._not_connected, self.connection_chip.toolTip())
         self.open_file_button.setVisible(full and not self._native_file_button)
+        self.next_button.setVisible(self._listening)                          # only while a turn is going on
         self.error_button.setVisible(self._view_mini and bool(self._mini_error))
         tall = self.sorting_button.fontMetrics().height() * 2 + 4
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
@@ -905,7 +918,7 @@ class MainWindow:
             return
         has = bool(self._workbook_name)
         sheet = f"\nSheet: {self._sheet_name}" if has and self._sheet_name else ""
-        tip = (f"{self._workbook_name}{sheet}\nClick to open another spreadsheet file" if has
+        tip = (f"{self._workbook_name}{sheet}" if has
                else "Open Spreadsheet File\nWork on an .xlsx or .csv file directly (no spreadsheet program needed)")
         self.open_file_button.setToolTip(tip)
         color = self._text_color
@@ -922,8 +935,25 @@ class MainWindow:
         if rows == 0:
             return ROW_EMPTY_HEIGHT
         cap = ROW_MAX_MINI if self._view_mini else ROW_MAX_FULL
-        cell = self.row_table.verticalHeader().defaultSectionSize()
-        return max(ROW_EMPTY_HEIGHT, min(cap, rows * cell + 2 * self.row_table.frameWidth() + 6))
+        self._size_rows()
+        total = sum(self.row_table.rowHeight(r) for r in range(rows))
+        return max(ROW_EMPTY_HEIGHT, min(cap, total + 2 * self.row_table.frameWidth() + 6))
+
+    def _size_rows(self) -> None:
+        """A line is as tall as the values in its cell: a column given several values shows one per line."""
+        table = self.row_table
+        cell = table.verticalHeader().defaultSectionSize()
+        for r in range(table.rowCount()):
+            item = table.item(r, 1)
+            lines = item.text().count("\n") + 1 if item is not None else 1
+            height = cell + (lines - 1) * max(cell - 8, 14)
+            if table.rowHeight(r) != height:
+                table.setRowHeight(r, height)
+
+    def _switching_view(self) -> bool:
+        """True while the window is easing between the full and mini views: nothing else may resize it then
+        (it would cut the animation short, and the switch would never finish)."""
+        return self._mini != self._view_mini
 
     def _fit_row_table(self, animate: bool = True) -> None:
         """Give the Current Row box room for its content and, on screen, let the window grow to match.
@@ -937,7 +967,7 @@ class MainWindow:
         self.row_table.setMinimumHeight(new)
         window = self._window
         if (animate and window is not None and window.isVisible() and new > old and shortfall > 0
-                and self.row_table.isVisibleTo(window)):
+                and self.row_table.isVisibleTo(window) and not self._switching_view()):
             self._resize_to(window.width(), self._height_now() + shortfall)
 
     def update_current_row(self, fields: dict[str, object]) -> None:
@@ -953,6 +983,7 @@ class MainWindow:
                 if c == 0:
                     item.setForeground(self.row_table.palette().placeholderText())
                 self.row_table.setItem(r, c, item)
+        self._size_rows()
         self._fit_row_table()
 
     def _remove_row_requested(self, column: str) -> None:
@@ -1045,7 +1076,7 @@ class MainWindow:
     def _stream_height_changed(self, old: int, new: int) -> None:
         """The stream grew or shrank: take the room from the Current Row box, growing the window only if it has none."""
         window = self._window
-        if window is None or new <= old or not window.isVisible() or self._view_mini:
+        if window is None or new <= old or not window.isVisible() or self._view_mini or self._switching_view():
             self._keep_minimum()
             return
         slack = max(self.row_table.height() - self.row_table.minimumHeight(), 0)
@@ -1064,7 +1095,7 @@ class MainWindow:
         parts = [row] if row and row != "Row saved" else []        # (the label already says "Last Saved")
         tip = row
         if record:
-            items = [(k, v.isoformat() if isinstance(v, dt.date) else str(v)) for k, v in record.items()]
+            items = [(k, (v.isoformat() if isinstance(v, dt.date) else str(v)).replace("\n", ", ")) for k, v in record.items()]
             count = len(items)
             parts.append(f"{count} field{'s' if count != 1 else ''}")
             parts.append(", ".join(f"{k}: {v}" for k, v in items))
@@ -1123,6 +1154,7 @@ class MainWindow:
         """Update the button (icon, text, colours, sound lines)."""
         self._listening = active
         self.toggle_button.set_active(active)
+        self._refresh_visibility()
 
     def set_quiet_countdown(self, seconds: int | None) -> None:
         """Show how many seconds are left before Quill stops listening because it is quiet (None hides it)."""
@@ -1157,6 +1189,7 @@ class MainWindow:
         self.update_current_row(self._row_fields)         # the grid's first column takes its colour from the theme
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.help_button.setIcon(make_icon("question", text_color, 18))
+        self.next_button.setIcon(make_icon("next", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self._show_file_state()
         self.toggle_button.set_colors(text_color, on_accent, accent)

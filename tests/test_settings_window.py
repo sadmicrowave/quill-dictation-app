@@ -63,7 +63,7 @@ class TestLayout(DialogCase):
                           "Keep the Microphone Open When Not Listening", "Keep the Mini View on Top", "Hide the Dock Icon", "Troubleshooting",
                           "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur", "Term Helper Follows Window Opacity",
                           "Confirm With", "Sound Set", "Spoken Word", "Stop Listening When Quiet",
-                          "Quiet Time Before Stopping", "Speech Model"})
+                          "Quiet Time Before Stopping", "Speech Model", "Sounds for Term Helper Actions"})
 
     def test_the_keyword_table_gets_the_spare_height(self):
         self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))

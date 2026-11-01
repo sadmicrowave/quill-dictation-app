@@ -114,6 +114,19 @@ class ParseResult:
     corrections: dict[str, str] = field(default_factory=dict)
     """Words that were taken as a similar-sounding known word: ``{"waste": "waist"}``."""
 
+    additive: set[str] = field(default_factory=set)
+    """Columns filled by a known value spoken without the column's name. A second different value for such a
+    column is added under the first (one value per line of the cell) instead of replacing it."""
+
+
+def merge_values(existing: object, new: object) -> str:
+    """Put *new* under *existing* in one cell (a value per line), unless it is already there."""
+    lines = str(existing).split("\n")
+    for line in str(new).split("\n"):
+        if line.lower() not in (x.lower() for x in lines):
+            lines.append(line)
+    return "\n".join(lines)
+
 
 def parse(
     text: str,
@@ -240,7 +253,7 @@ class _Parser:
         if kind == "field":
             self._take_field(column, 1)
         else:
-            self._set(column, canonical, self.i, self.i + 1)
+            self._set(column, canonical, self.i, self.i + 1, additive=True)
             self.i += 1
         return True
 
@@ -275,25 +288,25 @@ class _Parser:
         """Record the best of several vocabulary matches at the cursor."""
         order = {c: k for k, c in enumerate(self.vocab.columns())}
         matches.sort(key=lambda m: (-m[2], order.get(m[0], len(order))))
-        free = [m for m in matches if m[0] not in self.result.updates]       # a column already given a value in this phrase is taken
-        if not free:                                                          # a second value for it: keep the first and say so
-            column, canonical, length = matches[0]
-            phrase = " ".join(self.tokens[self.i:self.i + length])
-            self.result.assumptions.append(
-                f"'{phrase}' also fits {column}, which already has {self.result.updates[column]}: kept {self.result.updates[column]}")
-            self.i += length
-            return
-        matches = free
-        column, canonical, length = matches[0]
+        free = [m for m in matches if m[0] not in self.result.updates]       # prefer a column that has no value yet in this phrase
+        column, canonical, length = (free or matches)[0]
         phrase = " ".join(self.tokens[self.i:self.i + length])
         columns = {m[0] for m in matches if m[2] == length}
         if len(columns) > 1:
             self.result.assumptions.append(f"'{phrase}' taken as {column}")
-        self._set(column, canonical, self.i, self.i + length)
+        self._set(column, canonical, self.i, self.i + length, additive=True)
         self.i += length
 
-    def _set(self, column: str, value: object, start: int | None = None, end: int | None = None) -> None:
-        """Record a value for *column*; *start* / *end* (token positions) say which words it came from."""
+    def _set(self, column: str, value: object, start: int | None = None, end: int | None = None,
+             additive: bool = False) -> None:
+        """Record a value for *column*; *start* / *end* (token positions) say which words it came from.
+
+        With *additive* a different value already given for the column in this phrase is kept and *value* goes
+        under it in the same cell."""
+        if additive:
+            if column in self.result.updates:
+                value = merge_values(self.result.updates[column], value)
+            self.result.additive.add(column)
         self.result.updates[column] = value
         self.filled.add(column)
         self._set_count += 1
@@ -426,7 +439,7 @@ class _Parser:
                 self._emit(buffer)
                 buffer = []
                 if close:
-                    self._set(close[0], close[1], first + offset, first + offset + 1)
+                    self._set(close[0], close[1], first + offset, first + offset + 1, additive=True)
             else:
                 buffer.append(word)
 

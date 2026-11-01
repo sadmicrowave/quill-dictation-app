@@ -52,7 +52,7 @@ class TestLoadSave(SettingsCase):
 
     def test_unknown_action_in_file_skipped(self):
         (self.dir / Settings.KEYWORDS_FILE).write_text(
-            '[keywords]\n"go" = "START_LISTENING"\n"zap" = "TELEPORT"\n', encoding="utf-8")
+            'keywords_version = 2\n[keywords]\n"go" = "START_LISTENING"\n"zap" = "TELEPORT"\n', encoding="utf-8")
         self.assertEqual(Settings.load(self.dir).keywords, {"go": Action.START_LISTENING})
 
     def test_bad_preference_types_and_theme_ignored(self):
@@ -169,3 +169,17 @@ class TestAutoStopPreferences(unittest.TestCase):
             again = Settings.load(pathlib.Path(tmp))
             self.assertEqual(again.preferences["auto_stop_seconds"], 3600)
             self.assertFalse(again.preferences["auto_stop"])
+
+
+class TestNewShippedCommands(SettingsCase):
+    def test_a_file_saved_before_the_command_existed_gets_it(self):
+        (self.dir / Settings.KEYWORDS_FILE).write_text('[keywords]\n"go" = "START_LISTENING"\n"halt" = "STOP_LISTENING"\n')
+        loaded = Settings.load(self.dir)
+        self.assertEqual(loaded.keywords["open term helper"], Action.OPEN_TERM_HELPER)
+        self.assertEqual(loaded.keywords["term helper"], Action.OPEN_TERM_HELPER)
+
+    def test_once_saved_a_deleted_command_stays_deleted(self):
+        s = Settings.load(self.dir)
+        s.set_keywords([("go", Action.START_LISTENING), ("halt", Action.STOP_LISTENING)])
+        s.save()
+        self.assertNotIn("term helper", Settings.load(self.dir).keywords)

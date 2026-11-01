@@ -15,9 +15,11 @@ or a speech model.
 from __future__ import annotations
 import json
 import logging
+import math
 import pathlib
 import queue
 import threading
+from array import array
 from typing import Callable, ContextManager
 
 log = logging.getLogger("quill.listener")
@@ -52,7 +54,7 @@ def _default_stream(sample_rate: int, push: Callable[[bytes], None]):
         push(bytes(indata))
 
     return sounddevice.RawInputStream(
-        samplerate=sample_rate, blocksize=4000, dtype="int16", channels=1, callback=on_audio
+        samplerate=sample_rate, blocksize=1600, dtype="int16", channels=1, callback=on_audio
     )
 
 
@@ -90,6 +92,7 @@ class Listener:
         self._on_error = on_error or (lambda message: None)
         self._on_partial = on_partial
         self._last_partial = ""
+        self._on_level: Callable[[float], None] | None = None
         self._model_loader = model_loader
         self._recognizer_factory = recognizer_factory
         self._stream_factory = stream_factory
@@ -131,6 +134,20 @@ class Listener:
                 self._loading = False
 
         threading.Thread(target=load, name="quill-model-loader", daemon=True).start()
+
+    def set_level_callback(self, callback: Callable[[float], None] | None) -> None:
+        """Be told how loud the user's voice is (0 to 1) for every chunk of audio (on the listener's thread)."""
+        self._on_level = callback
+
+    @staticmethod
+    def loudness(chunk: bytes) -> float:
+        """A 0 to 1 loudness for a chunk of 16-bit audio (quiet room near 0, a normal voice around 0.5 to 1)."""
+        samples = array("h")
+        samples.frombytes(chunk[: len(chunk) // 2 * 2])
+        if not samples:
+            return 0.0
+        rms = math.sqrt(sum(s * s for s in samples) / len(samples))
+        return min(1.0, (rms / 3500.0) ** 0.6)
 
     def set_partial_callback(self, callback: TranscriptCallback | None) -> None:
         """Receive the words of the phrase being spoken as they are recognised (see ``on_partial``)."""
@@ -200,6 +217,8 @@ class Listener:
                         continue
                     if self._muted.is_set():
                         continue
+                    if self._on_level is not None:
+                        self._on_level(self.loudness(chunk))
                     if recognizer.AcceptWaveform(chunk):
                         self._emit(recognizer.Result())
                         self._partial("")

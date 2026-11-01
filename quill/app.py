@@ -60,6 +60,7 @@ from quill.ui.theme import (
     is_dark,
 )
 from quill.ui.tray import TrayIcon
+from quill.ui.widgets import PopupClickThrough
 
 
 class QuillApplication(QApplication):
@@ -81,6 +82,7 @@ class Relay(QObject):
 
     transcript = Signal(str)
     partial = Signal(str)           # words of the phrase still being spoken
+    level = Signal(float)           # how loud the user's voice is (0 to 1), about ten times a second
     error = Signal(str)
     progress = Signal(int, int)
     model_ready = Signal(object)   # pathlib.Path on success, None on failure
@@ -167,7 +169,7 @@ class QuillApp:
             on_open_file=self.choose_spreadsheet_file,
             on_use_excel=self.use_live_excel, on_file_state=self._sync_titlebar_file,
             on_sorting=self.show_sorting,
-            on_undo=self.undo, on_help=self.open_help, on_log_toggled=self._log_toggled,
+            on_undo=self.undo, on_next_row=self.next_row, on_help=self.open_help, on_log_toggled=self._log_toggled,
             on_resized=self._window_resized, on_mini_resized=self._mini_window_resized,
             on_field_removed=self.remove_field,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
@@ -214,6 +216,7 @@ class QuillApp:
 
         self.relay.transcript.connect(self._on_phrase_heard)        # first: show the words before they are acted on
         self.relay.partial.connect(self._on_partial_heard)
+        self.relay.level.connect(self._on_level)
         self.relay.background_done.connect(lambda callback, result: callback(result))
         self.relay.transcript.connect(self.controller.handle_transcript)
         self.relay.error.connect(self._on_error)
@@ -231,6 +234,9 @@ class QuillApp:
         self._apply_look()
         self.window.setup()
         self.sorting.setup(parent=self.window.widget)
+        if not getattr(self.qapp, "_quill_click_through", None):    # one filter per application, however many windows
+            self.qapp._quill_click_through = PopupClickThrough(self.qapp)   # one click on Start / Stop works with a drop-down open
+            self.qapp.installEventFilter(self.qapp._quill_click_through)
         self.sorting.on_done = self.window.sorting_finished
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
@@ -415,6 +421,13 @@ class QuillApp:
         """Note the file's current state, so Quill's own writes are not mistaken for outside changes."""
         self._seen_mtime = self._workbook_mtime()
 
+    def _on_level(self, level: float) -> None:
+        """How loud the user's voice is: the sound lines on the Start buttons follow it."""
+        if self.window.widget is None or not shiboken6.isValid(self.window.widget):
+            return
+        self.window.wave.set_level(level)
+        self.sorting.voice_wave.set_level(level)
+
     def _show_active_sheet(self) -> None:
         """Tell the window which sheet is open (the folder icon's hover text names it)."""
         try:
@@ -461,6 +474,9 @@ class QuillApp:
         set_partial = getattr(self.listener, "set_partial_callback", None)
         if set_partial is not None:
             set_partial(self.relay.partial.emit)                      # words appear in the Voice Stream as they are heard
+        set_level = getattr(self.listener, "set_level_callback", None)
+        if set_level is not None:
+            set_level(self.relay.level.emit)                          # the sound lines follow the user's voice
         preload = getattr(self.listener, "preload", None)
         if preload is not None:
             preload()                                   # load the model now; the mic stays off
@@ -514,6 +530,15 @@ class QuillApp:
             if not self.connected:                  # nothing to fill in yet: ask for a file straight away
                 self.choose_spreadsheet_file()
         self.controller.set_listening(active)   # explains what to do if there is no workbook
+
+    def next_row(self) -> None:
+        """The next-row arrow: clear the heard words, save what was understood and get ready for new input."""
+        if not self.controller.session.listening:
+            return
+        self.controller.next_row()
+        self.window.end_stream()
+        self.window.clear_stream()
+        self.window.update_current_row(self.controller.session.record)
 
     def refresh(self) -> None:
         """Re-read the workbook (or connect, if not yet connected)."""
@@ -720,8 +745,7 @@ class QuillApp:
         buffer = QBuffer(data)
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
         make_icon("folder-open" if has_file else "folder", "#000000", 17).pixmap(34, 34).save(buffer, "PNG")
-        tip = (f"{name}\nSheet: {sheet}\nClick to open another spreadsheet file" if has_file and sheet
-               else f"{name}\nClick to open another spreadsheet file" if has_file else "Open Spreadsheet File")
+        tip = (f"{name}\nSheet: {sheet}" if has_file and sheet else name if has_file else "Open Spreadsheet File")
         self._titlebar.set_extra_image(0, bytes(data), tip, muted=not has_file)
 
     def _sync_titlebar_undo(self) -> None:
@@ -903,6 +927,12 @@ class QuillApp:
             self.refresh_sorting(reveal=True)
             if self.settings.preferences["auto_voice_sort"] and self.listener is not None:
                 self.controller.start_voice_sort()
+        elif kind == "open_term_helper":
+            if self.controller.pending_terms():
+                self.show_sorting()
+            else:
+                self.window.append_log("Nothing to sort")
+            return
         elif kind == "sort_voice_started":
             self.sorting.set_voice_active(True)
             self.refresh_sorting(reveal=True)

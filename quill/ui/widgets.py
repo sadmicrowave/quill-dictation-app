@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from quill.ui.icons import make_icon
+
+#: Height of a pill notice ("File stream not connected", "Start Listening").
+CHIP_HEIGHT = 22
 
 #: Lines of the full text shown in a tooltip before "…and n more".
 TOOLTIP_LINES = 40
@@ -64,12 +67,15 @@ class WaveMeter(QWidget):
 
     HEIGHTS = (8, 16, 24, 34, 22, 14, 8)         # the app icon's lines (relative heights)
     FRAME_MS = 40
-    SPEED = 0.16                                 # radians per frame
+    SPEED = 0.10                                 # radians per frame while quiet
+    QUIET = 0.30                                 # how tall the short stack is with no voice (share of the full height)
 
     def __init__(self) -> None:
         super().__init__()
         self._active = False
         self._phase = 0.0
+        self._target = 0.0                       # the latest voice level (0 to 1) ...
+        self._level = 0.0                        # ... and the smoothed level the lines are drawn with
         self._idle: QColor | None = None                 # None: the muted text colour of the palette
         self._live = QColor("#34c759")
         self._timer = QTimer(self)
@@ -98,14 +104,35 @@ class WaveMeter(QWidget):
         """Start (green, moving) or stop (muted, still)."""
         self._active = active
         self._phase = 0.0
+        self._target = self._level = 0.0
         if active:
             self._timer.start()
         else:
             self._timer.stop()
         self.update()
 
+    def set_level(self, level: float) -> None:
+        """The loudness of the user's voice right now (0 to 1): the lines rise and speed up with it."""
+        self._target = max(0.0, min(1.0, level))
+
+    @property
+    def level(self) -> float:
+        return self._level
+
+    def hideEvent(self, event) -> None:                    # noqa: N802 (Qt name): nothing animates out of sight
+        self._timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event) -> None:                    # noqa: N802
+        super().showEvent(event)
+        if self._active:
+            self._timer.start()
+
     def _tick(self) -> None:
-        self._phase = (self._phase + self.SPEED) % (2 * math.pi)
+        rate = 0.55 if self._target > self._level else 0.18         # quick to rise, slower to fall
+        self._level += (self._target - self._level) * rate
+        self._target *= 0.85                                         # silence between updates lets it fall away
+        self._phase = (self._phase + self.SPEED + 0.22 * self._level) % (2 * math.pi)
         self.update()
 
     def bar_heights(self) -> list[float]:
@@ -115,7 +142,8 @@ class WaveMeter(QWidget):
         for i, h in enumerate(self.HEIGHTS):
             base = h / top
             if self._active:
-                base *= 0.55 + 0.45 * (0.5 + 0.5 * math.sin(self._phase - i * 0.8))
+                height = self.QUIET + (1.0 - self.QUIET) * self._level          # short stack with no voice, up to full
+                base *= height * (0.7 + 0.3 * math.sin(self._phase - i * 0.8))
             shares.append(max(base, 0.16))
         return shares
 
@@ -157,12 +185,27 @@ class ListenButton(QPushButton):
         self.countdown_label.setVisible(False)
         self.wave = WaveMeter()
         self._inner = QHBoxLayout(self)
+        self._inner.setSizeConstraint(QHBoxLayout.SizeConstraint.SetNoConstraint)   # never wider than the room it is given
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._inner.setContentsMargins(16, 0, 14, 0)
         self._inner.setSpacing(8)
         self._inner.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
         self._inner.addWidget(self.countdown_label, 0, Qt.AlignmentFlag.AlignVCenter)
         self._inner.addStretch(1)
         self._inner.addWidget(self.wave, 0, Qt.AlignmentFlag.AlignVCenter)
+        # The pills ("Start Listening", or a notice chip) sit in the exact middle of the button, over the rest.
+        self._center = QWidget(self)
+        self._center.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._center.setProperty("keepMargins", True)
+        self._pills = QHBoxLayout(self._center)
+        self._pills.setContentsMargins(0, 0, 0, 0)
+        self._pills.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.text_pill = QLabel()
+        self.text_pill.setProperty("chip", "listen")
+        self.text_pill.setFixedHeight(CHIP_HEIGHT)
+        self.text_pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self._pills.addWidget(self.text_pill, 0, Qt.AlignmentFlag.AlignCenter)
         for part in (self.icon_label, self.countdown_label, self.wave):
             part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)       # clicks reach the button
         self.set_active(False)
@@ -174,17 +217,20 @@ class ListenButton(QPushButton):
     def isChecked(self) -> bool:                           # noqa: N802 (Qt name): "on" means listening
         return self._active
 
+    def resizeEvent(self, event) -> None:                  # noqa: N802 (Qt name)
+        super().resizeEvent(event)
+        self._center.setGeometry(0, 0, self.width(), self.height())
+
     def set_chip(self, chip: QWidget) -> None:
-        """Seat a notice chip right of the icon (it is shown or hidden by the caller)."""
-        chip.setParent(self)
+        """Seat a notice chip in the middle of the button (it is shown or hidden by the caller)."""
+        chip.setParent(self._center)
         chip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._inner.insertWidget(1, chip, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._pills.addWidget(chip, 0, Qt.AlignmentFlag.AlignCenter)
 
     def set_notice(self, shown: bool, tip: str = "") -> None:
         """While a notice chip is shown the centred text steps aside, and *tip* explains it on hover."""
         self._notice = shown
         self.fixed_tip = tip if shown and tip else None
-        self.wave.setVisible(not shown)                    # (room for the chip)
         self._show_text()
 
     def set_active(self, active: bool) -> None:
@@ -220,7 +266,8 @@ class ListenButton(QPushButton):
 
     def _show_text(self) -> None:
         text = self._live_text if self._active else self._idle_text
-        self.setText("" if (self._compact or self._notice) else text)
+        self.text_pill.setText(text)
+        self.text_pill.setVisible(not (self._compact or self._notice))
         self.setToolTip(self.fixed_tip or text)
         self.setAccessibleName(text)
 
@@ -228,6 +275,30 @@ class ListenButton(QPushButton):
         _, on_accent, accent = self._colors
         self.icon_label.setPixmap(make_icon("stop" if self._active else "play", on_accent if self._active else accent,
                                             16).pixmap(16, 16))
+
+
+class PopupClickThrough(QObject):
+    """One click on a Start / Stop Listening button works even while a drop-down is open.
+
+    An open drop-down list grabs the mouse, so the first click outside it only closes it and the click is
+    lost. Here, a click that lands on a :class:`ListenButton` while a popup is open closes the popup and presses
+    the button as well.
+    """
+
+    def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
+        if event.type() != QEvent.Type.MouseButtonPress or event.button() != Qt.MouseButton.LeftButton:
+            return False
+        popup = QApplication.activePopupWidget()
+        if popup is None:
+            return False
+        target = QApplication.widgetAt(event.globalPosition().toPoint())
+        while target is not None and not isinstance(target, ListenButton):
+            target = target.parentWidget()
+        if target is None or not target.isEnabled():
+            return False
+        popup.close()
+        QTimer.singleShot(0, target.click)
+        return True
 
 
 class Pill(QLabel):
