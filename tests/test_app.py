@@ -197,7 +197,8 @@ class TestModelHandling(AppCase):
         quill = self.make(lambda c: None, None)
         quill._on_model_ready(None)
         self.assertFalse(quill.window.download_button.isHidden())
-        self.assertIn("failed", quill.window.footer.text())
+        self.assertIn("failed", quill.window.log.toPlainText())          # the error is in the log
+        self.assertIn("Error", quill.window.log.toPlainText().splitlines()[-1])
 
     def test_download_runs_off_thread_and_reports(self):
         import threading
@@ -212,9 +213,10 @@ class TestModelHandling(AppCase):
         quill.download_model()
         self.assertTrue(done.wait(2))
 
-    def test_listener_error_shown_in_footer(self):
+    def test_listener_error_goes_to_the_log(self):
         self.quill._on_error("Listening stopped: no microphone")
-        self.assertIn("no microphone", self.quill.window.footer.text())
+        self.assertIn("no microphone", self.quill.window.log.toPlainText())
+        self.assertEqual(self.quill.window.footer.text(), "")
 
 
 class TestSettingsApplied(AppCase):

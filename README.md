@@ -449,3 +449,8 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Controls**: one text inset (`theme.TEXT_INSET`) for drop-downs and number boxes; `GuardedSlider` jumps and drags from anywhere along a 30 px tall target.
 - **One text size**: no style rule sets a font size any more (notes, countdowns, Log, Term Helper question and page titles use the app's size); spoken-word pills use the app font instead of a monospace one. Help-page headings still scale.
 - **Microphone permission**: `tools/build_mac.sh` signs with the requirement `designated => identifier "com.quill.app"`, so a granted permission survives rebuilds.
+
+### Phase 49 notes (open sheet only, typed log, thinner blinks)
+- **Rows go to the open sheet only**: `Controller._target_sheet` and `sheets_with_columns` are gone; `_write_row` uses `active_sheet_name()`. A sheet without the columns gives "Could not save the row: ... Open the sheet you are filling in, then say next row again." and the row is kept.
+- **Log messages have a type** (`MainWindow.append_log(text, level)`, levels in `LOG_LEVELS`): warnings and errors say so after the time and are coloured (one red for every error, amber for warnings); an error opens a collapsed log (not saved as the user's choice). Errors that used to appear in the footer (listener errors, save failures, "Can't open") now go to the log; the footer keeps only the speech-model download offer and progress.
+- The blink borders (success, ignore, error, picked column) are 1 px.

@@ -26,6 +26,7 @@ from PySide6.QtCore import (
     QTimer,
     QVariantAnimation,
 )
+from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -95,6 +96,9 @@ LOG_OPEN_HEIGHT = 120       # height of the log while it is open
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
+
+#: How each kind of log message is shown: a label after the time (none for plain information) and a colour.
+LOG_LEVELS = {"info": (None, None), "warning": ("Warning", "#D98E04"), "error": ("Error", "#E5484D")}
 
 
 class MainWindow:
@@ -1092,10 +1096,26 @@ class MainWindow:
         self._has_last_saved = True
         self._refresh_visibility()
 
-    def append_log(self, text: str) -> None:
-        """Add a timestamped line to the log (and to the log file, for troubleshooting)."""
-        logging.getLogger("quill").info(text)
-        self.log.appendPlainText(f"{dt.datetime.now():%H:%M:%S}  {text}")
+    def append_log(self, text: str, level: str = "info") -> None:
+        """Add a timestamped line to the log (and to the log file, for troubleshooting).
+
+        *level* is ``"info"``, ``"warning"`` or ``"error"``. Warnings and errors say so after the time and are
+        coloured (every error the same red); an error also opens the log if it is collapsed, so it is seen.
+        """
+        label, color = LOG_LEVELS.get(level, LOG_LEVELS["info"])
+        logging.getLogger("quill").log({"error": logging.ERROR, "warning": logging.WARNING}.get(level, logging.INFO), text)
+        line = f"{dt.datetime.now():%H:%M:%S}  {label + '  ' if label else ''}{text}"
+        fmt = QTextCharFormat()                                   # a plain format: the colour never carries to the next line
+        if color:
+            fmt.setForeground(QColor(color))
+        cursor = QTextCursor(self.log.document())
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        if not self.log.document().isEmpty():
+            cursor.insertBlock(cursor.blockFormat(), QTextCharFormat())
+        cursor.insertText(line, fmt)
+        self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
+        if level == "error" and self._log_collapsed:
+            self._set_collapsed("log", False)
 
     def set_listening_indicator(self, active: bool) -> None:
         """Update the active light, label and button."""

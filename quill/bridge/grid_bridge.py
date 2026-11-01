@@ -243,39 +243,6 @@ class GridBridge(WorkbookBridge):
                 found.append(str(header).strip())
         return found
 
-    def sheets_with_columns(self, columns: list[str]) -> list[str]:
-        """Sheets a row with these *columns* could be written to, in tab order.
-
-        A sheet qualifies when its header row contains every column (compared like the writer does). Sheets
-        that only hold the workbook's drop-down lists, and sheets whose first data row is mostly formulas
-        (a summary that mirrors another sheet), are not places to add rows and are left out, unless the user
-        has that very sheet open: opening it is a choice.
-        """
-        grid = self._require()
-        wanted = {normalize_header(c) for c in columns}
-        list_sheets = {source.sheet for source in self._discovery.sources.values() if source.sheet}
-        found = []
-        for sheet in grid.sheet_names():
-            if sheet != grid.active_sheet() and (sheet in list_sheets or self._mostly_formulas(grid, sheet)):
-                continue
-            try:
-                headers = self.get_headers(sheet)
-            except BridgeError:
-                continue
-            if wanted <= {normalize_header(h) for h in headers}:
-                found.append(sheet)
-        return found
-
-    def _mostly_formulas(self, grid: Grid, sheet: str) -> bool:
-        """True if the first row under the headers is mostly formulas (the sheet is computed, not typed into)."""
-        header_row = self._header_row(grid, sheet)
-        width = grid.last_col(sheet)
-        if width == 0 or grid.last_row(sheet) <= header_row:
-            return False
-        cells = [c for c in grid.read(sheet, header_row + 1, 1, 1, width)[0] if c is not None and str(c).strip()]
-        formulas = [c for c in cells if isinstance(c, str) and c.strip().startswith("=")]     # (is_blank counts formulas as blank)
-        return bool(cells) and len(formulas) * 10 >= len(cells) * 6
-
     #: Header words that make an empty column a date column.
     _DATE_HEADER_WORDS = frozenset({"date", "dated"})
 

@@ -152,10 +152,6 @@ class WorkbookBridge(ABC):
         """Headers whose data is mostly numbers (candidates for "under 50")."""
         return []
 
-    def sheets_with_columns(self, columns: list[str]) -> list[str]:
-        """Names of the sheets whose header row has every one of *columns*, in tab order (empty if unknown)."""
-        return []
-
     def date_columns(self, sheet_name: str | None = None) -> list[str]:
         """Headers that hold dates, in sheet order (so a spoken date can go into the right column)."""
         return []

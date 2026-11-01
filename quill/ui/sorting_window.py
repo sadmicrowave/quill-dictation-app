@@ -213,7 +213,7 @@ class TermRow(QFrame):
             view.setCurrentIndex(view.model().index(index, 0))
         on = ("QAbstractItemView::item:selected { background: #34C759; color: #FFFFFF; border-radius: 6px; }"
               if view.isVisible() else "")
-        combo_on = "QComboBox { border: 2px solid #34C759; }"
+        combo_on = "QComboBox { border: 1px solid #34C759; }"
         for delay, lit in ((0, True), (80, False), (120, True)):
             QTimer.singleShot(delay, lambda lit=lit: self._light(view, on if lit else "", combo_on if lit else ""))
         QTimer.singleShot(self.CHOICE_MS, self._close_choice)
@@ -232,7 +232,7 @@ class TermRow(QFrame):
     def flash(self, outcome: str = "accepted") -> None:
         """Blink the row's border and tint it: green when accepted, grey when ignored, red on an error."""
         border, tint = self.FLASH_STYLES.get(outcome, self.FLASH_STYLES["accepted"])
-        self.setStyleSheet(f"#termRow {{ border: 2px solid {border}; background: {tint}; }}")
+        self.setStyleSheet(f"#termRow {{ border: 1px solid {border}; background: {tint}; }}")
 
     def mousePressEvent(self, event) -> None:
         """Clicking the (first) row starts answering it by voice."""

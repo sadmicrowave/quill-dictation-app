@@ -1,4 +1,4 @@
-"""Which sheet a finished row is written to, and what the window does when it cannot be saved."""
+"""A finished row is written to the open sheet only, and a failed save is reported as an error."""
 import pathlib
 import tempfile
 import unittest
@@ -61,27 +61,16 @@ class Case(unittest.TestCase):
         return [[c.value for c in row] for row in openpyxl.load_workbook(self.path)[sheet].iter_rows()]
 
 
-class TestChoosingTheSheet(Case):
-    def test_a_dashboard_in_front_does_not_stop_the_row_reaching_the_only_sheet_that_fits(self):
-        app = self.build()
+class TestAlwaysTheOpenSheet(Case):
+    def test_a_row_goes_to_the_sheet_that_is_open_and_never_to_another(self):
+        app = self.build()                                                    # the Dashboard is in front
         self.hear(app, "fern large")
         self.hear(app, "next row")
-        self.assertEqual(self.rows("Inventory")[-1], ["Fern", "Large"])
-        self.assertEqual(app.window.row_table.rowCount(), 0)                 # the grid cleared
-        self.assertTrue(app.window.last_label.full_text.startswith("Last Saved"))
+        self.assertEqual(self.rows("Inventory")[-1], ["Fern", "Small"])      # untouched: Quill did not choose it
+        self.assertEqual(app.window.row_table.rowCount(), 2)                 # the row is kept, nothing lost
+        self.assertIn("Could not save the row", app.window.log.toPlainText())
 
-    def test_with_several_sheets_that_fit_the_user_is_asked_to_open_one_and_nothing_is_lost(self):
-        app = self.build(("2025", "2026"))
-        self.hear(app, "fern large")
-        self.hear(app, "next row")
-        self.assertEqual(app.window.row_table.rowCount(), 2)                 # still there, not written anywhere
-        self.assertIn("2025, 2026", app.window.footer.text())                # said where the user can see it
-        self.assertIn("Open the sheet you are filling in", app.window.footer.text())
-        self.assertNotIn("Last Saved", app.window.last_label.full_text)       # and not reported as saved
-        self.assertEqual(app.controller.session.committed, 0 + app.controller.session.committed)
-        self.assertEqual(self.rows("2025")[-1], ["Fern", "Small"])
-
-    def test_after_the_user_opens_a_sheet_and_the_error_is_gone_the_next_row_works_and_the_footer_clears(self):
+    def test_after_the_user_opens_the_sheet_the_next_row_works(self):
         app = self.build(("2025", "2026"))
         self.hear(app, "fern large")
         self.hear(app, "next row")
@@ -91,20 +80,19 @@ class TestChoosingTheSheet(Case):
         app.controller.bridge.connect()
         self.hear(app, "next row")
         self.assertEqual(self.rows("2026")[-1], ["Fern", "Large"])
-        self.assertEqual(app.window.footer.text(), "")
+        self.assertEqual(self.rows("2025")[-1], ["Fern", "Small"])
         self.assertEqual(app.window.row_table.rowCount(), 0)
 
-    def test_the_sheet_the_last_row_went_to_is_used_again_when_the_choice_is_otherwise_open(self):
-        app = self.build(("2025", "2026"))
-        app.controller._last_sheet = "2026"
+    def test_the_error_says_what_to_do(self):
+        app = self.build()
         self.hear(app, "fern large")
         self.hear(app, "next row")
-        self.assertEqual(self.rows("2026")[-1], ["Fern", "Large"])
+        self.assertIn("Open the sheet you are filling in", app.window.log.toPlainText())
 
 
 class TestAFailedSaveIsNotReportedAsSaved(Case):
     def test_the_stream_keeps_its_words_and_the_event_is_an_error(self):
-        app = self.build(("2025", "2026"))
+        app = self.build()
         events = []
         original = app.controller._on_event
         app.controller._on_event = lambda e: (events.append(e.kind), original(e))[1]
@@ -117,31 +105,3 @@ class TestAFailedSaveIsNotReportedAsSaved(Case):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestSheetsThatAreNotPlacesToAddRows(Case):
-    def test_list_sheets_and_formula_summaries_are_left_out(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        path = pathlib.Path(tmp.name) / "w.xlsx"
-        workbook(path)
-        wb = openpyxl.load_workbook(path)
-        summary = wb.create_sheet("Summary")
-        summary.append(["Species", "Pot Size"])
-        summary.append(["=Inventory!A2", "=Inventory!B2"])
-        wb.save(path)
-        bridge = XlsxBridge(path)
-        bridge.connect()
-        self.assertEqual(bridge.sheets_with_columns(["Species", "Pot Size"]), ["Inventory"])
-
-    def test_a_sheet_the_user_has_open_is_always_a_choice(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        path = pathlib.Path(tmp.name) / "w.xlsx"
-        workbook(path)
-        wb = openpyxl.load_workbook(path)
-        wb.active = wb.sheetnames.index("Config")
-        wb.save(path)
-        bridge = XlsxBridge(path)
-        bridge.connect()
-        self.assertIn("Config", bridge.sheets_with_columns(["Species", "Pot Size"]))

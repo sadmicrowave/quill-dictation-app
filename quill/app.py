@@ -139,7 +139,6 @@ class QuillApp:
         self._probe_ticks = 0
         self._settings_dialog: SettingsDialog | None = None    # the open Settings window, if any
         self._quitting = False
-        self._error_in_footer = ""                    # the error currently shown in the window's footer, if any
         self._host_probe_running = False             # a look for files in other programs is under way
         self._host_noted = False
         self._host_reload = QTimer()
@@ -268,7 +267,7 @@ class QuillApp:
         except BridgeError as exc:
             self.connected = False
             if not quiet:
-                self.window.append_log(f"Not connected: {exc}")
+                self.window.append_log(f"Not connected: {exc}", "warning")
             self.window.set_not_connected(True)
             return
         self.connected = True
@@ -280,7 +279,7 @@ class QuillApp:
         )
         warning = getattr(bridge, "discovery_warning", None)
         if warning:
-            self.window.append_log(warning)
+            self.window.append_log(warning, "warning")
         self.window.set_footer("")
         self.window.set_not_connected(False)
         self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
@@ -394,7 +393,7 @@ class QuillApp:
                 self._host_noted = True                         # one line of advice, not one per saved row
                 self.window.append_log(f"{host_app.name}: {host_app.note}")
         else:
-            self.window.append_log(f"Couldn't refresh {host_app.name}. {host_app.note}")
+            self.window.append_log(f"Couldn't refresh {host_app.name}. {host_app.note}", "warning")
 
     #: Events after which Quill itself has just written to the workbook file.
     _WRITE_EVENTS = frozenset({"committed", "add_values", "alias_added", "undone", "searched", "cleared"})
@@ -438,7 +437,7 @@ class QuillApp:
         try:
             self.controller.bridge.activate()
         except BridgeError as exc:
-            self.window.append_log(str(exc))
+            self.window.append_log(str(exc), "error")
 
     def _start_listener(self) -> None:
         model = self._model_finder(str(self.settings.preferences["model_path"]))
@@ -513,7 +512,7 @@ class QuillApp:
             self.controller.refresh()
         except BridgeError as exc:
             self.connected = False
-            self.window.append_log(f"Lost the workbook: {exc}")
+            self.window.append_log(f"Lost the workbook: {exc}", "error")
             return
         self.window.update_workbooks(self.controller.bridge.open_workbooks(),
                                      self.controller.bridge.workbook_name)
@@ -585,8 +584,7 @@ class QuillApp:
         """
         path = pathlib.Path(path)
         if path.suffix.lower() != ".xlsx" or not path.is_file():
-            self.window.append_log(f"Can't open '{path.name}': choose an Excel workbook (.xlsx).")
-            self.window.set_footer(f"Can't open '{path.name}'. Choose an Excel workbook (.xlsx).")
+            self.window.append_log(f"Can't open '{path.name}': choose an Excel workbook (.xlsx).", "error")
             return False
         previous, was_connected = self.controller.bridge, self.connected
         if was_connected:
@@ -612,7 +610,7 @@ class QuillApp:
         try:
             bridge = self._live_bridge_factory()
         except NotImplementedError as exc:
-            self.window.append_log(str(exc))
+            self.window.append_log(str(exc), "error")
             return
         if self.connected:
             self.controller.detach()
@@ -866,14 +864,8 @@ class QuillApp:
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
-        elif kind == "error":
-            self.window.set_footer(event.detail)                   # visible even with the log hidden
-            self._error_in_footer = event.detail
         elif kind == "committed":
             self.window.set_last_saved(event.detail, event.record)
-            if self._error_in_footer:                              # the problem that was shown is over
-                self.window.set_footer("")
-                self._error_in_footer = ""
         elif kind == "confirm":
             self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)
             self.refresh_sorting(reveal=True)
@@ -912,7 +904,7 @@ class QuillApp:
             self.refresh_sorting()                    # a word that was not understood is on the Term Helper's button at once
         if kind == "updated" and not event.detail:
             return
-        self.window.append_log(self._describe(event))
+        self.window.append_log(self._describe(event), "error" if kind == "error" else "info")
         if self.controller.bridge is not None and self.connected:
             self.window.update_sheet(self._safe_sheet())
 
@@ -921,7 +913,7 @@ class QuillApp:
         labels = {
             "started": "Listening Started", "stopped": "Listening Stopped",
             "committed": "Saved Row", "discarded": "Row Discarded",
-            "updated": "Heard", "confirm": "Question", "error": "Error",
+            "updated": "Heard", "confirm": "Question",
             "searched": "Search", "cleared": "Search Cleared", "unsure": "Unsure",
             "undone": "Undo",
         }
@@ -1049,8 +1041,7 @@ class QuillApp:
         """Show an error from a helper thread; if the listener died, close the gate so the window doesn't
         claim to be listening to a dead microphone (and a later Start opens it again)."""
         log.error("%s", message)
-        self.window.append_log(message)
-        self.window.set_footer(message)
+        self.window.append_log(message, "error")
         if self.listener is not None and self._mic_open and not getattr(self.listener, "running", True):
             self._mic_open = False
             if self.controller.session.listening:
@@ -1078,8 +1069,8 @@ class QuillApp:
 
     def _on_model_ready(self, path) -> None:
         if path is None:
-            self.window.set_footer("Model download failed. Check your connection and try again.",
-                                   offer_download=True)
+            self.window.append_log("Model download failed. Check your connection and try again.", "error")
+            self.window.set_footer("The speech model isn't installed.", offer_download=True)
             return
         self.window.set_footer("")
         self._start_listener()

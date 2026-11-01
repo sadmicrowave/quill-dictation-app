@@ -67,7 +67,6 @@ class Controller:
         self.connected = False
         """True while attached to a workbook."""
         self.voice_sorter: VoiceSorter | None = None
-        self._last_sheet: str | None = None              # the sheet the last row was written to
         """Set while the user is answering the Needs-sorting list by voice."""
         self.lead_in_s = 0.0
         """Seconds the spoken sorting question waits so a cue can play first (set by the app)."""
@@ -85,7 +84,6 @@ class Controller:
             BridgeError: if the workbook cannot be reached.
         """
         self.connected = False
-        self._last_sheet = None
         self.history.clear()   # undo steps belong to the workbook they were made in
         self.bridge.connect(workbook)
         self.reload_vocab()
@@ -403,38 +401,16 @@ class Controller:
         event.detail = ("Search cleared; back where you were" if cleared
                         else "No search is active")
 
-    def _target_sheet(self, columns: list[str]) -> str:
-        """The sheet a finished row should be written to.
-
-        The sheet that is open, if it has all the columns the row uses. If it doesn't (a dashboard or a
-        settings tab is in front), the only other sheet that does; when several do, the one the last row
-        went to, else the user is asked to open the one they mean. Nothing is guessed between equals.
-
-        Raises:
-            BridgeError: with the plain-language reason when no single sheet can be chosen.
-        """
-        active = self.bridge.active_sheet_name()
-        fits = self.bridge.sheets_with_columns(columns)
-        if not fits or active in fits:
-            return active                                   # (a bridge that can't tell keeps the old behaviour)
-        if self._last_sheet in fits:
-            return self._last_sheet
-        if len(fits) == 1:
-            return fits[0]
-        raise BridgeError(
-            f"the open sheet '{active}' doesn't have the columns {', '.join(columns)}, and more than one sheet does "
-            f"({', '.join(fits)}). Open the sheet you are filling in, then say next row again.")
-
     def _write_row(self, event: Event) -> None:
         try:
-            sheet = self._target_sheet(list(event.record))
+            sheet = self.bridge.active_sheet_name()          # always the sheet that is open: Quill never picks another
             row = self.bridge.append_row(sheet, event.record)
-            self._last_sheet = sheet
             event.detail = f"Row {row}"
             self.session.tag_origin(event.terms or [], sheet, row)
         except BridgeError as exc:
             self.session.restore(event.record)             # nothing the user said is lost: the row stays as it was
-            event.kind, event.detail = "error", f"Could not save the row: {exc}"      # and it is reported as a failure,
+            hint = " Open the sheet you are filling in, then say next row again." if "has no column" in str(exc) else ""
+            event.kind, event.detail = "error", f"Could not save the row: {exc}.{hint}"   # and it is reported as a failure,
             event.record = event.terms = None                                       # not as a saved row
 
     def _write_values(self, event: Event) -> None:

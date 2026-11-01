@@ -25,13 +25,13 @@ No spreadsheet app open? Quill can fill a file by itself.
 
 ## 📑 Which sheet gets the row
 
-Quill writes to the sheet that is open if it has the columns you filled. If a dashboard or settings tab is in front, it uses the one other sheet that has them. If several sheets fit (a tab per year, say), it uses the one your last row went to, or asks you to open the one you mean and say **"next row"** again. Your words stay in the grid until the row is saved.
+Always the sheet that is **open** (the active tab). Quill never tries another sheet for you. If that sheet doesn't have the columns you filled (a dashboard is in front, say), the row isn't saved: you'll see a red **Error** in the **Log**, which opens by itself. Open the sheet you mean and say **"next row"** again. Your words stay in the grid until the row is saved.
 
 ## 🪟 What the window shows
 
 ![Not connected](images/not-connected.png)
 
-- **Sheet:** the active sheet's name, small and italic at the right under the file box.
+- **Sheet:** the active sheet's name, in italics at the right under the file box.
 - **File stream not connected**: no sheet found yet. Hover it for what to do.
 - **The box that says "Words you say appear here…"**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
 - **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover it).
