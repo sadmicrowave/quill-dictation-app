@@ -231,6 +231,7 @@ class QuillApp:
         self._apply_look()
         self.window.setup()
         self.sorting.setup(parent=self.window.widget)
+        self.sorting.on_done = self.window.sorting_finished
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
@@ -284,6 +285,7 @@ class QuillApp:
         if warning:
             self.window.append_log(warning, "warning")
         self.window.set_not_connected(False)
+        self._show_active_sheet()
         self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
         self.settings.preferences["last_workbook"] = bridge.workbook_name
         self.settings.save()
@@ -303,6 +305,7 @@ class QuillApp:
         if self.connected:
             if bridge.workbook_name in names:
                 self._check_workbook_changes()
+                self._show_active_sheet()
                 return
             closed = bridge.workbook_name
             self.controller.detach()
@@ -411,6 +414,14 @@ class QuillApp:
     def _remember_mtime(self) -> None:
         """Note the file's current state, so Quill's own writes are not mistaken for outside changes."""
         self._seen_mtime = self._workbook_mtime()
+
+    def _show_active_sheet(self) -> None:
+        """Tell the window which sheet is open (the folder icon's hover text names it)."""
+        try:
+            sheet = self.controller.bridge.active_sheet_name()
+        except BridgeError:
+            sheet = ""
+        self.window.set_active_sheet(sheet)
 
     def _check_workbook_changes(self) -> None:
         """Watcher tick: if the saved file changed since we last looked, re-read its lists and columns.
@@ -584,7 +595,7 @@ class QuillApp:
         """
         path = pathlib.Path(path)
         if path.suffix.lower() not in (".xlsx", ".csv", ".tsv") or not path.is_file():
-            self.window.append_log(f"Can't open '{path.name}': choose an Excel workbook (.xlsx) or a .csv file.", "error")
+            self.window.append_log(f"Can't open '{path.name}': choose a spreadsheet file (.xlsx or .csv).", "error")
             return False
         previous, was_connected = self.controller.bridge, self.connected
         if was_connected:
@@ -602,7 +613,7 @@ class QuillApp:
             self.settings.preferences["workbook_file"] = str(path)
             self.settings.save()
         self.window.set_file_mode(True)
-        self.window.append_log(f"Working directly on the file {path.name} (no Excel needed)")
+        self.window.append_log(f"Working directly on the file {path.name} (no spreadsheet program needed)")
         return True
 
     def use_live_excel(self) -> None:
@@ -620,7 +631,7 @@ class QuillApp:
         self.settings.preferences["workbook_file"] = ""
         self.settings.save()
         self.window.set_file_mode(False)
-        self.window.append_log("Using the workbook open in Excel")
+        self.window.append_log("Using the workbook open in your spreadsheet program")
         self.connect_workbook(quiet=True)
 
     def open_help(self, topic: str | None = None) -> None:
@@ -697,9 +708,9 @@ class QuillApp:
         self.window.set_native_mini_button(native)
         self.window.set_native_settings_button(native)        # Settings and resize both live in the title bar
         self.window.set_native_file_button(native)
-        self._sync_titlebar_file(bool(self.window.workbook_name), self.window.workbook_name)
+        self._sync_titlebar_file(bool(self.window.workbook_name), self.window.workbook_name, self.window.sheet_name)
 
-    def _sync_titlebar_file(self, has_file: bool, name: str) -> None:
+    def _sync_titlebar_file(self, has_file: bool, name: str, sheet: str = "") -> None:
         """Draw the title bar's folder icon: muted and closed with no file, solid and open with one."""
         if self._titlebar is None:
             return
@@ -709,7 +720,8 @@ class QuillApp:
         buffer = QBuffer(data)
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
         make_icon("folder-open" if has_file else "folder", "#000000", 17).pixmap(34, 34).save(buffer, "PNG")
-        tip = f"{name}\nClick to open another spreadsheet file" if has_file else "Open Spreadsheet File"
+        tip = (f"{name}\nSheet: {sheet}\nClick to open another spreadsheet file" if has_file and sheet
+               else f"{name}\nClick to open another spreadsheet file" if has_file else "Open Spreadsheet File")
         self._titlebar.set_extra_image(0, bytes(data), tip, muted=not has_file)
 
     def _sync_titlebar_undo(self) -> None:
@@ -834,7 +846,7 @@ class QuillApp:
                 apply_opacity(root, opacity, blur)                  # first: Qt marks a fully opaque window opaque
                 apply_chrome(window, dark, colors, opacity=opacity, blur=blur)    # ... which the chrome may undo
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
-        self.sorting.refresh_icons(colors["text"])
+        self.sorting.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         if self.help is not None:
             self.help.restyle(prefs, self.qapp)
         self.tray.set_dark(dark)

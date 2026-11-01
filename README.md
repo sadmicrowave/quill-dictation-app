@@ -469,3 +469,11 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Sound lines (`WaveMeter`)** are 2 px wide, the green/grey dot is gone, and the Term Helper's voice button uses the same widget ("Sort by Voice" / "Click to Stop").
 - **Mini view "!"** (`error_button`): shown in the mini status row after an error, tooltip = the message, click = full window with the Log open; cleared when a row is saved or the full view returns.
 - **No drift leaving mini**: a stretch spacer at the bottom of the layout (stretch 1 only in the compact mini view) keeps the mini contents at the top while the window grows back; before, the Start button slid about 150 px down and then jumped up.
+
+### Phase 52 notes (shared Start button, Term Helper batches)
+- **`ListenButton`** (`quill/ui/widgets.py`) is the Start / Stop Listening button for both the main window and the Term Helper: play / stop icon, notice chip (the "File stream not connected" pill now lives here), countdown, centred "Start Listening" / "Stop Listening" text (dropped in the mini view and while the chip shows), `WaveMeter` at the right, vertically centred. `isChecked()` means "listening".
+- **Folder icon hover** names the file and the open sheet (`MainWindow.set_active_sheet`, refreshed on each workbook poll).
+- **User-facing text no longer names Excel** (bridge errors, hints, menu, log lines); help keeps Excel only in the list of supported programs.
+- **Term Helper batches**: Add All / Ignore All rows flash and collapse together (`_retire_together`); when the window closes it calls `on_done` and the main window comes to the front and clears a finished row's heard words (`MainWindow.sorting_finished`).
+- **Start while voice sorting** (`Controller.set_listening(True)`) ends voice sorting, so speech goes to the row (before, it was still being taken as Term Helper answers).
+- **Two values for one column in one phrase**: the parser keeps the first and notes the second (`_take_value`).

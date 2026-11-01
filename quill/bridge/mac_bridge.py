@@ -16,6 +16,6 @@ class MacBridge(XlwingsBridge):
     """Connects to Excel on macOS via xlwings + AppleScript."""
 
     PERMISSION_HINT = (
-        "If macOS asked to let Quill control Excel, choose OK "
+        "If macOS asked to let Quill control your spreadsheet program, choose OK "
         "(System Settings > Privacy & Security > Automation)."
     )

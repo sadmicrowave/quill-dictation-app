@@ -56,7 +56,7 @@ class XlwingsBridge(GridBridge):
             return [book for app in self._xlwings().apps for book in app.books]
         except Exception as exc:
             raise BridgeError(
-                f"Could not reach Excel: {exc}. {self.PERMISSION_HINT}".strip()
+                f"Could not reach your spreadsheet program: {exc}. {self.PERMISSION_HINT}".strip()
             ) from exc
 
     def open_workbooks(self) -> list[str]:
@@ -65,11 +65,11 @@ class XlwingsBridge(GridBridge):
     def connect(self, workbook: str | None = None) -> None:
         books = self._books()
         if not books:
-            raise BridgeError("No workbook is open in Excel. Open one and try again.")
+            raise BridgeError("No workbook is open in your spreadsheet program. Open one and try again.")
         if workbook:
             matches = [b for b in books if b.name == workbook]
             if not matches:
-                raise BridgeError(f"Workbook '{workbook}' is not open in Excel.")
+                raise BridgeError(f"Workbook '{workbook}' is not open in your spreadsheet program.")
             book = matches[0]
         else:
             book = self._active_book(books)

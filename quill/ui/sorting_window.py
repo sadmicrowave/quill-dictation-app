@@ -44,7 +44,7 @@ from quill.session import Decision, TermKey
 from quill.ui.chrome import SYMBOL_HELP, SYMBOL_UNDO, add_titlebar_button
 from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import install_backdrop, apply_spacing
-from quill.ui.widgets import WaveMeter, pill, pillify
+from quill.ui.widgets import ListenButton, pill, pillify
 
 #: Called with (key, decision, corrected words) when the user decides.
 ResolveCallback = Callable[[TermKey, Decision, str], None]
@@ -317,6 +317,8 @@ class SortingWindow:
         self._queue: list[TermRow] = []                    # answered rows waiting their turn to leave
         self._outcomes: dict[TermKey, str] = {}            # how each answered term was answered (picks the blink colour)
         self._retiring = False
+        self._together = 0                                 # rows of a batch still easing out (they leave at the same time)
+        self.on_done = lambda: None                        # called when the last row has left and the window closes
         self._titlebar = None
         self._window: QWidget | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
@@ -351,21 +353,12 @@ class SortingWindow:
         layout.setContentsMargins(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
 
         voice_row = QHBoxLayout()
-        self.voice_button = QPushButton()
-        self.voice_button.setCheckable(True)
+        self.voice_button = ListenButton()                   # the same button as the main window's
+        self.voice_button.fixed_tip = self.VOICE_HINT
         self.voice_button.clicked.connect(lambda: self._on_voice())
-        self.voice_button.setToolTip(self.VOICE_HINT)
         voice_row.addWidget(self.voice_button, 1)
-        inside = QHBoxLayout(self.voice_button)             # the quiet countdown sits at the button's right edge
-        inside.setContentsMargins(12, 0, 12, 0)
-        self.voice_wave = WaveMeter()                        # the app icon's sound lines: still and muted, green and moving while listening
-        inside.addWidget(self.voice_wave)
-        inside.addStretch(1)
-        self.voice_countdown = QLabel()
-        self.voice_countdown.setProperty("countdown", True)
-        self.voice_countdown.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.voice_countdown.setVisible(False)
-        inside.addWidget(self.voice_countdown)
+        self.voice_countdown = self.voice_button.countdown_label
+        self.voice_wave = self.voice_button.wave
         # Help ("?"): in the title bar on macOS (install_titlebar), otherwise this small icon button.
         self.help_button = QToolButton()
         self.help_button.setProperty("flatIcon", True)
@@ -416,12 +409,13 @@ class SortingWindow:
         """The underlying window (None before :meth:`setup`)."""
         return self._window
 
-    def refresh_icons(self, color: str = "#1F1E1D") -> None:
+    def refresh_icons(self, color: str = "#1F1E1D", on_accent: str = "#FFFFFF", accent: str = "#7A55C2") -> None:
         """Redraw the in-window help icon in the theme's text colour."""
         if self._window is None:
             return
         from quill.ui.icons import make_icon
         self.help_button.setIcon(make_icon("question", color, 18))
+        self.voice_button.set_colors(color, on_accent, accent)
 
     def install_titlebar(self) -> None:
         """Put Help ("?") and Undo in the title bar (macOS), beside the close and zoom buttons.
@@ -468,7 +462,9 @@ class SortingWindow:
         for row in leaving + rows:                          # answered rows stay on top while they play out
             self._list.insertWidget(self._list.count() - 1, row)
         self.rows = rows
-        if animate and leaving:
+        if animate and len(leaving) > 1:
+            self._retire_together(leaving)                 # a whole batch (Ignore All, Add All) leaves at once
+        elif animate and leaving:
             self._retire(leaving)
         else:
             for row in leaving:
@@ -478,7 +474,7 @@ class SortingWindow:
             self.add_all_button.setEnabled(bool(items))
             self.ignore_all_button.setEnabled(bool(items))
             if not items and not self._retiring:
-                self._window.hide()
+                self._close()
 
     def note_choice(self, key: TermKey, column: str) -> None:
         """The user picked *column* for *key* by voice: show it chosen in the row's list."""
@@ -506,11 +502,32 @@ class SortingWindow:
         if not self._retiring:
             self._next_retire()
 
+    def _retire_together(self, rows: list[TermRow]) -> None:
+        """Flash and ease out all of *rows* at the same time."""
+        self._retiring = True
+        self._together += len(rows)
+        for row in rows:
+            outcome = self._outcomes.pop(row.key, "accepted")
+            wait = TermRow.CHOICE_MS if row.chosen else 0
+            if wait:
+                QTimer.singleShot(wait, lambda row=row, outcome=outcome: self._flash_then_collapse(row, outcome))
+            else:
+                self._flash_then_collapse(row, outcome)
+
+    def _close(self) -> None:
+        """Nothing is left to sort: close the window, and tell the app so the main window can carry on."""
+        if self._window is None:
+            return
+        was_open = self._window.isVisible()
+        self._window.hide()
+        if was_open:
+            self.on_done()
+
     def _next_retire(self) -> None:
         if not self._queue:
             self._retiring = False
             if not self.rows and self._window is not None:
-                self._window.hide()                        # nothing left: close the window
+                self._close()                              # nothing left: close the window
             return
         self._retiring = True
         row = self._queue.pop(0)
@@ -540,10 +557,18 @@ class SortingWindow:
         fade.setDuration(self.animation_ms)
         fade.setStartValue(1.0)
         fade.setEndValue(0.0)
-        height.finished.connect(lambda: (self._drop(row), self._next_retire()))
+        height.finished.connect(lambda: self._collapsed(row))
         row._animations = (height, fade)                   # keep them alive
         height.start()
         fade.start()
+
+    def _collapsed(self, row: TermRow) -> None:
+        self._drop(row)
+        if self._together:                                 # a batch moves on once its last row is gone
+            self._together -= 1
+            if self._together:
+                return
+        self._next_retire()
 
     def _drop(self, row: TermRow) -> None:
         self._list.removeWidget(row)
@@ -580,14 +605,12 @@ class SortingWindow:
 
     def set_voice_countdown(self, seconds: int | None) -> None:
         """Show the seconds left before voice sorting stops because it is quiet (None hides it)."""
-        self.voice_countdown.setVisible(seconds is not None and self._voice_active)
-        if seconds is not None:
-            self.voice_countdown.setText(f"Stops in {seconds}s")
+        self.voice_button.set_countdown(seconds if self._voice_active else None)
 
     def _render_voice(self) -> None:
-        self.voice_button.setChecked(self._voice_active)
-        self.voice_wave.set_active(self._voice_active)
-        self.voice_button.setText("Click to Stop" if self._voice_active else "Sort by Voice")
+        self.voice_button.set_active(self._voice_active)
+        if not self._voice_active:
+            self.voice_button.set_countdown(None)
 
     def show(self) -> None:
         """Show the window (and bring it to the front)."""

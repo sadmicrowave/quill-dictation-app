@@ -17,12 +17,12 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 
 No spreadsheet app open? Quill can fill a file by itself.
 
-1. Press the **folder** icon in the title bar, left of the Settings icon (or **File > Open Spreadsheet File…**). It is grey and closed while no file is open, and solid and open once one is; hover it to see the file's name. It opens where you last picked a file.
+1. Press the **folder** icon in the title bar, left of the Settings icon (or **File > Open Spreadsheet File…**). It is grey and closed while no file is open, and solid and open once one is; hover it to see the file's name and the open sheet. It opens where you last picked a file.
    Pressing **Start** with no file open opens this window for you.
 2. Pick an `.xlsx` or a `.csv` file.
 3. Dictate. Quill remembers the file next time.
 
-**File > Use Open Excel Workbook** goes back to live Excel.
+**File > Use the Open Workbook** goes back to the workbook open in your spreadsheet program.
 
 ## 📄 Working on a .csv file
 
@@ -41,7 +41,7 @@ Always the sheet that is **open** (the active tab). Quill never tries another sh
 
 ![Not connected](images/not-connected.png)
 
-- **File stream not connected**: no sheet found yet. Hover it for what to do.
+- **File stream not connected**: shown inside the **Start** button, beside the play icon, while no sheet is found. Hover it for what to do.
 - **The box that says "Words you say appear here…"**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
 - **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover it).
 - **Last Saved**: the row written last, on the right of the **Log** line. It only appears after the first save.

@@ -12,7 +12,7 @@
 4. **Say "next row"** to save it and start the next.
 5. **Say "stop listening"** when you're done. If you forget, Quill stops by itself after 10 quiet seconds. A small **Stops in …s** countdown shows in the button, beside the play / stop icon (change the time in [Settings](help:settings)).
 
-> 💡 First launch: allow the **microphone** (and on a Mac, **Automation** for Excel). That's it. There's nothing to set up.
+> 💡 First launch: allow the **microphone** (and on a Mac, **Automation** for your spreadsheet program). That's it. There's nothing to set up.
 
 ## ✅ Why it just works
 

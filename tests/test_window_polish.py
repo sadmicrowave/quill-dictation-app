@@ -63,12 +63,12 @@ class TestConnectionChip(unittest.TestCase):
         hint = NOT_CONNECTED_HINT
         self.assertFalse(FIRST_PERSON.search(hint), FIRST_PERSON.search(hint))
         self.assertIn("No spreadsheet is connected", hint)
-        self.assertIn("Excel", hint)
+        self.assertIn("spreadsheet program", hint)
         self.assertIn(".xlsx", hint)
         self.assertIn("File > Open Spreadsheet File", hint)
         tip = window().connection_chip.toolTip()
         self.assertFalse(FIRST_PERSON.search(tip), FIRST_PERSON.search(tip))
-        for part in ("Not connected", "Excel", ".xlsx", "File ▸ Open Spreadsheet File", "Start"):
+        for part in ("Not connected", "Spreadsheet program", ".xlsx", "File ▸ Open Spreadsheet File", "Start"):
             self.assertIn(part, tip)
         self.assertIn("<b>", tip)                                                  # bold, italics and spacing
         self.assertIn("<i>", tip)
@@ -90,8 +90,8 @@ class TestConnectionChip(unittest.TestCase):
         w.set_not_connected(True)
         w.set_mini(True)
         _app.processEvents()
-        self.assertTrue(w.mini_chip.isVisibleTo(w.widget))
-        self.assertFalse(w.connection_chip.isVisibleTo(w.widget))
+        self.assertTrue(w.mini_chip.isVisibleTo(w.widget))                 # the same chip, inside the Start button
+        self.assertIs(w.mini_chip.parent(), w.toggle_button)
 
     def test_the_chip_stays_a_fixed_height_pill_at_the_left(self):
         w = window()
@@ -102,7 +102,9 @@ class TestConnectionChip(unittest.TestCase):
         chip = w.connection_chip
         self.assertTrue(chip.isVisibleTo(w.widget))
         self.assertEqual(chip.height(), CHIP_HEIGHT)
-        self.assertLess(chip.x(), 40)
+        self.assertIs(chip.parent(), w.toggle_button)                      # inside the Start button ...
+        self.assertGreater(chip.x(), w.toggle_icon.x())                    # ... right of the play icon
+        self.assertEqual(w.toggle_button.text(), "")                       # (the centred text steps aside)
         w.widget.resize(360, 400)
         _app.processEvents()
         self.assertEqual(chip.height(), CHIP_HEIGHT)

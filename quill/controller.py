@@ -28,7 +28,7 @@ EventCallback = Callable[[Event], None]
 
 #: Shown (in the not-connected chip's tooltip) and spoken whenever Quill is asked to listen with no spreadsheet.
 NO_WORKBOOK_HELP = (
-    "No spreadsheet is connected. Open a workbook in Excel and Quill attaches to it automatically, "
+    "No spreadsheet is connected. Open a workbook in your spreadsheet program and Quill attaches to it automatically, "
     "or choose Open Spreadsheet File in the File menu. Then start listening."
 )
 
@@ -164,6 +164,8 @@ class Controller:
             self._carry_out(Event("error", detail=NO_WORKBOOK_HELP))
             self._on_event(Event("error", detail=NO_WORKBOOK_HELP))
             return
+        if active:                                       # back to dictating the row: speech is no longer an answer to the Term Helper
+            self.stop_voice_sort("Voice sorting off: listening for the row")
         for event in self.session.apply(action):
             self._carry_out(event)
             self._on_event(event)

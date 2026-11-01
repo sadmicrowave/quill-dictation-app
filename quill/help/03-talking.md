@@ -11,7 +11,7 @@ Speak naturally. Quill picks out the words it knows.
 | **"Next row"** | saves the row, starts a new one. Ending with just **"next"**, **"next item"** or **"stop"** does the same |
 | **"Stop listening"** | stops |
 
-> 💡 Prefer buttons? Press the wide **Start / Stop** button, or use the menu bar icon. Its sound lines are grey and still when Quill is not listening, and turn green and move while it is.
+> 💡 Prefer buttons? Press the wide **Start / Stop** button, or use the menu bar icon. Its text says **Start Listening** (or **Stop Listening**), and its sound lines are grey and still when Quill is not listening, and turn green and move while it is.
 
 ## ✍️ Describing an item
 
@@ -73,3 +73,5 @@ Understands *under, over, at least, at most, exactly* and *"black **or** navy"*.
 | **"Sort terms"** | starts [voice sorting](help:term-helper) |
 
 You can change every phrase in [Settings](help:settings).
+
+> 💡 One column, two values in a phrase ("jeans and other stuff" when both fit **Category**)? A column holds one value, so Quill keeps the first and says in the **Log** that it kept it. Say the column name ("category other") to choose the other.

@@ -91,7 +91,7 @@ class XlsxBridge(GridBridge):
         if len(formula) - 2 > INLINE_LIST_LIMIT:
             raise BridgeError(
                 f"The '{source.column}' list is too long to extend inline "
-                f"(Excel limit is {INLINE_LIST_LIMIT} characters)."
+                f"(the limit is {INLINE_LIST_LIMIT} characters)."
             )
         old = '"' + ",".join(source.items) + '"'
         for ws in self._wb.worksheets:

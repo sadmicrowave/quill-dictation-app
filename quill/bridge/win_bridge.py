@@ -11,4 +11,4 @@ from quill.bridge.xlwings_bridge import XlwingsBridge
 class WinBridge(XlwingsBridge):
     """Connects to Excel on Windows via xlwings COM automation."""
 
-    PERMISSION_HINT = "Make sure Excel is running and not busy editing a cell."
+    PERMISSION_HINT = "Make sure your spreadsheet program is running and not busy editing a cell."

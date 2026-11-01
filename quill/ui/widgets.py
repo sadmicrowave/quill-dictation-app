@@ -6,7 +6,9 @@ import math
 
 from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
-from PySide6.QtWidgets import QLabel, QSizePolicy, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+
+from quill.ui.icons import make_icon
 
 #: Lines of the full text shown in a tooltip before "…and n more".
 TOOLTIP_LINES = 40
@@ -130,6 +132,104 @@ class WaveMeter(QWidget):
         painter.end()
 
 
+class ListenButton(QPushButton):
+    """The Start / Stop Listening button, the same in the main window and in the Term Helper.
+
+    From the left: the play / stop icon, then (only while it has something to say) a notice chip and the
+    "Stops in 7s" countdown; the text is centred; the sound lines are at the right edge. Outlined in the accent
+    colour while idle, filled with it while listening.
+    """
+
+    def __init__(self, idle_text: str = "Start Listening", live_text: str = "Stop Listening") -> None:
+        super().__init__()
+        self._idle_text, self._live_text = idle_text, live_text
+        self._active = False
+        self._compact = False
+        self._notice = False
+        self.fixed_tip: str | None = None                  # a tooltip that stays whatever the state
+        self._colors = ("#1F1E1D", "#FFFFFF", "#7A55C2")          # text, on accent, accent
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setProperty("keepMargins", True)
+        self.setProperty("outline", True)
+        self.icon_label = QLabel()
+        self.countdown_label = QLabel()                    # "Stops in 7s": the quiet timer counting down
+        self.countdown_label.setProperty("countdown", True)
+        self.countdown_label.setVisible(False)
+        self.wave = WaveMeter()
+        self._inner = QHBoxLayout(self)
+        self._inner.setContentsMargins(16, 0, 14, 0)
+        self._inner.setSpacing(8)
+        self._inner.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._inner.addWidget(self.countdown_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._inner.addStretch(1)
+        self._inner.addWidget(self.wave, 0, Qt.AlignmentFlag.AlignVCenter)
+        for part in (self.icon_label, self.countdown_label, self.wave):
+            part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)       # clicks reach the button
+        self.set_active(False)
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    def isChecked(self) -> bool:                           # noqa: N802 (Qt name): "on" means listening
+        return self._active
+
+    def set_chip(self, chip: QWidget) -> None:
+        """Seat a notice chip right of the icon (it is shown or hidden by the caller)."""
+        chip.setParent(self)
+        chip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._inner.insertWidget(1, chip, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def set_notice(self, shown: bool, tip: str = "") -> None:
+        """While a notice chip is shown the centred text steps aside, and *tip* explains it on hover."""
+        self._notice = shown
+        self.fixed_tip = tip if shown and tip else None
+        self.wave.setVisible(not shown)                    # (room for the chip)
+        self._show_text()
+
+    def set_active(self, active: bool) -> None:
+        """Listening (filled, stop icon, green moving lines) or idle (outlined, play icon, still muted lines)."""
+        self._active = active
+        self.wave.set_active(active)
+        self.setProperty("accent", active)
+        self.setProperty("outline", not active)
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
+        self._show_text()
+        self._draw_icon()
+
+    def set_countdown(self, seconds: int | None) -> None:
+        """Show "Stops in Ns" (None hides it)."""
+        self.countdown_label.setVisible(seconds is not None)
+        if seconds is not None:
+            self.countdown_label.setText(f"Stops in {seconds}s")
+
+    def set_compact(self, compact: bool) -> None:
+        """The mini view drops the centred text (the icon, countdown and lines are enough)."""
+        self._compact = compact
+        self._show_text()
+
+    def set_colors(self, text: str, on_accent: str, accent: str) -> None:
+        """Redraw for the theme's colours: the lines rest in a muted *text* colour, the icon is *accent* or *on_accent*."""
+        self._colors = (text, on_accent, accent)
+        muted = QColor(text)
+        muted.setAlpha(110)
+        self.wave.set_colors(muted.name(QColor.NameFormat.HexArgb), "#34c759")
+        self._draw_icon()
+
+    def _show_text(self) -> None:
+        text = self._live_text if self._active else self._idle_text
+        self.setText("" if (self._compact or self._notice) else text)
+        self.setToolTip(self.fixed_tip or text)
+        self.setAccessibleName(text)
+
+    def _draw_icon(self) -> None:
+        _, on_accent, accent = self._colors
+        self.icon_label.setPixmap(make_icon("stop" if self._active else "play", on_accent if self._active else accent,
+                                            16).pixmap(16, 16))
+
+
 class Pill(QLabel):
     """A count drawn as a fully rounded badge, inline with the text around it.
 
@@ -243,7 +343,8 @@ def connection_tip(hint: str | None = None) -> str:
         '<b><span style="color:#E0A030">⚠&nbsp;&nbsp;Not connected</span></b><br>'
         'Quill has no spreadsheet to <i>read lists from</i><br>or <i>write rows to</i>.'
         '<br><br><b>Connect one:</b><br>'
-        '📗&nbsp;&nbsp;<b>Excel</b>: open a workbook, and Quill<br>'
+        '📗&nbsp;&nbsp;<b>Spreadsheet program</b>: open a workbook,<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and Quill<br>'
         '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;attaches within a few seconds<br>'
         '📁&nbsp;&nbsp;<b>File ▸ Open Spreadsheet File…</b><br>'
         '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and pick an <i>.xlsx</i> or <i>.csv</i> file'

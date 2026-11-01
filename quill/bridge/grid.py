@@ -249,7 +249,7 @@ class XlwingsGrid(Grid):
                 for col, flt in criteria.items():
                     self._apply_mac(table.api, col - first_col + 1, flt)
         except Exception as exc:
-            raise BridgeError(f"Excel would not apply the filter: {exc}") from exc
+            raise BridgeError(f"The spreadsheet program would not apply the filter: {exc}") from exc
         return None   # visible-row count is not read back from Excel
 
     def _apply_windows(self, rng_api, field: int, flt: ColumnFilter) -> None:
@@ -292,7 +292,7 @@ class XlwingsGrid(Grid):
             elif ws.api.filter_mode.get():
                 ws.api.show_all_data()
         except Exception as exc:
-            raise BridgeError(f"Excel would not clear the filter: {exc}") from exc
+            raise BridgeError(f"The spreadsheet program would not clear the filter: {exc}") from exc
 
     def get_cursor(self, sheet: str):
         try:

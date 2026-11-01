@@ -21,7 +21,7 @@ _app = QApplication.instance() or QApplication([])
 class TestFolderIconInTheWindow(unittest.TestCase):
     def setUp(self):
         self.seen = []
-        self.w = MainWindow(on_file_state=lambda has, name: self.seen.append((has, name)))
+        self.w = MainWindow(on_file_state=lambda has, name, sheet: self.seen.append((has, name, sheet)))
         self.w.setup()
         self.w.widget.show()
         _app.processEvents()
@@ -35,10 +35,13 @@ class TestFolderIconInTheWindow(unittest.TestCase):
         self.w.update_workbook("plants.xlsx")
         filled = self.w.open_file_button.icon().pixmap(18, 18).toImage()
         self.assertNotEqual(empty, filled)
-        self.assertEqual(self.seen[-1], (True, "plants.xlsx"))
+        self.assertEqual(self.seen[-1], (True, "plants.xlsx", ""))
+        self.w.set_active_sheet("Inventory")
+        self.assertIn("Sheet: Inventory", self.w.open_file_button.toolTip())
+        self.assertEqual(self.seen[-1], (True, "plants.xlsx", "Inventory"))
         self.assertIn("plants.xlsx", self.w.open_file_button.toolTip())
         self.w.update_workbooks([], "")
-        self.assertEqual(self.seen[-1], (False, ""))
+        self.assertEqual(self.seen[-1], (False, "", ""))
         self.assertEqual(self.w.open_file_button.toolTip().splitlines()[0], "Open Spreadsheet File")
 
     def test_the_folder_sits_left_of_the_settings_icon(self):
@@ -202,3 +205,40 @@ class TestWaveIsThinner(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTermHelperClosing(unittest.TestCase):
+    def setUp(self):
+        from quill.parser.vocab import Vocabulary
+        from quill.ui.sorting_window import SortingWindow
+        vocab = Vocabulary()
+        vocab.load({"Era": ["1980s"], "Color": ["Black"]})
+        self.done = []
+        self.win = SortingWindow(vocab, lambda *a: None)
+        self.win.setup()
+        self.win.on_done = lambda: self.done.append(1)
+
+    def test_on_done_is_called_once_when_the_last_row_has_gone(self):
+        self.win.set_items([("Era", "90s"), ("Color", "teal")])
+        self.win.widget.show()
+        self.win.set_items([])
+        self.assertEqual(self.done, [1])
+
+    def test_it_is_not_called_for_an_empty_list_while_the_window_was_never_open(self):
+        self.win.set_items([])
+        self.assertEqual(self.done, [])
+
+    def test_the_main_window_comes_back_and_a_finished_row_is_cleared(self):
+        w = MainWindow()
+        w.setup()
+        w.set_stream_partial("black shirt")
+        w.end_stream()
+        w.sorting_finished()
+        self.assertEqual(w.stream_text(), "")
+
+    def test_a_row_still_being_built_keeps_its_heard_words(self):
+        w = MainWindow()
+        w.setup()
+        w.set_stream_partial("black shirt")
+        w.sorting_finished()
+        self.assertEqual(w.stream_text(), "black shirt")

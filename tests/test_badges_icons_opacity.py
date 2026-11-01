@@ -43,7 +43,7 @@ class TestIcons(unittest.TestCase):
         self.assertFalse(w.open_file_button.icon().isNull())      # a folder icon, no text
         self.assertEqual(w.open_file_button.text(), "")
         self.assertFalse(w.toggle_icon.pixmap().isNull())
-        self.assertEqual(w.toggle_button.text(), "")             # the label is inside the button: dot, state, glyph
+        self.assertEqual(w.toggle_button.text(), "Start Listening")      # centred in the button, with the icon and sound lines
 
     def test_start_and_stop_draw_different_icons(self):
         w = MainWindow()

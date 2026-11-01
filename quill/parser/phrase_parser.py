@@ -275,6 +275,15 @@ class _Parser:
         """Record the best of several vocabulary matches at the cursor."""
         order = {c: k for k, c in enumerate(self.vocab.columns())}
         matches.sort(key=lambda m: (-m[2], order.get(m[0], len(order))))
+        free = [m for m in matches if m[0] not in self.result.updates]       # a column already given a value in this phrase is taken
+        if not free:                                                          # a second value for it: keep the first and say so
+            column, canonical, length = matches[0]
+            phrase = " ".join(self.tokens[self.i:self.i + length])
+            self.result.assumptions.append(
+                f"'{phrase}' also fits {column}, which already has {self.result.updates[column]}: kept {self.result.updates[column]}")
+            self.i += length
+            return
+        matches = free
         column, canonical, length = matches[0]
         phrase = " ".join(self.tokens[self.i:self.i + length])
         columns = {m[0] for m in matches if m[2] == length}

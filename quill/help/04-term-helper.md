@@ -29,7 +29,7 @@ The Term Helper asks you to do something, so it stays **solid and easy to read**
 
 ## 🎙️ Answer by voice
 
-Press **Sort by Voice** (or say **"sort terms"**), then talk. Quill answers the **top row** and moves on. The button's sound lines (grey and still before) turn green and move, it reads **Click to Stop**, and it has a small **Stops in …s** countdown at its right edge: stay quiet for the set time and voice sorting ends by itself.
+Press **Start Listening** at the top (or say **"sort terms"**), then talk. Quill answers the **top row** and moves on. The button looks and works like the main window's: a play icon, the sound lines (grey and still before) turn green and move, it reads **Stop Listening**, and a small **Stops in …s** countdown sits beside the icon: stay quiet for the set time and voice sorting ends by itself.
 
 The columns on screen are the context: if you say a word that isn't a column but sounds like one in the list (*"sighs"* for **Size**), Quill picks that column.
 
@@ -40,7 +40,9 @@ The columns on screen are the context: if you say a word that isn't a column but
 | **"Same as XL"** | another name for XL |
 | **"Ignore"** | forget it |
 | **"Later"** | move to the end |
-| **"Add all"** / **"Ignore all"** | everything at once |
+| **"Add all"** / **"Ignore all"** | everything at once: all the rows flash and leave together, then the Term Helper closes and the main window comes back to the front, ready for the next row |
+
+If you press **Start** in the main window while the Term Helper is open, voice sorting ends and what you say goes into the row again; new unknown words join the Term Helper list.
 | **"Undo"** | take back the last answer |
 | **"Done"** | leave voice sorting |
 

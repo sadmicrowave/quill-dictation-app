@@ -111,7 +111,7 @@ class TestOpeningAFile(FileCase):
         bad = self.dir / "macros.xlsm"
         bad.write_bytes(b"x")
         self.assertFalse(self.app.open_workbook_file(bad))
-        self.assertIn("choose an Excel workbook", self.log.toPlainText())
+        self.assertIn("choose a spreadsheet file", self.log.toPlainText())
         self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
         self.assertTrue(self.app.connected)
 
@@ -145,7 +145,7 @@ class TestGoingBackToExcel(FileCase):
         self.app.window.use_excel_action.trigger()
         self.assertNotIsInstance(self.app.controller.bridge, XlsxBridge)
         self.assertEqual(self.settings.preferences["workbook_file"], "")
-        self.assertIn("Using the workbook open in Excel", self.log.toPlainText())
+        self.assertIn("Using the workbook open in your spreadsheet program", self.log.toPlainText())
         self.assertFalse(self.app.window.use_excel_action.isEnabled())
 
     def test_the_menu_item_is_only_enabled_while_working_on_a_file(self):

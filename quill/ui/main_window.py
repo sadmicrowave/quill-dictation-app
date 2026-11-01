@@ -59,8 +59,8 @@ from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.widgets import (
     ElidedLabel,
     HeadingToggle,
+    ListenButton,
     Pill,
-    WaveMeter,
     connection_tip,
     tooltip_lines,
 )
@@ -75,8 +75,8 @@ HELP_TOPIC = "welcome"
 NOT_CONNECTED_TEXT = "File stream not connected"
 NOT_CONNECTED_HINT = (
     "No spreadsheet is connected, so there is nothing to read lists from or write rows to.\n"
-    "Quill works through a workbook open in Excel (it attaches automatically within a few seconds of "
-    "the workbook opening) or through an .xlsx file chosen with File > Open Spreadsheet File.\n"
+    "Quill works through a workbook open in your spreadsheet program (it attaches automatically within a few seconds of "
+    "the workbook opening) or through an .xlsx or .csv file chosen with File > Open Spreadsheet File.\n"
     "Open a workbook or choose a file; listening can start once the connection is made."
 )
 
@@ -132,13 +132,13 @@ class MainWindow:
         on_resized: Callable[[int, int], None] | None = None,
         on_mini_resized: Callable[[int, int], None] | None = None,
         on_field_removed: Callable[[str], None] | None = None,
-        on_file_state: Callable[[bool, str], None] | None = None,
+        on_file_state: Callable[[bool, str, str], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
     ) -> None:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
-        self._on_file_state = on_file_state or (lambda has, name: None)
+        self._on_file_state = on_file_state or (lambda has, name, sheet: None)
         self._on_sorting = on_sorting or (lambda: None)
         self._on_undo = on_undo or (lambda: None)
         self._on_log_toggled = on_log_toggled or (lambda collapsed: None)
@@ -161,6 +161,7 @@ class MainWindow:
         self._native_settings_button = False
         self._native_file_button = False
         self._workbook_name = ""
+        self._sheet_name = ""
         self._native_undo_button = False
         self._text_color = "#1F1E1D"
         self._accent = "#7A55C2"
@@ -215,27 +216,13 @@ class MainWindow:
         central.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
 
         # --- status row
-        # One button is the whole control: the play / stop glyph and the sound lines. Pressing it
-        # starts or stops listening; it fills with the accent colour while listening.
-        self.wave = WaveMeter()                       # the app icon's sound lines: still and muted, green and moving while listening
-        self.countdown_label = QLabel()               # "Stops in 7s": the quiet timer counting down (hidden when not running)
-        self.countdown_label.setProperty("countdown", True)
-        self.countdown_label.setVisible(False)
+        # One button is the whole control (see ListenButton). Pressing it starts or stops listening; it fills with
+        # the accent colour while listening.
+        self.toggle_button = ListenButton()           # play / stop icon, centred text, countdown, sound lines
+        self.toggle_icon = self.toggle_button.icon_label
+        self.countdown_label = self.toggle_button.countdown_label       # "Stops in 7s" (hidden when not running)
+        self.wave = self.toggle_button.wave
         self._countdown_seconds: int | None = None
-        self.toggle_icon = QLabel()
-        self.toggle_button = QPushButton()
-        self.toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.toggle_button.setProperty("keepMargins", True)
-        self.toggle_button.setProperty("outline", True)           # outlined in the accent colour until listening fills it
-        inner = QHBoxLayout(self.toggle_button)
-        inner.setContentsMargins(16, 0, 14, 0)         # room before the play icon
-        inner.setSpacing(8)
-        for part, stretch in ((self.toggle_icon, 0), (self.countdown_label, 0), (None, 1), (self.wave, 0)):
-            if part is None:
-                inner.addStretch(stretch)
-                continue
-            part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)   # clicks reach the button
-            inner.addWidget(part, 0, Qt.AlignmentFlag.AlignVCenter)
         self.toggle_button.clicked.connect(lambda: self._on_toggle(not self._listening))
         self.settings_button = QPushButton()            # icon only; refresh_icons() draws it
         self.settings_button.setProperty("iconOnly", True)
@@ -283,16 +270,15 @@ class MainWindow:
         # --- file
         # No file picker in the window: the folder icon (title bar on macOS, status row elsewhere) opens one.
         # While no spreadsheet is connected a technical warning chip says so (the mini view has its own).
-        self.connection_chip = self._make_chip(None)
-        self.mini_chip = self._make_chip(None)
+        self.connection_chip = self._make_chip(None)          # sits inside the Start button, right of the play icon
+        self.mini_chip = self.connection_chip                 # (the same one in both views)
+        self.toggle_button.set_chip(self.connection_chip)
         self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
         self.open_file_button.setProperty("iconOnly", True)
         self.open_file_button.setAccessibleName("Open Spreadsheet File")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self._on_open_file())
         status_row.insertWidget(status_row.indexOf(self.settings_button), self.open_file_button)
-        layout.addWidget(self.connection_chip, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
         # --- current row
         # (Not collapsible: the row being built is the point of every spoken turn, so it is always in view.)
@@ -362,7 +348,7 @@ class MainWindow:
         file_menu = window.menuBar().addMenu("File")
         self.open_file_action = file_menu.addAction("Open Spreadsheet File…", lambda: self._on_open_file())
         self.open_file_action.setShortcut("Ctrl+O")
-        self.use_excel_action = file_menu.addAction("Use Open Excel Workbook", lambda: self._on_use_excel())
+        self.use_excel_action = file_menu.addAction("Use the Open Workbook", lambda: self._on_use_excel())
         self.use_excel_action.setEnabled(False)
         window.setCentralWidget(central)
         self._window = window
@@ -525,8 +511,7 @@ class MainWindow:
         """Show the "File stream not connected." chip (instead of the sheet name) while there is no spreadsheet."""
         self._not_connected = not_connected
         if hint:
-            for chip in (self.connection_chip, self.mini_chip):
-                chip.setToolTip(connection_tip(hint))
+            self.connection_chip.setToolTip(connection_tip(hint))
         self._refresh_visibility()
 
     def set_native_file_button(self, native: bool) -> None:
@@ -684,12 +669,13 @@ class MainWindow:
             return
         full = not self._view_mini
         self._render_countdown()
-        self.connection_chip.setVisible(full and self._not_connected)
-        self.mini_chip.setVisible(self._view_mini and self._not_connected)
+        self.connection_chip.setVisible(self._not_connected)
+        self.toggle_button.set_notice(self._not_connected, self.connection_chip.toolTip())
         self.open_file_button.setVisible(full and not self._native_file_button)
         self.error_button.setVisible(self._view_mini and bool(self._mini_error))
         tall = self.sorting_button.fontMetrics().height() * 2 + 4
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
+        self.toggle_button.set_compact(self._view_mini)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
         self.log_toggle.setVisible(full)
@@ -886,18 +872,31 @@ class MainWindow:
         """The name of the file being filled in ('' while none is connected)."""
         return self._workbook_name
 
+    @property
+    def sheet_name(self) -> str:
+        """The open sheet's name ('' if unknown)."""
+        return self._sheet_name
+
+    def set_active_sheet(self, name: str) -> None:
+        """Note which sheet is open: the folder icon's hover text names it."""
+        if name != self._sheet_name:
+            self._sheet_name = name
+            self._show_file_state()
+
     def update_workbook(self, name: str) -> None:
         """Note *name* as the file in use: the folder icon turns solid and its tooltip names the file."""
         self._workbook_name = name
         self._show_file_state()
 
     def set_file_mode(self, file_mode: bool) -> None:
-        """Say whether Quill is working on a file (not live Excel): enables the way back to Excel."""
+        """Say whether Quill is working on a file (not the open workbook): enables the way back to it."""
         self.use_excel_action.setEnabled(file_mode)
 
     def update_workbooks(self, names: list[str], current: str = "") -> None:
         """The workbooks that can be targeted changed; *current* (if given) is the one in use."""
         self._workbook_name = current
+        if not current:
+            self._sheet_name = ""
         self._show_file_state()
 
     def _show_file_state(self) -> None:
@@ -905,8 +904,9 @@ class MainWindow:
         if self._window is None:
             return
         has = bool(self._workbook_name)
-        tip = (f"{self._workbook_name}\nClick to open another spreadsheet file" if has
-               else "Open Spreadsheet File\nWork on an .xlsx or .csv file directly (no Excel needed)")
+        sheet = f"\nSheet: {self._sheet_name}" if has and self._sheet_name else ""
+        tip = (f"{self._workbook_name}{sheet}\nClick to open another spreadsheet file" if has
+               else "Open Spreadsheet File\nWork on an .xlsx or .csv file directly (no spreadsheet program needed)")
         self.open_file_button.setToolTip(tip)
         color = self._text_color
         if not has:
@@ -914,7 +914,7 @@ class MainWindow:
             muted.setAlpha(110)
             color = muted.name(QColor.NameFormat.HexArgb)
         self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", color, 18))
-        self._on_file_state(has, self._workbook_name)
+        self._on_file_state(has, self._workbook_name, self._sheet_name)
 
     def _row_table_height(self) -> int:
         """How tall the Current Row box should be: small when empty, growing with its rows up to a cap."""
@@ -1000,6 +1000,13 @@ class MainWindow:
     def end_stream(self) -> None:
         """The row ended (saved, discarded or listening stopped): the next words start a new stream."""
         self._stream_done = True
+
+    def sorting_finished(self) -> None:
+        """The Term Helper closed with everything answered: bring this window back and, if the row it was
+        about is over, clear the heard words so the next row starts clean."""
+        if self._stream_done:
+            self.clear_stream()
+        self.show()
 
     def clear_stream(self) -> None:
         """Empty the Voice Stream."""
@@ -1113,17 +1120,9 @@ class MainWindow:
             self._refresh_visibility()
 
     def set_listening_indicator(self, active: bool) -> None:
-        """Update the active light, label and button."""
+        """Update the button (icon, text, colours, sound lines)."""
         self._listening = active
-        self.wave.set_active(active)
-        self.toggle_button.setToolTip("Stop Listening" if active else "Start Listening")
-        self.toggle_button.setAccessibleName("Stop Listening" if active else "Start Listening")
-        self.toggle_button.setProperty("accent", active)          # filled with the accent while listening,
-        self.toggle_button.setProperty("outline", not active)     # outlined in it while idle (so it reads as clickable)
-        style = self.toggle_button.style()
-        style.unpolish(self.toggle_button)
-        style.polish(self.toggle_button)
-        self._draw_toggle_icon()
+        self.toggle_button.set_active(active)
 
     def set_quiet_countdown(self, seconds: int | None) -> None:
         """Show how many seconds are left before Quill stops listening because it is quiet (None hides it)."""
@@ -1132,9 +1131,7 @@ class MainWindow:
 
     def _render_countdown(self) -> None:
         seconds = self._countdown_seconds
-        self.countdown_label.setVisible(seconds is not None)
-        if seconds is not None:
-            self.countdown_label.setText(f"Stops in {seconds}s")
+        self.toggle_button.set_countdown(seconds)
 
     def add_demo_menu(self, scenarios) -> None:
         """Add a **Demo** menu with one entry per ``(label, action)`` (only in demo mode; see :mod:`quill.demo`)."""
@@ -1144,13 +1141,6 @@ class MainWindow:
 
     def _icon(self, name: str, color: str):
         return make_icon(name, color)
-
-    def _draw_toggle_icon(self) -> None:
-        """The play / stop glyph at the right of the Start / Stop button, in the colour that suits its fill."""
-        if self._window is None:
-            return
-        color = self._on_accent if self._listening else self._accent
-        self.toggle_icon.setPixmap(make_icon("stop" if self._listening else "play", color, 16).pixmap(16, 16))
 
     def refresh_icons(self, text_color: str = "#1F1E1D", on_accent: str = "#FFFFFF",
                       accent: str = "#7A55C2") -> None:
@@ -1169,10 +1159,7 @@ class MainWindow:
         self.help_button.setIcon(make_icon("question", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self._show_file_state()
-        muted = QColor(text_color)
-        muted.setAlpha(110)
-        self.wave.set_colors(muted.name(QColor.NameFormat.HexArgb), COLOR_ACTIVE)
-        self._draw_toggle_icon()
+        self.toggle_button.set_colors(text_color, on_accent, accent)
 
     def set_undo_count(self, count: int) -> None:
         """Show "Undo (n)" while there is a sorting answer to take back."""

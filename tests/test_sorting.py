@@ -336,7 +336,7 @@ class TestSortingWindow(unittest.TestCase):
         m = self.win.root.layout().contentsMargins()
         self.assertEqual((m.left(), m.right()), (SortingWindow.MARGIN, SortingWindow.MARGIN))
 
-    def test_answered_rows_flash_then_ease_away_in_turn_and_the_window_closes_last(self):
+    def test_a_batch_of_answered_rows_flashes_and_eases_away_together_and_the_window_closes_last(self):
         from PySide6.QtTest import QTest
         SortingWindow.animation_ms, SortingWindow.FLASH_MS = 80, 60
         try:
@@ -345,9 +345,9 @@ class TestSortingWindow(unittest.TestCase):
             first, second = self.win.rows
             self.win.set_items([])                                   # both answered at once
             self.assertTrue(self.win.widget.isVisible())             # not closed yet
-            self.assertIn("#34C759", first.styleSheet())             # the first flashes green
-            self.assertNotIn("#34C759", second.styleSheet())         # the second waits its turn
-            self.assertEqual(self.win._queue, [second])              # in turn, not all at once
+            self.assertIn("#34C759", first.styleSheet())             # both flash green at the same moment
+            self.assertIn("#34C759", second.styleSheet())
+            self.assertEqual(self.win._queue, [])                    # nobody waits for a turn
             QTest.qWait(600)
             self.assertFalse(self.win.widget.isVisible())            # closed after the last one left
             self.assertEqual(self.win.rows, [])
