@@ -64,7 +64,7 @@ class TestOpeningAFile(FileCase):
         self.app.choose_spreadsheet_file()
         self.assertTrue(self.app.connected)
         self.assertIsInstance(self.app.controller.bridge, XlsxBridge)
-        self.assertEqual(self.app.window.workbook_combo.currentText(), "plants.xlsx")
+        self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
         self.assertIn("Working directly on the file plants.xlsx", self.log.toPlainText())
 
     def test_its_lists_are_learned(self):
@@ -99,7 +99,7 @@ class TestOpeningAFile(FileCase):
         self.chosen[0] = str(self.other)
         self.app.choose_spreadsheet_file()
         self.assertFalse(self.app.controller.session.listening)
-        self.assertEqual(self.app.window.workbook_combo.currentText(), "other.xlsx")
+        self.assertEqual(self.app.window.workbook_name, "other.xlsx")
         self.app.controller.handle_transcript("start listening")
         self.app.controller.handle_transcript("cactus next row")
         self.assertEqual(self.sheet(self.other)["A4"].value, "Cactus")
@@ -112,7 +112,7 @@ class TestOpeningAFile(FileCase):
         bad.write_bytes(b"x")
         self.assertFalse(self.app.open_workbook_file(bad))
         self.assertIn("choose an Excel workbook", self.log.toPlainText())
-        self.assertEqual(self.app.window.workbook_combo.currentText(), "plants.xlsx")
+        self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
         self.assertTrue(self.app.connected)
 
     def test_a_missing_file_is_refused(self):
@@ -126,7 +126,7 @@ class TestOpeningAFile(FileCase):
         corrupt.write_text("this is not a workbook")
         self.assertFalse(self.app.open_workbook_file(corrupt))
         self.assertTrue(self.app.connected)
-        self.assertEqual(self.app.window.workbook_combo.currentText(), "plants.xlsx")
+        self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
         self.assertEqual(self.settings.preferences["workbook_file"], str(self.plants))
 
     def test_a_corrupt_first_file_goes_back_to_no_workbook(self):
@@ -175,13 +175,13 @@ class TestWhereItIsOffered(FileCase):
         self.app.window.open_file_action.trigger()
         self.assertTrue(self.app.connected)
 
-    def test_a_visible_open_file_button_in_the_workbook_row(self):
+    def test_a_visible_open_file_button_in_the_status_row(self):
         self.assertTrue(self.app.window.open_file_button.isVisibleTo(self.app.window.widget))
         self.chosen[0] = str(self.plants)
         self.app.window.open_file_button.click()
         self.assertTrue(self.app.connected)
 
-    def test_the_button_is_hidden_in_the_mini_view_with_the_rest_of_the_workbook_row(self):
+    def test_the_button_is_hidden_in_the_mini_view_with_the_rest_of_the_full_view(self):
         self.app.window.set_mini(True)
         self.assertFalse(self.app.window.open_file_button.isVisibleTo(self.app.window.widget))
 
@@ -211,7 +211,7 @@ class TestFileWatching(FileCase):
         for _ in range(3):
             self.app.poll_workbooks()
         self.assertIsInstance(self.app.controller.bridge, XlsxBridge)
-        self.assertEqual(self.app.window.workbook_combo.currentText(), "plants.xlsx")
+        self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
 
     def test_a_deleted_file_is_reported_like_a_closed_workbook(self):
         self.chosen[0] = str(self.plants)
@@ -267,7 +267,7 @@ class TestStartup(unittest.TestCase):
         app.start()
         self.assertTrue(app.connected)
         self.assertTrue(app.window.use_excel_action.isEnabled())
-        self.assertEqual(app.window.workbook_combo.currentText(), "plants.xlsx")
+        self.assertEqual(app.window.workbook_name, "plants.xlsx")
 
 
 if __name__ == "__main__":

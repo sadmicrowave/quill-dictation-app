@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QDialog
 
 from quill.config.settings import Settings
 from quill.parser.commands import Action
-from quill.ui.main_window import COLOR_ACTIVE, COLOR_IDLE, MainWindow
+from quill.ui.main_window import MainWindow
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.theme import apply_theme
 from quill.ui.tray import TrayIcon, make_icon
@@ -27,7 +27,6 @@ class TestMainWindow(unittest.TestCase):
         self.w = MainWindow(
             on_toggle=lambda a: self.calls.append(("toggle", a)),
             on_settings=lambda: self.calls.append(("settings",)),
-            on_workbook=lambda n: self.calls.append(("workbook", n)),
         )
         self.w.setup()
 
@@ -35,13 +34,11 @@ class TestMainWindow(unittest.TestCase):
         self.assertFalse(self.w.wave.active)
         self.assertEqual(self.w.toggle_button.toolTip(), "Start Listening")
         self.assertFalse(self.w.toggle_button.property("accent"))
-        self.assertIn(COLOR_IDLE, self.w.dot.styleSheet())
 
     def test_listening_indicator(self):
         self.w.set_listening_indicator(True)
         self.assertEqual((self.w.wave.active, self.w.toggle_button.toolTip()), (True, "Stop Listening"))
         self.assertTrue(self.w.toggle_button.property("accent"))
-        self.assertIn(COLOR_ACTIVE, self.w.dot.styleSheet())
         self.assertTrue(self.w.listening)
 
     def test_toggle_button_requests_opposite_state(self):
@@ -70,19 +67,10 @@ class TestMainWindow(unittest.TestCase):
 
     def test_workbook_picker(self):
         self.w.update_workbooks(["a.xlsx", "b.xlsx"], "b.xlsx")
-        self.assertEqual(self.w.workbook_combo.currentText(), "b.xlsx")
+        self.assertEqual(self.w.workbook_name, "b.xlsx")
         self.w.update_workbook("c.xlsx")
-        self.assertEqual(self.w.workbook_combo.currentText(), "c.xlsx")
-        self.assertEqual(self.w.workbook_combo.count(), 3)
-
-    def test_user_pick_reports_name(self):
-        self.w.update_workbooks(["a.xlsx", "b.xlsx"], "a.xlsx")
-        self.w.workbook_combo.activated.emit(1)
-        self.assertEqual(self.calls, [("workbook", "b.xlsx")])
-
-    def test_programmatic_update_does_not_fire_callback(self):
-        self.w.update_workbooks(["a.xlsx"], "a.xlsx")
-        self.assertEqual(self.calls, [])
+        self.assertEqual(self.w.workbook_name, "c.xlsx")
+        self.assertIn("c.xlsx", self.w.open_file_button.toolTip())          # the folder icon names the file
 
     def test_last_saved(self):
         self.w.set_last_saved("Row 4")

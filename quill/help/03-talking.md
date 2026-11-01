@@ -26,7 +26,7 @@ Speak naturally. Quill picks out the words it knows.
 
 ## 👂 What Quill heard
 
-Everything you say shows up, word by word and in italics, in the box under the file picker.
+Everything you say shows up, word by word and in italics, in the box under the Start button.
 
 - Words Quill understood become **coloured pills** and appear in the grid below, in their column.
 - Words still being spoken are shown in the normal text colour; once the phrase is done, words that were **not understood** turn grey.

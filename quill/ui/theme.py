@@ -302,6 +302,9 @@ QSlider::handle:horizontal {{ width: 18px; height: 18px; margin: -7px 0; border-
 QLabel#termPrompt {{ font-weight: 500; }}
 QToolButton[heading="true"] {{ border: none; background: transparent; padding: 2px 0; margin: 0; min-width: 0;
               color: {t['muted']}; }}
+QToolButton[errorMark="true"] {{ background: #E5484D; color: #FFFFFF; border: none; border-radius: 10px; min-width: 20px;
+              max-width: 20px; min-height: 20px; max-height: 20px; padding: 0; font-weight: 600; }}
+QToolButton[errorMark="true"]:hover {{ background: #F0686C; }}
 QToolButton[flatIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[flatIcon="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
@@ -309,9 +312,6 @@ QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight
 QLabel[staticHeading="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; }}
 QLabel[info="true"] {{ background: {rgba(t['accent'], 0.12)}; color: {t['text']}; border: 1px solid {rgba(t['accent'], 0.38)};
               border-radius: 12px; padding: 8px 14px; }}
-QComboBox[single="true"] {{ padding-right: 12px; }}
-QComboBox[single="true"]::drop-down {{ width: 0px; border: none; }}
-QComboBox[single="true"]::down-arrow {{ image: none; width: 0px; height: 0px; }}
 QPushButton[outline="true"] {{ border: 1px solid {t['accent']}; }}
 QPushButton[outline="true"]:hover {{ background: {rgba(t['accent'], 0.14)}; }}
 QLabel[headingToggle="true"]:hover {{ color: {t['accent']}; }}

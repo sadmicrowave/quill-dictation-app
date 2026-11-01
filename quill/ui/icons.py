@@ -25,6 +25,10 @@ SHAPES = {
                 '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></g>',
     "folder": '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5Z" '
               'fill="none" stroke="COLOR" stroke-width="1.8" stroke-linejoin="round"/>',
+    "folder-open": '<path d="M3 17.5V6.5A2.5 2.5 0 0 1 5.5 4H9l2 2.5h6A2.5 2.5 0 0 1 19.5 9v1.5" fill="none" stroke="COLOR" '
+                   'stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>'
+                   '<path d="M3 17.5 5.2 11a2 2 0 0 1 1.9-1.4H21a1 1 0 0 1 .95 1.3l-2.1 6.3A2.5 2.5 0 0 1 17.5 19H5.5A2.5 2.5 0 0 1 3 17.5Z" '
+                   'fill="COLOR" fill-opacity=".25" stroke="COLOR" stroke-width="1.8" stroke-linejoin="round"/>',
     "question": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
                 '<circle cx="12" cy="12" r="9"/><path d="M9.4 9.3a2.7 2.7 0 1 1 3.8 2.5c-.8.4-1.2.9-1.2 1.8"/></g>'
                 '<circle cx="12" cy="17.2" r="1.1" fill="COLOR"/>',

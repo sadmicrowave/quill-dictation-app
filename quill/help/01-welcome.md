@@ -8,9 +8,9 @@
 
 1. **Open your spreadsheet** in Excel, Numbers, LibreOffice… any of them.
 2. **Press Start** (the wide button at the top).
-3. **Describe an item:** *"black t-shirt, large, good, appraisal thirty five"*. Watch your words appear in the box under the file picker.
+3. **Describe an item:** *"black t-shirt, large, good, appraisal thirty five"*. Watch your words appear in the box under the Start button.
 4. **Say "next row"** to save it and start the next.
-5. **Say "stop listening"** when you're done. If you forget, Quill stops by itself after 10 quiet seconds. A small **Stops in …s** countdown shows in the button, beside the play / stop icon (the light is at the button's left) (change the time in [Settings](help:settings)).
+5. **Say "stop listening"** when you're done. If you forget, Quill stops by itself after 10 quiet seconds. A small **Stops in …s** countdown shows in the button, beside the play / stop icon (change the time in [Settings](help:settings)).
 
 > 💡 First launch: allow the **microphone** (and on a Mac, **Automation** for Excel). That's it. There's nothing to set up.
 

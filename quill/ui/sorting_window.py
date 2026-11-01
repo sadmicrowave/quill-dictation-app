@@ -44,7 +44,7 @@ from quill.session import Decision, TermKey
 from quill.ui.chrome import SYMBOL_HELP, SYMBOL_UNDO, add_titlebar_button
 from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import install_backdrop, apply_spacing
-from quill.ui.widgets import pill, pillify
+from quill.ui.widgets import WaveMeter, pill, pillify
 
 #: Called with (key, decision, corrected words) when the user decides.
 ResolveCallback = Callable[[TermKey, Decision, str], None]
@@ -358,6 +358,8 @@ class SortingWindow:
         voice_row.addWidget(self.voice_button, 1)
         inside = QHBoxLayout(self.voice_button)             # the quiet countdown sits at the button's right edge
         inside.setContentsMargins(12, 0, 12, 0)
+        self.voice_wave = WaveMeter()                        # the app icon's sound lines: still and muted, green and moving while listening
+        inside.addWidget(self.voice_wave)
         inside.addStretch(1)
         self.voice_countdown = QLabel()
         self.voice_countdown.setProperty("countdown", True)
@@ -584,8 +586,8 @@ class SortingWindow:
 
     def _render_voice(self) -> None:
         self.voice_button.setChecked(self._voice_active)
-        self.voice_button.setText("🎤 Listening (click to stop)" if self._voice_active
-                                  else "🎤 Sort by Voice")
+        self.voice_wave.set_active(self._voice_active)
+        self.voice_button.setText("Click to Stop" if self._voice_active else "Sort by Voice")
 
     def show(self) -> None:
         """Show the window (and bring it to the front)."""

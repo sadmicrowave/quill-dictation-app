@@ -408,6 +408,7 @@ SYMBOL_FULL = "arrow.up.left.and.arrow.down.right"
 SYMBOL_SETTINGS = "slider.horizontal.3"
 SYMBOL_UNDO = "arrow.uturn.backward"
 SYMBOL_HELP = "questionmark.circle"
+SYMBOL_FOLDER = "folder"
 _NS_LAYOUT_LEFT, _NS_LAYOUT_RIGHT = 1, 2
 
 
@@ -438,6 +439,22 @@ class TitlebarButton:
     def set_extra_enabled(self, index: int, enabled: bool) -> None:
         """Enable or grey out the *index*-th extra icon (counting from the left)."""
         self._extras[index][0].setEnabled_(enabled)
+
+    def set_extra_image(self, index: int, png: bytes, tip: str, muted: bool) -> bool:
+        """Give the *index*-th extra icon (counting from the left) its own picture (PNG bytes, drawn as a template
+        so the system colours it for the title bar), a tooltip, and dim it when *muted*. Returns False if it can't."""
+        try:
+            button = self._extras[index][0]
+            data = self._appkit.NSData.dataWithBytes_length_(png, len(png))
+            image = self._appkit.NSImage.alloc().initWithData_(data)
+            image.setTemplate_(True)
+            image.setSize_((17, 17))
+            button.setImage_(image)
+            button.setToolTip_(tip)
+            button.setAlphaValue_(0.45 if muted else 1.0)
+            return True
+        except Exception:
+            return False
 
     def click(self) -> None:
         """Press the button (used by tests)."""

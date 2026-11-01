@@ -68,7 +68,8 @@ class WaveMeter(QWidget):
         super().__init__()
         self._active = False
         self._phase = 0.0
-        self._idle, self._live = QColor("#8e8e93"), QColor("#34c759")
+        self._idle: QColor | None = None                 # None: the muted text colour of the palette
+        self._live = QColor("#34c759")
         self._timer = QTimer(self)
         self._timer.setInterval(self.FRAME_MS)
         self._timer.timeout.connect(self._tick)
@@ -83,6 +84,13 @@ class WaveMeter(QWidget):
         """*idle* is the muted still colour, *live* the colour while listening."""
         self._idle, self._live = QColor(idle), QColor(live)
         self.update()
+
+    def _resting_color(self) -> QColor:
+        if self._idle is not None:
+            return self._idle
+        muted = QColor(self.palette().buttonText().color())
+        muted.setAlpha(110)
+        return muted
 
     def set_active(self, active: bool) -> None:
         """Start (green, moving) or stop (muted, still)."""
@@ -113,8 +121,8 @@ class WaveMeter(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(self._live if self._active else self._idle)
-        count, width = len(self.HEIGHTS), 3.0
+        painter.setBrush(self._live if self._active else self._resting_color())
+        count, width = len(self.HEIGHTS), 2.0
         step = (self.width() - width) / (count - 1)
         for i, share in enumerate(self.bar_heights()):
             h = share * (self.height() - 2)

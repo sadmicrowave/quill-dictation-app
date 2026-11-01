@@ -93,16 +93,16 @@ class TestConnectionChip(unittest.TestCase):
         self.assertTrue(w.mini_chip.isVisibleTo(w.widget))
         self.assertFalse(w.connection_chip.isVisibleTo(w.widget))
 
-    def test_the_chip_sits_inside_the_picker_and_never_stretches(self):
+    def test_the_chip_stays_a_fixed_height_pill_at_the_left(self):
         w = window()
         w.set_not_connected(True)
         w.widget.show()
         w.widget.resize(360, 900)
         _app.processEvents()
-        chip, combo = w.connection_chip, w.workbook_combo
+        chip = w.connection_chip
         self.assertTrue(chip.isVisibleTo(w.widget))
-        self.assertTrue(combo.geometry().contains(chip.geometry()))        # laid over the picker
         self.assertEqual(chip.height(), CHIP_HEIGHT)
+        self.assertLess(chip.x(), 40)
         w.widget.resize(360, 400)
         _app.processEvents()
         self.assertEqual(chip.height(), CHIP_HEIGHT)
@@ -227,6 +227,7 @@ class TestStatusRowWithTheIconsInTheTitleBar(unittest.TestCase):
         w = window()
         w.set_native_mini_button(True)
         w.set_native_settings_button(True)
+        w.set_native_file_button(True)
         w.set_native_undo_button(True)
         w.set_native_help_button(True)
         _app.processEvents()
@@ -246,6 +247,7 @@ class TestStatusRowWithTheIconsInTheTitleBar(unittest.TestCase):
         w = window()
         w.set_native_mini_button(True)
         w.set_native_settings_button(True)
+        w.set_native_file_button(True)
         w.set_native_undo_button(True)
         w.set_native_help_button(True)
         _app.processEvents()
@@ -347,32 +349,15 @@ class TestAlignment(unittest.TestCase):
         self.w = window()
         self.w.set_native_mini_button(True)
         self.w.set_native_settings_button(True)
+        self.w.set_native_file_button(True)
         self.w.set_native_undo_button(True)
         self.w.set_native_help_button(True)
         _app.processEvents()
 
-    def test_the_file_row_has_no_inner_margin(self):
-        for spacing in ("compact", "comfortable"):
-            self.w.apply_density(spacing)
-            margins = self.w.workbook_row.layout().contentsMargins()
-            self.assertEqual((margins.left(), margins.right(), margins.top(), margins.bottom()), (0, 0, 0, 0), spacing)
-
-    def test_the_picker_starts_where_the_text_below_it_starts(self):
-        for spacing in ("compact", "comfortable"):
-            self.w.apply_density(spacing)
-            _app.processEvents()
-            self.assertEqual(left(self.w.workbook_combo, self.w.root), left(self.w.toggle_button, self.w.root), spacing)
-
-    def test_open_file_ends_where_start_ends(self):
-        for spacing in ("compact", "comfortable"):
-            self.w.apply_density(spacing)
-            _app.processEvents()
-            self.assertEqual(right(self.w.open_file_button, self.w.root), right(self.w.toggle_button, self.w.root), spacing)
-
     def test_the_current_row_box_lines_up_with_them_too(self):
         _app.processEvents()
-        self.assertEqual(left(self.w.row_table, self.w.root), left(self.w.workbook_combo, self.w.root))
-        self.assertEqual(right(self.w.row_table, self.w.root), right(self.w.open_file_button, self.w.root))
+        self.assertEqual(left(self.w.row_table, self.w.root), left(self.w.toggle_button, self.w.root))
+        self.assertEqual(right(self.w.row_table, self.w.root), right(self.w.toggle_button, self.w.root))
 
     def test_settings_rows_keep_their_own_margins_too(self):
         row = SettingRow("T", "d", ToggleSwitch())
@@ -406,28 +391,7 @@ class TestWindowNeverSmallerThanItsContent(unittest.TestCase):
         self.assertGreaterEqual(w.widget.height(), w.widget.centralWidget().layout().minimumSize().height())
 
 
-class TestPickerOnlyDropsDownWithChoices(unittest.TestCase):
-    def test_no_arrow_and_no_popup_for_zero_or_one_workbook(self):
-        w = window()
-        combo = w.workbook_combo
-        self.assertTrue(combo.property("single"))                      # empty: only the notice
-        w.update_workbooks(["Only.xlsx"], "Only.xlsx")
-        self.assertTrue(combo.property("single"))
-        combo.showPopup()
-        self.assertFalse(combo.view().isVisible())
-
-    def test_two_or_more_make_it_a_drop_down(self):
-        w = window()
-        w.update_workbooks(["A.xlsx", "B.xlsx"], "A.xlsx")
-        self.assertFalse(w.workbook_combo.property("single"))
-        w.update_workbooks(["A.xlsx"], "A.xlsx")
-        self.assertTrue(w.workbook_combo.property("single"))
-
-    def test_the_style_sheet_hides_the_arrow_when_single(self):
-        from quill.ui import theme
-        sheet = theme.stylesheet_for(True)
-        self.assertIn('QComboBox[single="true"]::drop-down { width: 0px', sheet)
-
+class TestSectionHeadings(unittest.TestCase):
     def test_section_headings_are_not_bold(self):
         from quill.ui import theme
         sheet = theme.stylesheet_for(False)
@@ -466,10 +430,10 @@ class TestResizingKeepsAlignment(unittest.TestCase):
 
     def test_the_sections_above_stay_put_when_the_window_grows(self):
         w = window(log_collapsed=False)
-        before = [self.top(w, n) for n in ("toggle_button", "workbook_row", "stream")]
+        before = [self.top(w, n) for n in ("toggle_button", "stream")]
         w.widget.resize(360, 1000)
         _app.processEvents()
-        self.assertEqual(before, [self.top(w, n) for n in ("toggle_button", "workbook_row", "stream")])
+        self.assertEqual(before, [self.top(w, n) for n in ("toggle_button", "stream")])
 
 
 if __name__ == "__main__":

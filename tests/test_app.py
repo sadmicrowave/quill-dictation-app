@@ -91,7 +91,7 @@ class TestStartup(AppCase):
     def test_connects_and_reports_lists(self):
         self.assertTrue(self.quill.connected)
         self.assertIn("Connected to plants.xlsx", self.log())
-        self.assertEqual(self.quill.window.workbook_combo.currentText(), "plants.xlsx")
+        self.assertEqual(self.quill.window.workbook_name, "plants.xlsx")
 
     def test_last_workbook_remembered(self):
         self.assertEqual(Settings.load(self.dir / "cfg").preferences["last_workbook"], "plants.xlsx")

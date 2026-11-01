@@ -37,6 +37,7 @@ from quill.speaker.clips import SpokenClips
 from quill.speaker.speaker import Speaker
 from quill.stream import match_words
 from quill.ui.chrome import (
+    SYMBOL_FOLDER,
     SYMBOL_HELP,
     SYMBOL_SETTINGS,
     SYMBOL_UNDO,
@@ -163,8 +164,8 @@ class QuillApp:
         )
         self.window = MainWindow(
             on_toggle=self.toggle_listening, on_settings=self.open_settings,
-            on_workbook=self.select_workbook, on_open_file=self.choose_spreadsheet_file,
-            on_use_excel=self.use_live_excel,
+            on_open_file=self.choose_spreadsheet_file,
+            on_use_excel=self.use_live_excel, on_file_state=self._sync_titlebar_file,
             on_sorting=self.show_sorting,
             on_undo=self.undo, on_help=self.open_help, on_log_toggled=self._log_toggled,
             on_resized=self._window_resized, on_mini_resized=self._mini_window_resized,
@@ -499,6 +500,8 @@ class QuillApp:
         if active and not self.connected:
             self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None,
                                   quiet=True)
+            if not self.connected:                  # nothing to fill in yet: ask for a file straight away
+                self.choose_spreadsheet_file()
         self.controller.set_listening(active)   # explains what to do if there is no workbook
 
     def refresh(self) -> None:
@@ -620,10 +623,6 @@ class QuillApp:
         self.window.append_log("Using the workbook open in Excel")
         self.connect_workbook(quiet=True)
 
-    def select_workbook(self, name: str) -> None:
-        """The user picked another workbook in the file picker: connect to it."""
-        self.connect_workbook(name)
-
     def open_help(self, topic: str | None = None) -> None:
         """Open the help window on *topic* (a page's slug), creating it on first use."""
         if self.help is None:
@@ -684,7 +683,8 @@ class QuillApp:
             return
         self._titlebar = add_titlebar_button(
             self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
-            mini=self.window.mini, extra=[(SYMBOL_SETTINGS, "Settings", self.open_settings)])
+            mini=self.window.mini, extra=[(SYMBOL_FOLDER, "Open Spreadsheet File", self.choose_spreadsheet_file),
+                                          (SYMBOL_SETTINGS, "Settings", self.open_settings)])
         native = self._titlebar is not None
         # Help, then Undo, sit right beside the window's close / minimise / zoom buttons.
         self._titlebar_left = add_titlebar_button(
@@ -696,6 +696,21 @@ class QuillApp:
         self._sync_titlebar_undo()
         self.window.set_native_mini_button(native)
         self.window.set_native_settings_button(native)        # Settings and resize both live in the title bar
+        self.window.set_native_file_button(native)
+        self._sync_titlebar_file(bool(self.window.workbook_name), self.window.workbook_name)
+
+    def _sync_titlebar_file(self, has_file: bool, name: str) -> None:
+        """Draw the title bar's folder icon: muted and closed with no file, solid and open with one."""
+        if self._titlebar is None:
+            return
+        from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+        from quill.ui.icons import make_icon
+        data = QByteArray()
+        buffer = QBuffer(data)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        make_icon("folder-open" if has_file else "folder", "#000000", 17).pixmap(34, 34).save(buffer, "PNG")
+        tip = f"{name}\nClick to open another spreadsheet file" if has_file else "Open Spreadsheet File"
+        self._titlebar.set_extra_image(0, bytes(data), tip, muted=not has_file)
 
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
@@ -869,6 +884,7 @@ class QuillApp:
             self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
         elif kind == "committed":
+            self.window.clear_mini_error()
             self.window.set_last_saved(event.detail, event.record)
         elif kind == "confirm":
             self._expiry.start(int(self.settings.preferences["prompt_timeout_s"]) * 1000)

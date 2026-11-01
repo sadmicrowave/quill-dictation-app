@@ -29,7 +29,7 @@ The Term Helper asks you to do something, so it stays **solid and easy to read**
 
 ## 🎙️ Answer by voice
 
-Press **🎤 Sort by Voice** (or say **"sort terms"**), then talk. Quill answers the **top row** and moves on. The button reads **Listening (click to stop)** with a small **Stops in …s** countdown at its right edge: stay quiet for the set time and voice sorting ends by itself.
+Press **Sort by Voice** (or say **"sort terms"**), then talk. Quill answers the **top row** and moves on. The button's sound lines (grey and still before) turn green and move, it reads **Click to Stop**, and it has a small **Stops in …s** countdown at its right edge: stay quiet for the set time and voice sorting ends by itself.
 
 The columns on screen are the context: if you say a word that isn't a column but sounds like one in the list (*"sighs"* for **Size**), Quill picks that column.
 

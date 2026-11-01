@@ -25,7 +25,6 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QComboBox,
     QLabel,
     QSizePolicy,
     QStyle,
@@ -45,31 +44,6 @@ PLACEHOLDER_MARGINS = (6, 4, 4, 0)
 ROW_EMPTY_HEIGHT = 42
 STREAM_MIN_HEIGHT = ROW_EMPTY_HEIGHT
 STREAM_MAX_LINES = 5        # the Voice Stream box grows to this many lines, then scrolls
-
-
-class ChipPlacer(QObject):
-    """Keeps a chip laid over the left of a combo box (in the space its text would use) as the box moves or resizes.
-
-    The chip is a sibling of the box, not a child: a label inside a combo box is not given the style sheet.
-    """
-
-    def __init__(self, combo: QComboBox, chip: QLabel) -> None:
-        super().__init__(combo)
-        self._combo, self._chip = combo, chip
-        combo.installEventFilter(self)
-
-    def eventFilter(self, obj, event) -> bool:
-        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show):
-            self.place()
-        return False
-
-    def place(self) -> None:
-        gap = 8
-        room = max(self._combo.width() - 2 * gap - 22, 40)          # leave the drop-down arrow clear
-        width = min(self._chip.sizeHint().width(), room)
-        box = self._combo.geometry()                                  # in the shared parent's coordinates
-        self._chip.setGeometry(box.x() + gap, box.y() + (box.height() - CHIP_HEIGHT) // 2, width, CHIP_HEIGHT)
-        self._chip.raise_()
 
 
 class StreamBox(QTextEdit):
@@ -137,26 +111,6 @@ class ResizeWatcher(QObject):
             if self._on_resize is not None:
                 self._on_resize()
         return False
-
-
-class WorkbookCombo(QComboBox):
-    """The workbook picker: a drop-down only while there is more than one workbook to choose from.
-
-    With none (the "not connected" notice) or one, the arrow is hidden and it does not open, so it
-    does not promise a choice that is not there.
-    """
-
-    def sync(self) -> None:
-        single = self.count() <= 1
-        if self.property("single") != single:
-            self.setProperty("single", single)
-            self.style().unpolish(self)
-            self.style().polish(self)
-        self.setCursor(Qt.CursorShape.ArrowCursor if single else Qt.CursorShape.PointingHandCursor)
-
-    def showPopup(self) -> None:                                   # noqa: N802 (Qt name)
-        if self.count() > 1:
-            super().showPopup()
 
 
 class RowTable(QTableWidget):

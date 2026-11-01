@@ -28,8 +28,6 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFontMetrics, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (
-    QApplication,
-    QComboBox,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QHeaderView,
@@ -53,11 +51,9 @@ from quill.ui.main_widgets import (
     PLACEHOLDER_MARGINS,
     ROW_EMPTY_HEIGHT,
     STREAM_MIN_HEIGHT,
-    ChipPlacer,
     ResizeWatcher,
     RowTable,
     StreamBox,
-    WorkbookCombo,
 )
 from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.widgets import (
@@ -71,7 +67,6 @@ from quill.ui.widgets import (
 
 #: Active-light colours (the same hues are used by the tray icon).
 COLOR_ACTIVE = "#34c759"
-COLOR_IDLE = "#8e8e93"
 
 #: The help page the window's ? icon opens.
 HELP_TOPIC = "welcome"
@@ -111,7 +106,6 @@ class MainWindow:
         on_toggle: Called when the user presses Start/Stop; receives the
             *desired* listening state.
         on_settings: Called when the user opens Settings.
-        on_workbook: Called with a workbook name picked in the combo box.
         on_sorting: Called when the user opens the Needs-sorting list.
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
         on_log_toggled: Called with True/False when the user collapses/expands the log.
@@ -127,7 +121,6 @@ class MainWindow:
         self,
         on_toggle: Callable[[bool], None] | None = None,
         on_settings: Callable[[], None] | None = None,
-        on_workbook: Callable[[str], None] | None = None,
         on_sorting: Callable[[], None] | None = None,
         on_undo: Callable[[], None] | None = None,
         on_log_toggled: Callable[[bool], None] | None = None,
@@ -139,12 +132,13 @@ class MainWindow:
         on_resized: Callable[[int, int], None] | None = None,
         on_mini_resized: Callable[[int, int], None] | None = None,
         on_field_removed: Callable[[str], None] | None = None,
+        on_file_state: Callable[[bool, str], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
     ) -> None:
         self._on_toggle = on_toggle or (lambda active: None)
         self._on_settings = on_settings or (lambda: None)
-        self._on_workbook = on_workbook or (lambda name: None)
+        self._on_file_state = on_file_state or (lambda has, name: None)
         self._on_sorting = on_sorting or (lambda: None)
         self._on_undo = on_undo or (lambda: None)
         self._on_log_toggled = on_log_toggled or (lambda collapsed: None)
@@ -165,6 +159,8 @@ class MainWindow:
         self._sorting_count = 0
         self._not_connected = False
         self._native_settings_button = False
+        self._native_file_button = False
+        self._workbook_name = ""
         self._native_undo_button = False
         self._text_color = "#1F1E1D"
         self._accent = "#7A55C2"
@@ -219,9 +215,8 @@ class MainWindow:
         central.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
 
         # --- status row
-        # One button is the whole control: the light, the state and the play / stop glyph. Pressing it
+        # One button is the whole control: the play / stop glyph and the sound lines. Pressing it
         # starts or stops listening; it fills with the accent colour while listening.
-        self.dot = QLabel("●")
         self.wave = WaveMeter()                       # the app icon's sound lines: still and muted, green and moving while listening
         self.countdown_label = QLabel()               # "Stops in 7s": the quiet timer counting down (hidden when not running)
         self.countdown_label.setProperty("countdown", True)
@@ -233,9 +228,9 @@ class MainWindow:
         self.toggle_button.setProperty("keepMargins", True)
         self.toggle_button.setProperty("outline", True)           # outlined in the accent colour until listening fills it
         inner = QHBoxLayout(self.toggle_button)
-        inner.setContentsMargins(16, 0, 14, 0)         # room before the light
+        inner.setContentsMargins(16, 0, 14, 0)         # room before the play icon
         inner.setSpacing(8)
-        for part, stretch in ((self.dot, 0), (self.toggle_icon, 0), (self.countdown_label, 0), (None, 1), (self.wave, 0)):
+        for part, stretch in ((self.toggle_icon, 0), (self.countdown_label, 0), (None, 1), (self.wave, 0)):
             if part is None:
                 inner.addStretch(stretch)
                 continue
@@ -248,12 +243,20 @@ class MainWindow:
         self.settings_button.setAccessibleName("Settings")
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.settings_button.clicked.connect(lambda: self._on_settings())
+        self.error_button = QToolButton()               # the mini view's red "!": an error happened (the log is hidden there)
+        self.error_button.setProperty("errorMark", True)
+        self.error_button.setText("!")
+        self.error_button.setAccessibleName("Show the Error")
+        self.error_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.error_button.setVisible(False)
+        self.error_button.clicked.connect(lambda: self.set_mini(False, notify=True))
+        self._mini_error = ""
         self.mini_button = QToolButton()                # just an icon (no box), like the Log heading
         self.mini_button.setProperty("flatIcon", True)
         self.mini_button.setAutoRaise(True)
         self.mini_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mini_button.clicked.connect(lambda: self.set_mini(not self._mini, notify=True))
-        row = QHBoxLayout()
+        row = status_row = QHBoxLayout()
         # Undo: just an icon (greyed out when there is nothing to take back); the title bar has its own on macOS
         self.undo_button = QPushButton()
         self.undo_button.setProperty("iconOnly", True)
@@ -272,40 +275,23 @@ class MainWindow:
         row.addWidget(self.help_button)
         row.addWidget(self.undo_button)
         row.addWidget(self.settings_button)
+        row.addWidget(self.error_button)
         row.addWidget(self.mini_button)
         layout.addLayout(row)
         self._layout, self._status_row = layout, row
 
-        # --- workbook row
-        self.workbook_combo = WorkbookCombo()
-        self.workbook_combo.sync()
-        self.workbook_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.workbook_combo.activated.connect(
-            lambda index: self._on_workbook(self.workbook_combo.itemText(index))
-        )
-        # Shown instead of the sheet name while no spreadsheet is connected: a technical warning chip.
-        # (It sits inside the empty workbook picker; the mini view, which has no picker, has its own.)
-        self.workbook_row = QWidget()                   # the picker row and the sheet name under it; the mini view hides it whole
-        self.picker_row = QWidget(self.workbook_row)
-        self.connection_chip = self._make_chip(self.picker_row)
-        self._chip_placer = ChipPlacer(self.workbook_combo, self.connection_chip)
+        # --- file
+        # No file picker in the window: the folder icon (title bar on macOS, status row elsewhere) opens one.
+        # While no spreadsheet is connected a technical warning chip says so (the mini view has its own).
+        self.connection_chip = self._make_chip(None)
         self.mini_chip = self._make_chip(None)
         self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
         self.open_file_button.setProperty("iconOnly", True)
-        self.open_file_button.setToolTip("Open Spreadsheet File\nWork on an .xlsx or .csv file directly (no Excel needed)")
         self.open_file_button.setAccessibleName("Open Spreadsheet File")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self._on_open_file())
-        self.workbook_row.setProperty("keepMargins", True)    # flush with the content above and below
-        self.picker_row.setProperty("keepMargins", True)
-        row = QHBoxLayout(self.picker_row)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self.workbook_combo, 1)
-        row.addWidget(self.open_file_button)
-        self._workbook_block = QVBoxLayout(self.workbook_row)
-        self._workbook_block.setContentsMargins(0, 0, 0, 0)
-        self._workbook_block.addWidget(self.picker_row)
-        layout.addWidget(self.workbook_row)
+        status_row.insertWidget(status_row.indexOf(self.settings_button), self.open_file_button)
+        layout.addWidget(self.connection_chip, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.mini_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
         # --- current row
@@ -369,6 +355,8 @@ class MainWindow:
         self.log.setReadOnly(True)
         self.log.document().setUndoRedoEnabled(False)
         layout.addWidget(self.log)
+        layout.addStretch(0)         # soaks up spare height in the compact mini view (and while it grows back), so nothing drifts down
+        self._spacer_index = layout.count() - 1
 
         # File menu (the global menu bar on macOS): Open Spreadsheet File, and back to live Excel.
         file_menu = window.menuBar().addMenu("File")
@@ -526,6 +514,8 @@ class MainWindow:
     def _apply_view(self, mini: bool) -> None:
         """Put the contents of the full window or the mini view on screen (the size is separate)."""
         self._view_mini = mini
+        if not mini:
+            self._mini_error = ""                       # back in the full window the Log is open and shows it
         self._place_sorting_button(mini)
         self._set_margins(mini)
         self._refresh_visibility()
@@ -537,6 +527,11 @@ class MainWindow:
         if hint:
             for chip in (self.connection_chip, self.mini_chip):
                 chip.setToolTip(connection_tip(hint))
+        self._refresh_visibility()
+
+    def set_native_file_button(self, native: bool) -> None:
+        """The title bar now has its own folder icon, so the one inside the window is hidden."""
+        self._native_file_button = native
         self._refresh_visibility()
 
     def set_native_settings_button(self, native: bool) -> None:
@@ -689,17 +684,15 @@ class MainWindow:
             return
         full = not self._view_mini
         self._render_countdown()
-        self.connection_chip.setVisible(full and self._not_connected)       # inside the workbook picker ...
-        self.mini_chip.setVisible(self._view_mini and self._not_connected)  # ... or alone in the mini view
-        side = self.workbook_combo.sizeHint().height()
-        self.open_file_button.setFixedSize(side, side)                       # a square the height of the picker
-        self._chip_placer.place()
+        self.connection_chip.setVisible(full and self._not_connected)
+        self.mini_chip.setVisible(self._view_mini and self._not_connected)
+        self.open_file_button.setVisible(full and not self._native_file_button)
+        self.error_button.setVisible(self._view_mini and bool(self._mini_error))
         tall = self.sorting_button.fontMetrics().height() * 2 + 4
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
-        for widget in (self.workbook_row, self.log_toggle):
-            widget.setVisible(full)
+        self.log_toggle.setVisible(full)
         detail = full or self._mini_detail                                   # the mini view shows them only when tall
         self.stream.setVisible(detail)
         self.row_table.setVisible(detail)
@@ -715,6 +708,7 @@ class MainWindow:
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
         self._fit_row_table(animate=False)
         self.sorting_button.setMinimumHeight(self.toggle_button.sizeHint().height() if self._view_mini else tall)
+        self._layout.setStretch(self._spacer_index, 1 if (self._view_mini and not detail) else 0)
         self._layout.setStretchFactor(self.row_table, 1)       # extra height always goes to the Current Row box;
         self._layout.setStretchFactor(self.log, 0)             # the log keeps its own height
         self._keep_minimum()
@@ -887,28 +881,40 @@ class MainWindow:
     # State                                                                #
     # ------------------------------------------------------------------ #
 
+    @property
+    def workbook_name(self) -> str:
+        """The name of the file being filled in ('' while none is connected)."""
+        return self._workbook_name
+
     def update_workbook(self, name: str) -> None:
-        """Show *name* as the selected workbook (adding it if absent)."""
-        index = self.workbook_combo.findText(name)
-        if index < 0:
-            self.workbook_combo.addItem(name)
-            index = self.workbook_combo.count() - 1
-        self.workbook_combo.setCurrentIndex(index)
-        self.workbook_combo.sync()
+        """Note *name* as the file in use: the folder icon turns solid and its tooltip names the file."""
+        self._workbook_name = name
+        self._show_file_state()
 
     def set_file_mode(self, file_mode: bool) -> None:
         """Say whether Quill is working on a file (not live Excel): enables the way back to Excel."""
         self.use_excel_action.setEnabled(file_mode)
 
     def update_workbooks(self, names: list[str], current: str = "") -> None:
-        """Replace the picker's choices; select *current* if given."""
-        self.workbook_combo.blockSignals(True)
-        self.workbook_combo.clear()
-        self.workbook_combo.addItems(names)
-        if current:
-            self.update_workbook(current)
-        self.workbook_combo.blockSignals(False)
-        self.workbook_combo.sync()
+        """The workbooks that can be targeted changed; *current* (if given) is the one in use."""
+        self._workbook_name = current
+        self._show_file_state()
+
+    def _show_file_state(self) -> None:
+        """Draw the folder icon: muted and closed with no file, solid and open with one."""
+        if self._window is None:
+            return
+        has = bool(self._workbook_name)
+        tip = (f"{self._workbook_name}\nClick to open another spreadsheet file" if has
+               else "Open Spreadsheet File\nWork on an .xlsx or .csv file directly (no Excel needed)")
+        self.open_file_button.setToolTip(tip)
+        color = self._text_color
+        if not has:
+            muted = QColor(color)
+            muted.setAlpha(110)
+            color = muted.name(QColor.NameFormat.HexArgb)
+        self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", color, 18))
+        self._on_file_state(has, self._workbook_name)
 
     def _row_table_height(self) -> int:
         """How tall the Current Row box should be: small when empty, growing with its rows up to a cap."""
@@ -1093,13 +1099,22 @@ class MainWindow:
             oldest.removeSelectedText()
             oldest.deleteChar()
         self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
-        if level == "error" and self._log_collapsed:
-            self._set_collapsed("log", False)
+        if level == "error":
+            self._mini_error = text                                 # the mini view shows a red "!" until it is seen
+            self.error_button.setToolTip(f"{text}\nClick to go back to the full window and the Log")
+            self._refresh_visibility()
+            if self._log_collapsed:
+                self._set_collapsed("log", False)
+
+    def clear_mini_error(self) -> None:
+        """The error has been seen (or a row saved since): take the mini view's red "!" away."""
+        if self._mini_error:
+            self._mini_error = ""
+            self._refresh_visibility()
 
     def set_listening_indicator(self, active: bool) -> None:
         """Update the active light, label and button."""
         self._listening = active
-        self.dot.setStyleSheet(f"color: {COLOR_ACTIVE if active else COLOR_IDLE}; font-size: 18px;")
         self.wave.set_active(active)
         self.toggle_button.setToolTip("Stop Listening" if active else "Start Listening")
         self.toggle_button.setAccessibleName("Stop Listening" if active else "Start Listening")
@@ -1153,7 +1168,7 @@ class MainWindow:
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.help_button.setIcon(make_icon("question", text_color, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
-        self.open_file_button.setIcon(make_icon("folder", text_color, 18))
+        self._show_file_state()
         muted = QColor(text_color)
         muted.setAlpha(110)
         self.wave.set_colors(muted.name(QColor.NameFormat.HexArgb), COLOR_ACTIVE)
