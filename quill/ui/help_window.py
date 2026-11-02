@@ -55,6 +55,8 @@ class HelpWindow:
         window.setMinimumSize(700, 460)
         shell = QVBoxLayout(window)
         shell.setContentsMargins(0, 0, 0, 0)
+        window.setProperty("keepMargins", True)             # the root fills the window (no clear frame around it, ever)
+        window.setProperty("keepSpacing", True)
         root = QWidget()
         root.setObjectName("helpRoot")
 
@@ -99,6 +101,7 @@ class HelpWindow:
         self.page.setObjectName("helpPage")
         self.page.setOpenLinks(False)
         self.page.setFrameShape(QTextBrowser.Shape.NoFrame)
+        self.page.viewport().setAutoFillBackground(False)            # the page is drawn straight on the window's own (see-through) background
         self.page.setSearchPaths([str(helpdocs.help_dir())])
         self.page.document().setBaseUrl(QUrl.fromLocalFile(str(helpdocs.help_dir()) + "/"))
         self.page.document().setDocumentMargin(34)

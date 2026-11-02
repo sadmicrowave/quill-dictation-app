@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect, QApplication, QWidget
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import BLUR_RANGE, OPACITY_RANGE, Settings
-from quill.ui import icons, theme
+from quill.ui import glass, icons, theme
 from quill.ui.main_window import MainWindow
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.tray import TrayIcon, make_icon
@@ -513,26 +513,53 @@ if __name__ == "__main__":
 class TestControlsFollowTheOpacity(unittest.TestCase):
     def test_text_boxes_drop_downs_and_buttons_fill_with_the_backdrop_alpha_and_keep_solid_text(self):
         solid = theme.stylesheet_for(False, backdrop=1.0)
-        glass = theme.stylesheet_for(False, backdrop=0.5)
+        thin = theme.stylesheet_for(False, backdrop=0.5)
         t = theme.colors_for(False, "violet")
         for selector in ("QPushButton {", "QLineEdit, QSpinBox, QComboBox {", "QPlainTextEdit, QTextEdit, QTableWidget {",
                          "QFrame#termRow {", "QFrame#fileSettings {"):
-            rule = glass[glass.index(selector): glass.index("}", glass.index(selector))]
-            self.assertIn(theme.rgba(t["surface"], 0.5), rule, selector)
+            rule = thin[thin.index(selector): thin.index("}", thin.index(selector))]
+            self.assertIn(theme.rgba(t["surface"], glass.control_alpha(0.5, False)), rule, selector)
             self.assertNotIn(f"background: {t['surface']}", rule, selector)
             solid_rule = solid[solid.index(selector): solid.index("}", solid.index(selector))]
             self.assertIn(f"background: {t['surface']}", solid_rule)          # and at 100 the fill is the plain colour
-        popup = glass[glass.index("QComboBox QAbstractItemView {"): glass.index("}", glass.index("QComboBox QAbstractItemView {"))]
+        popup = thin[thin.index("QComboBox QAbstractItemView {"): thin.index("}", thin.index("QComboBox QAbstractItemView {"))]
         self.assertIn(t["surface"], popup)                                    # a pop-up list stays solid: nothing is behind it to read against
 
     def test_a_fill_never_goes_clearer_than_the_floor(self):
         sheet = theme.stylesheet_for(False, backdrop=0.0)
         t = theme.colors_for(False, "violet")
-        self.assertIn(theme.rgba(t["surface"], theme.CONTROL_FLOOR), sheet)
+        self.assertIn(theme.rgba(t["surface"], glass.CONTROL_FLOOR), sheet)
 
-    def test_two_native_layers_are_painted_thinner_so_together_they_are_as_thick_as_the_setting(self):
-        for alpha in (0.2, 0.5, 0.8):
-            each = theme.layered_alpha(alpha, 2)
-            self.assertAlmostEqual(1 - (1 - each) ** 2, alpha, places=6)
-        self.assertEqual(theme.layered_alpha(0.5, 1), 0.5)
-        self.assertEqual(theme.layered_alpha(1.0, 2), 1.0)
+
+class TestMeasuredAlphas(unittest.TestCase):
+    """The painted alphas come from tables measured on a real screen (quill/ui/glass.py); these keep them sane."""
+
+    def test_a_window_with_one_layer_is_painted_as_thick_as_the_slider_says(self):
+        for dark in (False, True):
+            for thick in (0.1, 0.35, 0.5, 0.9):
+                self.assertAlmostEqual(glass.paint_alpha(thick, dark, 1), thick, places=6)
+
+    def test_a_window_with_two_layers_is_painted_thinner_and_rises_with_the_slider(self):
+        for dark in (False, True):
+            values = [glass.paint_alpha(t / 10, dark, 2) for t in range(1, 10)]
+            self.assertEqual(values, sorted(values))
+            self.assertTrue(all(v < t / 10 for v, t in zip(values, range(1, 10))))
+
+    def test_every_alpha_rises_with_the_slider_stays_in_range_and_is_solid_at_one(self):
+        for dark in (False, True):
+            for fn in (lambda t: glass.paint_alpha(t, dark, 2), lambda t: glass.bar_alpha(t, dark), lambda t: glass.control_alpha(t, dark)):
+                values = [fn(t / 20) for t in range(1, 20)]
+                self.assertEqual(values, sorted(values))
+                self.assertTrue(all(0.0 <= v <= 1.0 for v in values))
+                self.assertEqual(fn(1.0), 1.0)
+
+    def test_the_tables_have_a_value_for_every_knot(self):
+        for table in glass.TABLES.values():
+            for values in table.values():
+                self.assertEqual(len(values), len(glass.KNOTS))
+
+    def test_the_calibration_tool_can_force_the_alphas(self):
+        from unittest import mock
+        with mock.patch.dict(glass.OVERRIDE, {"paint": 0.3, "bar": 0.4, "control": 0.1}):
+            self.assertEqual((glass.paint_alpha(0.9, False, 2), glass.bar_alpha(0.9, False), glass.control_alpha(0.9, False)),
+                             (0.3, 0.4, 0.1))

@@ -17,7 +17,7 @@ what can be checked; this page is what cannot.
 | **Pill (spoken word or phrase)** | `PILL_BG` violet with white text, square-cornered; editable ones are `PillField` | `theme.PILL_BG/PILL_FG`, `widgets.pill`, `PillField` |
 | **Pill (status)** | only *File not connected*: tinted accent fill, accent border, rounded | `QLabel[chip="warn"]` in `theme.py` |
 | **Install / Uninstall** | one button that is Install when the thing is missing and Uninstall (greyed out, with the reason as hover text, when it cannot go) when it is there; no extra "Installed" pill | `ModelRow` |
-| **Control fills** | text boxes, drop-downs, buttons and cards take the window's opacity (5 % steps, never clearer than `CONTROL_FLOOR`); text and borders stay solid; pop-up lists stay solid | `theme.stylesheet_for(backdrop=)` |
+| **Control fills** | text boxes, drop-downs, buttons, cards, tables and lists take the window's opacity: at most `CONTROL_LIFT` thicker than the background beside them, at every opacity, in both themes; text and borders stay solid; pop-up lists stay solid. Never add a solid fill to a control or a window without measuring it | `glass.py`, `tools/verify_control_opacity.py` |
 | **Sentences** | every sentence shown (tool tip, description, log line) ends with a full stop; names and Title Case labels do not | `main_window.sentence`, tests |
 | **Tool tip text** | wrapped at word breaks to at most `TOOLTIP_MAX_TEXT` wide | `widgets.fit_tip` |
 | **Page title (Settings)** | bold, flush with the rows beneath it; the description under it has air above and below | `QLabel#pageTitle`, `SettingsDialog._page` |

@@ -346,6 +346,8 @@ class SortingWindow:
         window.setMinimumSize(320, 160)
         shell = QVBoxLayout(window)
         shell.setContentsMargins(0, 0, 0, 0)
+        window.setProperty("keepMargins", True)             # the root fills the window: a spacing margin here would leave a
+        window.setProperty("keepSpacing", True)             # clear (un-tinted, un-blurred) frame around it
         root = QWidget()
         root.setObjectName("sortingRoot")
 

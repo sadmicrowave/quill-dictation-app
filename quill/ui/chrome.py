@@ -18,6 +18,7 @@ The platform calls are injectable so the logic is testable on any machine.
 from __future__ import annotations
 
 import shiboken6
+from quill.ui import glass
 from PySide6.QtCore import QEvent, QObject, QTimer
 import contextlib
 import sys
@@ -412,8 +413,7 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
     window.setBackgroundColor_(srgb(r, g, b, 0.0 if see_through else 1.0))      # (sRGB: the space Qt paints the body in)
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
-    thick = max(0.08, opacity / 100)
-    tint = (r, g, b, min(1.0, thick + BAR_TINT_EXTRA * (1.0 - thick) ** 2)) if opacity < 100 else (r, g, b, 1.0)
+    tint = (r, g, b, glass.bar_alpha(max(0.08, opacity / 100), dark)) if opacity < 100 else (r, g, b, 1.0)
     radius = blur_radius(blur) if see_through else 0
     blurred = set_background_blur(window, radius) if appkit_is_real(appkit) else False
     # Where the window server cannot blur, a vibrancy view (fixed blur, always whole) stands in for it.
@@ -433,9 +433,6 @@ TRAFFIC_SCALE, TRAFFIC_SHIFT = 1.3, 4.0
 TRAFFIC_DROP = 1.0
 #: How much lighter (out of 255) the system draws a dark title bar than the colour it is given; the bar is given that much less.
 BAR_DARK_LIFT = 4
-#: The title bar's tint is a little thicker than the opacity setting says (by this much times (1 - opacity) squared): measured on a
-#: real screen, that is what makes the bar as see-through as the window's body beside it.
-BAR_TINT_EXTRA = 0.1
 
 
 def larger_traffic_lights(window) -> bool:

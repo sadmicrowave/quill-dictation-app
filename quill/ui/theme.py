@@ -17,6 +17,8 @@ import sys
 import tempfile
 
 from PySide6.QtCore import QEvent, QObject, Qt
+
+from quill.ui import glass as glass_module
 from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
@@ -163,9 +165,6 @@ def backdrop_alpha(opacity: int, blur: int) -> float:
     return round(max(0.08, min(100, max(0, int(opacity))) / 100), 3)
 
 
-#: The lowest alpha a control's fill thins to (a fully clear text box would be hard to find and read).
-CONTROL_FLOOR = 0.12
-
 #: The look of spoken words and phrases wherever they appear: a deep violet pill with white text.
 PILL_BG, PILL_FG = "#5E4A99", "#FFFFFF"
 
@@ -191,13 +190,6 @@ def native_layers(widget: QWidget) -> int:
     return 1
 
 
-def layered_alpha(alpha: float, layers: int) -> float:
-    """The alpha to paint in each of *layers* stacked layers so that together they are *alpha* thick (1 - (1 - a)^(1/n))."""
-    if layers <= 1 or alpha >= 1.0:
-        return alpha
-    return 1.0 - (1.0 - alpha) ** (1.0 / layers)
-
-
 class _BackdropPainter(QObject):
     """Paints a window root's background (theme colour, with the backdrop alpha) just before the widget paints.
 
@@ -215,7 +207,7 @@ class _BackdropPainter(QObject):
                 solid = obj.property("quillSolid")                  # a window that opts out of the opacity setting
                 floor = float(obj.property("quillMinAlpha") or 0.0)   # a window that never thins below this (Settings)
                 shown = 1.0 if alpha is None or solid else max(float(alpha), floor)
-                color.setAlphaF(layered_alpha(shown, native_layers(obj)))
+                color.setAlphaF(glass_module.paint_alpha(shown, is_dark(app), native_layers(obj)))
                 painter = QPainter(obj)
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
                 painter.fillRect(obj.rect(), color)
@@ -254,7 +246,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     icon = _chevrons(t)
-    glass = max(CONTROL_FLOOR, min(1.0, float(backdrop)))
+    glass = glass_module.control_alpha(float(backdrop), dark)
     win = t["bg"] if glass >= 1 else rgba(t["bg"], glass)                    # control fills thin with the window's background
     surf = t["surface"] if glass >= 1 else rgba(t["surface"], glass)
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes

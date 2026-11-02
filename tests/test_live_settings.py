@@ -112,9 +112,9 @@ class TestLiveUpdate(LiveCase):
 
     def test_the_settings_window_follows_opacity_but_never_below_the_floor(self):
         self.d.blur_slider.setValue(0)
-        self.d.opacity_slider.setValue(30)
+        self.d.opacity_slider.setValue(15)
         self.assertAlmostEqual(self.d.root.property("quillMinAlpha"), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
-        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.3, 2)         # the app's windows thin to the slider ...
+        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.15, 2)        # the app's windows thin to the slider ...
         painted = self.d.root.grab().toImage().pixelColor(5, 5).alpha()
         self.assertAlmostEqual(painted / 255, SettingsDialog.MIN_DIALOG_OPACITY / 100, delta=0.02)   # ... Settings stops at its floor
         self.d.opacity_slider.setValue(85)

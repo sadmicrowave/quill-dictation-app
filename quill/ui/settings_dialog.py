@@ -226,7 +226,7 @@ class SettingsDialog:
     # ------------------------------------------------------------------ #
 
     #: The Settings window's background thins with the window-opacity setting but never below this, so it stays readable.
-    MIN_DIALOG_OPACITY = 70
+    MIN_DIALOG_OPACITY = 25                       # (so the slider can still be found: Settings never thins below this)
 
     def exec(self) -> bool:
         """Show modally and wait. Returns True if the user saved changes. (The app itself uses :meth:`open`.)"""
@@ -349,6 +349,8 @@ class SettingsDialog:
         dialog.setMinimumSize(720, 520)
         shell = QVBoxLayout(dialog)
         shell.setContentsMargins(0, 0, 0, 0)
+        dialog.setProperty("keepMargins", True)             # the root fills the window (no clear frame around it, ever)
+        dialog.setProperty("keepSpacing", True)
         root = QWidget()
         root.setObjectName("settingsRoot")
 

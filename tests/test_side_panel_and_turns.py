@@ -3033,3 +3033,40 @@ class TestRefreshFeedbackAndDensity(unittest.TestCase):
         self.assertGreater(comfy[0], compact[0])
         self.assertGreater(comfy[1], compact[1])
         self.assertGreater(comfy[2], compact[2])
+
+
+class TestSpacingNeverLeavesAClearFrame(unittest.TestCase):
+    """The root of every window fills the window, whatever the spacing: a margin around it would be a clear, un-tinted,
+    un-blurred frame when the window is see-through."""
+
+    def check(self, window, root):
+        from quill.ui.theme import apply_spacing
+        for spacing in ("compact", "comfortable", "compact"):
+            apply_spacing(window, spacing)
+            _app.processEvents()
+            top = root.mapTo(window, root.rect().topLeft())
+            self.assertEqual((top.x(), root.width()), (0, window.width()), spacing)
+            self.assertLessEqual(window.height() - (top.y() + root.height()), 0, spacing)
+
+    def test_the_term_helper(self):
+        from quill.ui.sorting_window import SortingWindow
+        from quill.parser.vocab import Vocabulary
+        sorting = SortingWindow(Vocabulary(), lambda *a: None)
+        sorting.setup()
+        sorting.widget.show()
+        self.check(sorting.widget, sorting.root)
+
+    def test_the_help_window(self):
+        from quill.ui.help_window import HelpWindow
+        help_window = HelpWindow()
+        help_window.setup()
+        help_window._window.show()
+        root = help_window._window.findChild(QWidget, "helpRoot") or help_window._window.centralWidget()
+        self.check(help_window._window, root)
+
+    def test_the_settings_window(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        d = SettingsDialog(Settings.defaults())
+        d.build()
+        d._dialog.show()
+        self.check(d._dialog, d.root)

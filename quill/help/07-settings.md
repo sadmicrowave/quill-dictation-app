@@ -22,7 +22,7 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 - **Spacing:** Compact or Comfortable
 - **Text size:** 9–20 pt
 - **Term Helper Follows Window Opacity** (off by default): the Term Helper stays solid so it is easy to read; turn this on to make it see-through like the main window
-- **Opacity & blur:** drag a slider, or click anywhere along it to jump there. **Opacity** thins the window's background and the fills of text boxes, drop-downs and buttons (text and borders stay crisp); the title bar thins and blurs the same as the rest; **Blur** then blurs what shows through it (0 keeps it sharp). At opacity 100 the window is solid whatever the blur
+- **Opacity & blur:** drag a slider, or click anywhere along it to jump there. **Opacity** thins the window's background and, by the same amount, the fills of text boxes, drop-downs, buttons and cards in every window (text and borders stay crisp); the title bar thins and blurs the same as the rest; Settings itself never goes below 25 % so the slider stays easy to find; **Blur** then blurs what shows through it (0 keeps it sharp). At opacity 100 the window is solid whatever the blur
 
 ## 🗝️ Keywords
 
