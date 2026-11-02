@@ -219,7 +219,7 @@ class Controller:
             prefs["turn_mode"] = "append" if on else "next_row"
             self.settings.save()
             return Event("turn_on" if on else "turn_off",
-                         detail="Each turn adds to the same row" if on else "Each turn is written to a new row")
+                         detail=f"Each turn adds to the same {self._unit()}" if on else f"Each turn is written to a new {self._unit()}")
         prefs["vertical_layout"] = on
         self.settings.save()
         self.history.clear()                   # row numbers mean something else now
@@ -242,7 +242,7 @@ class Controller:
         self._append_target = None
         if hasattr(self.bridge, "set_start_row"):
             self.bridge.set_start_row(number)
-        self._on_event(Event("ignored", detail=f"Turns start at row {number}" if number else "Turns start at the first empty row"))
+        self._on_event(Event("ignored", detail=f"Turns start at {self._unit()} {self._where(number)}" if number else f"Turns start at the first empty {self._unit()}"))
 
     def set_headings_row(self, number: int) -> None:
         """The row (column, for Rows Down) that holds the headings; 0 finds it by itself."""
@@ -259,12 +259,14 @@ class Controller:
         except BridgeError as exc:
             self._on_event(Event("error", detail=f"Could not use that headings row: {exc}"))
             return
-        self._on_event(Event("ignored", detail=f"Headings are in row {number}" if number else "Headings are found automatically"))
+        self._on_event(Event("ignored", detail=f"Headings are in {self._unit()} {self._where(number)}" if number else "Headings are found automatically"))
 
     def start_new_row(self) -> None:
         """Stop adding to the current row: the next turn starts a fresh one."""
-        self._append_target = None
-        self._on_event(Event("ignored", detail="The next turn starts a new row"))
+        target, self._append_target = self._append_target, None
+        if target is not None:
+            self.bridge.select_record(target[0], target[1] + 1)          # the cursor moves on to the next row (column)
+        self._on_event(Event("ignored", detail=f"The next turn starts a new {self._unit()}"))
 
     def remove_field(self, column: str) -> bool:
         """The user disagrees with one understood value of the row being built: drop it.
@@ -514,6 +516,7 @@ class Controller:
                 row = self.bridge.append_row(sheet, event.record)
                 event.detail = self._record_name(row)
             self.session.tag_origin(event.terms or [], sheet, row)
+            self.bridge.select_record(sheet, row if self.turn_mode == "append" else row + 1)   # append keeps the cursor on the row; otherwise it moves on
         except BridgeLockedError as exc:                    # another program holds the file: the row is kept and saved when it is free
             row = exc.row if exc.row is not None else 0
             event.detail = f"{self._record_name(row)} (waiting: the file is in use)"
@@ -525,6 +528,17 @@ class Controller:
             hint = " Open the sheet you are filling in, then say next row again." if "has no " in str(exc) else ""
             event.kind, event.detail = "error", f"Could not save the row: {exc}.{hint}"   # and it is reported as a failure,
             event.record = event.terms = None                                       # not as a saved row
+
+    def _unit(self) -> str:
+        """"row", or "column" while the headings run down the first column."""
+        return "column" if self.vertical else "row"
+
+    def _where(self, number: int) -> str:
+        """A row number, or a column letter when the headings run down the first column."""
+        if self.vertical and number > 0:
+            from openpyxl.utils import get_column_letter
+            return get_column_letter(number)
+        return str(number)
 
     def _record_name(self, number: int) -> str:
         """"Row 6", or "Column F" when the records run across the sheet."""

@@ -75,7 +75,7 @@ from quill.ui.theme import (
     is_dark,
 )
 from quill.ui.tray import TrayIcon
-from quill.ui.widgets import PopupClickThrough
+from quill.ui.widgets import PopupClickThrough, CenteredToolTips
 
 
 class QuillApplication(QApplication):
@@ -278,6 +278,9 @@ class QuillApp:
         if not getattr(self.qapp, "_quill_click_through", None):    # one filter per application, however many windows
             self.qapp._quill_click_through = PopupClickThrough(self.qapp)   # one click on Start / Stop works with a drop-down open
             self.qapp.installEventFilter(self.qapp._quill_click_through)
+        if not getattr(self.qapp, "_quill_tooltips", None):          # tool tips centred on the pointer, everywhere
+            self.qapp._quill_tooltips = CenteredToolTips(self.qapp)
+            self.qapp.installEventFilter(self.qapp._quill_tooltips)
         self.sorting.on_done = self.window.sorting_finished
         self.sorting.restore_place(int(self.settings.preferences["sorting_x"]), int(self.settings.preferences["sorting_y"]),
                                    int(self.settings.preferences["sorting_width"]))
@@ -758,6 +761,7 @@ class QuillApp:
         panel.new_row_requested.connect(self.controller.start_new_row)
         panel.start_row_changed.connect(self.controller.set_start_row)
         panel.headings_row_changed.connect(self.controller.set_headings_row)
+        panel.keywords_requested.connect(lambda: self.open_settings("Keywords"))
         self._sync_turn_panel()
         self.window.set_panel_listener(self._panel_toggled, self._panel_width)
         self._panel_timer = QTimer()                 # while the panel is open, keep its list of open spreadsheets current
@@ -833,7 +837,7 @@ class QuillApp:
     def _panel_toggled(self, page: str) -> None:
         self._show_titlebar_panel(page)
         if page and self._titlebar is not None:
-            self._titlebar.set_panel_title(TITLES[page])
+            self._titlebar.set_panel_title(TITLES[page], more=page == FILE_PAGE)
         self._panel_toggled_pages(page)
 
     def _panel_toggled_pages(self, page: str) -> None:
@@ -958,10 +962,12 @@ class QuillApp:
             self.help.restyle(self.settings.preferences, self.qapp)
         self.help.show(topic)
 
-    def open_settings(self) -> None:
-        """Show the Settings window (not modal: the app stays usable, and can be quit, while it is open)."""
+    def open_settings(self, page: str | None = None) -> None:
+        """Show the Settings window (not modal: the app stays usable, and can be quit, while it is open), on *page* if given."""
         if self._settings_dialog is not None:                 # already open: bring it forward, never a second one
             self._settings_dialog.bring_forward()
+            if page:
+                self._settings_dialog.show_page_named(page)
             return
         self._settings_dialog = SettingsDialog(
             self.settings, self.window.widget, on_preview=self.preview_feedback,
@@ -969,6 +975,8 @@ class QuillApp:
             on_download_model=self.download_model, model_installed=self.quality_installed)
         self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
+        if page:
+            self._settings_dialog.show_page_named(page)
 
     def _settings_closed(self, accepted: bool) -> None:
         """The Settings window closed: forget it, and apply the result if it was saved."""
@@ -1013,7 +1021,7 @@ class QuillApp:
             mini=self.window.mini, extra=[(SYMBOL_FOLDER, "Open Spreadsheet File", lambda: self.window.toggle_panel(FILE_PAGE)),
                                           (SYMBOL_TURN, "Turn Settings", lambda: self.window.toggle_panel(TURN_PAGE)),
                                           (SYMBOL_SETTINGS, "Settings", self.open_settings)],
-            on_panel_close=self.window.close_panel)
+            on_panel_close=self.window.close_panel, on_panel_more=self.window.show_file_settings)
         native = self._titlebar is not None
         # Help, then Undo, sit right beside the window's close / minimise / zoom buttons.
         self._titlebar_left = add_titlebar_button(

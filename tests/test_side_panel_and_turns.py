@@ -169,11 +169,11 @@ class TestPanelContents(unittest.TestCase):
         self.w.set_active_sheet("Inventory")
         self.assertEqual(self.panel.file_button.text_label.full_text, "plants.xlsx")
         self.assertEqual(self.panel.file_button.text_label.toolTip(), "/Users/me/Documents/plants.xlsx")
-        self.assertEqual(self.panel.sheet_label.text(), "Sheet: Inventory")
+        self.assertEqual(self.panel.fact("Sheet"), "Inventory")
 
     def test_with_no_file_it_says_so_and_hides_the_sheet(self):
         self.assertEqual(self.panel.file_button.text_label.full_text, "Open File")
-        self.assertFalse(self.panel.sheet_label.isVisibleTo(self.panel))
+        self.assertEqual(self.panel.fact("Sheet"), "")
         self.w.update_workbooks([], "")
         self.assertEqual(self.panel.file_button.text_label.full_text, "Open File")
 
@@ -212,9 +212,9 @@ class TestPanelContents(unittest.TestCase):
         self.panel.set_turn(APPEND_TO, True)
         self.assertEqual(seen, [])
         self.assertTrue(self.panel.append_radio.isChecked())
-        self.assertTrue(self.panel.down_radio.isChecked())
+        self.assertTrue(self.panel.settings.down_radio.isChecked())
         self.panel.next_row_radio.setChecked(True)
-        self.panel.across_radio.setChecked(True)
+        self.panel.settings.across_radio.setChecked(True)
         self.assertEqual(seen, [NEXT_ROW, False])
 
     def test_start_a_new_row_is_only_for_append_mode(self):
@@ -373,7 +373,7 @@ class TestPanelInTheApp(PanelApp):
         panel, controller = self.app.window.panel, self.app.controller
         panel.append_radio.setChecked(True)
         self.assertEqual(controller.turn_mode, "append")
-        panel.down_radio.setChecked(True)
+        panel.settings.down_radio.setChecked(True)
         self.assertTrue(controller.vertical)
         self.assertEqual(self.settings.preferences["turn_mode"], "append")
         self.assertTrue(self.settings.preferences["vertical_layout"])
@@ -692,15 +692,15 @@ class TestPanelHeaderAndFiles(unittest.TestCase):
 
     def test_the_empty_message_reads_as_asked_and_sits_with_the_section_not_the_bottom(self):
         self.panel.set_available([])
-        self.assertEqual(self.panel.empty_label.text(), "No open spreadsheet files have been detected.")
+        self.assertEqual(self.panel.empty_label.text(), "No open spreadsheet files detected.")
         self.assertFalse(self.panel.available.isVisibleTo(self.panel))
         self.assertTrue(self.panel.empty_label.alignment() & Qt.AlignmentFlag.AlignTop)
 
     def test_the_section_is_called_files_and_has_a_filter_under_it(self):
-        headings = [l.text() for l in self.panel.findChildren(QLabel) if l.property("staticHeading")]
-        self.assertIn("Files", headings)
+        headings = [l.text() for l in self.panel.findChildren(QLabel) if l.property("panelHeading")]
+        self.assertIn("Available Files", headings)
         self.assertNotIn("Available Spreadsheets", headings)
-        self.assertEqual(self.panel.search.placeholderText(), "Filter files")
+        self.assertEqual(self.panel.search.placeholderText(), "Search")
 
     def test_the_filter_narrows_the_list_and_says_when_nothing_matches(self):
         self.panel.set_available([("Orders.xlsx", "", 1), ("Birds.csv", "", 2), ("orders-old.xlsx", "", 3)])
@@ -713,18 +713,32 @@ class TestPanelHeaderAndFiles(unittest.TestCase):
         self.panel.search.setText("")
         self.assertTrue(self.panel.available.isVisibleTo(self.panel) or not self.panel.isVisible())
 
-    def test_the_starting_row_is_a_number_with_auto_at_zero(self):
+    def test_the_starting_row_is_a_number_with_automatic_when_empty(self):
         seen = []
         self.panel.start_row_changed.connect(seen.append)
         self.panel.set_options(NEXT_ROW, False, 0, 0)
-        self.assertEqual(self.panel.start_spin.display(), "Automatic")
-        self.panel.start_spin.setValue(5)
+        self.assertEqual(self.panel.settings.start_box.display(), "Automatic")
+        self.panel.settings.start_number.setValue(5)
         self.assertEqual(seen, [5])
         self.panel.set_options(NEXT_ROW, True, 3, 0)
-        self.assertEqual(self.panel.start_heading.text(), "Starting Column")
-        self.assertEqual(self.panel.headings_heading.text(), "Headings Column")
-        self.assertIn("first empty column", self.panel.start_note.text())
         self.assertEqual(seen, [5])                                  # showing a value is not a change
+
+    def test_by_rows_offers_columns_a_to_z_in_the_settings_drop_down_style(self):
+        from quill.ui.settings_widgets import FlatCombo
+        self.panel.set_options(NEXT_ROW, True, 3, 2)
+        box = self.panel.settings.start_box
+        self.assertIsInstance(box, FlatCombo)
+        self.assertEqual([box.itemText(i) for i in range(box.count())], ["Automatic", *"ABCDEFGHIJKLMNOPQRSTUVWXYZ"])
+        self.assertEqual((box.display(), self.panel.settings.headings_box.display()), ("C", "B"))
+        seen = []
+        self.panel.headings_row_changed.connect(seen.append)
+        self.panel.settings.headings_box.setCurrentIndex(26)
+        self.assertEqual(seen, [26])
+
+    def test_by_columns_uses_whole_row_numbers_not_letters(self):
+        self.panel.set_options(NEXT_ROW, False, 3, 2)
+        self.assertEqual((self.panel.settings.start_box.value(), self.panel.settings.headings_box.value()), (3, 2))
+        self.assertTrue(self.panel.settings.start_letter.isHidden())
 
 
 class TestStartRow(Dir):
@@ -814,7 +828,7 @@ class TestTurnVoiceKeywords(Dir):
             app.app.controller.handle_transcript("append on")
             self.assertTrue(app.app.window.panel.append_radio.isChecked())
             app.app.controller.handle_transcript("rows down")
-            self.assertTrue(app.app.window.panel.down_radio.isChecked())
+            self.assertTrue(app.app.window.panel.settings.down_radio.isChecked())
         finally:
             app._tmp.cleanup()
 
@@ -894,23 +908,40 @@ class TestFilePanelDetails(Dir):
         self.w.setup()
         self.panel = self.w.panel
 
-    def test_the_active_file_shows_its_path_type_size_and_dates_quietly(self):
+    def test_the_active_file_facts_are_a_borderless_table_of_labels_and_plain_values(self):
         path = make_workbook(self.dir / "plants.xlsx")
         self.panel.set_active("plants.xlsx", "Inventory", str(path), "Excel workbook (.xlsx)")
-        self.assertEqual(self.panel.path_label.full_text, str(path))
-        lines = self.panel.facts_label.text().splitlines()
-        self.assertEqual(lines[0], "Type: Excel workbook (.xlsx)")
-        self.assertTrue(lines[1].startswith("Size: ") and lines[2].startswith("Modified: ") and lines[3].startswith("Created: "))
-        self.assertTrue(self.panel.facts_label.property("panelNote") and self.panel.path_label.property("panelNote"))
+        self.assertEqual([self.panel.fact(n) for n in ("Sheet", "Path", "Type")], ["Inventory", str(path), "Excel workbook (.xlsx)"])
+        for name in ("Sheet", "Path", "Type", "Size", "Modified", "Created"):
+            label, value = self.panel.fact_rows[name]
+            self.assertEqual(label.text(), name)                            # no colon: the table lines them up
+            self.assertFalse(label.isHidden() or value.isHidden(), name)
+            self.assertTrue(label.property("panelNote") and value.property("panelValue"))
+        grid = self.panel.fact_rows["Sheet"][0].parentWidget().layout()
+        self.assertTrue(grid is not None)
+
+    def test_dates_are_numeric_mm_dd_yy(self):
+        import re
+        path = make_workbook(self.dir / "plants.xlsx")
+        self.panel.set_active("plants.xlsx", "", str(path), "")
+        for label in ("Modified", "Created"):
+            self.assertRegex(self.panel.fact(label), r"^\d\d/\d\d/\d\d$")
+        self.assertRegex(self.panel.fact("Size"), r"^\d+(\.\d)? (bytes|KB|MB)$")
 
     def test_with_no_file_none_of_it_shows(self):
         self.panel.set_active("", "", "", "")
-        self.assertTrue(self.panel.path_label.isHidden() and self.panel.facts_label.isHidden() and self.panel.sheet_label.isHidden())
+        for label, value in self.panel.fact_rows.values():
+            self.assertTrue(label.isHidden() and value.isHidden())
 
-    def test_a_workbook_without_a_path_shows_only_its_type(self):
+    def test_a_workbook_without_a_path_shows_only_sheet_and_type(self):
         self.panel.set_active("Unsaved.xlsx", "", "", "Excel (live)")
-        self.assertEqual(self.panel.facts_label.text(), "Type: Excel (live)")
-        self.assertTrue(self.panel.path_label.isHidden())
+        self.assertEqual(self.panel.fact("Type"), "Excel (live)")
+        self.assertEqual((self.panel.fact("Path"), self.panel.fact("Size")), ("", ""))
+
+    def test_the_path_has_its_own_label_and_stays_on_one_line(self):
+        label, value = self.panel.fact_rows["Path"]
+        self.assertEqual(label.text(), "Path")
+        self.assertIsInstance(value, __import__("quill.ui.widgets", fromlist=["ElidedLabel"]).ElidedLabel)
 
     def test_sizes_read_naturally(self):
         from quill.ui.side_panel import human_size
@@ -923,8 +954,6 @@ class TestFilePanelDetails(Dir):
         self.assertTrue(self.panel._has_file)
 
     def test_a_long_name_is_cut_with_an_ellipsis_not_wrapped(self):
-        self.panel.setFixedWidth(236)
-        self.panel.show_page("file")
         self.panel.set_active("a very long spreadsheet name that cannot fit on the button at all.xlsx", "", "/x")
         label = self.panel.file_button.text_label
         label.resize(120, 20)
@@ -934,38 +963,76 @@ class TestFilePanelDetails(Dir):
     def test_the_number_fields_read_automatic_when_empty_and_report_what_is_typed(self):
         seen = []
         self.panel.headings_row_changed.connect(seen.append)
-        self.assertEqual(self.panel.headings_spin.display(), "Automatic")
-        self.panel.headings_spin.setText("4")
-        self.panel.headings_spin.editingFinished.emit()
+        field = self.panel.settings.headings_number
+        self.assertEqual(field.display(), "Automatic")
+        field.setText("4")
+        field.editingFinished.emit()
         self.assertEqual(seen, [4])
-        self.panel.headings_spin.setText("")
-        self.panel.headings_spin.editingFinished.emit()
+        field.setText("")
+        field.editingFinished.emit()
         self.assertEqual(seen, [4, 0])
+
+    def test_the_turn_page_starts_with_the_description_and_a_keywords_link_then_a_rule(self):
+        from PySide6.QtWidgets import QFrame
+        intro = self.panel.turn_intro
+        self.assertIn("Settings to control how each speak-write iteration (turn) is handled", intro.text())
+        self.assertIn('href="keywords"', intro.text())
+        asked = []
+        self.panel.keywords_requested.connect(lambda: asked.append(1))
+        intro.linkActivated.emit("keywords")
+        self.assertEqual(asked, [1])
+        turn_page = self.panel.stack.widget(1).widget()
+        order = [turn_page.layout().itemAt(i).widget() for i in range(turn_page.layout().count()) if turn_page.layout().itemAt(i).widget()]
+        self.assertIs(order[0], intro)
+        self.assertTrue(order[1].property("panelRule"))
+        self.assertEqual(order[1].height(), 1)
+        titles = [l.text() for l in turn_page.findChildren(QLabel) if l.property("panelHeading")]
+        self.assertNotIn("Each Turn", titles)
 
     def test_the_turn_page_describes_its_two_choices_and_has_a_next_button(self):
         notes = [l.text() for l in self.panel.findChildren(QLabel) if l.property("panelNote")]
         self.assertIn("Turn words are written to new rows", notes)
         self.assertIn("Turn words are added to the same row", notes)
         self.assertEqual(self.panel.new_row_button.text(), "Next")
+        self.assertEqual(self.panel.new_row_button.toolTip(), "Move cursor to the next row")
         self.assertTrue(self.panel.new_row_button.property("outline"))
 
-    def test_start_row_and_layout_live_on_the_file_page_not_the_turn_page(self):
+    def test_start_row_layout_and_headings_are_in_the_settings_overlay_not_on_either_page(self):
         file_page = self.panel.stack.widget(0).widget()
         turn_page = self.panel.stack.widget(1).widget()
-        self.assertTrue(file_page.isAncestorOf(self.panel.start_spin) and file_page.isAncestorOf(self.panel.down_radio))
-        self.assertFalse(turn_page.isAncestorOf(self.panel.start_spin))
+        for widget in (self.panel.settings.start_number, self.panel.settings.down_radio, self.panel.settings.headings_number):
+            self.assertTrue(self.panel.settings.isAncestorOf(widget))
+            self.assertFalse(file_page.isAncestorOf(widget) or turn_page.isAncestorOf(widget))
+
+    def test_the_available_files_section_has_its_title_description_and_search(self):
+        texts = [l.text() for l in self.panel.findChildren(QLabel)]
+        self.assertIn("Available Files", texts)
+        self.assertIn("Spreadsheet files currently open on your computer.", texts)
+        self.assertEqual(self.panel.search.placeholderText(), "Search")
 
     def test_the_edge_line_is_one_pixel(self):
         from PySide6.QtWidgets import QFrame
         edges = [f for f in self.panel.findChildren(QFrame) if f.property("panelEdge")]
         self.assertEqual([e.width() for e in edges] or [1], [1])
 
-    def test_the_panel_text_is_not_bold(self):
+    def test_section_titles_are_bold_and_the_rest_of_the_text_is_not(self):
         from quill.ui.theme import stylesheet_for
         sheet = stylesheet_for(True)
-        for selector in ('QLabel[panelTitle="true"]', 'QLabel[panelNote="true"]'):
-            rule = sheet[sheet.index(selector): sheet.index("}", sheet.index(selector))]
-            self.assertIn("font-weight: 400", rule)
+
+        def rule(selector):
+            return sheet[sheet.index(selector): sheet.index("}", sheet.index(selector))]
+
+        self.assertIn("font-weight: 600", rule('QLabel[panelHeading="true"]'))
+        for selector in ('QLabel[panelTitle="true"]', 'QLabel[panelNote="true"]', 'QLabel[panelValue="true"]'):
+            self.assertIn("font-weight: 400", rule(selector))
+        headings = [l.text() for l in self.panel.findChildren(QLabel) if l.property("panelHeading")]
+        self.assertIn("Active File", headings)
+
+    def test_the_settings_button_belongs_to_the_file_page_only(self):
+        self.panel.show_page(FILE_PAGE)
+        self.assertFalse(self.panel.more_button.isHidden())
+        self.panel.show_page(TURN_PAGE)
+        self.assertTrue(self.panel.more_button.isHidden())
 
 
 class TestHeadingsRow(Dir):
@@ -1139,6 +1206,301 @@ class TestSameAsButton(unittest.TestCase):
         row = TermRow(("Size", "medium"), vocab, lambda *a: None, ("Size", "M"))
         self.assertFalse(row.match_button.property("accent"))
         self.assertEqual(row.match_label.text(), "Same As <b>M</b>")
+
+
+# --------------------------------------------------------------------------- #
+# Peer-review style checks: the layout (rows or columns) must be understood      #
+# everywhere, and every user-visible text must say what the user asked for.     #
+# --------------------------------------------------------------------------- #
+
+import re
+
+#: Texts that name *both* axes on purpose (they describe the two layouts side by side).
+BOTH_AXES = {"By Columns", "By Rows", "Headings run across the first row - each turn writes to the next row.",
+             "Headings run down the first column - each turn writes to the next column."}
+
+
+def axis_words(text: str) -> set[str]:
+    """``{"row"}``, ``{"column"}`` or both, for the whole words in *text* (plural and singular alike)."""
+    return {w.rstrip("s") for w in re.findall(r"\b(rows?|columns?)\b", text.lower())}
+
+
+class TestEveryTextFollowsTheLayout(unittest.TestCase):
+    """Walk every text in the panel and its overlay in both layouts: none may name the wrong axis."""
+
+    def setUp(self):
+        self.w = MainWindow()
+        self.w.setup()
+        self.panel = self.w.panel
+
+    def texts(self):
+        found = []
+        for root in (self.panel, self.panel.settings):
+            for widget in root.findChildren(QLabel):
+                found.append(("label", widget.text()))
+            for widget in root.findChildren(__import__("PySide6.QtWidgets", fromlist=["QAbstractButton"]).QAbstractButton):
+                found.append(("button", widget.text()))
+                found.append(("tip", widget.toolTip()))
+        return [(kind, text) for kind, text in found if text and not text.startswith("<")]
+
+    def check(self, vertical):
+        wanted, wrong = ("column", "row") if vertical else ("row", "column")
+        self.panel.set_options(NEXT_ROW, vertical, 0, 0)
+        problems = []
+        for kind, text in self.texts():
+            if text in BOTH_AXES:
+                continue
+            words = axis_words(text)
+            if wrong in words:
+                problems.append(f"{kind} {text!r} names the {wrong}")
+        self.assertEqual(problems, [], f"vertical={vertical}")
+
+    def test_by_columns_never_says_column_where_it_means_row(self):
+        self.check(False)
+
+    def test_by_rows_never_says_row_where_it_means_column(self):
+        self.check(True)
+
+    def test_each_dynamic_text_changes_with_the_layout(self):
+        def snapshot():
+            s = self.panel.settings
+            return (self.panel.next_row_radio.text(), self.panel.next_row_note.text(), self.panel.append_note.text(),
+                    self.panel.new_row_button.toolTip(), s.start_heading.text(), s.start_note.text(),
+                    s.headings_heading.text(), s.headings_note.text())
+
+        self.panel.set_options(NEXT_ROW, False, 0, 0)
+        across = snapshot()
+        self.panel.set_options(NEXT_ROW, True, 0, 0)
+        down = snapshot()
+        for before, after in zip(across, down):
+            self.assertNotEqual(before, after, before)
+        self.assertEqual(across[:5], ("Next Row", "Turn words are written to new rows", "Turn words are added to the same row",
+                                      "Move cursor to the next row", "Starting Row"))
+        self.assertEqual(down[:5], ("Next Column", "Turn words are written to new columns", "Turn words are added to the same column",
+                                    "Move cursor to the next column", "Starting Column"))
+
+    def test_the_wording_the_user_gave_is_exact(self):
+        s = self.panel.settings
+        self.panel.set_options(NEXT_ROW, False, 0, 0)
+        self.assertEqual(s.start_note.text(), "'Automatic' finds the first empty row after headings, or enter a custom row number.")
+        self.assertEqual((s.across_radio.text(), s.across_note.text()),
+                         ("By Columns", "Headings run across the first row - each turn writes to the next row."))
+        self.assertEqual((s.down_radio.text(), s.down_note.text()),
+                         ("By Rows", "Headings run down the first column - each turn writes to the next column."))
+
+    def test_switching_the_layout_in_the_overlay_rewords_the_turn_page_at_once(self):
+        self.panel.set_options(NEXT_ROW, False, 0, 0)
+        self.panel.settings.down_radio.setChecked(True)
+        self.assertEqual(self.panel.next_row_radio.text(), "Next Column")
+        self.assertEqual(self.panel.new_row_button.toolTip(), "Move cursor to the next column")
+        self.panel.settings.across_radio.setChecked(True)
+        self.assertEqual(self.panel.next_row_radio.text(), "Next Row")
+
+
+class TestControllerMessagesFollowTheLayout(Dir):
+    def run_layout(self, vertical):
+        path = make_vertical(self.dir / "v.xlsx") if vertical else make_workbook(self.dir / "h.xlsx")
+        settings = Settings.load(self.dir / ("cfg-v" if vertical else "cfg-h"))
+        settings.preferences["vertical_layout"] = vertical
+        events = []
+        controller = Controller(XlsxBridge(path), settings, on_event=events.append)
+        controller.connect()
+        controller.set_start_row(3)
+        controller.set_headings_row(2)
+        controller.set_turn_mode("append")
+        controller.start_new_row()
+        return [e.detail for e in events]
+
+    def test_rows_in_the_usual_layout(self):
+        details = self.run_layout(False)
+        self.assertIn("Turns start at row 3", details)
+        self.assertIn("Headings are in row 2", details)
+        self.assertIn("Each turn adds to the same row", details)
+        self.assertIn("The next turn starts a new row", details)
+
+    def test_columns_with_letters_when_the_headings_run_down(self):
+        details = self.run_layout(True)
+        self.assertIn("Turns start at column C", details)
+        self.assertIn("Headings are in column B", details)
+        self.assertIn("Each turn adds to the same column", details)
+        self.assertIn("The next turn starts a new column", details)
+        self.assertFalse([d for d in details if "row" in axis_words(d)], details)
+
+
+class TestCursorFollowsTheTurn(Dir):
+    def setUp(self):
+        super().setUp()
+        self.path = make_workbook(self.dir / "plants.xlsx")
+        self.settings = Settings.load(self.dir / "cfg")
+        self.controller = Controller(XlsxBridge(self.path), self.settings, on_event=lambda e: None)
+        self.controller.connect()
+        self.controller.handle_transcript("start listening")
+
+    def cursor(self):
+        return self.controller.bridge._grid.get_cursor("Inventory")
+
+    def test_next_row_mode_moves_the_cursor_on_after_each_turn(self):
+        self.controller.handle_transcript("fern")
+        self.controller.handle_transcript("next row")
+        self.assertEqual(self.cursor()[0], 5)                       # row 4 was written; the cursor waits on row 5
+
+    def test_append_mode_keeps_the_cursor_on_the_same_row_after_the_turn_is_written(self):
+        self.controller.set_turn_mode("append")
+        self.controller.handle_transcript("fern")
+        self.controller.handle_transcript("next row")
+        self.assertEqual(self.cursor()[0], 4)
+        self.controller.handle_transcript("cactus")
+        self.controller.handle_transcript("next row")
+        self.assertEqual(self.cursor()[0], 4)
+        self.assertEqual(openpyxl.load_workbook(self.path)["Inventory"]["A4"].value, "Fern, Cactus")
+
+    def test_the_panels_next_button_moves_the_cursor_to_the_next_row(self):
+        self.controller.set_turn_mode("append")
+        self.controller.handle_transcript("fern")
+        self.controller.handle_transcript("next row")
+        self.controller.start_new_row()
+        self.assertEqual(self.cursor()[0], 5)
+        self.controller.handle_transcript("cactus")
+        self.controller.handle_transcript("next row")
+        self.assertEqual(openpyxl.load_workbook(self.path)["Inventory"]["A5"].value, "Cactus")
+
+    def test_a_vertical_sheet_moves_the_cursor_across_columns(self):
+        vertical = make_vertical(self.dir / "v.xlsx")
+        self.settings.preferences["vertical_layout"] = True
+        controller = Controller(XlsxBridge(vertical), self.settings, on_event=lambda e: None)
+        controller.connect()
+        controller.handle_transcript("start listening")
+        controller.handle_transcript("banana")
+        controller.handle_transcript("next row")
+        self.assertEqual(controller.bridge._grid.get_cursor("Stock"), (1, 4))      # column C written; the cursor waits on D
+
+    def test_a_cursor_that_cannot_be_moved_never_fails_a_write(self):
+        with mock.patch.object(type(self.controller.bridge._grid), "set_cursor", side_effect=RuntimeError("no")):
+            self.controller.handle_transcript("fern")
+            self.controller.handle_transcript("next row")
+        self.assertEqual(openpyxl.load_workbook(self.path)["Inventory"]["A4"].value, "Fern")
+
+
+class TestToolTips(unittest.TestCase):
+    def test_a_tip_is_centred_on_the_pointer_not_started_at_it(self):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QFontMetrics
+        from PySide6.QtWidgets import QToolTip
+        from quill.ui.widgets import TOOLTIP_DROP, TOOLTIP_PADDING, CenteredToolTips
+        pointer = QPoint(500, 300)
+        spot = CenteredToolTips.position(pointer, "Move cursor to the next row")
+        width = QFontMetrics(QToolTip.font()).horizontalAdvance("Move cursor to the next row") + TOOLTIP_PADDING
+        self.assertEqual(spot.x() + width // 2, 500)
+        self.assertEqual(spot.y(), 300 + TOOLTIP_DROP)
+
+    def test_the_widest_line_decides_for_a_tip_of_several_lines(self):
+        from PySide6.QtCore import QPoint
+        from quill.ui.widgets import CenteredToolTips
+        short = CenteredToolTips.position(QPoint(400, 0), "a\nb")
+        long = CenteredToolTips.position(QPoint(400, 0), "a\na very long second line of the tip")
+        self.assertLess(long.x(), short.x())
+
+    def test_the_text_comes_from_the_widget_or_from_the_list_item_under_the_pointer(self):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem, QPushButton
+        from quill.ui.widgets import CenteredToolTips
+        button = QPushButton("x")
+        button.setToolTip("hello")
+        self.assertEqual(CenteredToolTips.tip_for(button, QPoint(1, 1)), "hello")
+        lst = QListWidget()
+        item = QListWidgetItem("one")
+        item.setToolTip("full path")
+        lst.addItem(item)
+        lst.resize(200, 100)
+        lst.show()
+        self.assertEqual(CenteredToolTips.tip_for(lst.viewport(), QPoint(5, 5)), "full path")
+        lst.close()
+
+    def test_the_filter_is_installed_once_by_the_app_and_shows_the_tip(self):
+        app = PanelApp()
+        app.setUp()
+        try:
+            from quill.ui.widgets import CenteredToolTips
+            self.assertIsInstance(_app._quill_tooltips, CenteredToolTips)
+            from PySide6.QtCore import QEvent, QPoint
+            from PySide6.QtGui import QHelpEvent
+            button = app.app.window.panel.new_row_button
+            with mock.patch("quill.ui.widgets.QToolTip.showText") as show:
+                handled = _app._quill_tooltips.eventFilter(button, QHelpEvent(QEvent.Type.ToolTip, QPoint(3, 3), QPoint(600, 400)))
+            self.assertTrue(handled)
+            self.assertEqual(show.call_args.args[1], button.toolTip())
+        finally:
+            app._tmp.cleanup()
+
+    def test_tooltip_padding_is_half_or_less_of_the_old_5_by_9(self):
+        from quill.ui.theme import stylesheet_for
+        sheet = stylesheet_for(False)
+        rule = sheet[sheet.index("QToolTip {"): sheet.index("}", sheet.index("QToolTip {"))]
+        vertical, horizontal = re.search(r"padding: (\d+)px (\d+)px", rule).groups()
+        self.assertLessEqual(int(vertical), 2)
+        self.assertLessEqual(int(horizontal), 4)
+
+
+class TestKeywordsLinkAndOverlay(PanelApp):
+    def test_the_keywords_link_opens_settings_on_the_keywords_page(self):
+        self.app.window.panel.keywords_requested.emit()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+        self.assertEqual(dialog.nav.currentItem().data(Qt.ItemDataRole.UserRole), "Keywords")
+        dialog.close_now()
+
+    def test_it_switches_an_already_open_settings_window_to_keywords(self):
+        self.app.open_settings()
+        self.app.open_settings("Keywords")
+        self.assertEqual(self.app._settings_dialog.nav.currentItem().data(Qt.ItemDataRole.UserRole), "Keywords")
+        self.app._settings_dialog.close_now()
+
+    def test_the_settings_button_shows_the_overlay_under_the_panel_on_the_file_page(self):
+        MainWindow.animation_ms, saved = 0, MainWindow.animation_ms
+        try:
+            self.app.window.open_panel(FILE_PAGE)
+            self.app.window.show_file_settings()
+            self.assertTrue(self.app.window.panel.settings.isVisible())
+            self.assertGreater(self.app.window.panel.settings.width(), 200)
+            self.app.window.panel.settings.close()
+            self.app.window.open_panel(TURN_PAGE)
+            self.app.window.show_file_settings()                      # not on the turn page
+            self.assertFalse(self.app.window.panel.settings.isVisible())
+        finally:
+            MainWindow.animation_ms = saved
+
+    def test_changes_in_the_overlay_reach_the_controller_and_are_remembered(self):
+        s = self.app.window.panel.settings
+        s.down_radio.setChecked(True)
+        s.start_letter.setCurrentIndex(3)                             # C
+        s.headings_letter.setCurrentIndex(2)                          # B
+        prefs = self.settings.preferences
+        self.assertEqual((prefs["vertical_layout"], prefs["start_row"], prefs["headings_row"]), (True, 3, 2))
+
+
+class TestTitleCentring(unittest.TestCase):
+    def test_the_title_centres_in_the_room_the_panel_leaves(self):
+        from quill.ui import chrome
+
+        class Frame:
+            def __init__(self, x, y, w, h): self.origin = type("P", (), {"x": x, "y": y})(); self.size = type("S", (), {"width": w, "height": h})()
+
+        class Label:
+            def __init__(self): self.f = Frame(0, 0, 40, 16)
+            def setStringValue_(self, t): pass
+            def sizeToFit(self): pass
+            def frame(self): return self.f
+            def setFrameOrigin_(self, o): self.f = Frame(o[0], o[1], 40, 16)
+
+        class Bar:
+            def bounds(self): return Frame(0, 0, 689, 28)
+
+        close = type("C", (), {"superview": lambda s: Bar(), "frame": lambda s: Frame(7, 6, 14, 16)})()
+        label = Label()
+        chrome._retitle(label, close, "Quill", 236)
+        self.assertEqual(label.f.origin.x + 20, (689 - 236) / 2)          # the middle of what is left of the line
+        chrome._retitle(label, close, "Quill", 0)
+        self.assertEqual(label.f.origin.x + 20, 689 / 2)
 
 
 if __name__ == "__main__":

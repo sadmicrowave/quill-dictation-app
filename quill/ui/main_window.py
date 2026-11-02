@@ -20,6 +20,7 @@ from typing import Callable
 
 from PySide6.QtCore import (
     QEasingCurve,
+    QPoint,
     QPropertyAnimation,
     QSize,
     Qt,
@@ -237,6 +238,7 @@ class MainWindow:
         self._shell.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.panel = SidePanel()
         self.panel.close_requested.connect(self.close_panel)
+        self.panel.settings_requested.connect(self.show_file_settings)
         shell.addWidget(central, 1)
         shell.addWidget(self.panel)
 
@@ -622,6 +624,13 @@ class MainWindow:
         if not self._panel_open:
             self._panel_open = True
             self._slide_panel(PANEL_WIDTH)
+
+    def show_file_settings(self) -> None:
+        """Open the file settings overlay under the panel's "…" button (top right of the window)."""
+        if self._window is None or not self._panel_open or self._panel_page != FILE_PAGE:
+            return
+        corner = self._window.mapToGlobal(self._window.rect().topRight())
+        self.panel.show_settings(QPoint(corner.x() - 8, corner.y() + 6))
 
     def close_panel(self) -> None:
         """Ease the panel shut (the window gives its width back)."""

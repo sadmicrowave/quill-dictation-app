@@ -222,7 +222,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QFrame#sidePanel, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.10)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
-           border-radius: 8px; padding: 5px 9px; }}
+           border-radius: 6px; padding: 2px 4px; }}
 
 QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['accent']};
               border-radius: 8px; padding: {d['button']}; }}
@@ -360,6 +360,9 @@ QFrame#sidePanel {{ background: transparent; border: none; }}
 QFrame[panelEdge="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
 QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
 QLabel[panelTitle="true"] {{ font-weight: 400; }}
+QLabel[panelHeading="true"] {{ font-weight: 600; color: {t['text']}; }}
+QLabel[panelValue="true"] {{ font-weight: 400; font-style: normal; color: {t['text']}; }}
+QFrame#fileSettings {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 10px; }}
 QLabel[panelNote="true"] {{ font-weight: 400; font-style: normal; color: {t['muted']}; }}
 QToolButton[chromeIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[chromeIcon="true"]:hover {{ background: {rgba(t['text'], 0.10)}; }}

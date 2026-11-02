@@ -63,6 +63,9 @@ class WorkbookBridge(ABC):
         The default ignores it; the grid-based bridges honour it.
         """
 
+    def select_record(self, sheet_name: str, number: int) -> None:
+        """Put the spreadsheet's cursor on record *number* (a row; a column when the headings run down). Best effort."""
+
     def set_headings_row(self, number: int) -> None:
         """The row (column, when the headings run down) that holds the headings; 0 = find it."""
 

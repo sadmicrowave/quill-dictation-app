@@ -113,6 +113,12 @@ class GridBridge(WorkbookBridge):
     def set_start_row(self, number: int) -> None:
         self._start_row = max(0, int(number))
 
+    def select_record(self, sheet_name: str, number: int) -> None:
+        try:
+            self._require().set_cursor(sheet_name, max(1, int(number)), 1)
+        except Exception:                                      # the cursor is a courtesy: never fail a write over it
+            pass
+
     def set_headings_row(self, number: int) -> None:
         number = max(0, int(number))
         if number != self._headings_row:

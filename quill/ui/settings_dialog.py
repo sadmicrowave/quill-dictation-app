@@ -452,6 +452,11 @@ class SettingsDialog:
                 self._nav_items[title] = item
             self._captions = getattr(self, "_captions", []) + [head]
 
+    def show_page_named(self, title: str) -> None:
+        """Switch to the page called *title* ("Keywords", ...); an unknown title changes nothing."""
+        if self.nav is not None and title in self._nav_items:
+            self.nav.setCurrentRow(self._nav_row(title))
+
     def _nav_row(self, title: str) -> int:
         return self.nav.row(self._nav_items[title])
 

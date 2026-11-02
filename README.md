@@ -519,3 +519,10 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - Voice: *append on/off*, *append mode*, *row mode*, *rows down*, *columns across* (`Action.APPEND_ON` ...), with `turn_on` / `turn_off` cues. `keywords_version` is now 3.
 - `start_row` preference (turn page): where a record may start; 0 = the first empty row.
 - Term Helper: opens at the bottom left of the main window's screen the first time, then where it was left (`sorting_x/y/width`); minimum width follows its rows; its Start button matches the main one's height.
+
+## Phase 59: file settings overlay, layout-aware wording, tool tips
+
+- The Files page keeps the file button and a borderless facts table (dates MM/DD/YY); starting row, sheet layout (By Columns / By Rows) and headings row moved to an overlay opened by the panel's "…" button. By Rows swaps the number fields for A to Z drop-downs and rewords every text.
+- Title bar: the icons are fixed 30 x 24 boxes (no stack view), the title is centred in the room left of the panel (measured on the real window with `tools`-style screenshots), the "…" and X sit in the panel's part of the title bar.
+- Next in Append To keeps the spreadsheet cursor on the same row; the panel's Next moves it on. Tool tips are centred on the pointer with half the padding.
+- Tests now walk every panel text in both layouts (`TestEveryTextFollowsTheLayout`) and check controller messages, cursor moves and tool tip placement.

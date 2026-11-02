@@ -191,17 +191,14 @@ class TestTitlebarSettings(unittest.TestCase):
     def test_settings_goes_left_of_the_resize_icon_in_one_accessory(self):
         native()
         kit = FakeAppKit()
-        kit.NSStackView = type("S", (), {"stackViewWithViews_": staticmethod(lambda views: type(
-            "Stack", (), {"views": views, "setSpacing_": lambda s, v: None,
-                          "setFrame_": lambda s, f: setattr(s, "frame", f),
-                          "setFrameOrigin_": lambda s, o: None})())})
         opened, resized = [], []
         button = chrome.add_titlebar_button(_fake_widget(), lambda: resized.append(1), platform="darwin", appkit=kit,
                                             extra=[(chrome.SYMBOL_SETTINGS, "Settings", lambda: opened.append(1))])
         stack = kit.window.accessories[0].view.subviews[0]            # the row sits in a plain holder view
-        self.assertEqual(len(stack.views), 2)
+        self.assertEqual(len(stack.subviews), 2)
         self.assertGreater(stack.frame[1][0], 40)                         # it has a width, or macOS would not show it
-        settings, resize = stack.views
+        settings, resize = stack.subviews
+        self.assertEqual((settings.frame[1], resize.frame[1]), ((30, 24), (30, 24)))     # every icon has the same box
         self.assertEqual(settings.image, f"image:{chrome.SYMBOL_SETTINGS}")
         self.assertEqual(settings.tip, "Settings")
         settings.performClick_(None)

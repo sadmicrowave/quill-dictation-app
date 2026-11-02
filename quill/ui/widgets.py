@@ -4,9 +4,19 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QEvent, QObject, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QToolTip,
+    QWidget,
+)
 
 from quill.ui.icons import make_icon
 
@@ -278,6 +288,43 @@ class ListenButton(QPushButton):
         _, on_accent, accent = self._colors
         self.icon_label.setPixmap(make_icon("stop" if self._active else "play", on_accent if self._active else accent,
                                             14).pixmap(14, 14))
+
+
+#: Room (px) the tool tip's border and padding add around its text (see ``QToolTip`` in theme.py).
+TOOLTIP_PADDING = 12
+#: Gap (px) between the pointer and the tool tip below it.
+TOOLTIP_DROP = 18
+
+
+class CenteredToolTips(QObject):
+    """Shows every tool tip centred on the pointer (the system puts its left edge at the pointer).
+
+    One application-level event filter; plain-text tips only (a rich-text tip keeps the system's placement).
+    """
+
+    @staticmethod
+    def tip_for(obj, pos) -> str:
+        """The tool tip text *obj* would show at *pos* ("" when none), including the items of a list."""
+        parent = obj.parentWidget() if isinstance(obj, QWidget) else None
+        if isinstance(parent, QAbstractItemView) and obj is parent.viewport():
+            return str(parent.indexAt(pos).data(Qt.ItemDataRole.ToolTipRole) or "")
+        return obj.toolTip() if isinstance(obj, QWidget) else ""
+
+    @staticmethod
+    def position(pointer: QPoint, text: str) -> QPoint:
+        """Where the tip's top-left goes so it is centred on *pointer* (just below it)."""
+        metrics = QFontMetrics(QToolTip.font())
+        width = max((metrics.horizontalAdvance(line) for line in text.split("\n")), default=0) + TOOLTIP_PADDING
+        return QPoint(pointer.x() - width // 2, pointer.y() + TOOLTIP_DROP)
+
+    def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
+        if event.type() != QEvent.Type.ToolTip:
+            return False
+        text = self.tip_for(obj, event.pos())
+        if not text or ("<" in text and ">" in text):                       # (rich text keeps the system placement)
+            return False
+        QToolTip.showText(self.position(event.globalPos(), text), text, obj)
+        return True
 
 
 class PopupClickThrough(QObject):

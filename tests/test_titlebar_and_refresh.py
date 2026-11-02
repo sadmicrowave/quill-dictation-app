@@ -41,6 +41,7 @@ class FakeButton:
     def alloc(cls): return cls()
     def initWithFrame_(self, frame): self.frame = frame; return self
     def setBordered_(self, v): self.bordered = v
+    def setFrame_(self, frame): self.frame = frame
     def setTarget_(self, t): self.target = t
     def setAction_(self, a): self.action = a
     def setImage_(self, image): self.image = image
@@ -56,6 +57,9 @@ class FakeHolderView:
     def alloc(cls): return cls()
     def initWithFrame_(self, frame): self.frame = frame; return self
     def addSubview_(self, view): self.subviews.append(view)
+    def setFrame_(self, frame): self.frame = frame
+    def setFrameOrigin_(self, origin): self.origin = origin
+    def setFrameSize_(self, size): self.size = size
 
 
 class FakeController:

@@ -18,7 +18,7 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 No spreadsheet app open? Quill can fill a file by itself.
 
 1. Press the **folder** icon in the title bar, left of the turn and Settings icons. The **side panel** eases in on the right (press the folder again to ease it away). The icon is grey and closed while no file is open, and solid and open once one is; hover it to see the file's name and the open sheet.
-2. The panel's **Active File** section is one button: it reads **Open File** (with a folder) until a file is active, then shows the file's name. Press it for the standard file window, which opens where the active file is (or use **File > Open Spreadsheet File…**), and pick an `.xlsx` or a `.csv` file. Under it, in quiet text: the sheet, the file's path (one line), what it is open in (Excel, LibreOffice, CSV ...), its size and when it was modified and created.
+2. The panel's **Active File** section is one button: it reads **Open File** (with a folder) until a file is active, then shows the file's name. Press it for the standard file window, which opens where the active file is (or use **File > Open Spreadsheet File…**), and pick an `.xlsx` or a `.csv` file. Under it, a small table: Sheet, Path (one line), Type (Excel, LibreOffice, CSV ...), Size, Modified and Created (MM/DD/YY).
    Pressing **Start** with no file open opens this window for you.
 3. Dictate. Quill remembers the file next time.
 
@@ -28,7 +28,7 @@ A file you pick this way that no program has open yet is **started in its own pr
 
 ### Where the data starts
 
-Also on this page: **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), **Sheet Layout** (Columns Across or Rows Down) and **Headings Row** (**Automatic** finds the headings; type a number to choose). With Rows Down these read *Column*.
+Press the **…** button at the top of the Files panel for the **file settings**: **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column) and **Headings Row** (**Automatic** finds the headings). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
 
 ### When another program holds the file
 
@@ -36,7 +36,7 @@ If Excel has the file you chose, Quill works through Excel itself (no file to fi
 
 ### Spreadsheets that are already open
 
-Under a muted line, the **Files** section lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. Type in the **Filter files** box to narrow the list. With nothing open it says *No open spreadsheet files have been detected.* The list refreshes by itself while the panel is open. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
+Under a muted line, the **Available Files** section lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. Type in the **Search** box to narrow the list. With nothing open it says *No open spreadsheet files detected.* The list refreshes by itself while the panel is open. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
 
 **File > Use the Open Workbook** goes back to the workbook open in your spreadsheet program.
 

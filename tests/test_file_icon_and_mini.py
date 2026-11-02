@@ -60,16 +60,13 @@ class TestFolderIconInTheTitleBar(unittest.TestCase):
         native()
         self.addCleanup(restore)
         kit = FakeAppKit()
-        kit.NSStackView = type("S", (), {"stackViewWithViews_": staticmethod(lambda views: type(
-            "Stack", (), {"views": views, "setSpacing_": lambda s, v: None, "setFrame_": lambda s, f: None,
-                          "setFrameOrigin_": lambda s, o: None})())})
         from PySide6.QtCore import QPoint
         from PySide6.QtGui import QRegion
         from PySide6.QtWidgets import QWidget
         chrome.add_titlebar_button(QWidget(), lambda: None, platform="darwin", appkit=kit,
                                    extra=[(chrome.SYMBOL_FOLDER, "Open Spreadsheet File", lambda: None),
                                           (chrome.SYMBOL_SETTINGS, "Settings", lambda: None)])
-        views = kit.window.accessories[0].view.subviews[0].views
+        views = kit.window.accessories[0].view.subviews[0].subviews           # the row inside the holder
         self.assertEqual(views[0].image, f"image:{chrome.SYMBOL_FOLDER}")
         self.assertEqual(views[1].image, f"image:{chrome.SYMBOL_SETTINGS}")
 

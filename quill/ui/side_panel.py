@@ -1,10 +1,14 @@
 """The right-hand side panel: it eases in beside the window and shows one of two pages.
 
 * **Files** (the folder icon): the active spreadsheet as a button (its name, or "Open File" while there is none;
-  pressing it opens the file window where that file is), the sheet and some quiet facts about the file, where
-  the data starts (starting row, headings row, which way the headings run), and a filterable, scrollable list of
-  the other spreadsheets that are open in programs on this computer. Picking one moves it up to the top.
+  pressing it opens the file window where that file is), a table of quiet facts about the file, and a filterable,
+  scrollable list of the other spreadsheets that are open in programs on this computer. Picking one moves it up
+  to the top. Where the data starts (starting row, headings row, which way the headings run) is in the settings
+  overlay that the panel's "…" button opens (:class:`FileSettings`).
 * **Turn Options** (the turn icon): whether each turn is written to a new row or added to the same row.
+
+Every text that names the axis follows the layout: rows when the headings run across the top, columns when they run
+down the side (:meth:`SidePanel.set_options`).
 
 The panel only shows state and reports what the user chose through signals; the window animates it and the
 application acts on the choices. Its title and close button are drawn in the title bar on macOS (see
@@ -15,12 +19,15 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import string
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -35,6 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import install_backdrop
 from quill.ui.widgets import ElidedLabel
 
@@ -44,15 +52,16 @@ PANEL_WIDTH = 236
 NEXT_ROW, APPEND_TO = "next_row", "append"
 FILE_PAGE, TURN_PAGE = "file", "turn"
 NO_FILE_TEXT = "Open File"
-NO_OTHERS_TEXT = "No open spreadsheet files have been detected."
+NO_OTHERS_TEXT = "No open spreadsheet files detected."
 NO_MATCH_TEXT = "No files match."
 TITLES = {"file": "Files", "turn": "Turn Options"}
 AUTOMATIC = "Automatic"
+LETTERS = string.ascii_uppercase                  # the columns a custom starting / headings column can be (A to Z)
 LIST_ROLE = Qt.ItemDataRole.UserRole
 
 
-def file_facts(path: str) -> list[str]:
-    """The quiet lines about a file on disk: size, date modified, date created ([] when it cannot be read)."""
+def file_facts(path: str) -> list[tuple[str, str]]:
+    """``(label, value)`` facts about a file on disk: size, date modified, date created as MM/DD/YY ([] when unreadable)."""
     try:
         info = os.stat(path)
     except OSError:
@@ -60,9 +69,9 @@ def file_facts(path: str) -> list[str]:
     created = getattr(info, "st_birthtime", info.st_ctime)
 
     def when(stamp: float) -> str:
-        return dt.datetime.fromtimestamp(stamp).strftime("%b %d, %Y  %I:%M %p").replace(" 0", " ", 1)
+        return dt.datetime.fromtimestamp(stamp).strftime("%m/%d/%y")
 
-    return [f"Size: {human_size(info.st_size)}", f"Modified: {when(info.st_mtime)}", f"Created: {when(created)}"]
+    return [("Size", human_size(info.st_size)), ("Modified", when(info.st_mtime)), ("Created", when(created))]
 
 
 def human_size(size: int) -> str:
@@ -85,7 +94,7 @@ def _rule() -> QFrame:
 
 def _heading(text: str) -> QLabel:
     label = QLabel(text)
-    label.setProperty("staticHeading", True)
+    label.setProperty("panelHeading", True)                 # bold section titles
     label.setIndent(0)                      # flush with the controls below it
     return label
 
@@ -132,6 +141,146 @@ class NumberField(QLineEdit):
         return self.text() or self.placeholderText()
 
 
+class LetterBox(FlatCombo):
+    """A drop-down of Automatic and the columns A to Z (the same drop-down the Settings pages use).
+
+    ``valueChanged`` carries the column number (0 for Automatic), like :class:`NumberField`.
+    """
+
+    valueChanged = Signal(int)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.addItem(AUTOMATIC, 0)
+        for number, letter in enumerate(LETTERS, start=1):
+            self.addItem(letter, number)
+        self.setMaxVisibleItems(12)
+        self.currentIndexChanged.connect(lambda _: self.valueChanged.emit(self.value()))
+
+    def value(self) -> int:
+        return int(self.currentData() or 0)
+
+    def setValue(self, number: int) -> None:                      # noqa: N802 (Qt-style name)
+        index = self.findData(max(0, min(26, int(number))))
+        self.setCurrentIndex(max(index, 0))
+
+    def display(self) -> str:
+        return self.currentText()
+
+
+def _field_row(row_box: QWidget | None = None) -> QVBoxLayout:
+    layout = QVBoxLayout()
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(4)
+    return layout
+
+
+class FileSettings(QFrame):
+    """The overlay the panel's "…" button opens: where the data starts and which way the headings run.
+
+    Starting row, sheet layout and headings row. With the headings running down the side these are columns, picked
+    from A to Z; otherwise they are row numbers. Each explains itself in the words of the current layout.
+    """
+
+    start_changed = Signal(int)                 # 0: automatic
+    headings_changed = Signal(int)              # 0: automatic
+    layout_changed = Signal(bool)               # True: headings run down the first column
+
+    def __init__(self) -> None:
+        super().__init__(None, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self.setObjectName("fileSettings")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedWidth(300)
+        self._syncing = False
+        self._vertical = False
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 14)
+        layout.setSpacing(6)
+        self.start_heading = _heading("Starting Row")
+        layout.addWidget(self.start_heading)
+        self.start_number = NumberField(AUTOMATIC)
+        self.start_letter = LetterBox()
+        layout.addWidget(self.start_number)
+        layout.addWidget(self.start_letter)
+        self.start_note = _note("")
+        layout.addWidget(self.start_note)
+        layout.addSpacing(2)
+        layout.addWidget(_rule())
+        layout.addSpacing(2)
+        layout.addWidget(_heading("Sheet Layout"))
+        self.across_radio = QRadioButton("By Columns")
+        self.down_radio = QRadioButton("By Rows")
+        self._group = QButtonGroup(self)
+        self.across_note = _note("")
+        self.down_note = _note("")
+        for radio, note, vertical in ((self.across_radio, self.across_note, False), (self.down_radio, self.down_note, True)):
+            radio.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._group.addButton(radio)
+            layout.addWidget(radio)
+            layout.addWidget(note)
+            radio.toggled.connect(lambda on, v=vertical: self._layout_toggled(v) if on and not self._syncing else None)
+        layout.addSpacing(2)
+        layout.addWidget(_rule())
+        layout.addSpacing(2)
+        self.headings_heading = _heading("Headings Row")
+        layout.addWidget(self.headings_heading)
+        self.headings_number = NumberField(AUTOMATIC)
+        self.headings_letter = LetterBox()
+        layout.addWidget(self.headings_number)
+        layout.addWidget(self.headings_letter)
+        self.headings_note = _note("")
+        layout.addWidget(self.headings_note)
+        for box in (self.start_number, self.start_letter):
+            box.valueChanged.connect(lambda n: None if self._syncing else self.start_changed.emit(n))
+        for box in (self.headings_number, self.headings_letter):
+            box.valueChanged.connect(lambda n: None if self._syncing else self.headings_changed.emit(n))
+        self._explain()
+
+    @property
+    def start_box(self) -> NumberField | LetterBox:
+        """The starting field in use for the layout."""
+        return self.start_letter if self._vertical else self.start_number
+
+    @property
+    def headings_box(self) -> NumberField | LetterBox:
+        """The headings field in use for the layout."""
+        return self.headings_letter if self._vertical else self.headings_number
+
+    def _layout_toggled(self, vertical: bool) -> None:
+        self._vertical = vertical
+        self._explain()
+        self.layout_changed.emit(vertical)
+
+    def _explain(self) -> None:
+        """Word every text for the layout, and show the field that fits it (a row number, or a column letter)."""
+        unit = "column" if self._vertical else "row"
+        self.start_heading.setText(f"Starting {unit.title()}")
+        self.headings_heading.setText(f"Headings {unit.title()}")
+        if self._vertical:
+            self.start_note.setText("'Automatic' finds the first empty column after headings, or choose a custom column.")
+            self.headings_note.setText("'Automatic' finds the column that holds the headings, or choose a custom column.")
+        else:
+            self.start_note.setText("'Automatic' finds the first empty row after headings, or enter a custom row number.")
+            self.headings_note.setText("'Automatic' finds the row that holds the headings, or enter a custom row number.")
+        self.across_note.setText("Headings run across the first row - each turn writes to the next row.")
+        self.down_note.setText("Headings run down the first column - each turn writes to the next column.")
+        for number, letter in ((self.start_number, self.start_letter), (self.headings_number, self.headings_letter)):
+            number.setVisible(not self._vertical)
+            letter.setVisible(self._vertical)
+
+    def set_options(self, vertical: bool, start: int, headings: int) -> None:
+        """Show the saved options (without reporting them back as changes)."""
+        self._syncing = True
+        try:
+            self._vertical = bool(vertical)
+            (self.down_radio if vertical else self.across_radio).setChecked(True)
+            self._explain()
+            self.start_box.setValue(start)
+            self.headings_box.setValue(headings)
+        finally:
+            self._syncing = False
+
+
 class FileButton(QPushButton):
     """The active file as a button: a folder icon and the file's name (shortened with an ellipsis), or "Open File"."""
 
@@ -165,6 +314,8 @@ class SidePanel(QFrame):
     start_row_changed = Signal(int)             # 0: automatic
     headings_row_changed = Signal(int)          # 0: automatic
     close_requested = Signal()
+    settings_requested = Signal()               # the "…" button (the window shows the overlay)
+    keywords_requested = Signal()               # the Keywords link on the turn page
 
     def __init__(self) -> None:
         super().__init__()
@@ -177,6 +328,10 @@ class SidePanel(QFrame):
         install_backdrop(self)                  # paints the same (see-through-able) background as the window
         self.setFixedWidth(0)
         self.setVisible(False)
+        self.settings = FileSettings()          # the overlay (a popup window of its own)
+        self.settings.start_changed.connect(self.start_row_changed)
+        self.settings.headings_changed.connect(self.headings_row_changed)
+        self.settings.layout_changed.connect(self._layout_toggled)
         shell = QHBoxLayout(self)
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
@@ -190,18 +345,18 @@ class SidePanel(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         shell.addWidget(body, 1)
-        self.header = QWidget()                 # the title and X, unless the title bar draws them
+        self.header = QWidget()                 # the title, "…" and X, unless the title bar draws them
         self.header.setProperty("keepMargins", True)
         top = QHBoxLayout(self.header)
         top.setContentsMargins(14, 8, 8, 0)
+        top.setSpacing(2)
         self.title_label = QLabel(TITLES["file"])
         self.title_label.setProperty("panelTitle", True)
         top.addWidget(self.title_label, 1)
-        self.close_button = QToolButton()
-        self.close_button.setProperty("chromeIcon", True)       # the flat, rounded-on-hover icon look
-        self.close_button.setToolTip("Close")
-        self.close_button.setAccessibleName("Close the Side Panel")
-        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.more_button = self._chrome_button("File Settings", "Show the File Settings")
+        self.more_button.clicked.connect(self.settings_requested)
+        top.addWidget(self.more_button)
+        self.close_button = self._chrome_button("Close", "Close the Side Panel")
         self.close_button.clicked.connect(self.close_requested)
         top.addWidget(self.close_button)
         outer.addWidget(self.header)
@@ -209,6 +364,16 @@ class SidePanel(QFrame):
         outer.addWidget(self.stack)
         self.stack.addWidget(self._scrolled(self._build_file_page()))
         self.stack.addWidget(self._scrolled(self._build_turn_page()))
+        self._explain()
+
+    @staticmethod
+    def _chrome_button(tip: str, name: str) -> QToolButton:
+        button = QToolButton()
+        button.setProperty("chromeIcon", True)       # the flat, rounded-on-hover icon look
+        button.setToolTip(tip)
+        button.setAccessibleName(name)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        return button
 
     @staticmethod
     def _scrolled(page: QWidget) -> QScrollArea:
@@ -221,7 +386,7 @@ class SidePanel(QFrame):
         return scroll
 
     def set_native_header(self, native: bool) -> None:
-        """The title bar draws the panel's title and X, so the ones inside the panel are hidden."""
+        """The title bar draws the panel's title, "…" and X, so the ones inside the panel are hidden."""
         self.header.setVisible(not native)
 
     # ------------------------------------------------------------------ #
@@ -236,11 +401,6 @@ class SidePanel(QFrame):
         layout.setSpacing(6)
         return layout
 
-    @staticmethod
-    def _number_box(special: str) -> NumberField:
-        """A boxed number field like the search and Term Helper fields; empty reads *special* (Automatic)."""
-        return NumberField(special)
-
     def _build_file_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
@@ -248,55 +408,32 @@ class SidePanel(QFrame):
         self.file_button = FileButton()
         self.file_button.clicked.connect(self.open_file_requested)
         layout.addWidget(self.file_button)
-        self.sheet_label = _note("")
-        self.sheet_label.setVisible(False)
-        layout.addWidget(self.sheet_label)
-        self.path_label = ElidedLabel("")                      # one line, shortened with an ellipsis
-        self.path_label.setProperty("panelNote", True)
-        self.path_label.setVisible(False)
-        layout.addWidget(self.path_label)
-        self.facts_label = _note("")                             # type, size, dates
-        self.facts_label.setVisible(False)
-        layout.addWidget(self.facts_label)
+        table = QGridLayout()                                    # facts about the file: labels and values line up, no borders
+        table.setContentsMargins(0, 2, 0, 2)
+        table.setHorizontalSpacing(14)
+        table.setVerticalSpacing(3)
+        table.setColumnStretch(1, 1)
+        self.fact_rows: dict[str, tuple[QLabel, ElidedLabel]] = {}
+        for row, name in enumerate(("Sheet", "Path", "Type", "Size", "Modified", "Created")):
+            label = QLabel(name)
+            label.setProperty("panelNote", True)                 # the label is muted
+            label.setIndent(0)
+            value = ElidedLabel("")                              # the value is plain text, on one line
+            value.setProperty("panelValue", True)
+            value.setMinimumWidth(10)
+            table.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop)
+            table.addWidget(value, row, 1)
+            self.fact_rows[name] = (label, value)
+            label.setVisible(False)
+            value.setVisible(False)
+        layout.addLayout(table)
         layout.addSpacing(4)
         layout.addWidget(_rule())
         layout.addSpacing(4)
-
-        self.start_heading = _heading("Starting Row")
-        layout.addWidget(self.start_heading)
-        self.start_spin = self._number_box(AUTOMATIC)
-        self.start_spin.valueChanged.connect(lambda n: None if self._syncing else self.start_row_changed.emit(n))
-        layout.addWidget(self.start_spin)
-        self.start_note = _note("")
-        layout.addWidget(self.start_note)
-
-        layout.addSpacing(2)
-        layout.addWidget(_heading("Sheet Layout"))
-        self.across_radio = QRadioButton("Columns Across")
-        self.down_radio = QRadioButton("Rows Down")
-        self._layout_group = QButtonGroup(page)
-        for radio, vertical, text in ((self.across_radio, False, "Headings run across the first row."),
-                                      (self.down_radio, True,
-                                       "Headings run down the first column; each turn fills the next column.")):
-            radio.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._layout_group.addButton(radio)
-            layout.addWidget(radio)
-            layout.addWidget(_note(text))
-            radio.toggled.connect(lambda on, v=vertical: self._layout_toggled(v) if on and not self._syncing else None)
-        self.headings_heading = _heading("Headings Row")
-        layout.addWidget(self.headings_heading)
-        self.headings_spin = self._number_box(AUTOMATIC)
-        self.headings_spin.valueChanged.connect(lambda n: None if self._syncing else self.headings_row_changed.emit(n))
-        layout.addWidget(self.headings_spin)
-        self.headings_note = _note("")
-        layout.addWidget(self.headings_note)
-
-        layout.addSpacing(4)
-        layout.addWidget(_rule())
-        layout.addSpacing(4)
-        layout.addWidget(_heading("Files"))
+        layout.addWidget(_heading("Available Files"))
+        layout.addWidget(_note("Spreadsheet files currently open on your computer."))
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Filter files")
+        self.search.setPlaceholderText("Search")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._filter)
         layout.addWidget(self.search)
@@ -312,28 +449,37 @@ class SidePanel(QFrame):
         self.available.itemClicked.connect(lambda item: self.file_chosen.emit(item.data(LIST_ROLE)))
         layout.addWidget(self.available, 1)
         layout.addStretch(0)                    # takes the room (and keeps the message at the top) while the list is hidden
-        self.across_radio.setChecked(True)
-        self._explain()
         return page
 
     def _build_turn_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
-        layout.addWidget(_heading("Each Turn"))
+        self.turn_intro = QLabel("Settings to control how each speak-write iteration (turn) is handled "
+                                 "(Voice activated with <a href=\"keywords\">Keywords</a>).")
+        self.turn_intro.setProperty("panelNote", True)
+        self.turn_intro.setTextFormat(Qt.TextFormat.RichText)
+        self.turn_intro.setWordWrap(True)
+        self.turn_intro.setOpenExternalLinks(False)
+        self.turn_intro.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.turn_intro.linkActivated.connect(lambda _: self.keywords_requested.emit())
+        layout.addWidget(self.turn_intro)
+        layout.addSpacing(4)
+        layout.addWidget(_rule())
+        layout.addSpacing(4)
         self.next_row_radio = QRadioButton("Next Row")
         self.append_radio = QRadioButton("Append To")
+        self.next_row_note, self.append_note = _note(""), _note("")
         self._mode_group = QButtonGroup(page)
-        for radio, mode, text in ((self.next_row_radio, NEXT_ROW, "Turn words are written to new rows"),
-                                  (self.append_radio, APPEND_TO, "Turn words are added to the same row")):
+        for radio, note, mode in ((self.next_row_radio, self.next_row_note, NEXT_ROW),
+                                  (self.append_radio, self.append_note, APPEND_TO)):
             radio.setCursor(Qt.CursorShape.PointingHandCursor)
             self._mode_group.addButton(radio)
             layout.addWidget(radio)
-            layout.addWidget(_note(text))
+            layout.addWidget(note)
             radio.toggled.connect(lambda on, m=mode: self.mode_changed.emit(m) if on and not self._syncing else None)
-        self.new_row_button = QPushButton("Next")                 # the Next button: the turn's row is over, start a fresh one
+        self.new_row_button = QPushButton("Next")                 # the Next button: moves the cursor on to the next row
         self.new_row_button.setProperty("outline", True)
         self.new_row_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.new_row_button.setToolTip("Stop adding to the current row: the next turn starts a fresh one")
         self.new_row_button.clicked.connect(self.new_row_requested)
         layout.addWidget(self.new_row_button)
         layout.addStretch(1)
@@ -349,6 +495,7 @@ class SidePanel(QFrame):
         """Show the ``"file"`` or the ``"turn"`` page."""
         self.stack.setCurrentIndex(1 if page == TURN_PAGE else 0)
         self.title_label.setText(TITLES[TURN_PAGE if page == TURN_PAGE else FILE_PAGE])
+        self.more_button.setVisible(page != TURN_PAGE)           # file settings belong to the file page
 
     @property
     def page(self) -> str:
@@ -356,10 +503,11 @@ class SidePanel(QFrame):
         return TURN_PAGE if self.stack.currentIndex() == 1 else FILE_PAGE
 
     def set_colors(self, text: str, accent: str = "#7A55C2") -> None:
-        """Redraw the icons (the X, the search magnifier, the file and Next buttons) in the theme's colours."""
+        """Redraw the icons (the "…" and X, the search magnifier, the file and Next buttons) in the theme's colours."""
         from quill.ui.icons import make_icon
         self._colors = (text, accent)
         self.close_button.setIcon(make_icon("close", text, 16))
+        self.more_button.setIcon(make_icon("more", text, 16))
         if not self.search.actions():
             self.search.addAction(make_icon("search", text, 15), QLineEdit.ActionPosition.LeadingPosition)
         else:
@@ -374,22 +522,32 @@ class SidePanel(QFrame):
             make_icon("folder-open" if self._has_file else "folder", text, 16).pixmap(16, 16))
 
     def set_active(self, name: str, sheet: str = "", path: str = "", kind: str = "") -> None:
-        """Show the active file: its name on the button (the full *path* on hover), the sheet, and quiet facts about it
-        (the path on one line, its *kind* of program or format, size and dates)."""
+        """Show the active file: its name on the button (the full *path* on hover) and a table of quiet facts about it
+        (sheet, path on one line, *kind* of program or format, size, dates as MM/DD/YY)."""
         self._has_file = bool(name)
         self.file_button.text_label.setFullText(name or NO_FILE_TEXT, path or name or "Choose a spreadsheet file")
         self._draw_file_icon()
-        self.sheet_label.setText(f"Sheet: {sheet}" if name and sheet else "")
-        self.sheet_label.setVisible(bool(name and sheet))
-        self.path_label.setFullText(path, path)
-        self.path_label.setVisible(bool(name and path))
-        facts = []
+        facts: dict[str, tuple[str, str]] = {}
         if name:
+            if sheet:
+                facts["Sheet"] = (sheet, sheet)
+            if path:
+                facts["Path"] = (path, path)
             if kind:
-                facts.append(f"Type: {kind}")
-            facts += file_facts(path) if path else []
-        self.facts_label.setText("\n".join(facts))
-        self.facts_label.setVisible(bool(facts))
+                facts["Type"] = (kind, kind)
+            for label, value in (file_facts(path) if path else []):
+                facts[label] = (value, value)
+        for label, (name_label, value_label) in self.fact_rows.items():
+            text, tip = facts.get(label, ("", ""))
+            value_label.setFullText(text, tip)
+            name_label.setVisible(bool(text))
+            value_label.setVisible(bool(text))
+        self._draw_file_icon()
+
+    def fact(self, label: str) -> str:
+        """The value shown for *label* in the file table ("" while it is hidden)."""
+        name_label, value = self.fact_rows[label]
+        return value.full_text if not name_label.isHidden() else ""
 
     def set_available(self, entries: list[tuple[str, str, object]]) -> None:
         """List the other open spreadsheets as ``(name, hover text, data)`` (the data comes back with ``file_chosen``)."""
@@ -425,29 +583,33 @@ class SidePanel(QFrame):
         self.layout_changed.emit(vertical)
 
     def _explain(self) -> None:
-        """Word the starting and headings fields for the layout: a row when headings run across, a column when down."""
+        """Word the turn page for the layout: rows when headings run across the top, columns when they run down."""
         unit = "column" if self._vertical else "row"
-        self.start_heading.setText(f"Starting {unit.title()}")
-        self.headings_heading.setText(f"Headings {unit.title()}")
-        self.start_note.setText(f"'{AUTOMATIC}' determines the first empty {unit} after headings or choose a different starting {unit}.")
-        self.headings_note.setText(f"'{AUTOMATIC}' finds the {unit} that holds the headings or choose it yourself.")
+        self.next_row_radio.setText(f"Next {unit.title()}")
+        self.next_row_note.setText(f"Turn words are written to new {unit}s")
+        self.append_note.setText(f"Turn words are added to the same {unit}")
+        self.new_row_button.setToolTip(f"Move cursor to the next {unit}")
 
     def set_options(self, mode: str, vertical: bool, start_row: int = 0, headings_row: int = 0) -> None:
-        """Show the saved options (without reporting them back as changes)."""
+        """Show the saved options on both pages and the overlay (without reporting them back as changes)."""
         self._syncing = True
         try:
             self._vertical = bool(vertical)
             (self.append_radio if mode == APPEND_TO else self.next_row_radio).setChecked(True)
-            (self.down_radio if vertical else self.across_radio).setChecked(True)
-            self.start_spin.setValue(start_row)
-            self.headings_spin.setValue(headings_row)
         finally:
             self._syncing = False
+        self.settings.set_options(vertical, start_row, headings_row)
         self._explain()
         self.new_row_button.setEnabled(mode == APPEND_TO)
 
     def set_turn(self, mode: str, vertical: bool | None = None, start_row: int | None = None, headings_row: int | None = None) -> None:
         """Show the saved mode (and, when given, the layout, starting row and headings row)."""
         self.set_options(mode, self._vertical if vertical is None else vertical,
-                         self.start_spin.value() if start_row is None else start_row,
-                         self.headings_spin.value() if headings_row is None else headings_row)
+                         self.settings.start_box.value() if start_row is None else start_row,
+                         self.settings.headings_box.value() if headings_row is None else headings_row)
+
+    def show_settings(self, global_point) -> None:
+        """Show the file settings overlay with its top-right corner at *global_point*."""
+        self.settings.adjustSize()
+        self.settings.move(global_point.x() - self.settings.width(), global_point.y())
+        self.settings.show()
