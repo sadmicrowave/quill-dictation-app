@@ -2568,7 +2568,7 @@ class TestSettingsRound5(unittest.TestCase):
         from quill.ui.theme import stylesheet_for
         for key, size in (("standard", "40 MB"), ("better", "130 MB"), ("best", "145 MB")):
             row = self.d.model_rows[key]
-            self.assertEqual(row.title_label.text(), key.title())
+            self.assertEqual(row.title_label.text(), {"standard": "Quick", "better": "Broad", "best": "Careful"}[key])
             self.assertTrue(row.title_label.property("modelName"))
             self.assertEqual(row.size_label.text(), size)
             self.assertTrue(row.size_label.property("modelSize"))
@@ -2603,8 +2603,8 @@ class TestSettingsRound5(unittest.TestCase):
         self.assertFalse(rows["better"].uninstall_button.isHidden())
         self.assertTrue(rows["best"].uninstall_button.isHidden())          # not installed
         tip = rows["better"].uninstall_button.toolTip()
-        self.assertIn("Removes the Better model", tip)
-        self.assertIn("Standard", tip)                                     # what takes over
+        self.assertIn("Removes the Broad model", tip)
+        self.assertIn("Quick", tip)                                     # what takes over
         self.assertNotIn("once", tip)
 
     def test_uninstall_asks_the_application(self):
@@ -2837,3 +2837,16 @@ class TestGreyDropDownEntries(unittest.TestCase):
             rule = sheet[start: sheet.index("}", start)]
             self.assertIn(colors_for(dark, "violet")["disabled"], rule)
             self.assertGreater(start, sheet.index("QComboBox QAbstractItemView::item:hover"))      # later, so it wins
+
+
+class TestModelNames(unittest.TestCase):
+    def test_the_models_are_called_quick_broad_and_careful_everywhere_the_user_sees_them(self):
+        from quill.app import QUALITY_LABELS
+        from quill.listener.model import BETTER, STANDARD
+        from quill.ui.settings_dialog import SPEECH_MODELS
+        self.assertEqual(QUALITY_LABELS, {"standard": "Quick", "better": "Broad", "best": "Careful"})
+        self.assertEqual([name for _, name, *_ in SPEECH_MODELS], ["Quick", "Broad", "Careful"])
+        self.assertEqual((STANDARD.label, BETTER.label), ("Quick", "Broad"))
+        for _, _, _, description, cost in SPEECH_MODELS:
+            for old in ("Standard", "Better", "Best", "Whisper"):
+                self.assertNotIn(old, description + cost)

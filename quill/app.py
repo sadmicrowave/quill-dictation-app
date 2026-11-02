@@ -125,7 +125,7 @@ OPEN_FILES_EVERY_MS = 30000
 
 
 #: The speech quality choices and their names in the window.
-QUALITY_LABELS = {"standard": "Standard", "better": "Better", "best": "Best"}
+QUALITY_LABELS = {"standard": "Quick", "better": "Broad", "best": "Careful"}
 
 
 class QuillApp:
@@ -606,19 +606,19 @@ class QuillApp:
             if better is not None:
                 self._loaded_quality = "better"
                 return better
-            self.window.append_log("The Better speech model is not downloaded yet: using the Standard one. "
+            self.window.append_log("The Broad speech model is not installed yet: using the Quick one. "
                                    "Download it in Settings, under General.", "warning")
         self._loaded_quality = "standard"
         return self._model_finder(str(self.settings.preferences["model_path"]))
 
     def _make_refiner(self):
-        """The Whisper second pass if "Best" is chosen and it can run (engine and model present); else None."""
+        """The Whisper second pass if "Careful" is chosen and it can run (engine and model present); else None."""
         if self.settings.preferences["speech_quality"] != "best":
             return None
         folder = self._whisper_finder()
         if folder is None or not self._whisper_engine():
-            self.window.append_log("The Best speech model is not ready (download it in Settings, under General): "
-                                   "using the Standard one.", "warning")
+            self.window.append_log("The Careful speech model is not ready (install it in Settings, under Speech Model): "
+                                   "using the Quick one.", "warning")
             return None
         self._loaded_quality = "best"
         return self._refiner_factory(folder, self._whisper_hint)
@@ -651,7 +651,7 @@ class QuillApp:
 
     def quality_removable(self, quality: str) -> bool:
         """Whether Settings may offer to uninstall *quality*: it was downloaded (a bundled model stays), and taking it
-        away must leave something to listen with (Best builds on Standard, so Standard stays while Best is installed)."""
+        away must leave something to listen with (Careful builds on Quick, so Quick stays while Careful is installed)."""
         folder = self._model_folder(quality)
         if folder is None:
             return False
@@ -715,7 +715,7 @@ class QuillApp:
             set_partial(self.relay.partial.emit)                      # words appear in the Voice Stream as they are heard
         set_refiner = getattr(self.listener, "set_refiner", None)
         if set_refiner is not None:
-            set_refiner(self._make_refiner())                         # "Best": each finished phrase is re-read by Whisper
+            set_refiner(self._make_refiner())                         # "Careful": each finished phrase is re-read by Whisper
         set_level = getattr(self.listener, "set_level_callback", None)
         if set_level is not None:
             set_level(self.relay.level.emit)                          # the sound lines follow the user's voice
@@ -1630,7 +1630,7 @@ class QuillApp:
         """Download the speech model for *quality* on a background thread."""
         quality = quality if quality in QUALITY_LABELS else "standard"
         if quality == "best" and not self._whisper_engine():
-            self.window.append_log("The Best speech model is not available in this build of Quill.", "error")
+            self.window.append_log("The Careful speech model is not available in this build of Quill.", "error")
             return
         spec = SPECS.get(quality)
         self._downloading = quality

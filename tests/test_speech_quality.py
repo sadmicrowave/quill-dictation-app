@@ -92,7 +92,7 @@ class TestChoosingTheModel(unittest.TestCase):
         self.settings.preferences["speech_quality"] = "better"
         self.app.start()
         self.assertEqual(self.used, [self.standard])
-        self.assertIn("Better speech model is not downloaded", self.app.window.log.toPlainText())
+        self.assertIn("Broad speech model is not installed", self.app.window.log.toPlainText())
 
     def test_switching_in_settings_restarts_the_listener_with_the_other_model(self):
         self.better_present = True

@@ -37,14 +37,14 @@ class ModelSpec:
     size_mb: int
 
 
-STANDARD = ModelSpec("standard", MODEL_NAME, MODEL_URL, MODEL_SHA256, "Standard", 40)
+STANDARD = ModelSpec("standard", MODEL_NAME, MODEL_URL, MODEL_SHA256, "Quick", 40)
 
 #: A larger English model (about 130 MB to download, 214 MB unpacked): the same streaming recogniser with a
 #: richer graph, so it mishears less. Its checksum is that of the official archive as downloaded on 1 Nov 2026.
 BETTER = ModelSpec(
     "better", "vosk-model-en-us-0.22-lgraph",
     "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip",
-    "d9838b4aaa82a75c4a17f5aca300eaca129aaab2a7cbf951bafbb500eb9c4334", "Better", 130)
+    "d9838b4aaa82a75c4a17f5aca300eaca129aaab2a7cbf951bafbb500eb9c4334", "Broad", 130)
 
 SPECS = {spec.key: spec for spec in (STANDARD, BETTER)}
 

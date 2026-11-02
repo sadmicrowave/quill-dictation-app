@@ -87,20 +87,20 @@ GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
 
 #: The speech models, in the order they are offered: (key, name, download size, what it does for the quality).
 SPEECH_MODELS = (
-    ("standard", "Standard", "40 MB",
+    ("standard", "Quick", "40 MB",
      "A small, fast model that shows your words as you say them. Good for clear speech and everyday words; it can "
      "mishear unusual words, names and numbers.",
      "Uses about 165 MB of memory. Keeps up with your speech."),
-    ("better", "Better", "130 MB",
+    ("better", "Broad", "130 MB",
      "A larger model with a much bigger vocabulary. It still shows words as you speak, but unusual words, names and "
      "numbers are heard correctly far more often.",
-     "Uses about 415 MB of memory (about 250 MB more than Standard). It decodes about as fast as you speak, so words "
+     "Uses about 415 MB of memory (about 250 MB more than Quick). It decodes about as fast as you speak, so words "
      "can trail by around a second."),
-    ("best", "Best", "145 MB",
+    ("best", "Careful", "145 MB",
      "Adds a second listen: after each pause, the whole phrase is re-read by a model that uses the words around "
      "each one to decide what it was, which fixes most of the mistakes that are left. The corrected words replace the "
-     "live ones a moment after you pause. It builds on the Standard model.",
-     "Uses about 700 MB of memory (about 535 MB more than Standard). Each phrase is corrected about half a second after "
+     "live ones a moment after you pause. It builds on the Quick model.",
+     "Uses about 700 MB of memory (about 535 MB more than Quick). Each phrase is corrected about half a second after "
      "you pause."),
 )
 

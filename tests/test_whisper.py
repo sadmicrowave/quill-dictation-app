@@ -184,7 +184,7 @@ class TestBestInTheApp(unittest.TestCase):
         self.settings.preferences["speech_quality"] = "best"
         self.app.start()
         self.assertIsNone(self.listeners[0].refiner)
-        self.assertIn("Best speech model is not ready", self.app.window.log.toPlainText())
+        self.assertIn("Careful speech model is not ready", self.app.window.log.toPlainText())
 
     def test_standard_has_no_refiner(self):
         self.app.start()

@@ -80,7 +80,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "auto_stop_seconds": 10,  # ... for this many seconds of quiet
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
-    "speech_quality": "standard",   # "standard" | "better" | "best": which speech model listens (Better and Best are downloads)
+    "speech_quality": "standard",   # "standard" | "better" | "best": which speech model listens (Broad and Careful are installs)
     "sorting_sounds": True,   # Term Helper answers (added, ignored, a problem) play their confirmation sound
     "sorting_follows_opacity": False,   # the Term Helper fades like the main window (off: it stays solid and easy to read)
     "turn_mode": "next_row",  # "next_row": each turn is a new row | "append": each turn adds to the same row
