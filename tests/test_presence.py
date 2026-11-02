@@ -63,8 +63,8 @@ class TestControllerWithoutWorkbook(PresenceCase):
         self.assertEqual(self.speaker.said, [])
 
     def test_help_text_says_how_to_proceed(self):
-        self.assertIn("Open a workbook in your spreadsheet program", NO_WORKBOOK_HELP)
-        self.assertIn("Open Spreadsheet File", NO_WORKBOOK_HELP)
+        self.assertIn("Open a spreadsheet and Quill connects to it automatically", NO_WORKBOOK_HELP)
+        self.assertIn("Open File", NO_WORKBOOK_HELP)
         self.assertIn("start listening", NO_WORKBOOK_HELP.lower())
 
     def test_workbook_opened_later_is_picked_up_by_next_phrase(self):

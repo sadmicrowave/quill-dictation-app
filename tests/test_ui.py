@@ -128,7 +128,7 @@ class TestSettingsDialog(unittest.TestCase):
         self.assertEqual(rows, self.settings.keywords)
 
     def test_edit_persists(self):
-        self.dlg.table.item(0, 0).setText("zzz go")
+        self.dlg.table.cellWidget(0, 0).setText("zzz go")
         self.dlg.table.cellWidget(0, 1).setCurrentIndex(0)   # START_LISTENING first
         # keep Start/Stop present after the edit
         self.assertTrue(self.dlg.try_accept())

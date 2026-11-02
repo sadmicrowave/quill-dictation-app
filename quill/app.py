@@ -715,12 +715,12 @@ class QuillApp:
         remembered = self.controller.bridge.workbook_path if self.connected else ""   # where the active file is
         remembered = remembered or str(self.settings.preferences["workbook_file"])
         start = str(pathlib.Path(remembered).parent) if remembered else str(pathlib.Path.home() / "Documents")
-        path, _ = QFileDialog.getOpenFileName(self.window.widget, "Open Spreadsheet File", start,
+        path, _ = QFileDialog.getOpenFileName(self.window.widget, "Open File", start,
                                               "Spreadsheets (*.xlsx *.csv *.tsv);;Excel Workbooks (*.xlsx);;Text Tables (*.csv *.tsv)")
         return path or None
 
     def choose_spreadsheet_file(self) -> None:
-        """File > Open Spreadsheet File…: pick an .xlsx or .csv and work on it directly (no Excel needed)."""
+        """File > Open File…: pick an .xlsx or .csv and work on it directly (no Excel needed)."""
         path = self._file_chooser()
         if path and self.open_workbook_file(path):
             self._launch_unless_open(path)
@@ -1034,7 +1034,7 @@ class QuillApp:
             return
         self._titlebar = add_titlebar_button(
             self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
-            mini=self.window.mini, extra=[(SYMBOL_FOLDER, "Open Spreadsheet File", lambda: self.window.toggle_panel(FILE_PAGE)),
+            mini=self.window.mini, extra=[(SYMBOL_FOLDER, "Open File", lambda: self.window.toggle_panel(FILE_PAGE)),
                                           (SYMBOL_TURN, "Turn Settings", lambda: self.window.toggle_panel(TURN_PAGE)),
                                           (SYMBOL_SETTINGS, "Settings", self.open_settings)],
             on_panel_close=self.window.close_panel)
@@ -1061,7 +1061,7 @@ class QuillApp:
             return
         from quill.ui.icons import titlebar_png
         png = titlebar_png("folder-open" if has_file else "folder")
-        tip = (f"{name}\nSheet: {sheet}" if has_file and sheet else name if has_file else "Open Spreadsheet File")
+        tip = (f"{name}\nSheet: {sheet}" if has_file and sheet else name if has_file else "Open File")
         self._titlebar.set_extra_image(0, png, tip, muted=not has_file)
 
     def _sync_titlebar_undo(self) -> None:

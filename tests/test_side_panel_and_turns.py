@@ -1814,5 +1814,232 @@ class TestResizableAreas(PanelApp):
         self.assertFalse(self.w.row_grip.isVisibleTo(self.w.widget))
 
 
+# --------------------------------------------------------------------------- #
+# Round four                                                                   #
+# --------------------------------------------------------------------------- #
+
+class TestControlsFollowTheirStyle(unittest.TestCase):
+    """One style per control type, in every window and page (see the ui-controls-one-style note)."""
+
+    def windows(self):
+        from quill.parser.vocab import Vocabulary
+        from quill.ui.help_window import HelpWindow
+        from quill.ui.settings_dialog import SettingsDialog
+        from quill.ui.sorting_window import SortingWindow
+        main = MainWindow()
+        main.setup()
+        vocab = Vocabulary()
+        vocab.load({"Size": ["M", "L"]}, [])
+        sorting = SortingWindow(vocab, lambda *a: None)
+        sorting.setup()
+        sorting.set_items([(None, "medium"), ("Size", "teal")])
+        dialog = SettingsDialog(Settings.defaults())
+        widget = dialog.build()
+        for title in list(dialog._nav_items):
+            dialog.nav.setCurrentRow(dialog._nav_row(title))
+        help_window = HelpWindow()
+        help_window.setup()
+        return {"main": main.widget, "overlay": main.panel.settings, "sorting": sorting.widget,
+                "settings": widget, "help": help_window._window}
+
+    def test_every_drop_down_is_the_flat_one(self):
+        from PySide6.QtWidgets import QComboBox
+        from quill.ui.settings_widgets import FlatCombo
+        odd = []
+        for name, root in self.windows().items():
+            for combo in root.findChildren(QComboBox):
+                if not isinstance(combo, FlatCombo):
+                    odd.append(f"{name}: {type(combo).__name__}")
+        self.assertEqual(odd, [])
+
+    def test_the_keyword_table_uses_flat_drop_downs_and_pills(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        from quill.ui.settings_widgets import FlatCombo, PillField
+        dialog = SettingsDialog(Settings.defaults())
+        dialog.build()
+        dialog.nav.setCurrentRow(dialog._nav_row("Keywords"))
+        self.assertGreater(dialog.table.rowCount(), 5)
+        for r in range(dialog.table.rowCount()):
+            self.assertIsInstance(dialog.table.cellWidget(r, 1), FlatCombo)
+            pill = dialog.table.cellWidget(r, 0)
+            self.assertIsInstance(pill, PillField)
+            self.assertTrue(pill.field.property("pillField"))
+
+    def test_the_phrase_pill_wears_the_same_colours_as_a_spoken_word_in_text(self):
+        from quill.ui.theme import PILL_BG, PILL_FG, stylesheet_for
+        from quill.ui.widgets import PILL_STYLE, pill
+        self.assertIn(PILL_BG, PILL_STYLE)
+        self.assertIn(PILL_FG, PILL_STYLE)
+        self.assertIn(PILL_BG, pill("yes"))
+        for dark in (False, True):
+            sheet = stylesheet_for(dark)
+            rule = sheet[sheet.index('QLineEdit[pillField="true"] {'): sheet.index("}", sheet.index('QLineEdit[pillField="true"] {'))]
+            self.assertIn(PILL_BG, rule)
+            self.assertIn(PILL_FG, rule)
+
+    def test_editing_a_phrase_pill_is_what_gets_saved(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(Settings.defaults())
+        dialog.build()
+        dialog.nav.setCurrentRow(dialog._nav_row("Keywords"))
+        dialog.table.cellWidget(0, 0).setText("begin dictation")
+        self.assertEqual(dialog.collect_rows()[0][0], "begin dictation")
+
+    def test_the_pill_grows_with_its_words(self):
+        from quill.ui.settings_widgets import PillField
+        short, long = PillField("go"), PillField("a much longer spoken phrase")
+        self.assertGreater(long.field.width(), short.field.width())
+
+    def test_every_switch_slider_and_spin_box_is_the_guarded_kind(self):
+        from PySide6.QtWidgets import QCheckBox, QSlider, QSpinBox
+        from quill.ui.settings_widgets import GuardedSlider, GuardedSpinBox, ToggleSwitch
+        odd = []
+        for name, root in self.windows().items():
+            for kind, wanted in ((QCheckBox, ToggleSwitch), (QSlider, GuardedSlider), (QSpinBox, GuardedSpinBox)):
+                for widget in root.findChildren(kind):
+                    if not isinstance(widget, wanted) and not widget.objectName().startswith("qt_"):
+                        odd.append(f"{name}: {type(widget).__name__}")
+        self.assertEqual(odd, [])
+
+
+class TestTextsAndMenus(PanelApp):
+    def test_the_file_menu_and_the_tray_menu_say_open_file(self):
+        self.assertEqual(self.app.window.open_file_action.text(), "Open File…")
+        labels = [a.text() for a in self.app.tray._menu.actions()]
+        self.assertIn("Open File…", labels)
+        self.assertFalse([t for t in labels if "Spreadsheet File" in t])
+
+    def test_no_text_anywhere_still_says_open_spreadsheet_file(self):
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parents[1] / "quill"
+        offenders = [str(f.relative_to(root)) for f in root.rglob("*") if f.suffix in (".py", ".md")
+                     and "Open Spreadsheet File" in f.read_text(encoding="utf-8")]
+        self.assertEqual(offenders, [])
+
+    def test_the_no_spreadsheet_error_reads_as_asked(self):
+        from quill.controller import NO_WORKBOOK_HELP
+        self.assertEqual(NO_WORKBOOK_HELP, "No spreadsheet is connected. Open a spreadsheet and Quill connects to it "
+                                           "automatically, or choose Open File in the File menu.")
+
+    def test_the_pill_tooltip_stops_before_connect_one(self):
+        from quill.ui.widgets import connection_tip
+        tip = connection_tip()
+        self.assertIn("Not connected", tip)
+        self.assertIn("read lists from", tip)
+        for gone in ("Connect one", "Connect One", "Spreadsheet program", "Open File", "Then press"):
+            self.assertNotIn(gone, tip)
+
+
+class TestTitleBarScale(unittest.TestCase):
+    def test_every_window_gets_a_toolbar_so_its_bar_and_buttons_are_the_larger_size(self):
+        from quill.ui import chrome
+        from tests.test_titlebar_and_refresh import FakeAppKit
+
+        calls = []
+
+        class Window:
+            def toolbar(self): return None
+            def setToolbar_(self, t): calls.append(("toolbar", t))
+            def setToolbarStyle_(self, s): calls.append(("style", s))
+
+        class Toolbar:
+            @classmethod
+            def alloc(cls): return cls()
+            def initWithIdentifier_(self, name): calls.append(("id", name)); return self
+            def setShowsBaselineSeparator_(self, v): calls.append(("separator", v))
+
+        kit = FakeAppKit()
+        kit.NSToolbar = Toolbar
+        self.assertTrue(chrome.tall_titlebar(Window(), kit))
+        self.assertIn(("id", chrome.TOOLBAR_ID), calls)
+        self.assertIn(("style", 3), calls)                                   # the unified (taller) style
+        self.assertIn(("separator", False), calls)
+
+    def test_a_window_that_already_has_a_toolbar_is_left_alone_and_a_failure_is_quiet(self):
+        from quill.ui import chrome
+
+        class Has:
+            def toolbar(self): return object()
+
+        self.assertTrue(chrome.tall_titlebar(Has(), object()))
+        self.assertFalse(chrome.tall_titlebar(object(), object()))
+
+    def test_mac_chrome_applies_it_to_every_window_it_styles(self):
+        import inspect
+        from quill.ui import chrome
+        self.assertIn("tall_titlebar(window, appkit)", inspect.getsource(chrome.mac_chrome))
+
+    def test_the_icons_are_bigger_than_before_and_all_the_same_box(self):
+        from quill.ui import chrome
+        self.assertGreater(chrome._ICON_WIDTH, 30)
+        self.assertGreater(chrome._ICON_HEIGHT, 24)
+        self.assertGreater(chrome.SYMBOL_POINTS, 14)
+
+    def test_every_title_bar_group_levels_itself_by_itself(self):
+        from quill.ui import chrome
+        import inspect
+        self.assertIn("result.settle()", inspect.getsource(chrome.add_titlebar_button))
+
+
+class TestBlurIsReallyBlur(unittest.TestCase):
+    def test_the_blur_view_is_never_half_faded(self):
+        """A half-faded blur lets the sharp desktop through, which looked like plain transparency."""
+        from quill.ui import chrome
+
+        class View:
+            def __init__(self): self.alpha = None; self._id = ""; self.layer_color = None
+            @classmethod
+            def alloc(cls): return cls()
+            def initWithFrame_(self, f): return self
+            def setIdentifier_(self, i): self._id = i
+            def identifier(self): return self._id
+            def setMaterial_(self, m): pass
+            def setBlendingMode_(self, m): pass
+            def setState_(self, m): pass
+            def setAutoresizingMask_(self, m): pass
+            def setAlphaValue_(self, a): self.alpha = a
+            def setWantsLayer_(self, v): pass
+            def setFrame_(self, f): pass
+            def layer(self): return type("L", (), {"setBackgroundColor_": lambda s, c: setattr(self, "layer_color", c)})()
+            def bounds(self): return type("B", (), {"size": type("S", (), {"width": 100, "height": 100})()})()
+            def frame(self): return type("F", (), {"size": type("S", (), {"width": 100, "height": 80})()})()
+
+        class Holder(View):
+            def __init__(self): super().__init__(); self.subviews_ = []
+            def subviews(self): return self.subviews_
+            def addSubview_positioned_relativeTo_(self, v, pos, rel): self.subviews_.append(v)
+            def bounds(self): return type("B", (), {"size": type("S", (), {"width": 100, "height": 100})()})()
+
+        class Color:
+            @staticmethod
+            def colorWithDeviceRed_green_blue_alpha_(r, g, b, a): return type("C", (), {"CGColor": lambda s: ("color", a)})()
+
+        kit = type("Kit", (), {"NSVisualEffectView": View, "NSView": View, "NSColor": Color})
+        holder = Holder()
+        view = type("V", (), {"superview": lambda s: holder, "frame": lambda s: type("F", (), {"size": type("S", (), {"width": 100, "height": 80})()})()})()
+        for strength in (0.2, 0.6, 1.0):
+            chrome._set_blur(view, kit, strength, None, (0.1, 0.1, 0.1, 0.4))
+            effect = next(v for v in holder.subviews_ if v.identifier() == chrome.BLUR_ID)
+            self.assertEqual(effect.alpha, 1.0, strength)                              # always the whole blur
+        frost = next(v for v in holder.subviews_ if v.identifier() == chrome.FROST_ID)
+        self.assertAlmostEqual(frost.layer_color[1], chrome.FROST_MAX * 1.0)           # the slider sets the frost instead
+
+    def test_the_opacity_no_longer_weakens_the_blur(self):
+        import inspect
+        from quill.ui import chrome
+        self.assertNotIn("min(1.0, opacity / 100)", inspect.getsource(chrome.mac_chrome))
+
+
+class TestNavCaptions(unittest.TestCase):
+    def test_captions_are_not_selectable_so_they_are_not_clickable(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(Settings.defaults())
+        dialog.build()
+        captions = [dialog.nav.item(i) for i in range(dialog.nav.count()) if not dialog.nav.item(i).data(Qt.ItemDataRole.UserRole)]
+        self.assertGreaterEqual(len(captions), 2)
+        for caption in captions:
+            self.assertFalse(caption.flags() & Qt.ItemFlag.ItemIsSelectable)
+
+
 if __name__ == "__main__":
     unittest.main()

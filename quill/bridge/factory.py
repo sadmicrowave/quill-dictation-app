@@ -8,7 +8,7 @@ from quill.bridge.base import WorkbookBridge
 
 def startup_bridge(settings, cli_path: str | None = None, factory=None) -> WorkbookBridge:
     """The bridge to start with: a file given on the command line (a developer convenience), else the
-    spreadsheet file the user last opened with *Open Spreadsheet File* (if it is still there), else live Excel.
+    spreadsheet file the user last opened with *Open File* (if it is still there), else live Excel.
     """
     factory = factory or get_bridge
     path = cli_path

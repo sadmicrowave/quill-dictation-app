@@ -18,7 +18,7 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 No spreadsheet app open? Quill can fill a file by itself.
 
 1. Press the **folder** icon in the title bar, left of the turn and Settings icons. The **side panel** eases in on the right (press the folder again to ease it away). The icon is grey and closed while no file is open, and solid and open once one is; hover it to see the file's name and the open sheet.
-2. The panel's **Active File** section is one button: it reads **Open File** (with a folder) until a file is active, then shows the file's name. Press it for the standard file window, which opens where the active file is (or use **File > Open Spreadsheet File…**), and pick an `.xlsx` or a `.csv` file. Under it, a small table: Sheet, Path (one line), Type (Excel, LibreOffice, CSV ...), Size, Modified and Created (MM/DD/YY).
+2. The panel's **Active File** section is one button: it reads **Open File** (with a folder) until a file is active, then shows the file's name. Press it for the standard file window, which opens where the active file is (or use **File > Open File…**), and pick an `.xlsx` or a `.csv` file. Under it, a small table: Sheet, Path (one line), Type (Excel, LibreOffice, CSV ...), Size, Modified and Created (MM/DD/YY).
    Pressing **Start** with no file open opens this window for you.
 3. Dictate. Quill remembers the file next time.
 

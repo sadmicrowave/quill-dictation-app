@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QSlider, QSpinBox, QStyle,
+    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QSlider, QSpinBox, QStyle,
     QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -182,6 +182,47 @@ class FlatCombo(GuardedCombo):
         self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.setMinimumContentsLength(8)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+
+class PillField(QWidget):
+    """An editable spoken phrase drawn as the pill every spoken word or phrase wears in Quill (the same colours as
+    ``widgets.pill``), left-aligned in its cell and as wide as its text.
+
+    ``field`` is the line edit; ``text()`` and ``setText()`` pass through.
+    """
+
+    focused = Signal()
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__()
+        self.setProperty("keepMargins", True)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(6, 0, 6, 0)
+        self.field = QLineEdit(text)
+        self.field.setProperty("pillField", True)
+        self.field.setPlaceholderText("phrase")
+        self.field.setToolTip("The words you say. Click to change them")
+        self.field.textChanged.connect(self._fit)
+        self.field.installEventFilter(self)
+        row.addWidget(self.field, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addStretch(1)
+        self._fit()
+
+    def _fit(self, *_args) -> None:
+        """As wide as the words (never narrower than a short word)."""
+        text = self.field.text() or self.field.placeholderText()
+        self.field.setFixedWidth(max(80, self.field.fontMetrics().horizontalAdvance(text) + 16))
+
+    def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
+        if obj is self.field and event.type() == QEvent.Type.FocusIn:
+            self.focused.emit()
+        return False
+
+    def text(self) -> str:
+        return self.field.text()
+
+    def setText(self, text: str) -> None:                          # noqa: N802 (Qt name)
+        self.field.setText(text)
 
 
 class ToggleSwitch(QCheckBox):

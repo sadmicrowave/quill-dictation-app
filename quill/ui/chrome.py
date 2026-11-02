@@ -282,10 +282,13 @@ def _dwm_setter() -> DwmSetter | None:
 #: Identifier of the blur view Quill adds, so it can be found and removed again.
 BLUR_ID = "quillBlur"
 TINT_ID = "quillTint"
+FROST_ID = "quillFrost"
+#: The most the window's colour is washed over the blur (at the slider's top).
+FROST_MAX = 0.45
 
 #: NSVisualEffectView settings: Sidebar material, blend with what is behind the window, always active.
 _MATERIAL_SIDEBAR, _BEHIND_WINDOW, _STATE_ACTIVE = 7, 0, 1
-_NS_WINDOW_BELOW = -1
+_NS_WINDOW_BELOW, _NS_WINDOW_ABOVE = -1, 1
 _NS_VIEW_SIZABLE = 2 | 16                  # width and height
 _NS_VIEW_WIDTH, _NS_VIEW_MIN_Y_MARGIN = 2, 8
 
@@ -312,21 +315,46 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
         return False
     r, g, b = (int(colors["bg"][i:i + 2], 16) / 255 for i in (1, 3, 5))
     window.setTitlebarAppearsTransparent_(True)
+    tall_titlebar(window, appkit)
     strength = max(0, min(100, blur)) / 100
     window.setOpaque_(not (strength > 0 or opacity < 100))   # a see-through window must not be marked opaque
     # The window fades as a whole (theme.apply_opacity); its blur is the window server's own (see _set_blur).
     # No blur: the window fades as a whole (theme.apply_opacity) over a solid backing. Blur: the backing is
     # clear, so the vibrancy layer (the blurred desktop) is what shows through the see-through background.
     alpha = 0.0 if strength > 0 and opacity < 100 else 1.0
-    window.setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, alpha))
+    window.setBackgroundColor_(appkit.NSColor.colorWithDeviceRed_green_blue_alpha_(r, g, b, alpha))
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
     tint = (r, g, b, max(0.08, opacity / 100)) if opacity < 100 else (r, g, b, 1.0)
-    # the frosted layer fades with the window, or a dark one would stay dark however low the opacity
-    glass = max(0.03, strength * min(1.0, opacity / 100)) if strength > 0 else 0.0
+    glass = strength
     _set_blur(view, appkit, glass, window, tint)
     window.invalidateShadow()               # the shadow follows the visible shape
     return True
+
+
+#: NSWindowToolbarStyleUnified: the taller title bar (and the larger close / minimise / zoom buttons) of a window with a toolbar.
+_TOOLBAR_STYLE_UNIFIED = 3
+TOOLBAR_ID = "quillToolbar"
+
+
+def tall_titlebar(window, appkit) -> bool:
+    """Give *window* the same title bar height, and the same size of close / minimise / zoom buttons, as a window
+    with a toolbar (Claude's, Finder's): an empty toolbar does it. Every Quill window gets it from :func:`mac_chrome`,
+    so a window added later looks right without doing anything.
+
+    Returns:
+        True if the toolbar was added (or was already there).
+    """
+    try:
+        if window.toolbar() is not None:
+            return True
+        toolbar = appkit.NSToolbar.alloc().initWithIdentifier_(TOOLBAR_ID)
+        toolbar.setShowsBaselineSeparator_(False)          # no line under the title bar
+        window.setToolbar_(toolbar)
+        window.setToolbarStyle_(_TOOLBAR_STYLE_UNIFIED)
+        return True
+    except Exception:
+        return False
 
 
 def _set_blur(view, appkit, strength: float, window=None, tint=None) -> None:
@@ -340,7 +368,7 @@ def _set_blur(view, appkit, strength: float, window=None, tint=None) -> None:
     holder = view.superview()
     if holder is None:
         return
-    existing = [v for v in holder.subviews() if v.identifier() in (BLUR_ID, TINT_ID)]
+    existing = [v for v in holder.subviews() if v.identifier() in (BLUR_ID, TINT_ID, FROST_ID)]
     if strength <= 0:
         for v in existing:
             v.removeFromSuperview()
@@ -354,9 +382,19 @@ def _set_blur(view, appkit, strength: float, window=None, tint=None) -> None:
         effect.setState_(_STATE_ACTIVE)
         effect.setAutoresizingMask_(_NS_VIEW_SIZABLE)
         holder.addSubview_positioned_relativeTo_(effect, _NS_WINDOW_BELOW, view)
-    effect.setAlphaValue_(strength)          # fades the blur in: 0 = none, 1 = full
+    effect.setAlphaValue_(1.0)               # always the whole blur: a half-faded blur lets the SHARP desktop leak through
     if tint is None:
         return
+    # How "frosted" the glass is (the slider): a wash of the window's colour over the blur, none at 0, most at 1.
+    frost = next((v for v in existing if v.identifier() == FROST_ID), None)
+    if frost is None:
+        frost = appkit.NSView.alloc().initWithFrame_(holder.bounds())
+        frost.setIdentifier_(FROST_ID)
+        frost.setWantsLayer_(True)
+        frost.setAutoresizingMask_(_NS_VIEW_SIZABLE)
+        holder.addSubview_positioned_relativeTo_(frost, _NS_WINDOW_ABOVE, effect)
+    fr, fg, fb, _ = tint
+    frost.layer().setBackgroundColor_(appkit.NSColor.colorWithDeviceRed_green_blue_alpha_(fr, fg, fb, FROST_MAX * strength).CGColor())
     height = holder.bounds().size.height - view.frame().size.height     # the title bar
     strip = next((v for v in existing if v.identifier() == TINT_ID), None)
     if strip is None:
@@ -367,7 +405,7 @@ def _set_blur(view, appkit, strength: float, window=None, tint=None) -> None:
         holder.addSubview_positioned_relativeTo_(strip, _NS_WINDOW_BELOW, view)
     strip.setFrame_(((0, holder.bounds().size.height - height), (holder.bounds().size.width, height)))
     r, g, b, a = tint
-    strip.layer().setBackgroundColor_(appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a).CGColor())
+    strip.layer().setBackgroundColor_(appkit.NSColor.colorWithDeviceRed_green_blue_alpha_(r, g, b, a).CGColor())
 
 
 # --------------------------------------------------------------------------- #
@@ -435,6 +473,18 @@ SYMBOL_TURN = "bubble.left.and.bubble.right"
 _NS_LAYOUT_LEFT, _NS_LAYOUT_RIGHT = 1, 2
 
 
+def _symbol(appkit, name: str, text: str):
+    """The SF Symbol *name* at the title bar's icon size (the plain picture where sizing is not available)."""
+    image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, text)
+    if image is None:
+        return None
+    try:
+        config = appkit.NSImageSymbolConfiguration.configurationWithPointSize_weight_(SYMBOL_POINTS, 0.0)
+        return image.imageWithSymbolConfiguration_(config) or image
+    except Exception:
+        return image
+
+
 class TitlebarButton:
     """A borderless icon button placed at the right end of a macOS title bar.
 
@@ -454,7 +504,7 @@ class TitlebarButton:
 
     def _resize_holder(self) -> None:
         if self._holder is not None:
-            self._holder.setFrameSize_((self._base_width + self._inset, 24 + self._lift))
+            self._holder.setFrameSize_((self._base_width + self._inset, _ICON_HEIGHT + self._lift))
             self._row.setFrameOrigin_((self._row_x, self._lift))
 
     def set_inset(self, points: float) -> None:
@@ -477,6 +527,17 @@ class TitlebarButton:
                 self._panel.place(self._inset, self._reference)
         except Exception:
             pass
+
+    def settle(self, tries: int = 8) -> None:
+        """Run :meth:`align` a few times, a moment apart (the system lays an accessory out after it is added).
+
+        Every title bar button group does this by itself when it is made, in every window.
+        """
+        def step(left: int) -> None:
+            if abs(self.align()) > 0.5 and left > 0:
+                QTimer.singleShot(150, lambda: step(left - 1))
+
+        QTimer.singleShot(100, lambda: step(tries))
 
     def align(self) -> float:
         """Raise the icons until their middle is level with the window's close button (and so the title).
@@ -512,7 +573,7 @@ class TitlebarButton:
         """Show the "back to full" icon while in the mini view, "shrink" otherwise."""
         name = SYMBOL_FULL if mini else SYMBOL_MINI
         text = "Back to the Full Window" if mini else "Mini View"
-        image = self._appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, text)
+        image = _symbol(self._appkit, name, text)
         if image is not None:
             self._button.setImage_(image)
         self._button.setToolTip_(text)
@@ -533,7 +594,7 @@ class TitlebarButton:
             data = self._appkit.NSData.dataWithBytes_length_(png, len(png))
             image = self._appkit.NSImage.alloc().initWithData_(data)
             image.setTemplate_(True)
-            image.setSize_((17, 17))
+            image.setSize_((FOLDER_POINTS, FOLDER_POINTS))
             button.setImage_(image)
             button.setToolTip_(tip)
             button.setAlphaValue_(0.45 if muted else 1.0)
@@ -552,9 +613,13 @@ class TitlebarButton:
 
 #: Widths (pt) of the title bar icons and the gap between them. The right-most one is narrower so its
 #: glyph sits close to the window edge.
-_ICON_WIDTH, _ICON_HEIGHT, _ICON_GAP = 30, 24, 2
+_ICON_WIDTH, _ICON_HEIGHT, _ICON_GAP = 36, 30, 2
+#: Point size of the title bar's SF Symbol icons (the taller title bar has room for larger ones).
+SYMBOL_POINTS = 16
+#: Size (pt) of the folder's own picture.
+FOLDER_POINTS = 19
 #: How far (pt) the right-hand icons are moved right, so their last glyph lines up with the Start button's right edge.
-_RIGHT_NUDGE = -2
+_RIGHT_NUDGE = 1
 
 
 def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False,
@@ -602,7 +667,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         appkit_real = appkit_given is None
         def make_button(action, width=_ICON_WIDTH, hover_in=None, hover_out=None):
             target = target_class.alloc().initWithCallback_(action)
-            button = button_class.alloc().initWithFrame_(((0, 0), (width, 24)))
+            button = button_class.alloc().initWithFrame_(((0, 0), (width, _ICON_HEIGHT)))
             button.hover_in, button.hover_out = hover_in, hover_out    # (used by the pointer-tracking button class)
             button.setBordered_(False)
             try:
@@ -616,7 +681,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         hover_in, hover_out = hover or (None, None)
         button, target = make_button(callback, _ICON_WIDTH, hover_in, hover_out)
         if symbol:
-            image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, tip)
+            image = _symbol(appkit, symbol, tip)
             if image is not None:
                 button.setImage_(image)
             if not hover:
@@ -625,7 +690,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         for entry in extra or []:
             name, label, action, *hovers = entry
             extra_button, extra_target = make_button(action, _ICON_WIDTH, *hovers)
-            image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, label)
+            image = _symbol(appkit, name, label)
             if image is not None:
                 extra_button.setImage_(image)
             if not hovers:
@@ -634,7 +699,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         controller = appkit.NSTitlebarAccessoryViewController.alloc().init()
         if extras:                                    # extra icons first (left), the resize icon last (right)
             views = [e[0] for e in extras] + [button]
-            x = 0.0                                   # every icon gets the same 30 x 24 box (a stack view would shrink each to its picture)
+            x = 0.0                                   # every icon gets the same 36 x 30 box (a stack view would shrink each to its picture)
             for view in views:
                 view.setFrame_(((x, 0), (_ICON_WIDTH, _ICON_HEIGHT)))
                 x += _ICON_WIDTH + _ICON_GAP
@@ -642,7 +707,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             row = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, _ICON_HEIGHT)))
             for view in views:
                 row.addSubview_(view)
-            holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, 24)))
+            holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, _ICON_HEIGHT)))
             row_x = _RIGHT_NUDGE if side != "left" else 0.0     # macOS keeps a gap at the right of the title bar: the row sits past it
             row.setFrameOrigin_((row_x, 0))
             holder.addSubview_(row)
@@ -657,6 +722,8 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
                                 row if extras else None, row_x if extras else 0.0, width if extras else 0, panel, reference)
         if not symbol:
             result.set_mini(mini)
+        if reference is not None:
+            result.settle()                         # (icons level with the title, in this window and any other)
         return result
     except Exception:
         return None
@@ -686,7 +753,7 @@ class _PanelChrome:
         self.title.setFont_(appkit.NSFont.systemFontOfSize_weight_(13, 0.0))      # regular, not bold
         self.title.setTextColor_(appkit.NSColor.labelColor())
         self.close, self._target = make_button(on_close or (lambda: None), 30)
-        image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_("xmark", "Close")
+        image = _symbol(appkit, "xmark", "Close")
         if image is not None:
             self.close.setImage_(image)
         self.close.setToolTip_("Close")
@@ -711,7 +778,7 @@ class _PanelChrome:
         middle = reference.frame().origin.y + reference.frame().size.height / 2 if reference is not None else height / 2
         size = self.title.frame().size
         self.title.setFrameOrigin_((width - points + 14, middle - size.height / 2))
-        self.close.setFrameOrigin_((width - 38, middle - 12))
+        self.close.setFrameOrigin_((width - 8 - _ICON_WIDTH, middle - _ICON_HEIGHT / 2))
 
 
 def _button_class(appkit, objc):

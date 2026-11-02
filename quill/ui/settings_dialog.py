@@ -20,7 +20,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -60,6 +60,7 @@ from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
 from quill.ui.hints import fill_missing_tips
 from quill.ui.settings_widgets import (
+    PillField,
     FlatCombo,
     GuardedCombo,
     GuardedSlider,
@@ -360,7 +361,9 @@ class SettingsDialog:
         """Pointer cursors on clickable things, and hook every control up for live updates."""
         for button in dialog.findChildren(QPushButton):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        self.nav.setMouseTracking(True)                       # the pointer is a hand over a page, an arrow over a caption
+        self._nav_cursor = _NavCursor(self.nav)
+        self.nav.viewport().installEventFilter(self._nav_cursor)
         self._original = copy.deepcopy(self._settings.preferences)
         for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
                         self.dock_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check):
@@ -820,8 +823,10 @@ class SettingsDialog:
         """Append an editable keyword row."""
         row = self.table.rowCount()
         self.table.insertRow(row)
-        self.table.setItem(row, 0, QTableWidgetItem(phrase if isinstance(phrase, str) else ""))
-        combo = GuardedCombo()
+        pill = PillField(phrase if isinstance(phrase, str) else "")      # what is said: a pill, like every spoken phrase
+        pill.focused.connect(lambda p=pill: self.table.selectRow(self.table.indexAt(p.pos()).row()))
+        self.table.setCellWidget(row, 0, pill)
+        combo = FlatCombo()                 # the drop-down every other page uses
         combo.setMinimumHeight(34)          # tall enough that the text is not clipped top and bottom
         combo.setToolTip("What saying this phrase does")
         for candidate in BINDABLE_ACTIONS:
@@ -846,8 +851,7 @@ class SettingsDialog:
             return list(self._settings.keywords.items())
         rows = []
         for r in range(self.table.rowCount()):
-            item = self.table.item(r, 0)
-            rows.append((item.text() if item else "", self.table.cellWidget(r, 1).currentData()))
+            rows.append((self.table.cellWidget(r, 0).text(), self.table.cellWidget(r, 1).currentData()))
         return rows
 
     # ------------------------------------------------------------------ #
@@ -892,3 +896,18 @@ class _KeywordSearch:
 
     def setVisible(self, visible: bool) -> None:                 # noqa: N802 (Qt name)
         self._widget.setVisible(visible)
+
+
+class _NavCursor(QObject):
+    """The navigation list's pointer: a pointing hand over a page, the plain arrow over a caption (not clickable)."""
+
+    def __init__(self, nav: QListWidget) -> None:
+        super().__init__(nav)
+        self._nav = nav
+
+    def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
+        if event.type() in (QEvent.Type.MouseMove, QEvent.Type.Enter):
+            item = self._nav.itemAt(event.position().toPoint()) if hasattr(event, "position") else None
+            clickable = item is not None and bool(item.flags() & Qt.ItemFlag.ItemIsSelectable)
+            self._nav.viewport().setCursor(Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.ArrowCursor)
+        return False

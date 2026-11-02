@@ -42,7 +42,7 @@ class TestFolderIconInTheWindow(unittest.TestCase):
         self.assertIn("plants.xlsx", self.w.open_file_button.toolTip())
         self.w.update_workbooks([], "")
         self.assertEqual(self.seen[-1], (False, "", ""))
-        self.assertEqual(self.w.open_file_button.toolTip().splitlines()[0], "Open Spreadsheet File")
+        self.assertEqual(self.w.open_file_button.toolTip().splitlines()[0], "Open File")
 
     def test_the_folder_sits_left_of_the_settings_icon(self):
         row = self.w._status_row
@@ -64,7 +64,7 @@ class TestFolderIconInTheTitleBar(unittest.TestCase):
         from PySide6.QtGui import QRegion
         from PySide6.QtWidgets import QWidget
         chrome.add_titlebar_button(QWidget(), lambda: None, platform="darwin", appkit=kit,
-                                   extra=[(chrome.SYMBOL_FOLDER, "Open Spreadsheet File", lambda: None),
+                                   extra=[(chrome.SYMBOL_FOLDER, "Open File", lambda: None),
                                           (chrome.SYMBOL_SETTINGS, "Settings", lambda: None)])
         views = kit.window.accessories[0].view.subviews[0].subviews           # the row inside the holder
         self.assertEqual(views[0].image, f"image:{chrome.SYMBOL_FOLDER}")

@@ -116,7 +116,7 @@ class FakeAppKit:
     def __init__(self, window, holder=None):
         self._window = window
         self.holder = holder if holder is not None else FakeHolder()
-        self.NSColor = type("C", (), {"colorWithSRGBRed_green_blue_alpha_":
+        self.NSColor = type("C", (), {"colorWithDeviceRed_green_blue_alpha_":
                                       staticmethod(lambda r, g, b, a: Colour((round(r, 2), round(g, 2), round(b, 2), round(a, 2))))})
         self.NSAppearance = type("A", (), {"appearanceNamed_": staticmethod(lambda n: n)})
         self.effect = FakeView()
@@ -150,7 +150,7 @@ class TestMacChrome(unittest.TestCase):
         window, kit = FakeWindow(), FakeAppKit(FakeWindow())
         window = kit._window
         chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=60)
-        self.assertEqual(len(kit.holder.added), 2)                    # the frosted layer and the title bar tint
+        self.assertEqual(len(kit.holder.added), 3)                    # the blur, the frost wash over it and the title bar tint
         view, where, _ = kit.holder.added[0]
         self.assertEqual(where, -1)                                   # below the content
         self.assertEqual(view.identifier(), chrome.BLUR_ID)
@@ -158,8 +158,11 @@ class TestMacChrome(unittest.TestCase):
         self.assertEqual(view.props["mask"], 18)                      # grows with the window
         self.assertIn(("opaque", False), window.calls)                # blur needs a see-through window
         self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), window.calls)         # title bar solid at 100% opacity
-        self.assertEqual(view.props["alpha"], 0.6)                           # the blur's strength
-        tint, where, _ = kit.holder.added[1]
+        self.assertEqual(view.props["alpha"], 1.0)                           # always the whole blur (the slider sets the frost)
+        frost, where, _ = kit.holder.added[1]
+        self.assertEqual(frost.identifier(), chrome.FROST_ID)
+        self.assertEqual(frost.props["colour"][3], round(chrome.FROST_MAX * 0.6, 2))
+        tint, where, _ = kit.holder.added[2]
         self.assertEqual(tint.props["colour"][3], 1.0)                       # the title bar tint is solid at full opacity
         self.assertEqual(tint.props["frame"], ((0, 80), (100, 20)))          # over the title bar only
 
@@ -167,8 +170,8 @@ class TestMacChrome(unittest.TestCase):
         existing = FakeView(chrome.BLUR_ID)
         kit = FakeAppKit(FakeWindow(), FakeHolder([existing]))
         chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=30)
-        self.assertEqual([v.identifier() for v, *_ in kit.holder.added], [chrome.TINT_ID])   # only the tint is new
-        self.assertEqual(existing.props["alpha"], 0.3)
+        self.assertEqual([v.identifier() for v, *_ in kit.holder.added], [chrome.FROST_ID, chrome.TINT_ID])   # only these are new
+        self.assertEqual(existing.props["alpha"], 1.0)
 
     def test_zero_blur_is_solid_and_has_no_view(self):
         kit = FakeAppKit(FakeWindow())

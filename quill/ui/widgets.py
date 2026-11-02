@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from quill.ui.icons import make_icon
+from quill.ui.theme import PILL_BG, PILL_FG
 
 #: Height of a pill notice ("File not connected", "Start Listening").
 CHIP_HEIGHT = 22
@@ -579,7 +580,7 @@ class HeadingToggle(QLabel):
 
 
 #: The look of spoken words and commands wherever they appear in text: a pill in the app's own font and size.
-PILL_STYLE = "background-color:#5E4A99; color:#FFFFFF"
+PILL_STYLE = f"background-color:{PILL_BG}; color:{PILL_FG}"
 
 
 def pill(text: str) -> str:
@@ -610,13 +611,6 @@ def connection_tip(hint: str | None = None) -> str:
         '<div style="line-height:155%; letter-spacing:0.35px">'
         '<b><span style="color:#E0A030">⚠&nbsp;&nbsp;Not connected</span></b><br>'
         'Quill has no spreadsheet to <i>read lists from</i><br>or <i>write rows to</i>.'
-        '<br><br><b>Connect one:</b><br>'
-        '📗&nbsp;&nbsp;<b>Spreadsheet program</b>: open a workbook,<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and Quill<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;attaches within a few seconds<br>'
-        '📁&nbsp;&nbsp;<b>File ▸ Open Spreadsheet File…</b><br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;and pick an <i>.xlsx</i> or <i>.csv</i> file'
-        '<br><br>▶&nbsp;&nbsp;Then press <b>Start</b> to listen.'
         '</div>')
 
 

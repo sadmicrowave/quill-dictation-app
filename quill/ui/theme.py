@@ -162,6 +162,9 @@ def backdrop_alpha(opacity: int, blur: int) -> float:
     return round(max(0.08, min(100, max(0, int(opacity))) / 100), 3)
 
 
+#: The look of spoken words and phrases wherever they appear: a deep violet pill with white text.
+PILL_BG, PILL_FG = "#5E4A99", "#FFFFFF"
+
 ROOT_NAMES = ("mainRoot", "sidePanel", "settingsRoot", "sortingRoot", "helpRoot")
 
 
@@ -360,6 +363,9 @@ QRadioButton::indicator:checked {{ background: {t['accent']}; border: 1px solid 
 QFrame#sidePanel {{ background: transparent; border: none; }}
 QFrame[panelEdge="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
 QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
+QLineEdit[pillField="true"] {{ background: {PILL_BG}; color: {PILL_FG}; border: 1px solid {PILL_BG}; border-radius: 0; padding: 2px 6px;   /* square-cornered, like the pills in text */
+              selection-background-color: {rgba(PILL_FG, 0.35)}; selection-color: {PILL_FG}; }}
+QLineEdit[pillField="true"]:focus {{ border: 1px solid {PILL_FG}; }}
 QLabel[panelTitle="true"] {{ font-weight: 400; }}
 QLabel[panelHeading="true"] {{ font-weight: 600; color: {t['text']}; }}
 QLabel[panelValue="true"] {{ font-weight: 400; font-style: normal; color: {t['text']}; }}

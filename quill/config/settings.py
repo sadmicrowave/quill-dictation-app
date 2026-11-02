@@ -49,7 +49,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "speak_sort_prompts": False,  # speak what to do for each Term Helper row (system speech; the only place Quill speaks)
     "model_path": "",         # Vosk model folder; empty = search the usual places
     "last_workbook": "",      # re-selected on launch when still open
-    "workbook_file": "",      # an .xlsx opened with Open Spreadsheet File (no Excel needed); "" = live Excel
+    "workbook_file": "",      # an .xlsx opened with Open File (no Excel needed); "" = live Excel
     "spreadsheet_app": "auto",  # "auto" finds Excel, Numbers, LibreOffice ... by itself; reserved for a picker
     "prompt_timeout_s": 20,   # seconds to wait for a yes/no answer
     "auto_voice_sort": False,  # start voice sorting as soon as terms need sorting

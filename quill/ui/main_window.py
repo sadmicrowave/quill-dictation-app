@@ -82,7 +82,7 @@ NOT_CONNECTED_TEXT = "File not connected"
 NOT_CONNECTED_HINT = (
     "No spreadsheet is connected, so there is nothing to read lists from or write rows to.\n"
     "Quill works through a workbook open in your spreadsheet program (it attaches automatically within a few seconds of "
-    "the workbook opening) or through an .xlsx or .csv file chosen with File > Open Spreadsheet File.\n"
+    "the workbook opening) or through an .xlsx or .csv file chosen with File > Open File.\n"
     "Open a workbook or choose a file; listening can start once the connection is made."
 )
 
@@ -118,7 +118,7 @@ class MainWindow:
         on_undo: Called when the user presses Undo (takes back the last sorting answer).
         on_log_toggled: Called with True/False when the user collapses/expands the log.
         on_mini_toggled: Called with True/False when the user enters/leaves the mini view.
-        on_open_file: Called when the user chooses Open Spreadsheet File (button or File menu).
+        on_open_file: Called when the user chooses Open File (button or File menu).
         on_use_excel: Called when the user chooses to go back to the open Excel workbook.
         on_help: Called with a help topic when the user presses the ? icon.
         mini: Start in the mini view. mini_on_top: keep the mini view above other windows.
@@ -320,7 +320,7 @@ class MainWindow:
         self.toggle_button.set_chip(self.connection_chip)
         self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
         self.open_file_button.setProperty("iconOnly", True)
-        self.open_file_button.setAccessibleName("Open Spreadsheet File")
+        self.open_file_button.setAccessibleName("Open File")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self.toggle_panel(FILE_PAGE))
         status_row.insertWidget(status_row.indexOf(self.settings_button), self.open_file_button)
@@ -401,9 +401,9 @@ class MainWindow:
         layout.addStretch(0)         # soaks up spare height in the compact mini view (and while it grows back), so nothing drifts down
         self._spacer_index = layout.count() - 1
 
-        # File menu (the global menu bar on macOS): Open Spreadsheet File, and back to live Excel.
+        # File menu (the global menu bar on macOS): Open File, and back to live Excel.
         file_menu = window.menuBar().addMenu("File")
-        self.open_file_action = file_menu.addAction("Open Spreadsheet File…", lambda: self._on_open_file())
+        self.open_file_action = file_menu.addAction("Open File…", lambda: self._on_open_file())
         self.open_file_action.setShortcut("Ctrl+O")
         self.use_excel_action = file_menu.addAction("Use the Open Workbook", lambda: self._on_use_excel())
         self.use_excel_action.setEnabled(False)
@@ -1136,7 +1136,7 @@ class MainWindow:
         has = bool(self._workbook_name)
         sheet = f"\nSheet: {self._sheet_name}" if has and self._sheet_name else ""
         tip = (f"{self._workbook_name}{sheet}" if has
-               else "Open Spreadsheet File\nWork on an .xlsx or .csv file directly (no spreadsheet program needed)")
+               else "Open File\nWork on an .xlsx or .csv file directly (no spreadsheet program needed)")
         self.open_file_button.setToolTip(tip)
         color = self._text_color
         if not has:

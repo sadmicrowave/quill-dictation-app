@@ -214,7 +214,25 @@ class TestPointersAndKeywordCells(unittest.TestCase):
             self.assertEqual(control.cursor().shape(), Qt.CursorShape.PointingHandCursor)
         for button in self.dlg.findChildren(QPushButton):
             self.assertEqual(button.cursor().shape(), Qt.CursorShape.PointingHandCursor, button.text())
-        self.assertEqual(self.d.nav.viewport().cursor().shape(), Qt.CursorShape.PointingHandCursor)
+
+    def hover(self, item):
+        from PySide6.QtCore import QEvent, QPointF
+        from PySide6.QtGui import QMouseEvent
+        self.dlg.show()
+        _app.processEvents()
+        pos = QPointF(self.d.nav.visualItemRect(item).center())
+        event = QMouseEvent(QEvent.Type.MouseMove, pos, self.d.nav.viewport().mapToGlobal(pos), Qt.MouseButton.NoButton,
+                            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+        self.d._nav_cursor.eventFilter(self.d.nav.viewport(), event)
+        return self.d.nav.viewport().cursor().shape()
+
+    def test_the_sidebar_shows_a_hand_over_a_page_and_an_arrow_over_a_caption(self):
+        captions = [self.d.nav.item(i) for i in range(self.d.nav.count()) if not self.d.nav.item(i).data(Qt.ItemDataRole.UserRole)]
+        pages = [self.d.nav.item(i) for i in range(self.d.nav.count()) if self.d.nav.item(i).data(Qt.ItemDataRole.UserRole)]
+        self.assertTrue(captions and pages)
+        self.assertEqual(self.hover(pages[0]), Qt.CursorShape.PointingHandCursor)
+        for caption in captions:                                  # "Preferences", "Voice and Commands" ...
+            self.assertEqual(self.hover(caption), Qt.CursorShape.ArrowCursor, caption.text())
 
     def test_keyword_cells_are_tall_enough_for_their_text(self):
         self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))

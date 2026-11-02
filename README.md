@@ -534,3 +534,10 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - Tool tips are drawn by `TipWindow` (rounded, lighter grey, centred on the pointer, on screen). Every clickable element has hover text (`quill/ui/hints.py` fills the gaps; a test walks every window).
 - The panel's stray 6 px band was `apply_spacing` giving the content/panel layout a gap; fixed with a `keepSpacing` property and a test that applies the spacing.
 - A drag grip on the matched-words box trades height with the log (or resizes the window when the log is hidden); the log height is remembered (`log_height`).
+
+## Phase 61: taller title bars, real blur, control styles
+
+- Every window gets an empty toolbar from `chrome.mac_chrome` (`tall_titlebar`): the title bar and the close / minimise / zoom buttons are then the larger size other apps have, and the icons grew to 36 x 30 boxes with 16 pt symbols. Each icon group levels itself on the title (`TitlebarButton.settle`), in any window.
+- Blur: the vibrancy view is always at full strength (a half-faded one let the sharp desktop show through, which looked like plain transparency); the slider sets a frost wash (`FROST_ID`) over it instead.
+- Keywords table: phrases are `PillField` pills (`PILL_BG` / `PILL_FG` in theme.py), actions are `FlatCombo`. Captions in the Settings list show an arrow, not a hand.
+- Texts: "Open File" everywhere; the not-connected tooltip and error shortened; `TestControlsFollowTheirStyle` walks every window and fails on a drop-down, switch, slider or spin box that is not the decided class.

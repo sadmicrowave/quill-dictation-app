@@ -28,8 +28,8 @@ EventCallback = Callable[[Event], None]
 
 #: Shown (in the not-connected chip's tooltip) and spoken whenever Quill is asked to listen with no spreadsheet.
 NO_WORKBOOK_HELP = (
-    "No spreadsheet is connected. Open a workbook in your spreadsheet program and Quill attaches to it automatically, "
-    "or choose Open Spreadsheet File in the File menu. Then start listening."
+    "No spreadsheet is connected. Open a spreadsheet and Quill connects to it automatically, "
+    "or choose Open File in the File menu."
 )
 
 

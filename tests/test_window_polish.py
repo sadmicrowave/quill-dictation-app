@@ -65,10 +65,10 @@ class TestConnectionChip(unittest.TestCase):
         self.assertIn("No spreadsheet is connected", hint)
         self.assertIn("spreadsheet program", hint)
         self.assertIn(".xlsx", hint)
-        self.assertIn("File > Open Spreadsheet File", hint)
+        self.assertIn("File > Open File", hint)
         tip = window().connection_chip.toolTip()
         self.assertFalse(FIRST_PERSON.search(tip), FIRST_PERSON.search(tip))
-        for part in ("Not connected", "Spreadsheet program", ".xlsx", "File ▸ Open Spreadsheet File", "Start"):
+        for part in ("Not connected", "read lists from", "write rows to"):
             self.assertIn(part, tip)
         self.assertIn("<b>", tip)                                                  # bold, italics and spacing
         self.assertIn("<i>", tip)
@@ -199,7 +199,7 @@ class TestTitlebarSettings(unittest.TestCase):
         self.assertEqual(len(stack.subviews), 2)
         self.assertGreater(stack.frame[1][0], 40)                         # it has a width, or macOS would not show it
         settings, resize = stack.subviews
-        self.assertEqual((settings.frame[1], resize.frame[1]), ((30, 24), (30, 24)))     # every icon has the same box
+        self.assertEqual((settings.frame[1], resize.frame[1]), ((chrome._ICON_WIDTH, chrome._ICON_HEIGHT),) * 2)     # every icon has the same box
         self.assertEqual(settings.image, f"image:{chrome.SYMBOL_SETTINGS}")
         self.assertEqual(settings.tip, "Settings")
         settings.performClick_(None)

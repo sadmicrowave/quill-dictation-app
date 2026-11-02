@@ -1,4 +1,4 @@
-"""Open Spreadsheet File: working on an .xlsx directly, without Excel."""
+"""Open File: working on an .xlsx directly, without Excel."""
 import pathlib
 import tempfile
 import unittest
@@ -57,7 +57,7 @@ class TestOpeningAFile(FileCase):
         self.assertTrue(self.app.window.connection_chip.isVisibleTo(self.app.window.widget))
 
     def test_the_help_text_points_at_the_file_menu(self):
-        self.assertIn("Open Spreadsheet File", NO_WORKBOOK_HELP)
+        self.assertIn("Open File", NO_WORKBOOK_HELP)
 
     def test_choosing_a_file_connects_to_it_without_excel(self):
         self.chosen[0] = str(self.plants)
@@ -167,7 +167,7 @@ class TestWhereItIsOffered(FileCase):
         window = self.app.window.widget
         titles = [a.text() for a in window.menuBar().actions()]
         self.assertIn("File", titles)
-        self.assertEqual(self.app.window.open_file_action.text(), "Open Spreadsheet File…")
+        self.assertEqual(self.app.window.open_file_action.text(), "Open File…")
         self.assertEqual(self.app.window.open_file_action.shortcut().toString(), "Ctrl+O")
 
     def test_menu_item_opens_the_picker(self):
@@ -187,7 +187,7 @@ class TestWhereItIsOffered(FileCase):
 
     def test_the_menu_bar_icon_menu_offers_it_too(self):
         self.chosen[0] = str(self.plants)
-        action = next(a for a in self.app.tray._menu.actions() if a.text() == "Open Spreadsheet File…")
+        action = next(a for a in self.app.tray._menu.actions() if a.text() == "Open File…")
         action.trigger()
         self.assertTrue(self.app.connected)
 
