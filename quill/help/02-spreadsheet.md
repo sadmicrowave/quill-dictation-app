@@ -28,7 +28,7 @@ A file you pick this way that no program has open yet is **started in its own pr
 
 ### Where the data starts
 
-Press the **…** button at the top of the Files panel for the **file settings**: **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column) and **Headings Row** (**Automatic** finds the headings). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
+Press the **gear** at the right of **Active File** for the **file settings** (an overlay): **Headings Row** (**Automatic** finds the headings), **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), and **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
 
 ### When another program holds the file
 
@@ -57,7 +57,7 @@ Always the sheet that is **open** (the active tab). Quill never tries another sh
 
 ![Not connected](images/not-connected.png)
 
-- **File stream not connected**: shown inside the **Start** button, beside the play icon, while no sheet is found. Hover it for what to do.
+- **File not connected**: shown inside the **Start** button, beside the play icon, while no sheet is found. Pressing **Start** then opens the **Files** panel so you can pick a file. Hover it for what to do.
 - **The box that says "Words you say appear here…"**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
 - **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover it).
 - **Last Saved**: the row written last, on the right of the **Log** line. It only appears after the first save.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
@@ -20,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from quill.ui.icons import make_icon
 
-#: Height of a pill notice ("File stream not connected", "Start Listening").
+#: Height of a pill notice ("File not connected", "Start Listening").
 CHIP_HEIGHT = 22
 
 #: Lines of the full text shown in a tooltip before "…and n more".
@@ -290,17 +291,139 @@ class ListenButton(QPushButton):
                                             14).pixmap(14, 14))
 
 
-#: Room (px) the tool tip's border and padding add around its text (see ``QToolTip`` in theme.py).
-TOOLTIP_PADDING = 12
+class ResizeGrip(QWidget):
+    """A thin strip at the bottom edge of a box that is dragged up or down to resize it (vertically only).
+
+    ``dragged`` carries how far (px) the pointer moved since the last step: positive is down.
+    """
+
+    dragged = Signal(int)
+    released = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.SizeVerCursor)
+        self.setToolTip("Drag up or down to resize")
+        self.setFixedHeight(8)
+        self._last: int | None = None
+        self._ink = QColor("#888")
+
+    def set_color(self, color: str) -> None:
+        self._ink = QColor(color)
+        self.update()
+
+    def mousePressEvent(self, event) -> None:                       # noqa: N802 (Qt name)
+        self._last = int(event.globalPosition().y())
+
+    def mouseMoveEvent(self, event) -> None:                        # noqa: N802 (Qt name)
+        if self._last is not None:
+            y = int(event.globalPosition().y())
+            if y != self._last:
+                step, self._last = y - self._last, y
+                self.dragged.emit(step)
+
+    def mouseReleaseEvent(self, event) -> None:                     # noqa: N802 (Qt name)
+        if self._last is not None:
+            self._last = None
+            self.released.emit()
+
+    def paintEvent(self, event) -> None:                            # noqa: N802 (Qt name)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        ink = QColor(self._ink)
+        ink.setAlpha(150 if self.underMouse() else 70)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(ink)
+        centre = self.width() / 2
+        for offset in (-8, 0, 8):                                     # three small dots, the usual "drag here" mark
+            painter.drawEllipse(QRectF(centre + offset - 1.5, self.height() - 4.5, 3, 3))
+        painter.end()
+
+    def enterEvent(self, event) -> None:                            # noqa: N802 (Qt name)
+        self.update()
+
+    def leaveEvent(self, event) -> None:                            # noqa: N802 (Qt name)
+        self.update()
+
+
+#: Room (px) the tool tip's padding and border add around its text, side to side and top to bottom.
+TOOLTIP_PAD_X, TOOLTIP_PAD_Y = 8, 4
+TOOLTIP_PADDING = 2 * TOOLTIP_PAD_X + 2
 #: Gap (px) between the pointer and the tool tip below it.
 TOOLTIP_DROP = 18
+#: Seconds a tool tip stays up when the pointer does not move away.
+TOOLTIP_SECONDS = 8
+
+
+class TipWindow(QWidget):
+    """A tool tip drawn by hand: a rounded, lighter-grey card (the system's tips are square-cornered and cannot be styled)."""
+
+    def __init__(self) -> None:
+        super().__init__(None, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowDoesNotAcceptFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._text = ""
+        self._fill, self._edge, self._ink = QColor("#555"), QColor("#777"), QColor("#fff")
+
+    def set_look(self, fill: str, edge: str, ink: str) -> None:
+        self._fill, self._edge, self._ink = QColor(fill), QColor(edge), QColor(ink)
+
+    def set_text(self, text: str) -> QSize:
+        """Show *text* (lines separated by newlines) and return the size the tip needs."""
+        self._text = text
+        metrics = QFontMetrics(QToolTip.font())
+        lines = text.split("\n")
+        size = QSize(max(metrics.horizontalAdvance(line) for line in lines) + TOOLTIP_PADDING,
+                     metrics.lineSpacing() * len(lines) + 2 * TOOLTIP_PAD_Y + 2)
+        self.resize(size)
+        self.update()
+        return size
+
+    def paintEvent(self, event) -> None:                             # noqa: N802 (Qt name)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(self._fill)
+        painter.setPen(self._edge)
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 7, 7)
+        painter.setPen(self._ink)
+        painter.setFont(QToolTip.font())
+        painter.drawText(self.rect().adjusted(TOOLTIP_PAD_X + 1, TOOLTIP_PAD_Y + 1, -TOOLTIP_PAD_X, -TOOLTIP_PAD_Y),
+                         int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), self._text)
+        painter.end()
 
 
 class CenteredToolTips(QObject):
-    """Shows every tool tip centred on the pointer (the system puts its left edge at the pointer).
+    """Shows every tool tip centred on the pointer, as a rounded card (the system puts the tip's left edge at the pointer
+    and draws it square).
 
-    One application-level event filter; plain-text tips only (a rich-text tip keeps the system's placement).
+    One application-level event filter; plain-text tips only (a rich-text tip keeps the system's look and placement).
+    The tip goes away when the pointer leaves, on a click, a key or the wheel, when the window is deactivated, or
+    after :data:`TOOLTIP_SECONDS`.
     """
+
+    _HIDE_ON = (QEvent.Type.Leave, QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress, QEvent.Type.Wheel,
+                QEvent.Type.WindowDeactivate, QEvent.Type.Hide)
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._window: TipWindow | None = None
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(TOOLTIP_SECONDS * 1000)
+        self._timer.timeout.connect(self._hide)
+
+    @property
+    def window(self) -> TipWindow:
+        """The tip's window, made on first use (and again if the application's windows were all closed and deleted)."""
+        if self._window is None or not shiboken6.isValid(self._window):
+            self._window = TipWindow()
+        return self._window
+
+    def _hide(self) -> None:
+        if self._window is not None and shiboken6.isValid(self._window):
+            self._window.hide()
 
     @staticmethod
     def tip_for(obj, pos) -> str:
@@ -317,14 +440,38 @@ class CenteredToolTips(QObject):
         width = max((metrics.horizontalAdvance(line) for line in text.split("\n")), default=0) + TOOLTIP_PADDING
         return QPoint(pointer.x() - width // 2, pointer.y() + TOOLTIP_DROP)
 
+    def show_tip(self, pointer: QPoint, text: str) -> None:
+        """Draw *text* centred on *pointer*, kept on the screen."""
+        from quill.ui.theme import colors_for, is_dark, mix
+        app = QApplication.instance()
+        dark = is_dark(app)
+        t = colors_for(dark, str(app.property("quillAccent") or "#7A55C2"))
+        fill = mix(t["surface"], t["text"], 0.26 if dark else 0.08)             # lighter than the window, in both themes
+        self.window.set_look(fill, mix(fill, t["text"], 0.22), t["text"])
+        size = self.window.set_text(text)
+        spot = self.position(pointer, text)
+        screen = app.screenAt(pointer)
+        if screen is not None:
+            room = screen.availableGeometry()
+            spot.setX(max(room.left() + 4, min(spot.x(), room.right() - size.width() - 4)))
+            if spot.y() + size.height() > room.bottom():
+                spot.setY(pointer.y() - size.height() - 8)                      # no room below: above the pointer
+        self.window.move(spot)
+        self.window.show()
+        self._timer.start()
+
     def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
-        if event.type() != QEvent.Type.ToolTip:
-            return False
-        text = self.tip_for(obj, event.pos())
-        if not text or ("<" in text and ">" in text):                       # (rich text keeps the system placement)
-            return False
-        QToolTip.showText(self.position(event.globalPos(), text), text, obj)
-        return True
+        kind = event.type()
+        if kind == QEvent.Type.ToolTip:
+            text = self.tip_for(obj, event.pos())
+            if not text or ("<" in text and ">" in text):                       # (rich text keeps the system's tip)
+                return False
+            self.show_tip(event.globalPos(), text)
+            return True
+        if kind in self._HIDE_ON and self._window is not None and shiboken6.isValid(self._window) \
+                and self._window.isVisible() and obj is not self._window:
+            self._window.hide()
+        return False
 
 
 class PopupClickThrough(QObject):
@@ -450,7 +597,7 @@ def pillify(text: str) -> str:
 
 
 def connection_tip(hint: str | None = None) -> str:
-    """The tooltip of the "File stream not connected" chip, as short lines with bold, italics and icons.
+    """The tooltip of the "File not connected" chip, as short lines with bold, italics and icons.
 
     Spaced out (line height, letter spacing) so it can be taken in at a glance rather than read as a paragraph.
     A plain *hint* replaces the default explanation.

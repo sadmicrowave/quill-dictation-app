@@ -4,7 +4,7 @@
   pressing it opens the file window where that file is), a table of quiet facts about the file, and a filterable,
   scrollable list of the other spreadsheets that are open in programs on this computer. Picking one moves it up
   to the top. Where the data starts (starting row, headings row, which way the headings run) is in the settings
-  overlay that the panel's "…" button opens (:class:`FileSettings`).
+  overlay that the gear next to "Active File" opens (:class:`FileSettings`).
 * **Turn Options** (the turn icon): whether each turn is written to a new row or added to the same row.
 
 Every text that names the axis follows the layout: rows when the headings run across the top, columns when they run
@@ -176,7 +176,7 @@ def _field_row(row_box: QWidget | None = None) -> QVBoxLayout:
 
 
 class FileSettings(QFrame):
-    """The overlay the panel's "…" button opens: where the data starts and which way the headings run.
+    """The overlay the gear next to "Active File" opens: where the data starts and which way the headings run.
 
     Starting row, sheet layout and headings row. With the headings running down the side these are columns, picked
     from A to Z; otherwise they are row numbers. Each explains itself in the words of the current layout.
@@ -196,6 +196,17 @@ class FileSettings(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(6)
+        self.headings_heading = _heading("Headings Row")
+        layout.addWidget(self.headings_heading)
+        self.headings_number = NumberField(AUTOMATIC)
+        self.headings_letter = LetterBox()
+        layout.addWidget(self.headings_number)
+        layout.addWidget(self.headings_letter)
+        self.headings_note = _note("")
+        layout.addWidget(self.headings_note)
+        layout.addSpacing(2)
+        layout.addWidget(_rule())
+        layout.addSpacing(2)
         self.start_heading = _heading("Starting Row")
         layout.addWidget(self.start_heading)
         self.start_number = NumberField(AUTOMATIC)
@@ -219,17 +230,6 @@ class FileSettings(QFrame):
             layout.addWidget(radio)
             layout.addWidget(note)
             radio.toggled.connect(lambda on, v=vertical: self._layout_toggled(v) if on and not self._syncing else None)
-        layout.addSpacing(2)
-        layout.addWidget(_rule())
-        layout.addSpacing(2)
-        self.headings_heading = _heading("Headings Row")
-        layout.addWidget(self.headings_heading)
-        self.headings_number = NumberField(AUTOMATIC)
-        self.headings_letter = LetterBox()
-        layout.addWidget(self.headings_number)
-        layout.addWidget(self.headings_letter)
-        self.headings_note = _note("")
-        layout.addWidget(self.headings_note)
         for box in (self.start_number, self.start_letter):
             box.valueChanged.connect(lambda n: None if self._syncing else self.start_changed.emit(n))
         for box in (self.headings_number, self.headings_letter):
@@ -264,6 +264,12 @@ class FileSettings(QFrame):
             self.headings_note.setText("'Automatic' finds the row that holds the headings, or enter a custom row number.")
         self.across_note.setText("Headings run across the first row - each turn writes to the next row.")
         self.down_note.setText("Headings run down the first column - each turn writes to the next column.")
+        self.across_radio.setToolTip(self.across_note.text())
+        self.down_radio.setToolTip(self.down_note.text())
+        self.start_number.setToolTip(self.start_note.text())
+        self.start_letter.setToolTip(self.start_note.text())
+        self.headings_number.setToolTip(self.headings_note.text())
+        self.headings_letter.setToolTip(self.headings_note.text())
         for number, letter in ((self.start_number, self.start_letter), (self.headings_number, self.headings_letter)):
             number.setVisible(not self._vertical)
             letter.setVisible(self._vertical)
@@ -314,7 +320,7 @@ class SidePanel(QFrame):
     start_row_changed = Signal(int)             # 0: automatic
     headings_row_changed = Signal(int)          # 0: automatic
     close_requested = Signal()
-    settings_requested = Signal()               # the "…" button (the window shows the overlay)
+    settings_requested = Signal()               # the gear button (the window shows the overlay)
     keywords_requested = Signal()               # the Keywords link on the turn page
 
     def __init__(self) -> None:
@@ -325,6 +331,7 @@ class SidePanel(QFrame):
         self._colors = ("#1F1E1D", "#7A55C2")
         self.setObjectName("sidePanel")
         self.setProperty("keepMargins", True)
+        self.setProperty("keepSpacing", True)                  # the edge line touches the page beside it
         install_backdrop(self)                  # paints the same (see-through-able) background as the window
         self.setFixedWidth(0)
         self.setVisible(False)
@@ -345,7 +352,7 @@ class SidePanel(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         shell.addWidget(body, 1)
-        self.header = QWidget()                 # the title, "…" and X, unless the title bar draws them
+        self.header = QWidget()                 # the title and X, unless the title bar draws them
         self.header.setProperty("keepMargins", True)
         top = QHBoxLayout(self.header)
         top.setContentsMargins(14, 8, 8, 0)
@@ -353,9 +360,6 @@ class SidePanel(QFrame):
         self.title_label = QLabel(TITLES["file"])
         self.title_label.setProperty("panelTitle", True)
         top.addWidget(self.title_label, 1)
-        self.more_button = self._chrome_button("File Settings", "Show the File Settings")
-        self.more_button.clicked.connect(self.settings_requested)
-        top.addWidget(self.more_button)
         self.close_button = self._chrome_button("Close", "Close the Side Panel")
         self.close_button.clicked.connect(self.close_requested)
         top.addWidget(self.close_button)
@@ -404,7 +408,14 @@ class SidePanel(QFrame):
     def _build_file_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
-        layout.addWidget(_heading("Active File"))
+        title_row = QHBoxLayout()                               # "Active File" and, at the right, the gear that opens its settings
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.addWidget(_heading("Active File"), 1)
+        self.settings_button = self._chrome_button("File settings: where the data starts and which way the headings run",
+                                                   "File Settings")
+        self.settings_button.clicked.connect(self.settings_requested)
+        title_row.addWidget(self.settings_button)
+        layout.addLayout(title_row)
         self.file_button = FileButton()
         self.file_button.clicked.connect(self.open_file_requested)
         layout.addWidget(self.file_button)
@@ -454,14 +465,15 @@ class SidePanel(QFrame):
     def _build_turn_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
-        self.turn_intro = QLabel("Settings to control how each speak-write iteration (turn) is handled "
-                                 "(Voice activated with <a href=\"keywords\">Keywords</a>).")
+        self.turn_intro = QLabel("Settings to control how each speak-write iteration (turn) is handled.<br>"
+                                 "Voice activated with <a href=\"keywords\">Keywords</a>.")
         self.turn_intro.setProperty("panelNote", True)
         self.turn_intro.setTextFormat(Qt.TextFormat.RichText)
         self.turn_intro.setWordWrap(True)
         self.turn_intro.setOpenExternalLinks(False)
-        self.turn_intro.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.turn_intro.setProperty("hoverLinkTips", True)          # only the link has hover text, while it is hovered
         self.turn_intro.linkActivated.connect(lambda _: self.keywords_requested.emit())
+        self.turn_intro.linkHovered.connect(lambda link: self.turn_intro.setToolTip("Open the Keywords settings" if link else ""))
         layout.addWidget(self.turn_intro)
         layout.addSpacing(4)
         layout.addWidget(_rule())
@@ -476,7 +488,7 @@ class SidePanel(QFrame):
             self._mode_group.addButton(radio)
             layout.addWidget(radio)
             layout.addWidget(note)
-            radio.toggled.connect(lambda on, m=mode: self.mode_changed.emit(m) if on and not self._syncing else None)
+            radio.toggled.connect(lambda on, m=mode: self._mode_toggled(m) if on else None)
         self.new_row_button = QPushButton("Next")                 # the Next button: moves the cursor on to the next row
         self.new_row_button.setProperty("outline", True)
         self.new_row_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -495,7 +507,6 @@ class SidePanel(QFrame):
         """Show the ``"file"`` or the ``"turn"`` page."""
         self.stack.setCurrentIndex(1 if page == TURN_PAGE else 0)
         self.title_label.setText(TITLES[TURN_PAGE if page == TURN_PAGE else FILE_PAGE])
-        self.more_button.setVisible(page != TURN_PAGE)           # file settings belong to the file page
 
     @property
     def page(self) -> str:
@@ -507,7 +518,7 @@ class SidePanel(QFrame):
         from quill.ui.icons import make_icon
         self._colors = (text, accent)
         self.close_button.setIcon(make_icon("close", text, 16))
-        self.more_button.setIcon(make_icon("more", text, 16))
+        self.settings_button.setIcon(make_icon("gear", text, 16))
         if not self.search.actions():
             self.search.addAction(make_icon("search", text, 15), QLineEdit.ActionPosition.LeadingPosition)
         else:
@@ -526,6 +537,7 @@ class SidePanel(QFrame):
         (sheet, path on one line, *kind* of program or format, size, dates as MM/DD/YY)."""
         self._has_file = bool(name)
         self.file_button.text_label.setFullText(name or NO_FILE_TEXT, path or name or "Choose a spreadsheet file")
+        self.file_button.setToolTip((path or name) + "\nClick to choose another file" if name else "Choose a spreadsheet file")
         self._draw_file_icon()
         facts: dict[str, tuple[str, str]] = {}
         if name:
@@ -577,6 +589,12 @@ class SidePanel(QFrame):
         self.empty_label.setText(NO_MATCH_TEXT if total and not shown else NO_OTHERS_TEXT)
         self.empty_label.setVisible(shown == 0)
 
+    def _mode_toggled(self, mode: str) -> None:
+        """A radio button was checked: Next is only usable (and only looks usable) while Append To is chosen."""
+        self.new_row_button.setEnabled(mode == APPEND_TO)
+        if not self._syncing:
+            self.mode_changed.emit(mode)
+
     def _layout_toggled(self, vertical: bool) -> None:
         self._vertical = vertical
         self._explain()
@@ -589,6 +607,8 @@ class SidePanel(QFrame):
         self.next_row_note.setText(f"Turn words are written to new {unit}s")
         self.append_note.setText(f"Turn words are added to the same {unit}")
         self.new_row_button.setToolTip(f"Move cursor to the next {unit}")
+        self.next_row_radio.setToolTip(self.next_row_note.text())
+        self.append_radio.setToolTip(self.append_note.text())
 
     def set_options(self, mode: str, vertical: bool, start_row: int = 0, headings_row: int = 0) -> None:
         """Show the saved options on both pages and the overlay (without reporting them back as changes)."""

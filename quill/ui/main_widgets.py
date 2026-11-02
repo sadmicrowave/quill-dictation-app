@@ -2,7 +2,7 @@
 
 Kept apart from :mod:`quill.ui.main_window` so that file holds the window's behaviour only:
 
-* :class:`ChipPlacer`: lays the "File stream not connected" chip over the file picker.
+* :class:`ChipPlacer`: lays the "File not connected" chip over the file picker.
 * :class:`WorkbookCombo`: the file picker, a drop-down only when there is a choice to make.
 * :class:`StreamBox`: the Voice Stream (what is being heard).
 * :class:`RowTable`: the grid showing the row being built.

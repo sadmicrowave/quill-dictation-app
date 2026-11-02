@@ -33,7 +33,7 @@ The panel's choice follows what you say.
 
 The **Log** and the **Last Saved** line say *Row 4 (added to)* for these turns.
 
-Starting Row, Sheet Layout (**By Columns** or **By Rows**) and Headings Row are in the file settings (the **…** button on the Files page; see [the spreadsheet page](help:spreadsheet)). Every text in the panel follows the layout: with **By Rows** it says *column* where it said *row*, and the Log says *Column C*. **Searching** needs the headings across the top.
+Starting Row, Sheet Layout (**By Columns** or **By Rows**) and Headings Row are in the file settings (the gear on the Files page; see [the spreadsheet page](help:spreadsheet)). Every text in the panel follows the layout: with **By Rows** it says *column* where it said *row*, and the Log says *Column C*. **Searching** needs the headings across the top.
 
 **Next** in the panel moves the spreadsheet's cursor to the next row (column). After a turn in **Next Row** mode the cursor moves on to the next row; in **Append To** mode it stays on the row that was written.
 

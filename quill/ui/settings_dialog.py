@@ -58,6 +58,7 @@ from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.licensing import LicenseService
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
+from quill.ui.hints import fill_missing_tips
 from quill.ui.settings_widgets import (
     FlatCombo,
     GuardedCombo,
@@ -352,6 +353,7 @@ class SettingsDialog:
         self._dialog = dialog
         self.nav.setCurrentRow(self._nav_row("General"))
         self._finish_build(dialog)
+        fill_missing_tips(dialog)
         return dialog
 
     def _finish_build(self, dialog: QDialog) -> None:
@@ -448,6 +450,7 @@ class SettingsDialog:
             for title in titles:
                 item = QListWidgetItem(title)
                 item.setData(Qt.ItemDataRole.UserRole, title)
+                item.setToolTip(f"Show the {title} settings")
                 self.nav.addItem(item)
                 self._nav_items[title] = item
             self._captions = getattr(self, "_captions", []) + [head]
@@ -466,6 +469,7 @@ class SettingsDialog:
         if title:
             if title == "Keywords":
                 self._ensure_keywords()                              # built the first time it is opened
+                fill_missing_tips(self._dialog)
             self.pages.setCurrentIndex(self._page_index[title])
 
     def filter(self, text: str) -> int:
@@ -819,6 +823,7 @@ class SettingsDialog:
         self.table.setItem(row, 0, QTableWidgetItem(phrase if isinstance(phrase, str) else ""))
         combo = GuardedCombo()
         combo.setMinimumHeight(34)          # tall enough that the text is not clipped top and bottom
+        combo.setToolTip("What saying this phrase does")
         for candidate in BINDABLE_ACTIONS:
             combo.addItem(action_label(candidate), candidate)
         combo.setCurrentIndex(BINDABLE_ACTIONS.index(action if isinstance(action, Action) else Action.NEXT_ROW))

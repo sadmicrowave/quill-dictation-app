@@ -42,6 +42,7 @@ from quill.parser.tokens import display_name
 from quill.parser.vocab import Vocabulary
 from quill.session import Decision, TermKey
 from quill.ui.chrome import SYMBOL_HELP, SYMBOL_UNDO, add_titlebar_button
+from quill.ui.hints import fill_missing_tips
 from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.widgets import ListenButton, pill, pillify
@@ -112,6 +113,7 @@ class TermRow(QFrame):
         self.hint.setTextFormat(Qt.TextFormat.RichText)
         self.hint.setVisible(False)
         self.combo = FlatCombo()                      # the same controls the Settings pages use
+        self.combo.setToolTip("Choose the column this term belongs to")
         self.combo.addItem(PLACEHOLDER, None)
         # Columns with an unfilled slot are not known here; list them in sheet order.
         for name in vocab.columns_for(term):                  # only columns the term could belong to ("teal" is no date)
@@ -126,6 +128,7 @@ class TermRow(QFrame):
         self.same_menu.aboutToShow.connect(self._fill_same_menu)
         self.same_button.setMenu(self.same_menu)
         self.ignore_button = QPushButton("Ignore")
+        self.ignore_button.setToolTip("Forget this term; it will not be asked about again")
         self.match_button = QPushButton()                      # the likely answer: outlined like the rest, "Same As" plain, the code bold
         self.match_button.setProperty("keepMargins", True)
         inside = QHBoxLayout(self.match_button)
@@ -399,8 +402,10 @@ class SortingWindow:
 
         footer = QHBoxLayout()
         self.add_all_button = QPushButton("Add All With a Column")
+        self.add_all_button.setToolTip("Add every term that already has a column chosen")
         self.add_all_button.clicked.connect(self.add_all)
         self.ignore_all_button = QPushButton("Ignore All")
+        self.ignore_all_button.setToolTip("Forget every term in the list")
         self.ignore_all_button.clicked.connect(self.ignore_all)
         footer.addWidget(self.add_all_button)
         self.undo_button = QPushButton("↶ Undo")
@@ -411,6 +416,7 @@ class SortingWindow:
         footer.addWidget(self.ignore_all_button)
         layout.addLayout(footer)
         self._window = window
+        fill_missing_tips(window)
         self._geometry_timer = QTimer(window)                 # tells the app where the window was left, once it stops moving
         self._geometry_timer.setSingleShot(True)
         self._geometry_timer.setInterval(400)
@@ -513,6 +519,8 @@ class SortingWindow:
         for row in leaving + rows:                          # answered rows stay on top while they play out
             self._list.insertWidget(self._list.count() - 1, row)
         self.rows = rows
+        if self._window is not None:
+            fill_missing_tips(self._window)                  # (new rows)
         if animate and len(leaving) > 1:
             self._retire_together(leaving)                 # a whole batch (Ignore All, Add All) leaves at once
         elif animate and leaving:

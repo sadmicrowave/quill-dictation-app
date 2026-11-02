@@ -468,11 +468,10 @@ class TitlebarButton:
         except Exception:
             pass
 
-    def set_panel_title(self, text: str, more: bool = False) -> None:
-        """The side panel's title (and whether its "…" file settings button shows), drawn in the title bar."""
+    def set_panel_title(self, text: str) -> None:
+        """The side panel's title, drawn in the title bar."""
         try:
             if self._panel is not None:
-                self._panel.show_more = more
                 self._panel.title.setStringValue_(text)
                 self._panel.title.sizeToFit()
                 self._panel.place(self._inset, self._reference)
@@ -562,8 +561,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
                         platform: str | None = None, appkit=None,
                         extra: list[tuple] | None = None, symbol: str | None = None, tip: str = "",
                         hover: tuple | None = None, side: str = "right",
-                        on_panel_close: Callable[[], None] | None = None,
-                        on_panel_more: Callable[[], None] | None = None) -> TitlebarButton | None:
+                        on_panel_close: Callable[[], None] | None = None) -> TitlebarButton | None:
     """Add the resize icon (and optionally more icons to its left) at the right of the native title bar (macOS).
 
     Args:
@@ -577,7 +575,6 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         hover: ``(hover_in, hover_out)`` for the main icon; its native tooltip is then left off.
         side: ``"right"`` (default) or ``"left"`` (beside the window's close / zoom buttons).
         on_panel_close: Called when the side panel's close button (drawn in the title bar) is pressed.
-        on_panel_more: Called when the side panel's "…" file settings button is pressed.
 
     Returns:
         The button, or None where this is not possible (other platforms, headless
@@ -654,7 +651,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             controller.setView_(button)
         controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)
         window.addTitlebarAccessoryViewController_(controller)
-        panel = _PanelChrome(appkit, window, on_panel_close, make_button, on_panel_more) if side == "right" and appkit_real else None
+        panel = _PanelChrome(appkit, window, on_panel_close, make_button) if side == "right" and appkit_real else None
         reference = window.standardWindowButton_(0) if appkit_real else None
         result = TitlebarButton(button, controller, target, appkit, extras, holder if extras else None,
                                 row if extras else None, row_x if extras else 0.0, width if extras else 0, panel, reference)
@@ -677,7 +674,7 @@ class _PanelChrome:
     edge (the panel's width) so they follow the panel as it slides.
     """
 
-    def __init__(self, appkit, window, on_close, make_button, on_more=None) -> None:
+    def __init__(self, appkit, window, on_close, make_button) -> None:
         self._appkit = appkit
         bar = window.standardWindowButton_(0).superview()
         self.bar = bar
@@ -693,13 +690,7 @@ class _PanelChrome:
         if image is not None:
             self.close.setImage_(image)
         self.close.setToolTip_("Close")
-        self.more, self._more_target = make_button(on_more or (lambda: None), 30)
-        image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_("ellipsis", "File Settings")
-        if image is not None:
-            self.more.setImage_(image)
-        self.more.setToolTip_("File Settings")
-        self.show_more = False                          # the file page has the settings button, the turn page does not
-        for view in (self.line, self.title, self.close, self.more):
+        for view in (self.line, self.title, self.close):
             view.setAutoresizingMask_(1)                # keeps its distance from the right edge
             view.setHidden_(True)
             bar.addSubview_(view)
@@ -710,7 +701,6 @@ class _PanelChrome:
         shown = points > 0
         for view in (self.line, self.title, self.close):
             view.setHidden_(not shown)
-        self.more.setHidden_(not (shown and self.show_more))
         if not shown:
             return
         width, height = self.bar.bounds().size.width, self.bar.bounds().size.height
@@ -722,7 +712,6 @@ class _PanelChrome:
         size = self.title.frame().size
         self.title.setFrameOrigin_((width - points + 14, middle - size.height / 2))
         self.close.setFrameOrigin_((width - 38, middle - 12))
-        self.more.setFrameOrigin_((width - 38 - 32, middle - 12))
 
 
 def _button_class(appkit, objc):

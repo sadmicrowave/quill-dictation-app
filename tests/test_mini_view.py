@@ -660,6 +660,8 @@ class TestPlaceholdersMatchToThePixel(unittest.TestCase):
             window.row_placeholder.setText(text)
             from PySide6.QtTest import QTest
             QTest.qWait(40)
+            window.row_grip.allowed = False                      # (its drag dots are not part of the placeholder)
+            window.row_grip.hide()
             image = window.widget.grab().toImage()
             self.assertEqual(self.inked_box(window, window.stream, image),
                              self.inked_box(window, window.row_table, image), spacing)

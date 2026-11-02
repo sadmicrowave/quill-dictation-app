@@ -110,6 +110,8 @@ log = logging.getLogger("quill.app")
 #: watcher ticks pass between looks for a file open in another spreadsheet program.
 HOST_RELOAD_MS = 1500
 HOST_PROBE_EVERY = 3
+#: Logged once the speech model is loaded and a spreadsheet is connected.
+READY_NOTE = "Speech model ready. The microphone is off until you press Start."
 #: How often (ms) held changes (the file was in use by another program) are tried again; after this many failed tries a copy is saved.
 FLUSH_EVERY_MS = 5000
 FLUSH_COPY_AFTER = 3
@@ -175,6 +177,7 @@ class QuillApp:
         self._model_busy, self._model_note = False, ""          # the speech model download, shown in Settings
         self._quitting = False
         self._host_probe_running = False             # a look for files in other programs is under way
+        self._ready_note_pending = False             # the model is ready but a warning is showing: the note waits for a connection
         self._open_files: list[OpenFile] = []        # spreadsheets other programs have open (the side panel's list)
         self._open_files_busy = False
         self._host_noted = False
@@ -292,6 +295,8 @@ class QuillApp:
         self._rebuild_watchers = [watch_native_window(w, self._native_rebuilt)
                                   for w in (self.window.widget, self.sorting.widget) if w is not None]
         self.window.set_stream_classifier(self._match_heard_words)
+        self.window.restore_log_height(int(self.settings.preferences["log_height"]))
+        self.window.set_log_height_listener(self._log_height_changed)
         self.window.restore_mini_size(int(self.settings.preferences["mini_width"]),
                                       int(self.settings.preferences["mini_height"]))
         self.window.restore_size(int(self.settings.preferences["window_width"]),
@@ -342,6 +347,9 @@ class QuillApp:
         if warning:
             self.window.append_log(warning, "warning")
         self.window.set_not_connected(False)
+        if self._ready_note_pending and self.listener is not None and not self._mic_open:
+            self._ready_note_pending = False
+            self.window.append_log(READY_NOTE)
         self._show_active_sheet()
         self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
         self.settings.preferences["last_workbook"] = bridge.workbook_name
@@ -588,7 +596,10 @@ class QuillApp:
         self._mic_open = False
         self._sync_mic()
         if not self._mic_open:
-            self.window.append_log("Speech model ready. The microphone is off until you press Start.")
+            if self.connected:
+                self.window.append_log(READY_NOTE)
+            else:
+                self._ready_note_pending = True               # no "ready, press Start" next to a warning: say it once a file is connected
 
     def mic_wanted(self) -> bool:
         """Should the microphone be open right now?
@@ -632,8 +643,8 @@ class QuillApp:
         if active and not self.connected:
             self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None,
                                   quiet=True)
-            if not self.connected:                  # nothing to fill in yet: ask for a file straight away
-                self.choose_spreadsheet_file()
+            if not self.connected:                  # nothing to fill in yet: the Files panel opens, to pick or choose a file
+                self.window.open_panel(FILE_PAGE)
         self.controller.set_listening(active)   # explains what to do if there is no workbook
 
     def next_row(self) -> None:
@@ -810,6 +821,11 @@ class QuillApp:
         if off > 0.5:
             QTimer.singleShot(140, lambda: self._align_titlebar(tries - 1))
 
+    def _log_height_changed(self, height: int) -> None:
+        """The user dragged the log to a new height: it opens that tall from now on."""
+        self.settings.preferences["log_height"] = int(height)
+        self.settings.save()
+
     def _sorting_moved(self, x: int, y: int, width: int) -> None:
         """The Term Helper was moved or resized: it opens there from now on (set once, kept)."""
         prefs = self.settings.preferences
@@ -837,7 +853,7 @@ class QuillApp:
     def _panel_toggled(self, page: str) -> None:
         self._show_titlebar_panel(page)
         if page and self._titlebar is not None:
-            self._titlebar.set_panel_title(TITLES[page], more=page == FILE_PAGE)
+            self._titlebar.set_panel_title(TITLES[page])
         self._panel_toggled_pages(page)
 
     def _panel_toggled_pages(self, page: str) -> None:
@@ -1021,7 +1037,7 @@ class QuillApp:
             mini=self.window.mini, extra=[(SYMBOL_FOLDER, "Open Spreadsheet File", lambda: self.window.toggle_panel(FILE_PAGE)),
                                           (SYMBOL_TURN, "Turn Settings", lambda: self.window.toggle_panel(TURN_PAGE)),
                                           (SYMBOL_SETTINGS, "Settings", self.open_settings)],
-            on_panel_close=self.window.close_panel, on_panel_more=self.window.show_file_settings)
+            on_panel_close=self.window.close_panel)
         native = self._titlebar is not None
         # Help, then Undo, sit right beside the window's close / minimise / zoom buttons.
         self._titlebar_left = add_titlebar_button(

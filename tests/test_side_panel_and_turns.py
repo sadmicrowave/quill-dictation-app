@@ -1028,11 +1028,14 @@ class TestFilePanelDetails(Dir):
         headings = [l.text() for l in self.panel.findChildren(QLabel) if l.property("panelHeading")]
         self.assertIn("Active File", headings)
 
-    def test_the_settings_button_belongs_to_the_file_page_only(self):
-        self.panel.show_page(FILE_PAGE)
-        self.assertFalse(self.panel.more_button.isHidden())
-        self.panel.show_page(TURN_PAGE)
-        self.assertTrue(self.panel.more_button.isHidden())
+    def test_the_settings_gear_sits_right_aligned_on_the_active_file_row(self):
+        file_page = self.panel.stack.widget(0).widget()
+        self.assertTrue(file_page.isAncestorOf(self.panel.settings_button))
+        row = file_page.layout().itemAt(0).layout()                        # the first row of the page
+        self.assertEqual(row.itemAt(0).widget().text(), "Active File")
+        self.assertIs(row.itemAt(1).widget(), self.panel.settings_button)   # after the stretching title: at the right
+        self.assertEqual(row.stretch(0), 1)
+        self.assertTrue(self.panel.settings_button.toolTip())
 
 
 class TestHeadingsRow(Dir):
@@ -1425,20 +1428,45 @@ class TestToolTips(unittest.TestCase):
             from PySide6.QtCore import QEvent, QPoint
             from PySide6.QtGui import QHelpEvent
             button = app.app.window.panel.new_row_button
-            with mock.patch("quill.ui.widgets.QToolTip.showText") as show:
-                handled = _app._quill_tooltips.eventFilter(button, QHelpEvent(QEvent.Type.ToolTip, QPoint(3, 3), QPoint(600, 400)))
+            handled = _app._quill_tooltips.eventFilter(button, QHelpEvent(QEvent.Type.ToolTip, QPoint(3, 3), QPoint(600, 400)))
+            tip = _app._quill_tooltips.window
             self.assertTrue(handled)
-            self.assertEqual(show.call_args.args[1], button.toolTip())
+            self.assertTrue(tip.isVisible())
+            self.assertEqual(tip._text, button.toolTip())
+            self.assertAlmostEqual(tip.geometry().center().x(), 600, delta=3)       # centred on the pointer
+            leave = QEvent(QEvent.Type.Leave)
+            _app._quill_tooltips.eventFilter(button, leave)
+            self.assertFalse(tip.isVisible())                                        # gone when the pointer leaves
         finally:
             app._tmp.cleanup()
 
-    def test_tooltip_padding_is_half_or_less_of_the_old_5_by_9(self):
-        from quill.ui.theme import stylesheet_for
-        sheet = stylesheet_for(False)
-        rule = sheet[sheet.index("QToolTip {"): sheet.index("}", sheet.index("QToolTip {"))]
-        vertical, horizontal = re.search(r"padding: (\d+)px (\d+)px", rule).groups()
-        self.assertLessEqual(int(vertical), 2)
-        self.assertLessEqual(int(horizontal), 4)
+    def test_the_tip_is_a_rounded_lighter_grey_card_with_some_padding(self):
+        from quill.ui.theme import colors_for, mix, stylesheet_for
+        from quill.ui.widgets import TOOLTIP_PAD_X, TOOLTIP_PAD_Y, TipWindow
+        self.assertTrue(2 < TOOLTIP_PAD_Y <= 5 and 5 <= TOOLTIP_PAD_X <= 10)          # less than the old 5 x 9, but not none
+        for dark in (False, True):
+            sheet = stylesheet_for(dark)
+            rule = sheet[sheet.index("QToolTip {"): sheet.index("}", sheet.index("QToolTip {"))]
+            self.assertIn("border-radius: 7px", rule)
+            t = colors_for(dark, "violet")
+            lighter = mix(t["surface"], t["text"], 0.26 if dark else 0.08)
+            self.assertIn(lighter, rule)
+            self.assertNotEqual(lighter, mix(t["surface"], t["text"], 0.10))                # not the old grey
+        tip = TipWindow()
+        size = tip.set_text("hello")
+        self.assertGreater(size.width(), 2 * TOOLTIP_PAD_X)
+        self.assertTrue(tip.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))     # so the corners can be round
+
+    def test_a_tip_near_the_screen_edge_stays_on_screen(self):
+        from PySide6.QtCore import QPoint
+        from quill.ui.widgets import CenteredToolTips
+        filt = CenteredToolTips()
+        room = _app.primaryScreen().availableGeometry()
+        filt.show_tip(QPoint(room.right() - 2, room.bottom() - 2), "a tip near the corner of the screen")
+        geometry = filt.window.geometry()
+        self.assertLessEqual(geometry.right(), room.right())
+        self.assertLessEqual(geometry.bottom(), room.bottom())
+        filt.window.hide()
 
 
 class TestKeywordsLinkAndOverlay(PanelApp):
@@ -1501,6 +1529,289 @@ class TestTitleCentring(unittest.TestCase):
         self.assertEqual(label.f.origin.x + 20, (689 - 236) / 2)          # the middle of what is left of the line
         chrome._retitle(label, close, "Quill", 0)
         self.assertEqual(label.f.origin.x + 20, 689 / 2)
+
+
+# --------------------------------------------------------------------------- #
+# Round three of peer-review checks                                            #
+# --------------------------------------------------------------------------- #
+
+class TestEverythingClickableHasHoverText(unittest.TestCase):
+    """Walk every window and fail on any button, drop-down, switch, radio button or link that is silent on hover."""
+
+    def silent(self, root):
+        from quill.ui.hints import missing_tips
+        return [f"{type(w).__name__} {w.objectName()!r} {getattr(w, 'text', lambda: '')()!r}" for w in missing_tips(root)]
+
+    def test_the_main_window_the_panel_and_the_overlay(self):
+        w = MainWindow()
+        w.setup()
+        for page in (FILE_PAGE, TURN_PAGE):
+            w.panel.show_page(page)
+            self.assertEqual(self.silent(w.widget), [], page)
+        self.assertEqual(self.silent(w.panel.settings), [])
+        w.panel.set_options(NEXT_ROW, True, 0, 0)                          # the other layout's widgets too
+        self.assertEqual(self.silent(w.panel.settings), [])
+
+    def test_the_term_helper_with_rows_and_the_footer(self):
+        from quill.parser.vocab import Vocabulary
+        from quill.ui.sorting_window import SortingWindow
+        vocab = Vocabulary()
+        vocab.load({"Size": ["M", "L"]}, [])
+        sw = SortingWindow(vocab, lambda *a: None)
+        sw.setup()
+        sw.set_items([(None, "medium"), ("Size", "teal"), ("Size", "xl")])
+        self.assertEqual(self.silent(sw.widget), [])
+        sw.widget.close()
+
+    def test_every_settings_page_including_keywords(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(Settings.defaults())
+        widget = dialog.build()
+        for title in list(dialog._nav_items):
+            dialog.nav.setCurrentRow(dialog._nav_row(title))
+        self.assertEqual(self.silent(widget), [])
+
+    def test_the_help_window(self):
+        from quill.ui.help_window import HelpWindow
+        help_window = HelpWindow()
+        help_window.setup()
+        self.assertEqual(self.silent(help_window._window), [])
+
+    def test_list_items_and_links_explain_themselves_too(self):
+        w = MainWindow()
+        w.setup()
+        w.panel.set_available([("a.xlsx", "/x/a.xlsx", None)])
+        self.assertTrue(w.panel.available.item(0).toolTip())
+        self.assertEqual(w.panel.turn_intro.toolTip(), "")                      # (it appears only while a link is hovered)
+        w.panel.turn_intro.linkHovered.emit("keywords")
+        self.assertEqual(w.panel.turn_intro.toolTip(), "Open the Keywords settings")
+        w.panel.turn_intro.linkHovered.emit("")
+        self.assertEqual(w.panel.turn_intro.toolTip(), "")
+        from quill.ui.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(Settings.defaults())
+        dialog.build()
+        self.assertTrue(all(dialog.nav.item(i).toolTip() for i in range(dialog.nav.count()) if dialog.nav.item(i).data(Qt.ItemDataRole.UserRole)))
+
+    def test_a_setting_control_says_what_the_setting_does(self):
+        from quill.ui.settings_widgets import SettingRow, ToggleSwitch
+        toggle = ToggleSwitch()
+        row = SettingRow("Auto stop", "Stop listening when nothing is said", toggle)
+        self.assertEqual(toggle.toolTip(), "Stop listening when nothing is said")
+        self.assertIsNotNone(row)
+
+    def test_the_fallback_never_overrides_a_tip_that_was_written(self):
+        from PySide6.QtWidgets import QPushButton
+        from quill.ui.hints import fill_missing_tips
+        written, plain = QPushButton("Add"), QPushButton("Ignore")
+        written.setToolTip("Add this value to the Size list")
+        from PySide6.QtWidgets import QWidget as Holder
+        holder = Holder()
+        for b in (written, plain):
+            b.setParent(holder)
+        fill_missing_tips(holder)
+        self.assertEqual(written.toolTip(), "Add this value to the Size list")
+        self.assertIn("Forget", plain.toolTip())
+
+
+class TestStartupMessages(PanelApp):
+    def make_app(self, connected):
+        events = []
+        path = make_workbook(self.dir / "p2.xlsx")
+        bridge = XlsxBridge(path) if connected else DeadExcel()
+        app = QuillApp(_app, Settings.load(self.dir / ("cfg-c" if connected else "cfg-d")), bridge,
+                       listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: self.dir, speaker=FakeSpeaker(),
+                       sound_player=lambda p: None, live_bridge_factory=lambda: DeadExcel(), hosts=FakeHosts())
+        app.run_in_background = lambda work, done: done(work())
+        app.start()
+        return app
+
+    def test_a_clean_start_says_the_model_is_ready(self):
+        text = self.make_app(True).window.log.toPlainText()
+        self.assertIn("Speech model ready", text)
+        self.assertNotIn("Not connected", text)
+
+    def test_a_warning_at_start_is_not_followed_by_a_cheerful_ready_message(self):
+        text = self.make_app(False).window.log.toPlainText()
+        self.assertIn("Not connected", text)
+        self.assertNotIn("Speech model ready", text)
+
+    def test_the_ready_message_comes_once_a_file_is_connected_and_only_once(self):
+        app = self.make_app(False)
+        app.open_workbook_file(self.plants)
+        text = app.window.log.toPlainText()
+        self.assertEqual(text.count("Speech model ready"), 1)
+        app.open_workbook_file(self.other)
+        self.assertEqual(app.window.log.toPlainText().count("Speech model ready"), 1)
+
+
+class TestNotConnectedPill(unittest.TestCase):
+    def test_it_says_file_not_connected_without_the_word_stream(self):
+        from quill.ui.main_window import NOT_CONNECTED_TEXT
+        self.assertEqual(NOT_CONNECTED_TEXT, "File not connected")
+        w = MainWindow()
+        w.setup()
+        self.assertNotIn("stream", w.connection_chip.text().lower())
+
+    def test_the_pill_follows_the_accent_colour(self):
+        from quill.ui import theme
+        for dark in (False, True):
+            for accent in ("violet", "blue", "green"):
+                sheet = theme.stylesheet_for(dark, accent)
+                rule = sheet[sheet.index('QLabel[chip="warn"] {'): sheet.index("}", sheet.index('QLabel[chip="warn"] {'))]
+                self.assertIn(theme.rgba(theme.colors_for(dark, accent)["accent"], 0.6), rule, (dark, accent))
+
+
+class TestNextButtonLooksDisabled(unittest.TestCase):
+    def test_it_is_disabled_with_a_grey_border_until_append_to_is_chosen(self):
+        from quill.ui import theme
+        for dark in (False, True):
+            sheet = theme.stylesheet_for(dark)
+            t = theme.colors_for(dark, "violet")
+            start = sheet.index('QPushButton[outline="true"]:disabled')
+            self.assertIn(t["border"], sheet[start: sheet.index("}", start)])
+            self.assertGreater(start, sheet.index('QPushButton[outline="true"] {'))      # later, so it wins over the purple border
+        w = MainWindow()
+        w.setup()
+        w.panel.set_options(NEXT_ROW, False, 0, 0)
+        self.assertFalse(w.panel.new_row_button.isEnabled())
+        w.panel.append_radio.setChecked(True)
+        self.assertTrue(w.panel.new_row_button.isEnabled())
+        w.panel.next_row_radio.setChecked(True)
+        self.assertFalse(w.panel.new_row_button.isEnabled())
+
+
+class TestOverlayOrderAndWording(unittest.TestCase):
+    def test_headings_first_then_starting_then_the_layout(self):
+        w = MainWindow()
+        w.setup()
+        layout = w.panel.settings.layout()
+        order = [layout.itemAt(i).widget() for i in range(layout.count()) if layout.itemAt(i).widget() is not None]
+        headings = [x.text() for x in order if isinstance(x, QLabel) and x.property("panelHeading")]
+        self.assertEqual(headings, ["Headings Row", "Starting Row", "Sheet Layout"])
+
+    def test_the_turn_description_is_two_sentences_on_two_lines_without_parentheses_around_the_last(self):
+        w = MainWindow()
+        w.setup()
+        text = w.panel.turn_intro.text()
+        self.assertIn("handled.<br>Voice activated with", text)
+        self.assertNotIn("(Voice", text)
+        self.assertTrue(text.endswith("Keywords</a>."))
+
+    def test_only_the_link_is_a_pointer_not_the_whole_description(self):
+        w = MainWindow()
+        w.setup()
+        self.assertNotEqual(w.panel.turn_intro.cursor().shape(), Qt.CursorShape.PointingHandCursor)
+
+    def test_the_gear_is_an_icon_button_drawn_with_the_gear_shape(self):
+        from quill.ui.icons import SHAPES
+        self.assertIn("gear", SHAPES)
+        w = MainWindow()
+        w.setup()
+        w.refresh_icons("#222222", "#ffffff", "#7A55C2")
+        self.assertFalse(w.panel.settings_button.icon().isNull())
+
+
+class TestPanelTouchesTheWindowWithSpacingApplied(PanelApp):
+    """The real app applies the spacing setting to every layout; the content and the panel must still touch."""
+
+    def test_no_gap_opens_between_the_content_and_the_panel(self):
+        MainWindow.animation_ms, saved = 0, MainWindow.animation_ms
+        try:
+            for spacing in ("compact", "comfortable"):
+                self.app.settings.preferences["spacing"] = spacing
+                self.app.apply_settings(quiet=True)
+                self.app.window.open_panel(FILE_PAGE)
+                _app.processEvents()
+                root, panel = self.app.window.root, self.app.window.panel
+                self.assertEqual(root.geometry().right() + 1, panel.geometry().left(), spacing)
+                edge = [f for f in panel.findChildren(__import__("PySide6.QtWidgets", fromlist=["QFrame"]).QFrame) if f.property("panelEdge")][0]
+                self.assertEqual(edge.mapTo(panel, edge.rect().topLeft()).x(), 0, spacing)        # the line is the panel's first pixel
+                self.app.window.close_panel()
+        finally:
+            MainWindow.animation_ms = saved
+
+
+class TestResizableAreas(PanelApp):
+    def setUp(self):
+        super().setUp()
+        self.w = self.app.window
+        self.w.widget.show()
+        self.w.set_log_collapsed(False)
+        _app.processEvents()
+
+    def test_the_grip_sits_on_the_bottom_edge_of_the_matched_words_box(self):
+        grip, box = self.w.row_grip, self.w.row_table
+        self.assertTrue(grip.isVisibleTo(self.w.widget))
+        self.assertEqual(grip.cursor().shape(), Qt.CursorShape.SizeVerCursor)
+        self.assertEqual(grip.geometry().bottom(), box.geometry().bottom())
+        self.assertEqual((grip.x(), grip.width()), (box.x(), box.width()))
+        self.assertTrue(grip.toolTip())
+
+    def test_dragging_down_makes_the_box_taller_and_the_log_shorter_at_the_same_window_size(self):
+        size, log, box = self.w.widget.size(), self.w.log_height, self.w.row_table.height()
+        self.w.widget.resize(self.w.widget.width(), size.height() + 200)             # room for the box to give
+        _app.processEvents()
+        log, box = self.w.log_height, self.w.row_table.height()
+        self.w.row_grip.dragged.emit(30)
+        _app.processEvents()
+        self.assertEqual(self.w.log_height, log - 30)
+        self.assertEqual(self.w.log.height(), log - 30)
+        self.assertGreater(self.w.row_table.height(), box)
+        self.assertEqual(self.w.widget.width(), size.width())                             # never sideways
+
+    def test_dragging_up_makes_the_log_taller_while_the_box_has_room(self):
+        self.w.widget.resize(self.w.widget.width(), self.w.widget.height() + 200)
+        _app.processEvents()
+        log = self.w.log_height
+        self.w.row_grip.dragged.emit(-40)
+        self.assertEqual(self.w.log_height, log + 40)
+
+    def test_it_stops_at_the_limits(self):
+        from quill.ui.main_window import LOG_MAX_HEIGHT, LOG_MIN_HEIGHT
+        self.w.widget.resize(self.w.widget.width(), 1400)
+        _app.processEvents()
+        self.w.row_grip.dragged.emit(5000)
+        self.assertEqual(self.w.log_height, LOG_MIN_HEIGHT)
+        self.w.row_grip.dragged.emit(-5000)
+        self.assertLessEqual(self.w.log_height, LOG_MAX_HEIGHT)
+
+    def test_with_the_log_hidden_the_drag_resizes_the_window_downwards_only_in_height(self):
+        self.w.set_log_collapsed(True)
+        _app.processEvents()
+        width, height = self.w.widget.width(), self.w.widget.height()
+        self.w.row_grip.dragged.emit(60)
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (width, height + 60))
+
+    def test_the_chosen_log_height_is_remembered_and_restored(self):
+        self.w.widget.resize(self.w.widget.width(), self.w.widget.height() + 200)
+        _app.processEvents()
+        self.w.row_grip.dragged.emit(-50)
+        self.w.row_grip.released.emit()
+        self.assertEqual(self.app.settings.preferences["log_height"], 120 + 50)
+        again = Settings.load(self.dir / "cfg")
+        self.assertEqual(again.preferences["log_height"], 170)
+        other = MainWindow()
+        other.setup()
+        other.restore_log_height(170)
+        self.assertEqual(other.log_height, 170)
+        other.restore_log_height(5)                                                         # nonsense is kept in bounds
+        self.assertEqual(other.log_height, 60)
+
+    def test_the_log_opens_at_its_remembered_height(self):
+        self.w.restore_log_height(200)
+        self.w.set_log_collapsed(True)
+        MainWindow.animation_ms, saved = 0, MainWindow.animation_ms
+        try:
+            self.w.set_log_collapsed(False)
+            _app.processEvents()
+        finally:
+            MainWindow.animation_ms = saved
+        self.assertEqual(self.w.log.height(), 200)
+
+    def test_the_mini_view_has_no_grip(self):
+        self.w.set_mini(True)
+        _app.processEvents()
+        self.assertFalse(self.w.row_grip.isVisibleTo(self.w.widget))
 
 
 if __name__ == "__main__":

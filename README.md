@@ -526,3 +526,11 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - Title bar: the icons are fixed 30 x 24 boxes (no stack view), the title is centred in the room left of the panel (measured on the real window with `tools`-style screenshots), the "…" and X sit in the panel's part of the title bar.
 - Next in Append To keeps the spreadsheet cursor on the same row; the panel's Next moves it on. Tool tips are centred on the pointer with half the padding.
 - Tests now walk every panel text in both layouts (`TestEveryTextFollowsTheLayout`) and check controller messages, cursor moves and tool tip placement.
+
+## Phase 60: startup message, Files panel on Start, tips, grips
+
+- No "speech model ready" line next to a warning at startup; it is logged once a file connects. **Start** with no file opens the Files panel. The pill reads "File not connected" in the accent colour.
+- The file settings button is a gear on the Active File row; the overlay lists Headings, Starting, then Layout. Next is disabled-looking until Append To is chosen.
+- Tool tips are drawn by `TipWindow` (rounded, lighter grey, centred on the pointer, on screen). Every clickable element has hover text (`quill/ui/hints.py` fills the gaps; a test walks every window).
+- The panel's stray 6 px band was `apply_spacing` giving the content/panel layout a gap; fixed with a `keepSpacing` property and a test that applies the spacing.
+- A drag grip on the matched-words box trades height with the log (or resizes the window when the log is hidden); the log height is remembered (`log_height`).

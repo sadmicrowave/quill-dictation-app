@@ -20,6 +20,8 @@ from typing import Callable
 
 from PySide6.QtCore import (
     QEasingCurve,
+    QEvent,
+    QObject,
     QPoint,
     QPropertyAnimation,
     QSize,
@@ -46,6 +48,7 @@ from PySide6.QtWidgets import (
 
 from quill.stream import WordMatch
 from quill.ui.chrome import set_always_on_top
+from quill.ui.hints import fill_missing_tips
 from quill.ui.icons import make_icon
 from quill.ui.main_widgets import (
     CHIP_HEIGHT,
@@ -63,6 +66,7 @@ from quill.ui.widgets import (
     HeadingToggle,
     ListenButton,
     Pill,
+    ResizeGrip,
     connection_tip,
     tooltip_lines,
 )
@@ -74,7 +78,7 @@ COLOR_ACTIVE = "#34c759"
 HELP_TOPIC = "welcome"
 
 #: The chip that replaces the sheet name while no spreadsheet is connected, and its tooltip.
-NOT_CONNECTED_TEXT = "File stream not connected"
+NOT_CONNECTED_TEXT = "File not connected"
 NOT_CONNECTED_HINT = (
     "No spreadsheet is connected, so there is nothing to read lists from or write rows to.\n"
     "Quill works through a workbook open in your spreadsheet program (it attaches automatically within a few seconds of "
@@ -91,7 +95,8 @@ LOG_BOTTOM_MARGIN = 7
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
 MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and opens at it the first time
-LOG_OPEN_HEIGHT = 120       # height of the log while it is open
+LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user drags it to another)
+LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
@@ -180,6 +185,8 @@ class MainWindow:
         self._text_color = "#1F1E1D"
         self._accent = "#7A55C2"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
+        self._log_height = LOG_OPEN_HEIGHT   # the log's height while open (the user can drag it)
+        self._on_log_height: Callable[[int], None] = lambda height: None
         self._log_grew = 0                   # window height added to make room for the open log (given back on close)
         self._log_animation: QVariantAnimation | None = None
         self._log_busy = False               # the log is sliding open or shut
@@ -234,6 +241,7 @@ class MainWindow:
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
         self._shell.setProperty("keepMargins", True)
+        self._shell.setProperty("keepSpacing", True)         # the content and the panel touch: no gap between them
         shell.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self._shell.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.panel = SidePanel()
@@ -261,6 +269,7 @@ class MainWindow:
         self.error_button.setProperty("errorMark", True)
         self.error_button.setText("!")
         self.error_button.setAccessibleName("Show the Error")
+        self.error_button.setToolTip("Something went wrong: back to the full window to read it")
         self.error_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.error_button.setVisible(False)
         self.error_button.clicked.connect(lambda: self.set_mini(False, notify=True))
@@ -346,6 +355,10 @@ class MainWindow:
         holder = QVBoxLayout(self.row_table.viewport())
         holder.setContentsMargins(*PLACEHOLDER_MARGINS)   # the same place the Voice Stream box's hint starts
         holder.addWidget(self.row_placeholder)
+        self.row_grip = ResizeGrip(central)         # drag the bottom edge of the matched words box: it trades height with the log
+        self.row_grip.dragged.connect(self._grip_dragged)
+        self.row_grip.released.connect(lambda: self._on_log_height(self._log_height))
+        self.row_table.installEventFilter(_GripPlacer(self.row_table, self.row_grip))
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
         self._has_last_saved = False                       # the line shows only once a row has been saved
         self.last_label = ElidedLabel("")                  # one line however much was saved
@@ -403,10 +416,12 @@ class MainWindow:
         else:
             self._refresh_visibility()
         self.set_listening_indicator(False)
+        fill_missing_tips(window)
+        fill_missing_tips(self.panel.settings)
 
     @staticmethod
     def _make_chip(parent: QWidget | None) -> QLabel:
-        """The "File stream not connected" warning chip: a fixed-height pill that never stretches."""
+        """The "File not connected" chip: a fixed-height pill that never stretches."""
         chip = QLabel(NOT_CONNECTED_TEXT, parent)
         chip.setProperty("chip", "warn")
         chip.setToolTip(connection_tip())
@@ -568,7 +583,7 @@ class MainWindow:
             QTimer.singleShot(0, lambda: self.open_panel(page))
 
     def set_not_connected(self, not_connected: bool, hint: str | None = None) -> None:
-        """Show the "File stream not connected." chip (instead of the sheet name) while there is no spreadsheet."""
+        """Show the "File not connected" chip (instead of the sheet name) while there is no spreadsheet."""
         self._not_connected = not_connected
         if hint:
             self.connection_chip.setToolTip(connection_tip(hint))
@@ -626,11 +641,11 @@ class MainWindow:
             self._slide_panel(PANEL_WIDTH)
 
     def show_file_settings(self) -> None:
-        """Open the file settings overlay under the panel's "…" button (top right of the window)."""
+        """Open the file settings overlay under the gear button of the Files page."""
         if self._window is None or not self._panel_open or self._panel_page != FILE_PAGE:
             return
-        corner = self._window.mapToGlobal(self._window.rect().topRight())
-        self.panel.show_settings(QPoint(corner.x() - 8, corner.y() + 6))
+        button = self.panel.settings_button                      # the overlay hangs from the gear, right edges level
+        self.panel.show_settings(button.mapToGlobal(button.rect().bottomRight()) + QPoint(0, 4))
 
     def close_panel(self) -> None:
         """Ease the panel shut (the window gives its width back)."""
@@ -775,6 +790,41 @@ class MainWindow:
         animation.finished.connect(done)
         animation.start()
 
+    def set_log_height_listener(self, callback: Callable[[int], None]) -> None:
+        """Call *callback* with the log's height whenever the user finishes dragging it to a new one."""
+        self._on_log_height = callback
+
+    def restore_log_height(self, height: int) -> None:
+        """Use the log height the user left it at (kept within bounds)."""
+        self._log_height = max(LOG_MIN_HEIGHT, min(LOG_MAX_HEIGHT, int(height or LOG_OPEN_HEIGHT)))
+        if self._window is not None and self.log.isVisibleTo(self._window) and not self._log_busy:
+            self.log.setFixedHeight(self._log_height)
+
+    @property
+    def log_height(self) -> int:
+        """The height the log has while it is open."""
+        return self._log_height
+
+    def _grip_dragged(self, dy: int) -> None:
+        """The bottom edge of the matched words box was dragged *dy* px (down is positive).
+
+        With the log open the two boxes trade height (the window stays the size it is); with the log hidden the whole
+        window is resized, and the box takes the difference. Never horizontally: the window's width is the user's own.
+        """
+        window = self._window
+        if window is None or self._view_mini or self._log_busy:
+            return
+        if self.log.isVisibleTo(window) and not self._log_collapsed:
+            room = max(self.row_table.height() - self.row_table.minimumHeight(), 0)         # what the matched words box can give up
+            wanted = self._log_height - dy                                                  # down makes the log shorter
+            wanted = max(LOG_MIN_HEIGHT, min(LOG_MAX_HEIGHT, wanted, self._log_height + room))
+            if wanted != self._log_height:
+                self._log_height = wanted
+                self.log.setFixedHeight(wanted)
+            return
+        floor = max(self._layout.minimumSize().height(), MIN_WINDOW[1])
+        window.resize(window.width(), max(floor, window.height() + dy))
+
     def _fit_height(self) -> int:
         """The height the window needs right now (the layout is recomputed first, as Qt only does that lazily)."""
         layout = self._layout
@@ -849,13 +899,15 @@ class MainWindow:
         detail = full or self._mini_detail                                   # the mini view shows them only when tall
         self.stream.setVisible(detail)
         self.row_table.setVisible(detail)
+        self.row_grip.allowed = full                                         # (only the full window is resized this way)
+        self.row_grip.setVisible(full and detail)
         self.last_label.setVisible(full and self._has_last_saved)
         self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
         self.undo_button.setEnabled(self._undo_count > 0)
         self.log.setVisible(full and (not self._log_collapsed or self._log_closing()))
         if self.log.isVisibleTo(self._window) and not self._log_busy:
-            self.log.setFixedHeight(LOG_OPEN_HEIGHT)
+            self.log.setFixedHeight(self._log_height)
         self.sorting_button.setVisible(self._sorting_count > 0)
         self.sorting_title.setVisible(full)                               # just the count pill when mini
         self.row_table.verticalHeader().setDefaultSectionSize(22 if self._view_mini else self._row_height)
@@ -980,7 +1032,7 @@ class MainWindow:
         spacing = max(layout.spacing(), 0)
         self._log_busy = True
         slack = max(self.row_table.height() - self.row_table.minimumHeight(), 0)    # what the box can give up
-        grow = max(LOG_OPEN_HEIGHT + spacing - slack, 0)
+        grow = max(self._log_height + spacing - slack, 0)
         self._log_grew = grow
         height, width = self._height_now(), window.width()
         self.log.setFixedHeight(0)
@@ -989,7 +1041,7 @@ class MainWindow:
         self.log.setVisible(True)
         if grow:
             self._resize_to(width, height + grow)
-        self._slide_log(0, LOG_OPEN_HEIGHT, True, self._log_settled)
+        self._slide_log(0, self._log_height, True, self._log_settled)
 
     def _close_log(self, window) -> None:
         grew, height, width = self._log_grew, self._height_now(), window.width()
@@ -1347,6 +1399,7 @@ class MainWindow:
         if self._window is None:
             return                      # not built yet; setup() draws them
         self.panel.set_colors(text_color, accent)
+        self.row_grip.set_color(text_color)
         self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")
@@ -1410,3 +1463,19 @@ class MainWindow:
     def listening(self) -> bool:
         """Last state passed to :meth:`set_listening_indicator`."""
         return self._listening
+
+
+class _GripPlacer(QObject):
+    """Keeps a resize grip on the bottom edge of the box it belongs to."""
+
+    def __init__(self, box: QWidget, grip: ResizeGrip) -> None:
+        super().__init__(box)
+        self._box, self._grip = box, grip
+
+    def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show, QEvent.Type.Hide):
+            box, grip = self._box, self._grip
+            grip.setVisible(box.isVisible() and getattr(grip, "allowed", True))
+            grip.setGeometry(box.x(), box.y() + box.height() - grip.height(), box.width(), grip.height())
+            grip.raise_()
+        return False

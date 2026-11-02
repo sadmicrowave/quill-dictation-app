@@ -97,19 +97,22 @@ class TestStartAsksForAFile(unittest.TestCase):
         app.start()
         return app
 
-    def test_start_with_no_file_opens_the_file_window_and_then_listens(self):
+    def test_start_with_no_file_opens_the_files_panel_not_the_file_window(self):
         app = self.make(str(self.plants))
         self.assertFalse(app.connected)
         app.toggle_listening(True)
+        self.assertEqual(self.asked, [])                              # the system file window is not shown
+        self.assertEqual(app.window.panel_page, "file")               # the Files panel is
+        self.assertFalse(app.controller.session.listening)            # and nothing listens until a file is chosen
+
+    def test_a_file_picked_in_the_panel_then_lets_start_listen(self):
+        app = self.make(str(self.plants))
+        app.toggle_listening(True)
+        app.window.panel.file_button.click()                           # the panel's button asks for the file
         self.assertEqual(self.asked, [1])
         self.assertTrue(app.connected)
-        self.assertTrue(app.controller.session.listening)
-
-    def test_cancelling_the_file_window_does_not_start_listening(self):
-        app = self.make(None)
         app.toggle_listening(True)
-        self.assertEqual(self.asked, [1])
-        self.assertFalse(app.controller.session.listening)
+        self.assertTrue(app.controller.session.listening)
 
     def test_with_a_file_open_start_just_starts(self):
         app = self.make(str(self.plants))

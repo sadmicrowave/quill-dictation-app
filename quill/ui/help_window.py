@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from quill import helpdocs
+from quill.ui.hints import fill_missing_tips
 from quill.ui.theme import install_backdrop
 from quill.helpdocs import Topic
 
@@ -106,6 +107,7 @@ class HelpWindow:
 
         self._window = window
         self._fill_nav()
+        fill_missing_tips(window)
         return window
 
     @property
@@ -123,11 +125,13 @@ class HelpWindow:
         for topic in self.topics:
             item = QTreeWidgetItem([topic.title])
             item.setData(0, Qt.ItemDataRole.UserRole, (topic.slug, None))
+            item.setToolTip(0, f"Open the {topic.title} page")
             self.nav.addTopLevelItem(item)
             self._items[topic.slug] = item
             for section in topic.sections:
                 child = QTreeWidgetItem([section])
                 child.setData(0, Qt.ItemDataRole.UserRole, (topic.slug, section))
+                child.setToolTip(0, f"Jump to {section}")
                 child.setForeground(0, self.nav.palette().placeholderText())
                 item.addChild(child)
 

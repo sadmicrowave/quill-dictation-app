@@ -91,7 +91,7 @@ def mix(base: str, other: str, amount: float) -> str:
     return "#" + "".join(f"{round(x + (y - x) * amount):02X}" for x, y in zip(a, b))
 
 
-#: The warning colour of notices ("File stream not connected"): an amber that reads on a light and on a dark window.
+#: The warning colour of notices ("File not connected"): an amber that reads on a light and on a dark window.
 WARNING_LIGHT, WARNING_DARK = "#B26A00", "#E0A030"
 
 
@@ -221,8 +221,8 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QFrame#sidePanel, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
-QToolTip {{ background: {mix(t['surface'], t['text'], 0.10)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
-           border-radius: 6px; padding: 2px 4px; }}
+QToolTip {{ background: {mix(t['surface'], t['text'], 0.26 if dark else 0.08)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.6)};
+           border-radius: 7px; padding: 4px 8px; }}
 
 QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['accent']};
               border-radius: 8px; padding: {d['button']}; }}
@@ -290,8 +290,8 @@ QMenu::item:disabled {{ color: {t['disabled']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
 QLabel[heading="true"] {{ color: {t['muted']}; }}
-QLabel[chip="warn"] {{ background: {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.16)}; color: {WARNING_DARK if dark else WARNING_LIGHT};
-              border: 1px solid {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.5)}; border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
+QLabel[chip="warn"] {{ background: {rgba(t['accent'], 0.16)}; color: {t['text']};
+              border: 1px solid {rgba(t['accent'], 0.6)}; border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
 QFrame[listenPill="true"] {{ background: transparent; border: 1px solid {t['accent']}; border-radius: 12px; }}
 QPushButton[accent="true"] QFrame[listenPill="true"] {{ border: 1px solid {rgba(t['on_accent'], 0.7)}; }}
 QFrame[listenPill="true"] QLabel {{ background: transparent; color: {t['text']}; font-weight: 500; }}
@@ -322,6 +322,7 @@ QLabel[staticHeading="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight
 QLabel[info="true"] {{ background: {rgba(t['accent'], 0.12)}; color: {t['text']}; border: 1px solid {rgba(t['accent'], 0.38)};
               border-radius: 12px; padding: 8px 14px; }}
 QPushButton[outline="true"] {{ border: 1px solid {t['accent']}; }}
+QPushButton[outline="true"]:disabled {{ border-color: {t['border']}; }}
 QPushButton[outline="true"]:hover {{ background: {rgba(t['accent'], 0.14)}; }}
 QLabel[headingToggle="true"]:hover {{ color: {t['accent']}; }}
 QTreeWidget#helpNav {{ background: transparent; border: none; outline: none; padding: 0; }}
@@ -494,8 +495,9 @@ def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:
         if owner is not None and owner.window() is not window:
             continue                           # another window that is a child of this one (Settings, Term Helper, a
                                                # drop-down's pop-up list) keeps its own layout; findChildren reaches it too
-        layout.setSpacing(d["gap"])
         parent = layout.parent()
+        if not (isinstance(parent, QWidget) and parent.property("keepSpacing")):     # (a layout whose pieces must touch)
+            layout.setSpacing(d["gap"])
         if isinstance(parent, QWidget) and not parent.property("keepMargins"):   # a widget's own layout, not a nested one
             m = d["margin"]
             layout.setContentsMargins(m, m, m, m)

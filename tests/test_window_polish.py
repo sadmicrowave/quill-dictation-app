@@ -41,9 +41,9 @@ def right(widget, root):
 
 class TestConnectionChip(unittest.TestCase):
     def test_says_file_stream_not_connected(self):
-        self.assertEqual(NOT_CONNECTED_TEXT, "File stream not connected")
+        self.assertEqual(NOT_CONNECTED_TEXT, "File not connected")
         w = window()
-        self.assertEqual(w.connection_chip.text(), "File stream not connected")
+        self.assertEqual(w.connection_chip.text(), "File not connected")
 
     def test_shown_in_place_of_the_empty_sheet_message(self):
         w = window()
@@ -119,8 +119,9 @@ class TestConnectionChip(unittest.TestCase):
             sheet = theme.stylesheet_for(dark)
             start = sheet.index('QLabel[chip="warn"] {')
             rule = sheet[start: sheet.index("}", start)]
-            warn = theme.WARNING_DARK if dark else theme.WARNING_LIGHT          # a warning colour, not the accent
-            self.assertIn(theme.rgba(warn, 0.5), rule)
+            accent = theme.colors_for(dark, "violet")["accent"]                  # the theme's accent, not an amber warning colour
+            self.assertIn(theme.rgba(accent, 0.6), rule)
+            self.assertNotIn(theme.rgba(theme.WARNING_DARK if dark else theme.WARNING_LIGHT, 0.5), rule)
             self.assertIn("border-radius: 11px", rule)
             self.assertIn("rgba(", rule)
 

@@ -3,7 +3,7 @@
 ## 🚦 Quick checks
 
 1. Is the button filled and are its sound lines green and moving? (Still and grey means Quill is not listening.)
-2. Is a spreadsheet open? (no orange *File stream not connected*)
+2. Is a spreadsheet open? (no *File not connected* pill)
 3. Is Quill allowed to use the **microphone**?
 4. Is your volume up?
 
@@ -15,7 +15,7 @@
 | *Could not save the row…* in red in the **Log** (it opens by itself) | The row is **kept** (nothing is lost). Quill only writes to the open sheet, and it doesn't have your columns. Open the sheet you are filling in, then say **"next row"** again |
 | Listening stopped by itself | Nothing was said for 10 seconds. Say **"start listening"** again, or change **Stop Listening When Quiet** in **Settings > General** |
 | Nothing happens when I talk | Say **"start listening"**; check microphone permission in your computer's privacy settings |
-| *File stream not connected* | Open your spreadsheet. Quill finds it in a few seconds |
+| *File not connected* | Open your spreadsheet. Quill finds it in a few seconds |
 | Mac asks about controlling your spreadsheet program | Choose **OK**. To undo: *System Settings > Privacy & Security > Automation* |
 | Quill doesn't know my lists | **Save** the sheet; Quill re-reads it. Lists must be real drop-downs (*Data > Data Validation > List*) |
 | *"The … list is full"* | Add empty cells below that list in your sheet |

@@ -69,6 +69,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "settings_page": "",      # the Settings page that was open when the window was last closed
     "settings_width": 0,      # and the window's size then (0 = default)
     "settings_height": 0,
+    "log_height": 120,        # how tall the log is while open (dragged by the user)
     "mini_mode": False,       # the main window starts as the small overlay
     "mini_on_top": True,      # the mini view floats above other windows
     "auto_stop": True,        # stop listening by itself when nothing has been said for a while
@@ -237,6 +238,7 @@ class Settings:
         settings.preferences["opacity"] = max(low, min(high, int(settings.preferences["opacity"])))
         low, high = BLUR_RANGE
         settings.preferences["blur"] = max(low, min(high, int(settings.preferences["blur"])))
+        settings.preferences["log_height"] = max(60, min(600, int(settings.preferences["log_height"])))
         settings.preferences["headings_row"] = max(0, min(1_048_576, int(settings.preferences["headings_row"])))
         settings.preferences["start_row"] = max(0, min(1_048_576, int(settings.preferences["start_row"])))
         low, high = FONT_SIZE_RANGE

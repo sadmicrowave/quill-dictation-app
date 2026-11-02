@@ -269,7 +269,7 @@ class TestListenButtonLayout(unittest.TestCase):
 
     def test_the_notice_chip_replaces_the_pill_at_the_left(self):
         from PySide6.QtWidgets import QLabel
-        chip = QLabel("File stream not connected")
+        chip = QLabel("File not connected")
         self.b.set_chip(chip)
         chip.show()
         self.b.set_notice(True)

@@ -30,3 +30,7 @@
 | Handle words Quill doesn't know | [Term Helper](help:term-helper) |
 | Change sounds, colours, shortcuts | [Settings](help:settings) |
 | Fix something | [Troubleshooting](help:troubleshooting) |
+
+## ↕️ Sizing the boxes
+
+Drag the three dots at the bottom edge of the matched-words box up or down: with the **Log** open the two boxes trade height; with it hidden the window grows or shrinks. Quill remembers the log's height and the window's size.

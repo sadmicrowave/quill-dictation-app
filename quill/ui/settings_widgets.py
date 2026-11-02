@@ -34,6 +34,8 @@ class SettingRow(QWidget):
     def __init__(self, title: str, description: str, control: QWidget, keywords: str = "") -> None:
         super().__init__()
         self.title = title
+        if not control.toolTip():
+            control.setToolTip(description or title)       # hovering the control says what the setting does
         self.setProperty("keepMargins", True)       # its inner layout is set explicitly; spacing must not move it
         self.search_text = f"{title} {description} {keywords}".lower()
         outer = QVBoxLayout(self)
