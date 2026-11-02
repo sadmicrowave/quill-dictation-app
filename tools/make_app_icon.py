@@ -1,4 +1,4 @@
-"""Build Quill's application icon files from the chosen design (idea 66: the offset sheet on violet).
+"""Build Quill's application icon files from the chosen design (a spreadsheet-style sheet of stepped column fills with a total row, behind the sound-lines box, on violet).
 
     python tools/make_app_icon.py
 
@@ -20,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from make_icon_ideas import render_png, sheet_offset_body  # noqa: E402
+from make_icon_ideas import render_png, sheet_excel_body as sheet_offset_body  # noqa: E402
 from quill.assets import ICON_SIZES  # noqa: E402
 
 OUT = ROOT / "quill" / "assets"

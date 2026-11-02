@@ -52,6 +52,23 @@ def svg_for(name: str, color: str) -> str:
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>'
 
 
+def titlebar_png(name: str, size: int = 17, scale: int = 2) -> bytes:
+    """PNG bytes of icon *name* for the macOS title bar: black (the system tints it) with the fine lines of the
+    other title-bar symbols, so it does not look heavier or whiter than they do."""
+    from PySide6.QtCore import QBuffer, QIODevice
+    svg = svg_for(name, "#000000").replace('stroke-width="1.8"', 'stroke-width="1.35"').replace('fill-opacity=".25"', 'fill-opacity="0"')
+    pixmap = QPixmap(size * scale, size * scale)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    QSvgRenderer(QByteArray(svg.encode("utf-8"))).render(painter)
+    painter.end()
+    data = QByteArray()
+    buffer = QBuffer(data)
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    pixmap.save(buffer, "PNG")
+    return bytes(data)
+
+
 def make_icon(name: str, color: str, size: int = 18, scale: int = 2) -> QIcon:
     """Render icon *name* as a QIcon *size* points square (drawn at *scale*x for sharp screens)."""
     renderer = QSvgRenderer(QByteArray(svg_for(name, color).encode("utf-8")))

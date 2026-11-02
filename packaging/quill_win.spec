@@ -8,13 +8,21 @@ ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 r = lambda *parts: os.path.join(ROOT, *parts)
 vosk_d, vosk_b, vosk_h = collect_all("vosk")
 sd_d, sd_b, sd_h = collect_all("sounddevice")
+# The optional "Best" speech model (Whisper through faster-whisper): bundled when its packages are installed.
+extra_d, extra_b, extra_h = [], [], []
+for package in ("faster_whisper", "ctranslate2", "onnxruntime", "av", "tokenizers"):
+    try:
+        d, b, h = collect_all(package)
+        extra_d += d; extra_b += b; extra_h += h
+    except Exception:
+        pass
 
 a = Analysis(
     [r("main.py")], pathex=[ROOT],
-    binaries=[*vosk_b, *sd_b],
+    binaries=[*vosk_b, *sd_b, *extra_b],
     datas=[(r("quill", "config", "defaults.json"), "quill/config"), (r("quill", "sounds"), "quill/sounds"),
-           (r("quill", "model"), "quill/model"), (r("quill", "assets"), "quill/assets"), (r("quill", "help"), "quill/help"),*vosk_d,*sd_d],
-    hiddenimports=[*vosk_h, *sd_h, *collect_submodules("quill"), *collect_submodules("xlwings"), "win32com.client", "pyttsx3.drivers.sapi5", "defusedxml"],
+           (r("quill", "model"), "quill/model"), (r("quill", "assets"), "quill/assets"), (r("quill", "help"), "quill/help"),*vosk_d,*sd_d,*extra_d],
+    hiddenimports=[*vosk_h, *sd_h, *extra_h, *collect_submodules("quill"), *collect_submodules("xlwings"), "win32com.client", "pyttsx3.drivers.sapi5", "defusedxml"],
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="Quill", console=False, icon=r("quill", "assets", "Quill.ico"))

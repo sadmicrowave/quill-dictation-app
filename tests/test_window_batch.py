@@ -235,3 +235,44 @@ class TestTermHelperSoundsSetting(unittest.TestCase):
         self.assertIsNone(fb.flush())
         fb.request(Event("committed", record={"a": 1}))
         self.assertEqual(fb.flush(), "success")
+
+
+class TestListenButtonLayout(unittest.TestCase):
+    def setUp(self):
+        from quill.ui.widgets import ListenButton
+        self.b = ListenButton()
+        self.b.resize(420, 40)
+        self.b.show()
+        _app.processEvents()
+
+    def test_the_icon_is_inside_the_pill_at_its_start_and_the_pill_is_at_the_left(self):
+        pill = self.b.pill
+        self.assertTrue(pill.isAncestorOf(self.b.icon_label))
+        self.assertLess(self.b.icon_label.x(), self.b.text_pill.x())
+        self.assertLess(pill.mapTo(self.b, pill.rect().topLeft()).x(), 20)
+
+    def test_the_pill_has_a_border_and_no_fill(self):
+        from quill.ui import theme
+        sheet = theme.stylesheet_for(False)
+        rule = sheet[sheet.index('QFrame[listenPill="true"] {'):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("background: transparent", rule)
+        self.assertIn("border: 1px solid", rule)
+
+    def test_the_countdown_is_right_of_the_pill_not_inside_it(self):
+        self.b.set_active(True)
+        self.b.set_countdown(7)
+        _app.processEvents()
+        self.assertFalse(self.b.pill.isAncestorOf(self.b.countdown_label))
+        self.assertGreater(self.b.countdown_label.x(), self.b.pill.x() + self.b.pill.width() - 1)
+        self.assertEqual(self.b.countdown_label.text(), "Stops in 7s")
+
+    def test_the_notice_chip_replaces_the_pill_at_the_left(self):
+        from PySide6.QtWidgets import QLabel
+        chip = QLabel("File stream not connected")
+        self.b.set_chip(chip)
+        chip.show()
+        self.b.set_notice(True)
+        _app.processEvents()
+        self.assertFalse(self.b.pill.isVisibleTo(self.b))
+        self.assertLess(chip.x(), 20)

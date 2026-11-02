@@ -48,6 +48,18 @@ BETTER = ModelSpec(
 
 SPECS = {spec.key: spec for spec in (STANDARD, BETTER)}
 
+#: The Whisper ``base.en`` model (CTranslate2 conversion, about 145 MB) that re-reads each phrase: ``(file, sha256)``.
+#: The checksums are those of the files as downloaded on 1 Nov 2026.
+WHISPER_NAME = "faster-whisper-base.en"
+WHISPER_BASE_URL = "https://huggingface.co/Systran/faster-whisper-base.en/resolve/main/"
+WHISPER_FILES = (
+    ("config.json", "f3bc3821e9fc76a27bae538e11ae5b677dcdd352b4600429ce7951d398569aeb"),
+    ("model.bin", "2a166925539a16005f14ff328359f9b9adb9dc4fb631bb3b227526862e93e2ef"),
+    ("tokenizer.json", "929c5252409436dce1b38a75d1abbcb5e132d170d8e324e4e04ed915fa2d22df"),
+    ("vocabulary.txt", "ff77588746d3a2595d32ab5b69ffd7b95ce2441ac57533cb66fc3eb575a115cf"),
+)
+WHISPER_SIZE_MB = 145
+
 #: Safety limits when unpacking an archive (a "zip bomb" could otherwise fill the disk).
 MAX_UNPACKED_BYTES = 600 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 5_000
@@ -137,6 +149,52 @@ def download_spec(dest_dir: pathlib.Path, progress: ProgressCallback | None = No
     if found is None:
         raise RuntimeError("The downloaded archive did not contain the expected speech model.")
     return found
+
+
+def find_whisper_model(search_dirs: list[pathlib.Path] | None = None) -> pathlib.Path | None:
+    """The folder of the Whisper model, if every one of its files is there."""
+    for base in search_dirs if search_dirs is not None else [user_model_dir()]:
+        folder = base / WHISPER_NAME
+        if all((folder / name).is_file() for name, _ in WHISPER_FILES):
+            return folder
+    return None
+
+
+def download_whisper(dest_dir: pathlib.Path, progress: ProgressCallback | None = None,
+                     base_url: str = WHISPER_BASE_URL, files=WHISPER_FILES) -> pathlib.Path:
+    """Download the Whisper model's files into ``dest_dir/<name>`` (https only, each file's checksum checked).
+
+    The files are fetched into a scratch folder first and moved into place together, so an interrupted download
+    never leaves a half-installed model that looks complete.
+    """
+    if urllib.parse.urlparse(base_url).scheme != "https":
+        raise RuntimeError("The speech model must be downloaded over https.")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    target = dest_dir / WHISPER_NAME
+    with tempfile.TemporaryDirectory(dir=dest_dir) as tmp:
+        scratch = pathlib.Path(tmp) / WHISPER_NAME
+        scratch.mkdir()
+        sizes = {}
+        done_before = 0
+        for name, sha in files:
+            digest = hashlib.sha256()
+            with urllib.request.urlopen(base_url + name, timeout=DOWNLOAD_TIMEOUT_S) as response, (scratch / name).open("wb") as out:  # noqa: S310  # nosec B310
+                total = int(response.headers.get("Content-Length") or 0)
+                sizes[name] = total
+                done = 0
+                while chunk := response.read(1 << 16):
+                    out.write(chunk)
+                    digest.update(chunk)
+                    done += len(chunk)
+                    if progress:
+                        progress(min(done_before + done, WHISPER_SIZE_MB * 1024 * 1024), WHISPER_SIZE_MB * 1024 * 1024)
+            if digest.hexdigest() != sha:
+                raise RuntimeError(f"The downloaded file {name} is not the expected one (checksum mismatch).")
+            done_before += done
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.move(str(scratch), str(target))
+    return target
 
 
 def default_search_dirs() -> list[pathlib.Path]:

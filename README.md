@@ -496,3 +496,11 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - The Better archive's SHA-256 was computed from the official download on 1 Nov 2026 (there is no published checksum to compare with); the downloader still insists on https and checks it.
 - Found while doing this: the app's default downloader was the raw `download_model`, whose second argument is the URL, so the Download button passed it the progress callback. It is now `download_spec`.
 - Quick check with a synthetic phrase: Standard heard "ninety nineties", Better "nineteen nineties". A fair comparison needs recorded real phrases.
+
+### Phase 56 notes (Best speech model, button and icon)
+- **Best = Whisper second pass** (`quill/listener/whisper_refiner.py`): Vosk Standard still shows live words and finds phrase ends; `Listener` keeps each phrase's audio (`set_refiner`, capped at 30 s) and, when Vosk finishes it, `WhisperRefiner.refine` (faster-whisper, `base.en`, int8 on CPU) returns the text that replaces Vosk's (lower-cased, punctuation removed, `normalize`). The sheet's own list values are the Whisper prompt (`QuillApp._whisper_hint`). Any failure or empty result keeps Vosk's text. Measured with a synthetic phrase: +0.4 s, "nineteen nineties" came out as "1990s" and "ninety nineties" was fixed.
+- Files (`download_whisper`): four HTTPS downloads, each SHA-256 checked, moved into `<user model dir>/faster-whisper-base.en` together. `faster-whisper` is optional (`requirements.txt`; the PyInstaller specs bundle it when installed, about 200 MB of libraries). Without it "Best" says it is not available.
+- **Start button**: the pill is border-only with the icon inside at its start, all three left-aligned (Start, Stop, the not-connected notice); "Stops in Ns" sits right of the pill; descendants are re-polished when the button changes state.
+- **Title bar**: the left icons no longer go through the nudge holder (they were dropped low); the folder icon is drawn with finer lines (`titlebar_png`).
+- **App icon**: `sheet_excel_body` / `excel_sheet`: two columns of stepped fills, three row bands and a solid total row (no cell borders), behind the sound-lines box.
+- The macOS Automation prompt text no longer says Excel.

@@ -11,7 +11,7 @@
 
 | Problem | Try |
 |---|---|
-| Quill mishears many words | Choose **Settings > General > Speech Model > Better** (a one-time download of about 130 MB). Also speak close to the microphone and pause between phrases |
+| Quill mishears many words | Choose **Settings > General > Speech Model > Best** (a one-time download of about 145 MB), or Better (about 130 MB). Also speak close to the microphone and pause between phrases |
 | *Could not save the row…* in red in the **Log** (it opens by itself) | The row is **kept** (nothing is lost). Quill only writes to the open sheet, and it doesn't have your columns. Open the sheet you are filling in, then say **"next row"** again |
 | Listening stopped by itself | Nothing was said for 10 seconds. Say **"start listening"** again, or change **Stop Listening When Quiet** in **Settings > General** |
 | Nothing happens when I talk | Say **"start listening"**; check microphone permission in your computer's privacy settings |

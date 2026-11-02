@@ -549,10 +549,13 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             row.setSpacing_(_ICON_GAP)
             width = _ICON_WIDTH * len(extras) + _LAST_ICON_WIDTH + _ICON_GAP * len(extras)
             row.setFrame_(((0, 0), (width, 24)))    # an accessory view needs a size of its own
-            holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, 24)))
-            row.setFrameOrigin_((_RIGHT_NUDGE, 0))     # macOS keeps a gap at the right of the title bar: the row sits past it
-            holder.addSubview_(row)
-            controller.setView_(holder)
+            if side == "left":
+                controller.setView_(row)
+            else:
+                holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, 24)))
+                row.setFrameOrigin_((_RIGHT_NUDGE, 0))   # macOS keeps a gap at the right of the title bar: the row sits past it
+                holder.addSubview_(row)
+                controller.setView_(holder)
         else:
             controller.setView_(button)
         controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)

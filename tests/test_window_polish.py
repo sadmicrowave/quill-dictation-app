@@ -93,7 +93,7 @@ class TestConnectionChip(unittest.TestCase):
         self.assertTrue(w.mini_chip.isVisibleTo(w.widget))                 # the same chip, inside the Start button
         self.assertTrue(w.toggle_button.isAncestorOf(w.mini_chip))
 
-    def test_the_chip_stays_a_fixed_height_pill_in_the_middle_of_the_button(self):
+    def test_the_chip_stays_a_fixed_height_pill_at_the_left_of_the_button(self):
         w = window()
         w.set_not_connected(True)
         w.widget.show()
@@ -103,8 +103,7 @@ class TestConnectionChip(unittest.TestCase):
         self.assertTrue(chip.isVisibleTo(w.widget))
         self.assertEqual(chip.height(), CHIP_HEIGHT)
         self.assertTrue(w.toggle_button.isAncestorOf(chip))                # inside the Start button ...
-        middle = chip.mapTo(w.toggle_button, chip.rect().center()).x()
-        self.assertAlmostEqual(middle, w.toggle_button.width() / 2, delta=3)   # ... in the middle of it
+        self.assertLess(chip.mapTo(w.toggle_button, chip.rect().topLeft()).x(), 20)   # ... at its left edge
         self.assertFalse(w.toggle_button.text_pill.isVisibleTo(w.widget))      # (the Start Listening pill steps aside)
         w.widget.resize(360, 400)
         _app.processEvents()

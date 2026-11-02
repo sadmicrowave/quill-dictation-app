@@ -58,6 +58,10 @@ def _default_stream(sample_rate: int, push: Callable[[bytes], None]):
     )
 
 
+#: The most audio kept for the second pass: 30 seconds of 16-bit samples at 16 kHz.
+MAX_PHRASE_BYTES = 30 * 16_000 * 2
+
+
 class Listener:
     """Wraps Vosk + sounddevice for cross-platform offline transcription.
 
@@ -93,6 +97,8 @@ class Listener:
         self._on_partial = on_partial
         self._last_partial = ""
         self._on_level: Callable[[float], None] | None = None
+        self._refiner = None                     # optional second pass over each finished phrase (Whisper)
+        self._phrase_audio = bytearray()         # the audio of the phrase being spoken, for that second pass
         self._model_loader = model_loader
         self._recognizer_factory = recognizer_factory
         self._stream_factory = stream_factory
@@ -128,12 +134,18 @@ class Listener:
             try:
                 if self._model is None:
                     self._model = self._model_loader(self._model_path)
+                if self._refiner is not None and hasattr(self._refiner, "preload"):
+                    self._refiner.preload()
             except Exception as exc:
                 self._on_error(f"Could not load the speech model: {exc}")
             finally:
                 self._loading = False
 
         threading.Thread(target=load, name="quill-model-loader", daemon=True).start()
+
+    def set_refiner(self, refiner) -> None:
+        """Have each finished phrase re-read by *refiner* (``refine(pcm) -> str | None``); None turns it off."""
+        self._refiner = refiner
 
     def set_level_callback(self, callback: Callable[[float], None] | None) -> None:
         """Be told how loud the user's voice is (0 to 1) for every chunk of audio (on the listener's thread)."""
@@ -219,6 +231,9 @@ class Listener:
                         continue
                     if self._on_level is not None:
                         self._on_level(self.loudness(chunk))
+                    if self._refiner is not None:
+                        self._phrase_audio += chunk
+                        del self._phrase_audio[:-MAX_PHRASE_BYTES]          # a phrase never runs on for minutes
                     if recognizer.AcceptWaveform(chunk):
                         self._emit(recognizer.Result())
                         self._partial("")
@@ -245,10 +260,16 @@ class Listener:
             self._on_partial(text)
 
     def _emit(self, result_json: str) -> None:
+        audio, self._phrase_audio = bytes(self._phrase_audio), bytearray()
         try:
             text = json.loads(result_json).get("text", "").strip()
         except (ValueError, AttributeError):
             return
+        if text and self._refiner is not None and audio:
+            better = self._refiner.refine(audio)
+            if better:
+                log.debug("heard (vosk): %s", text)
+                text = better
         if text:
             log.debug("heard: %s", text)
             self._on_transcript(text)

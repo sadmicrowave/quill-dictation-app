@@ -6,7 +6,7 @@ import math
 
 from PySide6.QtCore import QEvent, QObject, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from quill.ui.icons import make_icon
 
@@ -163,9 +163,10 @@ class WaveMeter(QWidget):
 class ListenButton(QPushButton):
     """The Start / Stop Listening button, the same in the main window and in the Term Helper.
 
-    From the left: the play / stop icon, then (only while it has something to say) a notice chip and the
-    "Stops in 7s" countdown; the text is centred; the sound lines are at the right edge. Outlined in the accent
-    colour while idle, filled with it while listening.
+    From the left: an outlined pill holding the play / stop icon and "Start Listening" (or "Stop Listening"),
+    or, instead of it while there is no spreadsheet, a notice chip; then the "Stops in 7s" countdown, outside the
+    pill; and the sound lines at the right edge. The button is outlined in the accent colour while idle and filled
+    with it while listening.
     """
 
     def __init__(self, idle_text: str = "Start Listening", live_text: str = "Stop Listening") -> None:
@@ -180,6 +181,16 @@ class ListenButton(QPushButton):
         self.setProperty("keepMargins", True)
         self.setProperty("outline", True)
         self.icon_label = QLabel()
+        self.text_pill = QLabel()                          # the words inside the pill
+        self.pill = QFrame()                               # border only, no fill: [icon  Start Listening]
+        self.pill.setProperty("listenPill", True)
+        self.pill.setProperty("keepMargins", True)
+        self.pill.setFixedHeight(CHIP_HEIGHT + 2)
+        inside = QHBoxLayout(self.pill)
+        inside.setContentsMargins(9, 0, 13, 0)
+        inside.setSpacing(6)
+        inside.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        inside.addWidget(self.text_pill, 0, Qt.AlignmentFlag.AlignVCenter)
         self.countdown_label = QLabel()                    # "Stops in 7s": the quiet timer counting down
         self.countdown_label.setProperty("countdown", True)
         self.countdown_label.setVisible(False)
@@ -188,25 +199,13 @@ class ListenButton(QPushButton):
         self._inner.setSizeConstraint(QHBoxLayout.SizeConstraint.SetNoConstraint)   # never wider than the room it is given
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self._inner.setContentsMargins(16, 0, 14, 0)
-        self._inner.setSpacing(8)
-        self._inner.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._inner.setContentsMargins(10, 0, 14, 0)
+        self._inner.setSpacing(10)
+        self._inner.addWidget(self.pill, 0, Qt.AlignmentFlag.AlignVCenter)
         self._inner.addWidget(self.countdown_label, 0, Qt.AlignmentFlag.AlignVCenter)
         self._inner.addStretch(1)
         self._inner.addWidget(self.wave, 0, Qt.AlignmentFlag.AlignVCenter)
-        # The pills ("Start Listening", or a notice chip) sit in the exact middle of the button, over the rest.
-        self._center = QWidget(self)
-        self._center.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._center.setProperty("keepMargins", True)
-        self._pills = QHBoxLayout(self._center)
-        self._pills.setContentsMargins(0, 0, 0, 0)
-        self._pills.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.text_pill = QLabel()
-        self.text_pill.setProperty("chip", "listen")
-        self.text_pill.setFixedHeight(CHIP_HEIGHT)
-        self.text_pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-        self._pills.addWidget(self.text_pill, 0, Qt.AlignmentFlag.AlignCenter)
-        for part in (self.icon_label, self.countdown_label, self.wave):
+        for part in (self.pill, self.countdown_label, self.wave):
             part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)       # clicks reach the button
         self.set_active(False)
 
@@ -217,18 +216,14 @@ class ListenButton(QPushButton):
     def isChecked(self) -> bool:                           # noqa: N802 (Qt name): "on" means listening
         return self._active
 
-    def resizeEvent(self, event) -> None:                  # noqa: N802 (Qt name)
-        super().resizeEvent(event)
-        self._center.setGeometry(0, 0, self.width(), self.height())
-
     def set_chip(self, chip: QWidget) -> None:
-        """Seat a notice chip in the middle of the button (it is shown or hidden by the caller)."""
-        chip.setParent(self._center)
+        """Seat a notice chip at the left of the button, where the pill goes (shown or hidden by the caller)."""
+        chip.setParent(self)
         chip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._pills.addWidget(chip, 0, Qt.AlignmentFlag.AlignCenter)
+        self._inner.insertWidget(1, chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def set_notice(self, shown: bool, tip: str = "") -> None:
-        """While a notice chip is shown the centred text steps aside, and *tip* explains it on hover."""
+        """While a notice chip is shown it takes the pill's place, and *tip* explains it on hover."""
         self._notice = shown
         self.fixed_tip = tip if shown and tip else None
         self._show_text()
@@ -239,9 +234,8 @@ class ListenButton(QPushButton):
         self.wave.set_active(active)
         self.setProperty("accent", active)
         self.setProperty("outline", not active)
-        style = self.style()
-        style.unpolish(self)
-        style.polish(self)
+        for widget in (self, self.pill, self.text_pill, self.countdown_label):   # descendants of the button's state
+            self._repolish(widget)
         self._show_text()
         self._draw_icon()
 
@@ -252,8 +246,10 @@ class ListenButton(QPushButton):
             self.countdown_label.setText(f"Stops in {seconds}s")
 
     def set_compact(self, compact: bool) -> None:
-        """The mini view drops the centred text (the icon, countdown and lines are enough)."""
+        """The mini view keeps just the icon of the pill (no words, no outline)."""
         self._compact = compact
+        self.pill.setProperty("compact", compact)
+        self._repolish(self.pill)
         self._show_text()
 
     def set_colors(self, text: str, on_accent: str, accent: str) -> None:
@@ -264,17 +260,24 @@ class ListenButton(QPushButton):
         self.wave.set_colors(muted.name(QColor.NameFormat.HexArgb), "#34c759")
         self._draw_icon()
 
+    @staticmethod
+    def _repolish(widget: QWidget) -> None:
+        style = widget.style()
+        style.unpolish(widget)
+        style.polish(widget)
+
     def _show_text(self) -> None:
         text = self._live_text if self._active else self._idle_text
         self.text_pill.setText(text)
-        self.text_pill.setVisible(not (self._compact or self._notice))
+        self.text_pill.setVisible(not self._compact)
+        self.pill.setVisible(not self._notice)
         self.setToolTip(self.fixed_tip or text)
         self.setAccessibleName(text)
 
     def _draw_icon(self) -> None:
         _, on_accent, accent = self._colors
         self.icon_label.setPixmap(make_icon("stop" if self._active else "play", on_accent if self._active else accent,
-                                            16).pixmap(16, 16))
+                                            14).pixmap(14, 14))
 
 
 class PopupClickThrough(QObject):

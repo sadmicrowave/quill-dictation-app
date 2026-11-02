@@ -292,10 +292,12 @@ QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 QLabel[heading="true"] {{ color: {t['muted']}; }}
 QLabel[chip="warn"] {{ background: {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.16)}; color: {WARNING_DARK if dark else WARNING_LIGHT};
               border: 1px solid {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.5)}; border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
-QLabel[chip="listen"] {{ background: {t['accent']}; color: {t['on_accent']}; border: 1px solid {t['accent']};
-              border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
-QPushButton[accent="true"] QLabel[chip="listen"] {{ background: {rgba(t['on_accent'], 0.2)}; color: {t['on_accent']};
-              border: 1px solid {rgba(t['on_accent'], 0.55)}; font-weight: 500; }}
+QFrame[listenPill="true"] {{ background: transparent; border: 1px solid {t['accent']}; border-radius: 12px; }}
+QFrame[listenPill="true"][compact="true"] {{ border: none; }}
+QPushButton[accent="true"] QFrame[listenPill="true"] {{ border: 1px solid {rgba(t['on_accent'], 0.7)}; }}
+QPushButton[accent="true"] QFrame[listenPill="true"][compact="true"] {{ border: none; }}
+QFrame[listenPill="true"] QLabel {{ background: transparent; color: {t['text']}; font-weight: 500; }}
+QPushButton[accent="true"] QFrame[listenPill="true"] QLabel {{ color: {t['on_accent']}; }}
 QLabel[placeholder="true"] {{ font-style: italic; color: {t['muted']}; }}
 QTextEdit, QPlainTextEdit {{ placeholder-text-color: {t['muted']}; }}
 QLabel[note="true"] {{ font-style: italic; color: {t['muted']}; }}

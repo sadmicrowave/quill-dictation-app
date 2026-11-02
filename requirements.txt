@@ -22,3 +22,4 @@ tomli>=2.0; python_version < "3.11"   # TOML reader backport
 
 # Packaging (dev only)
 pyinstaller>=6.6
+faster-whisper>=1.0          # optional: the "Best" speech model (Whisper); Quill runs without it

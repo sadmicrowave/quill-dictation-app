@@ -408,6 +408,43 @@ def sheet_offset_body(color: str, simple: bool = False, box: tuple[int, int, int
             + offset_box(color, *box, simple, border=True) + '</svg>')
 
 
+def excel_sheet(x: float, y: float, w: float, h: float, r: float) -> str:
+    """A sheet drawn like a spreadsheet app's icon: two columns whose fills step lighter to the right, three
+    row bands that deepen downward within each column, and a solid dark total row at the bottom. No cell borders:
+    the grid is read from the changes of fill."""
+    left = ("#B49AE8", "#9F83DD", "#8A6CCD")
+    right = ("#CDB9F3", "#B9A0EA", "#A387DC")
+    total = "#5B3DA6"
+    band = (h - 23) / 3
+    split = x + w * 0.5
+    parts = []
+    for i in range(3):
+        top = y + i * band
+        for fill, x0, x1, left_edge in ((left[i], x, split, True), (right[i], split, x + w, False)):
+            tl = r if (i == 0 and left_edge) else 0
+            tr = r if (i == 0 and not left_edge) else 0
+            parts.append(f'<path d="{rrect(x0, top, x1 - x0, band + 0.4, tl, tr, 0, 0)}" fill="{fill}"/>')
+    parts.append(f'<path d="{rrect(x, y + 3 * band, w, h - 3 * band, 0, 0, r, r)}" fill="{total}"/>')
+    return "".join(parts)
+
+
+def sheet_excel_body(color: str, simple: bool = False, box: tuple[int, int, int] = (11, 32, 64)) -> str:
+    """The app icon on a violet body: a spreadsheet-app style sheet (see :func:`excel_sheet`) behind a deep box
+    holding the sound lines."""
+    top, bottom = shade(color, 0.10), shade(color, -0.12)
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>'
+            f'<linearGradient id="base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>'
+            '<linearGradient id="edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".32"/>'
+            '<stop offset=".18" stop-color="#FFFFFF" stop-opacity="0"/><stop offset=".85" stop-color="#000" stop-opacity="0"/>'
+            '<stop offset="1" stop-color="#000" stop-opacity=".16"/></linearGradient></defs>'
+            '<rect x="6" y="8" width="116" height="116" rx="29" fill="#000" opacity=".10"/>'
+            '<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#base)"/>'
+            '<rect x="4.6" y="4.6" width="118.8" height="118.8" rx="27.4" fill="none" stroke="url(#edge)" stroke-width="1.2"/>'
+            '<rect x="42" y="21" width="68" height="86" rx="10" fill="#000" opacity=".16" transform="translate(0 3)"/>'
+            + excel_sheet(42, 21, 68, 86, 10)
+            + offset_box(color, *box, simple, border=True) + '</svg>')
+
+
 #: Round eight: the Excel layout (an offset sheet behind a small front box that holds the sound lines).
 IDEAS_OFFSET = [
     ("offset-plate-violet", "Offset sheet and small box on a light plate, violet", None, lambda: sheet_offset_plate("#7A55C2")),

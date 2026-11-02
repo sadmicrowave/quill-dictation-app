@@ -58,7 +58,7 @@ class TestIconFiles(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "tools"))
         import make_app_icon, make_icon_ideas
         self.assertEqual(assets.asset_path("icon.svg").read_text(encoding="utf-8"),
-                         make_icon_ideas.sheet_offset_body("#7A55C2", box=make_app_icon.BOX))
+                         make_icon_ideas.sheet_excel_body("#7A55C2", box=make_app_icon.BOX))
 
     def test_the_small_box_is_centred_vertically_in_the_icon(self):
         svg = assets.asset_path("icon.svg").read_text(encoding="utf-8")
@@ -159,3 +159,20 @@ class TestPackaging(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSheetLooksLikeASpreadsheetIcon(unittest.TestCase):
+    def test_columns_step_lighter_to_the_right_rows_deepen_and_the_last_row_is_a_solid_total(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import make_icon_ideas
+        svg = make_icon_ideas.excel_sheet(0, 0, 68, 86, 10)
+        import re
+        fills = re.findall(r'fill="(#[0-9A-F]{6})"', svg)
+        self.assertEqual(len(fills), 7)                              # two columns x three bands, and the total row
+        def light(c): return sum(int(c[i:i + 2], 16) for i in (1, 3, 5))
+        left, right = fills[0:6:2], fills[1:6:2]
+        self.assertTrue(all(light(r) > light(l) for l, r in zip(left, right)))        # lighter to the right
+        self.assertTrue(light(left[0]) > light(left[1]) > light(left[2]))              # deeper going down
+        self.assertTrue(light(fills[6]) < light(left[2]))                              # a darker total row
+        self.assertNotIn("stroke", svg)                                                # no cell borders: fills only
+        self.assertTrue(all(light(c) < 3 * 215 for c in fills))                        # nothing near white

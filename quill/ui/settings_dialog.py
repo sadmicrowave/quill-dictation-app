@@ -534,15 +534,19 @@ class SettingsDialog:
             return
         quality = self.quality_combo.currentData()
         installed = bool(self._model_installed(quality))
-        size = "about 130 MB" if quality == "better" else "about 40 MB"
+        size = {"better": "about 130 MB", "best": "about 145 MB"}.get(quality, "about 40 MB")
         if note:
             text = note
         elif installed:
             text = ("Installed. Quill listens on this computer; nothing you say is sent anywhere. "
-                    + ("Better hears more words correctly, but uses more memory." if quality == "better" else ""))
+                    + {"better": "Better hears more words correctly, but uses more memory.",
+                       "best": "Best re-reads each phrase with a Whisper model: the most accurate, "
+                               "with the words appearing a moment after each pause."}.get(quality, ""))
         else:
             text = (f"Not installed. It is {size}, downloaded once, and then works without internet. "
-                    + ("Better mishears fewer words than Standard." if quality == "better" else "Quill needs it to hear you."))
+                    + {"better": "Better mishears fewer words than Standard.",
+                       "best": "Best is the most accurate: a Whisper model re-reads each phrase."}.get(
+                           quality, "Quill needs it to hear you."))
         self.model_row.description_label.setText(text.strip())
         self.model_row.description_label.setVisible(True)
         self.quality_combo.setEnabled(not busy)
@@ -601,7 +605,7 @@ class SettingsDialog:
         self._add("General", page, "Troubleshooting",
                   "If something goes wrong, the log file shows what happened.", logs, "log file errors diagnostics")
         self.quality_combo = FlatCombo()
-        for key, label in (("standard", "Standard"), ("better", "Better")):
+        for key, label in (("standard", "Standard"), ("better", "Better"), ("best", "Best")):
             self.quality_combo.addItem(label, key)
         self.quality_combo.setCurrentIndex(self.quality_combo.findData(prefs["speech_quality"]))
         self.model_button = QPushButton("Download")

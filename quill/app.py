@@ -31,7 +31,18 @@ from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.feedback import spoken_words, Feedback
 from quill.listener.listener import Listener
-from quill.listener.model import BETTER, SPECS, download_spec, ensure_model, find_spec_model, user_model_dir
+from quill.listener.model import (
+    BETTER,
+    SPECS,
+    WHISPER_SIZE_MB,
+    download_spec,
+    download_whisper,
+    ensure_model,
+    find_spec_model,
+    find_whisper_model,
+    user_model_dir,
+)
+from quill.listener.whisper_refiner import WhisperRefiner, engine_available
 from quill.session import Decision, Event, TermKey
 from quill.speaker.clips import SpokenClips
 from quill.speaker.speaker import Speaker
@@ -97,6 +108,10 @@ HOST_RELOAD_MS = 1500
 HOST_PROBE_EVERY = 3
 
 
+#: The speech quality choices and their names in the window.
+QUALITY_LABELS = {"standard": "Standard", "better": "Better", "best": "Best"}
+
+
 class QuillApp:
     """Owns every component and runs the app.
 
@@ -128,6 +143,10 @@ class QuillApp:
         model_finder: Callable[[str], pathlib.Path | None] = ensure_model,
         model_downloader: Callable = download_spec,
         better_finder: Callable[[], pathlib.Path | None] = lambda: find_spec_model(BETTER),
+        whisper_finder: Callable[[], pathlib.Path | None] = find_whisper_model,
+        whisper_downloader: Callable = download_whisper,
+        whisper_engine: Callable[[], bool] = engine_available,
+        refiner_factory: Callable = WhisperRefiner,
         speaker: Speaker | None = None,
         poll_interval_ms: int = POLL_INTERVAL_MS,
         sound_player: Callable | None = None,
@@ -195,6 +214,8 @@ class QuillApp:
         self._model_finder = model_finder
         self._model_downloader = model_downloader
         self._better_finder = better_finder
+        self._whisper_finder, self._whisper_downloader = whisper_finder, whisper_downloader
+        self._whisper_engine, self._refiner_factory = whisper_engine, refiner_factory
         self._loaded_quality = ""                       # which speech model the running listener uses
         self._downloading = "standard"
         self._mic_open = False
@@ -481,10 +502,34 @@ class QuillApp:
         self._loaded_quality = "standard"
         return self._model_finder(str(self.settings.preferences["model_path"]))
 
+    def _make_refiner(self):
+        """The Whisper second pass if "Best" is chosen and it can run (engine and model present); else None."""
+        if self.settings.preferences["speech_quality"] != "best":
+            return None
+        folder = self._whisper_finder()
+        if folder is None or not self._whisper_engine():
+            self.window.append_log("The Best speech model is not ready (download it in Settings, under General): "
+                                   "using the Standard one.", "warning")
+            return None
+        self._loaded_quality = "best"
+        return self._refiner_factory(folder, self._whisper_hint)
+
+    def _whisper_hint(self) -> str:
+        """Words the sheet uses ("Brand: Nike, Levi's. Size: S, M."): given to Whisper so it spells them the sheet's way."""
+        try:
+            vocab = self.controller.vocab
+            parts = [f"{column}: {', '.join(vocab.values_for(column)[:12])}." for column in vocab.columns()[:12]
+                     if vocab.values_for(column)]
+        except Exception:
+            return ""
+        return " ".join(parts)[:600]
+
     def quality_installed(self, quality: str) -> bool:
         """Whether the speech model for *quality* ("standard" or "better") can be found."""
         if quality == "better":
             return self._better_finder() is not None
+        if quality == "best":
+            return self._whisper_finder() is not None and self._whisper_engine()
         return self._model_finder(str(self.settings.preferences["model_path"])) is not None
 
     def _reload_listener(self) -> None:
@@ -506,6 +551,9 @@ class QuillApp:
         set_partial = getattr(self.listener, "set_partial_callback", None)
         if set_partial is not None:
             set_partial(self.relay.partial.emit)                      # words appear in the Voice Stream as they are heard
+        set_refiner = getattr(self.listener, "set_refiner", None)
+        if set_refiner is not None:
+            set_refiner(self._make_refiner())                         # "Best": each finished phrase is re-read by Whisper
         set_level = getattr(self.listener, "set_level_callback", None)
         if set_level is not None:
             set_level(self.relay.level.emit)                          # the sound lines follow the user's voice
@@ -771,14 +819,10 @@ class QuillApp:
         """Draw the title bar's folder icon: muted and closed with no file, solid and open with one."""
         if self._titlebar is None:
             return
-        from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-        from quill.ui.icons import make_icon
-        data = QByteArray()
-        buffer = QBuffer(data)
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        make_icon("folder-open" if has_file else "folder", "#000000", 17).pixmap(34, 34).save(buffer, "PNG")
+        from quill.ui.icons import titlebar_png
+        png = titlebar_png("folder-open" if has_file else "folder")
         tip = (f"{name}\nSheet: {sheet}" if has_file and sheet else name if has_file else "Open Spreadsheet File")
-        self._titlebar.set_extra_image(0, bytes(data), tip, muted=not has_file)
+        self._titlebar.set_extra_image(0, png, tip, muted=not has_file)
 
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
@@ -918,7 +962,7 @@ class QuillApp:
         quality = str(self.settings.preferences["speech_quality"])
         if quality != self._loaded_quality and self.listener is not None and self.quality_installed(quality):
             self._reload_listener()                          # the user chose the other speech model
-            self.window.append_log(f"Now listening with the {SPECS[quality].label} speech model")
+            self.window.append_log(f"Now listening with the {QUALITY_LABELS[quality]} speech model")
         self._sync_mic()
         self._restart_quiet_timer()
         self.controller.lead_in_s = self.feedback.lead_in_s()
@@ -1145,17 +1189,26 @@ class QuillApp:
 
     def download_model(self, quality: str = "standard") -> None:
         """Download the speech model for *quality* on a background thread."""
-        spec = SPECS.get(quality, SPECS["standard"])
-        self._downloading = spec.key
+        quality = quality if quality in QUALITY_LABELS else "standard"
+        if quality == "best" and not self._whisper_engine():
+            self.window.append_log("The Best speech model is not available in this build of Quill.", "error")
+            return
+        spec = SPECS.get(quality)
+        self._downloading = quality
         self._model_busy = True
         self._model_note = "Downloading…"
         self._show_model_state()
-        self.window.append_log(f"Downloading the {spec.label} speech model (about {spec.size_mb} MB)")
+        size = spec.size_mb if spec is not None else WHISPER_SIZE_MB
+        self.window.append_log(f"Downloading the {QUALITY_LABELS[quality]} speech model (about {size} MB)")
 
         def work() -> None:
             try:
-                path = (self._model_downloader(user_model_dir(), self.relay.progress.emit) if spec.key == "standard"
-                        else self._model_downloader(user_model_dir(), self.relay.progress.emit, spec))
+                if quality == "best":
+                    path = self._whisper_downloader(user_model_dir(), self.relay.progress.emit)
+                elif quality == "standard":
+                    path = self._model_downloader(user_model_dir(), self.relay.progress.emit)
+                else:
+                    path = self._model_downloader(user_model_dir(), self.relay.progress.emit, spec)
             except Exception as exc:   # network, disk, bad archive
                 self.relay.error.emit(f"Model download failed: {exc}")
                 self.relay.model_ready.emit(None)
@@ -1178,7 +1231,7 @@ class QuillApp:
             return
         self._model_note = ""
         self._show_model_state()
-        self.window.append_log(f"{SPECS[self._downloading].label} speech model installed")
+        self.window.append_log(f"{QUALITY_LABELS[self._downloading]} speech model installed")
         if self.listener is None or self._downloading == str(self.settings.preferences["speech_quality"]):
             self._reload_listener()                           # listen with what was just downloaded (if it is the one chosen)
 
