@@ -7,7 +7,8 @@ from unittest import mock
 
 import openpyxl
 from openpyxl.worksheet.datavalidation import DataValidation
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QLabel
 
 from quill.app import QuillApp
 from quill.bridge.base import BridgeError
@@ -663,6 +664,222 @@ class TestNextButtonAndPolicy(unittest.TestCase):
     def test_the_countdown_shows_just_the_seconds(self):
         self.w.toggle_button.set_countdown(7)
         self.assertEqual(self.w.countdown_label.text(), "7s")
+
+
+class TestPanelHeaderAndFiles(unittest.TestCase):
+    def setUp(self):
+        self.w = MainWindow()
+        self.w.setup()
+        self.panel = self.w.panel
+
+    def test_the_panel_is_titled_by_its_page_and_has_a_close_button(self):
+        self.panel.show_page(FILE_PAGE)
+        self.assertEqual(self.panel.title_label.text(), "Files")
+        self.panel.show_page(TURN_PAGE)
+        self.assertEqual(self.panel.title_label.text(), "Turn Options")
+        self.w.widget.show()
+        MainWindow.animation_ms, saved = 0, MainWindow.animation_ms
+        try:
+            self.w.open_panel(FILE_PAGE)
+            self.panel.close_button.click()
+            self.assertFalse(self.w.panel_open)
+        finally:
+            MainWindow.animation_ms = saved
+            self.w.widget.close()
+
+    def test_the_empty_message_reads_as_asked_and_sits_with_the_section_not_the_bottom(self):
+        self.panel.set_available([])
+        self.assertEqual(self.panel.empty_label.text(), "No open spreadsheet files have been detected.")
+        self.assertFalse(self.panel.available.isVisibleTo(self.panel))
+        self.assertTrue(self.panel.empty_label.alignment() & Qt.AlignmentFlag.AlignTop)
+
+    def test_the_section_is_called_files_and_has_a_filter_under_it(self):
+        headings = [l.text() for l in self.panel.findChildren(QLabel) if l.property("staticHeading")]
+        self.assertIn("Files", headings)
+        self.assertNotIn("Available Spreadsheets", headings)
+        self.assertEqual(self.panel.search.placeholderText(), "Filter files")
+
+    def test_the_filter_narrows_the_list_and_says_when_nothing_matches(self):
+        self.panel.set_available([("Orders.xlsx", "", 1), ("Birds.csv", "", 2), ("orders-old.xlsx", "", 3)])
+        self.panel.search.setText("ORDERS")
+        shown = [self.panel.available.item(i).text() for i in range(3) if not self.panel.available.item(i).isHidden()]
+        self.assertEqual(shown, ["Orders.xlsx", "orders-old.xlsx"])
+        self.panel.search.setText("zzz")
+        self.assertEqual(self.panel.empty_label.text(), "No files match.")
+        self.assertFalse(self.panel.available.isVisibleTo(self.panel))
+        self.panel.search.setText("")
+        self.assertTrue(self.panel.available.isVisibleTo(self.panel) or not self.panel.isVisible())
+
+    def test_the_starting_row_is_a_number_with_auto_at_zero(self):
+        seen = []
+        self.panel.start_row_changed.connect(seen.append)
+        self.panel.set_turn(NEXT_ROW, False, 0)
+        self.assertEqual(self.panel.start_spin.text(), "Auto")
+        self.panel.start_spin.setValue(5)
+        self.assertEqual(seen, [5])
+        self.panel.set_turn(NEXT_ROW, True, 3)
+        self.assertEqual(self.panel.start_heading.text(), "Starting Column")
+        self.assertEqual(seen, [5])                                  # showing a value is not a change
+
+
+class TestStartRow(Dir):
+    def test_turns_begin_at_the_starting_row_and_auto_uses_the_first_empty_one(self):
+        path = make_workbook(self.dir / "plants.xlsx")
+        bridge = XlsxBridge(path)
+        bridge.connect()
+        self.assertEqual(bridge.append_row("Inventory", {"Species": "Fern"}), 4)      # first empty row under the headings
+        bridge.set_start_row(10)
+        self.assertEqual(bridge.append_row("Inventory", {"Species": "Cactus"}), 10)
+        self.assertEqual(bridge.append_row("Inventory", {"Species": "Orchid"}), 11)
+        bridge.set_start_row(0)
+        self.assertEqual(bridge.append_row("Inventory", {"Species": "Monstera"}), 5)  # back to the first gap
+
+    def test_a_row_inside_the_headings_is_pushed_below_them(self):
+        bridge = XlsxBridge(make_workbook(self.dir / "plants.xlsx"))
+        bridge.connect()
+        bridge.set_start_row(1)
+        self.assertEqual(bridge.append_row("Inventory", {"Species": "Fern"}), 4)
+
+    def test_append_to_honours_it_and_vertical_sheets_use_it_as_a_column(self):
+        bridge = XlsxBridge(make_vertical(self.dir / "stock.xlsx"))
+        bridge.set_vertical(True)
+        bridge.connect()
+        bridge.set_start_row(6)
+        self.assertEqual(bridge.append_to_row("Stock", None, {"Fruit": "Banana"}), 6)
+
+    def test_the_controller_saves_it_applies_it_and_resets_the_shared_row(self):
+        settings = Settings.load(self.dir / "cfg")
+        controller = Controller(XlsxBridge(make_workbook(self.dir / "plants.xlsx")), settings, on_event=lambda e: None)
+        controller.connect()
+        controller.set_start_row(8)
+        controller.handle_transcript("start listening")
+        controller.handle_transcript("fern")
+        controller.handle_transcript("next row")
+        self.assertEqual(openpyxl.load_workbook(self.dir / "plants.xlsx")["Inventory"]["A8"].value, "Fern")
+        self.assertEqual(Settings.load(self.dir / "cfg").preferences["start_row"], 8)
+        again = Controller(XlsxBridge(self.dir / "plants.xlsx"), Settings.load(self.dir / "cfg"), on_event=lambda e: None)
+        again.connect()
+        self.assertEqual(again.bridge._start_row, 8)
+
+
+class TestTurnVoiceKeywords(Dir):
+    def setUp(self):
+        super().setUp()
+        self.settings = Settings.load(self.dir / "cfg")
+        self.events = []
+        self.controller = Controller(XlsxBridge(make_workbook(self.dir / "plants.xlsx")), self.settings, on_event=self.events.append)
+        self.controller.connect()
+        self.controller.handle_transcript("start listening")
+
+    def kinds(self):
+        return [(e.kind, e.detail) for e in self.events if e.kind.startswith("turn_")]
+
+    def test_each_option_has_an_on_and_an_off_phrase(self):
+        for phrase, kind in (("append on", "turn_on"), ("append off", "turn_off"), ("rows down", "turn_on"), ("columns across", "turn_off")):
+            self.controller.handle_transcript(phrase)
+            self.assertEqual(self.events[-1].kind, kind, phrase)
+
+    def test_append_mode_and_layout_really_change_and_are_saved(self):
+        self.controller.handle_transcript("append mode")
+        self.assertEqual(self.settings.preferences["turn_mode"], "append")
+        self.controller.handle_transcript("row mode")
+        self.assertEqual(self.settings.preferences["turn_mode"], "next_row")
+        self.controller.handle_transcript("rows down")
+        self.assertTrue(self.controller.vertical)
+        self.controller.handle_transcript("columns across")
+        self.assertFalse(self.controller.vertical)
+
+    def test_they_only_work_while_listening(self):
+        self.controller.handle_transcript("stop listening")
+        self.controller.handle_transcript("append on")
+        self.assertEqual(self.controller.turn_mode, "next_row")
+
+    def test_on_and_off_get_their_own_cues(self):
+        from quill.feedback import cue_for
+        self.controller.handle_transcript("append on")
+        self.assertEqual(cue_for(self.events[-1]), ("success", ""))
+        self.controller.handle_transcript("append off")
+        self.assertEqual(cue_for(self.events[-1]), ("dismiss", "Off"))
+
+    def test_the_panel_follows_a_spoken_option(self):
+        app = PanelApp()
+        app.setUp()
+        try:
+            app.app.controller.handle_transcript("start listening")
+            app.app.controller.handle_transcript("append on")
+            self.assertTrue(app.app.window.panel.append_radio.isChecked())
+            app.app.controller.handle_transcript("rows down")
+            self.assertTrue(app.app.window.panel.down_radio.isChecked())
+        finally:
+            app._tmp.cleanup()
+
+    def test_old_keyword_files_gain_the_new_phrases_without_losing_deleted_ones(self):
+        (self.dir / "cfg2").mkdir()
+        (self.dir / "cfg2" / Settings.KEYWORDS_FILE).write_text('keywords_version = 2\n[keywords]\n"go" = "START_LISTENING"\n', encoding="utf-8")
+        loaded = Settings.load(self.dir / "cfg2")
+        self.assertIn("append on", loaded.keywords)
+        self.assertNotIn("next row", loaded.keywords)
+
+
+class TestTermHelperPlacement(unittest.TestCase):
+    def setUp(self):
+        from quill.parser.vocab import Vocabulary
+        from quill.ui.sorting_window import SortingWindow
+        self.main = MainWindow()
+        self.main.setup()
+        self.sw = SortingWindow(Vocabulary(), lambda *a: None)
+        self.sw.setup(parent=self.main.widget)
+        self.sw.set_items([(None, "teal")])
+
+    def tearDown(self):
+        self.sw.widget.close()
+
+    def test_first_open_is_the_bottom_left_of_the_screen_the_main_window_is_on(self):
+        self.sw.show()
+        room = self.main.widget.screen().availableGeometry()
+        frame = self.sw.widget.frameGeometry()                       # (the window's frame, title bar included)
+        self.assertEqual(frame.left(), room.left())
+        self.assertEqual(frame.bottom(), room.bottom())
+
+    def test_a_saved_place_wins_and_is_remembered_after_a_move(self):
+        self.sw.restore_place(120, 90, 0)
+        self.sw.show()
+        self.assertEqual((self.sw.widget.x(), self.sw.widget.y()), (120, 90))
+        seen = []
+        self.sw.on_geometry = lambda x, y, w: seen.append((x, y, w))
+        self.sw.widget.move(200, 150)
+        self.sw._report_geometry()
+        self.assertEqual(seen[-1][:2], (200, 150))
+
+    def test_a_saved_place_off_every_screen_falls_back_to_the_corner(self):
+        self.sw.restore_place(90000, 90000, 0)
+        self.sw.show()
+        room = self.main.widget.screen().availableGeometry()
+        self.assertEqual(self.sw.widget.frameGeometry().left(), room.left())
+
+    def test_it_is_placed_only_once_so_the_user_can_move_it_afterwards(self):
+        self.sw.show()
+        self.sw.widget.move(300, 120)
+        self.sw.widget.hide()
+        self.sw.show()
+        self.assertEqual((self.sw.widget.x(), self.sw.widget.y()), (300, 120))
+
+    def test_it_cannot_be_made_narrower_than_a_row_and_grows_with_the_font(self):
+        self.sw.show()
+        narrow = self.sw.widget.minimumWidth()
+        self.assertGreaterEqual(narrow, self.sw.rows[0].sizeHint().width())
+        font = self.sw.widget.font()
+        font.setPointSize(font.pointSize() + 8)
+        self.sw.widget.setFont(font)
+        for row in self.sw.rows:
+            row.setFont(font)
+        self.sw.refresh_icons()
+        self.assertGreaterEqual(self.sw.widget.minimumWidth(), narrow)
+
+    def test_its_start_button_is_as_tall_as_the_main_windows(self):
+        self.sw.widget.show()
+        self.main.widget.show()
+        self.assertEqual(self.sw.voice_button.minimumHeight(), self.main.toggle_button.minimumHeight())
 
 
 if __name__ == "__main__":

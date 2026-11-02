@@ -420,9 +420,33 @@ class TitlebarButton:
     swaps the icon with :meth:`set_mini`.
     """
 
-    def __init__(self, button, controller, target, appkit, extras=()) -> None:
+    def __init__(self, button, controller, target, appkit, extras=(), holder=None, base_width=0, divider=None) -> None:
         self._button, self._controller, self._target, self._appkit = button, controller, target, appkit
         self._extras = list(extras)                # (button, target) pairs kept alive beside the main one
+        self._holder, self._base_width, self._divider = holder, base_width, divider
+
+    def set_inset(self, points: float) -> None:
+        """Move the icons *points* to the left of the window's right edge (the side panel's room) and draw a thin
+        vertical line, from the top of the title bar, at the panel's edge. 0 puts everything back."""
+        try:
+            if self._holder is not None:
+                self._holder.setFrameSize_((self._base_width + points, 24))
+            if self._divider is not None:
+                bar = self._divider.superview()
+                size = bar.bounds().size
+                self._divider.setFrame_(((size.width - points, 0), (1, size.height)))
+                self._divider.setHidden_(points <= 0)
+        except Exception:
+            pass
+
+    def set_extra_active(self, index: int, active: bool) -> None:
+        """Keep the *index*-th extra icon filled (as while hovered) to show its panel is open."""
+        try:
+            button = self._extras[index][0]
+            button._on = active
+            button.refreshFill()
+        except Exception:
+            pass
 
     def set_mini(self, mini: bool) -> None:
         """Show the "back to full" icon while in the mini view, "shrink" otherwise."""
@@ -495,6 +519,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         runs, no PyObjC), in which case the caller keeps an in-window button.
     """
     platform = platform or sys.platform
+    appkit_given = appkit
     try:
         if platform != "darwin" or not _native_platform(platform):
             return None
@@ -512,6 +537,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         window = view.window()
         if window is None:
             return None
+        appkit_real = appkit_given is None
         def make_button(action, width=_ICON_WIDTH, hover_in=None, hover_out=None):
             target = target_class.alloc().initWithCallback_(action)
             button = button_class.alloc().initWithFrame_(((0, 0), (width, 24)))
@@ -561,7 +587,9 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             controller.setView_(button)
         controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)
         window.addTitlebarAccessoryViewController_(controller)
-        result = TitlebarButton(button, controller, target, appkit, extras)
+        divider = _divider_view(appkit, window) if side == "right" and appkit_real else None
+        result = TitlebarButton(button, controller, target, appkit, extras, holder if (extras and side != "left") else None,
+                                width if extras else 0, divider)
         if not symbol:
             result.set_mini(mini)
         return result
@@ -571,6 +599,26 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
 
 _TARGET_CLASS = None
 _BUTTON_CLASS = None
+_DIVIDER_ID = "quillPanelDivider"
+
+
+def _divider_view(appkit, window):
+    """A one-point-wide muted vertical line in the title bar (hidden until the side panel opens), so the panel's
+    edge runs unbroken from the top of the window to the bottom."""
+    try:
+        bar = window.standardWindowButton_(0).superview()
+        line = next((v for v in bar.subviews() if v.identifier() == _DIVIDER_ID), None)
+        if line is None:
+            line = appkit.NSView.alloc().initWithFrame_(((0, 0), (1, bar.bounds().size.height)))
+            line.setIdentifier_(_DIVIDER_ID)
+            line.setWantsLayer_(True)
+            line.layer().setBackgroundColor_(appkit.NSColor.separatorColor().CGColor())
+            line.setAutoresizingMask_(1 | 16)            # keeps its distance from the right edge, follows the height
+            line.setHidden_(True)
+            bar.addSubview_(line)
+        return line
+    except Exception:
+        return None
 
 
 def _button_class(appkit, objc):
@@ -578,6 +626,18 @@ def _button_class(appkit, objc):
     global _BUTTON_CLASS
     if _BUTTON_CLASS is None:
         class QuillIconButton(appkit.NSButton):
+            def refreshFill(self):
+                """A muted rounded fill while the pointer is over the icon or its panel is open (like a flat button)."""
+                self.setWantsLayer_(True)
+                layer = self.layer()
+                layer.setCornerRadius_(6)
+                if getattr(self, "_hover", False) or getattr(self, "_on", False):
+                    dark = "Dark" in str(self.effectiveAppearance().name())
+                    shade = appkit.NSColor.colorWithWhite_alpha_(1.0 if dark else 0.0, 0.14 if dark else 0.10)
+                    layer.setBackgroundColor_(shade.CGColor())
+                else:
+                    layer.setBackgroundColor_(None)
+
             def resetCursorRects(self):
                 self.addCursorRect_cursor_(self.bounds(), appkit.NSCursor.pointingHandCursor())
 
@@ -592,10 +652,14 @@ def _button_class(appkit, objc):
                 self.addTrackingArea_(self._tracking)
 
             def mouseEntered_(self, event):
+                self._hover = True
+                self.refreshFill()
                 if getattr(self, "hover_in", None):
                     self.hover_in()
 
             def mouseExited_(self, event):
+                self._hover = False
+                self.refreshFill()
                 if getattr(self, "hover_out", None):
                     self.hover_out()
 

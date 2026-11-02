@@ -16,7 +16,13 @@
     "sort terms": "SORT_TERMS",
     "open term helper": "OPEN_TERM_HELPER",
     "term helper": "OPEN_TERM_HELPER",
-    "undo": "UNDO"
+    "undo": "UNDO",
+    "append on": "APPEND_ON",
+    "append mode": "APPEND_ON",
+    "append off": "APPEND_OFF",
+    "row mode": "APPEND_OFF",
+    "rows down": "ROWS_DOWN_ON",
+    "columns across": "ROWS_DOWN_OFF"
   },
   "actions": {
     "START_LISTENING": "Open the listening gate; begin capturing spoken input",
@@ -27,6 +33,10 @@
     "CLEAR_SEARCH": "Remove the search filters and return to where you were before searching",
     "SORT_TERMS": "Answer the Needs-sorting list by voice: yes, a column name, same as ..., ignore",
     "OPEN_TERM_HELPER": "Open the Term Helper window",
-    "UNDO": "Take back the last sorting decision; say it again to keep stepping back"
+    "UNDO": "Take back the last sorting decision; say it again to keep stepping back",
+    "APPEND_ON": "Turn option: every turn adds to the same row (Append To)",
+    "APPEND_OFF": "Turn option: every turn is written to a new row (Next Row)",
+    "ROWS_DOWN_ON": "Turn option: the sheet's headings run down the first column (Rows Down)",
+    "ROWS_DOWN_OFF": "Turn option: the sheet's headings run across the first row (Columns Across)"
   }
 }

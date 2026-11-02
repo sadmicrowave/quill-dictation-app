@@ -22,7 +22,7 @@ import contextlib
 from typing import Callable
 
 import shiboken6
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
@@ -354,6 +354,7 @@ class SortingWindow:
 
         voice_row = QHBoxLayout()
         self.voice_button = ListenButton()                   # the same button as the main window's
+        self.voice_button.setMinimumHeight(self.voice_button.fontMetrics().height() * 2 + 4)   # and as tall as it is there
         self.voice_button.fixed_tip = self.VOICE_HINT
         self.voice_button.clicked.connect(lambda: self._on_voice())
         voice_row.addWidget(self.voice_button, 1)
@@ -403,6 +404,47 @@ class SortingWindow:
         footer.addWidget(self.ignore_all_button)
         layout.addLayout(footer)
         self._window = window
+        self._geometry_timer = QTimer(window)                 # tells the app where the window was left, once it stops moving
+        self._geometry_timer.setSingleShot(True)
+        self._geometry_timer.setInterval(400)
+        self._geometry_timer.timeout.connect(self._report_geometry)
+        self._mover = _MoveWatcher(window, self._geometry_timer)
+        window.installEventFilter(self._mover)
+
+    #: Told ``(x, y, width)`` once the window has been moved or resized (the app remembers it).
+    on_geometry: Callable[[int, int, int], None] | None = None
+    _placed = False
+    _corner = False
+    _saved_place: tuple[int, int, int] | None = None
+
+    def restore_place(self, x: int, y: int, width: int) -> None:
+        """Use the position (and width) the user left the window at last time; negative means none was saved."""
+        self._saved_place = (x, y, width) if x >= 0 and y >= 0 else None
+
+    def _report_geometry(self) -> None:
+        w = self._window
+        if w is not None and w.isVisible() and self.on_geometry is not None:
+            self.on_geometry(w.x(), w.y(), w.width())
+
+    def _place(self) -> None:
+        """The first time the window opens in a run: where the user left it, else the bottom-left corner of the main window's screen."""
+        window = self._window
+        self._placed = True
+        parent = window.parentWidget()
+        screen = (parent.screen() if parent is not None else None) or window.screen()
+        if screen is None:
+            return
+        room = screen.availableGeometry()
+        if self._saved_place is not None:
+            x, y, width = self._saved_place
+            if width > 0:
+                window.resize(max(width, window.minimumWidth()), window.height())
+            spot = QPoint(x, y)
+            if any(s.availableGeometry().contains(spot) for s in window.screen().virtualSiblings()):
+                window.move(spot)
+                return
+        self._corner = True                                   # settled once shown, when the window has its real height
+        window.move(room.left(), room.bottom() - window.height() + 1)
 
     @property
     def widget(self) -> QWidget | None:
@@ -416,6 +458,8 @@ class SortingWindow:
         from quill.ui.icons import make_icon
         self.help_button.setIcon(make_icon("question", color, 18))
         self.voice_button.set_colors(color, on_accent, accent)
+        if self.rows:
+            self._fit_width()                                   # a new font size changes how wide a row needs to be
 
     def install_titlebar(self) -> None:
         """Put Help ("?") and Undo in the title bar (macOS), beside the close and zoom buttons.
@@ -616,7 +660,15 @@ class SortingWindow:
         """Show the window (and bring it to the front)."""
         if self._window is not None and self.rows:
             self._fit_width()
+            if not self._placed:
+                self._place()
             self._window.show()
+            if self._corner:
+                self._corner = False
+                screen = self._window.parentWidget().screen() if self._window.parentWidget() is not None else self._window.screen()
+                if screen is not None:
+                    room = screen.availableGeometry()
+                    self._window.move(room.left(), room.bottom() - self._window.frameGeometry().height() + 1)
             self._window.raise_()
             self._window.activateWindow()
 
@@ -627,6 +679,7 @@ class SortingWindow:
         screen = window.screen()
         if screen is not None:
             need = min(need, screen.availableGeometry().width() - 40)
+        window.setMinimumWidth(max(need, 320))             # never narrower than a row: no sideways scroll bar (it grows with the font)
         if window.width() < need:
             window.resize(need, window.height())
 
@@ -650,3 +703,16 @@ class SortingWindow:
             self.undo_button.setText(f"↶ Undo ({count})" if count else "↶ Undo")
             if self._titlebar is not None:
                 self._titlebar.set_enabled(count > 0)
+
+
+class _MoveWatcher(QObject):
+    """Starts the timer that reports the window's place whenever it moves or is resized."""
+
+    def __init__(self, window, timer) -> None:
+        super().__init__(window)
+        self._timer = timer
+
+    def eventFilter(self, obj, event) -> bool:                  # noqa: N802 (Qt name)
+        if event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
+            self._timer.start()
+        return False

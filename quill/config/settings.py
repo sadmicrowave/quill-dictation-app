@@ -79,6 +79,10 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "sorting_sounds": True,   # Term Helper answers (added, ignored, a problem) play their confirmation sound
     "sorting_follows_opacity": False,   # the Term Helper fades like the main window (off: it stays solid and easy to read)
     "turn_mode": "next_row",  # "next_row": each turn is a new row | "append": each turn adds to the same row
+    "start_row": 0,           # first row (first column when headings run down) a turn may write to; 0 = the first empty one
+    "sorting_x": -1,          # where the Term Helper window was left (-1 = not yet: it opens at the main window's screen corner)
+    "sorting_y": -1,
+    "sorting_width": 0,
     "vertical_layout": False,  # headings run down the first column (one record per column) instead of across the first row
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
 }
@@ -119,8 +123,8 @@ def _defaults_path() -> pathlib.Path:
 
 
 #: Commands added after the first release: a keyword file saved earlier gets their shipped phrases too.
-NEW_ACTIONS = (Action.OPEN_TERM_HELPER,)
-KEYWORDS_VERSION = 2          # raised whenever shipped commands are added
+NEW_ACTIONS = (Action.OPEN_TERM_HELPER, Action.APPEND_ON, Action.APPEND_OFF, Action.ROWS_DOWN_ON, Action.ROWS_DOWN_OFF)
+KEYWORDS_VERSION = 3          # raised whenever shipped commands are added
 
 
 def _parse_keywords(table: dict) -> dict[str, Action]:
@@ -232,6 +236,7 @@ class Settings:
         settings.preferences["opacity"] = max(low, min(high, int(settings.preferences["opacity"])))
         low, high = BLUR_RANGE
         settings.preferences["blur"] = max(low, min(high, int(settings.preferences["blur"])))
+        settings.preferences["start_row"] = max(0, min(1_048_576, int(settings.preferences["start_row"])))
         low, high = FONT_SIZE_RANGE
         settings.preferences["font_size"] = max(low, min(high, int(settings.preferences["font_size"])))
         if settings.preferences["theme"] not in THEMES:

@@ -60,3 +60,5 @@ If you press **Start** in the main window while the Term Helper is open, voice s
 Press **Undo** (title bar) or say **"undo"**. Each press takes back one answer, up to your last 100. The word returns to the list and what Quill did is reversed.
 
 > ⚠️ Undo never overwrites something you've typed since.
+
+The window first opens at the **bottom left** of the screen your main window is on. Move it wherever you like once: Quill remembers the place (and width) and opens it there from then on. It cannot be made narrower than a row, so there is never a sideways scroll bar, and it grows with your text size.

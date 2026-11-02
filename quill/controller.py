@@ -90,6 +90,7 @@ class Controller:
         self._append_target = None
         if hasattr(self.bridge, "set_vertical"):
             self.bridge.set_vertical(bool(self.settings.preferences["vertical_layout"]))
+            self.bridge.set_start_row(int(self.settings.preferences["start_row"]))
         self.bridge.connect(workbook)
         self.reload_vocab()
         self.connected = True
@@ -196,33 +197,51 @@ class Controller:
         return bool(self.settings.preferences["vertical_layout"])
 
     def set_turn_mode(self, mode: str) -> None:
-        """Choose how a turn is written; the next turn starts a fresh row either way."""
-        if mode not in ("next_row", "append") or mode == self.turn_mode:
-            return
-        self.settings.preferences["turn_mode"] = mode
-        self.settings.save()
-        self._append_target = None
-        say = "Each turn adds to the same row" if mode == "append" else "Each turn is written to a new row"
-        self._on_event(Event("ignored", detail=say))
+        """Choose how a turn is written (from the panel); the next turn starts a fresh row either way."""
+        if mode in ("next_row", "append") and mode != self.turn_mode:
+            self._on_event(self._turn_event("append_on" if mode == "append" else "append_off"))
 
     def set_vertical(self, vertical: bool) -> None:
-        """Read the sheet with its headings across the first row (False) or down the first column (True)."""
-        vertical = bool(vertical)
-        if vertical == self.vertical:
-            return
-        self.settings.preferences["vertical_layout"] = vertical
-        self.settings.save()
+        """Read the sheet with its headings across the first row (False) or down the first column (True) (from the panel)."""
+        if bool(vertical) != self.vertical:
+            self._on_event(self._turn_event("rows_down_on" if vertical else "rows_down_off"))
+
+    def _turn_event(self, option: str) -> Event:
+        """Apply the turn option *option* (``append_on`` ... ``rows_down_off``) and describe it as an event.
+
+        The event is ``turn_on`` / ``turn_off`` (so it gets its own confirmation sound), or an ``error``.
+        """
+        on = option.endswith("_on")
+        prefs = self.settings.preferences
         self._append_target = None
+        if option.startswith("append"):
+            prefs["turn_mode"] = "append" if on else "next_row"
+            self.settings.save()
+            return Event("turn_on" if on else "turn_off",
+                         detail="Each turn adds to the same row" if on else "Each turn is written to a new row")
+        prefs["vertical_layout"] = on
+        self.settings.save()
         self.history.clear()                   # row numbers mean something else now
-        say = "Headings are read down the first column" if vertical else "Headings are read across the first row"
         try:
-            self.bridge.set_vertical(vertical)
+            self.bridge.set_vertical(on)
             if self.connected:
                 self.reload_vocab()
         except BridgeError as exc:
-            self._on_event(Event("error", detail=f"Could not change the layout: {exc}"))
+            return Event("error", detail=f"Could not change the layout: {exc}")
+        return Event("turn_on" if on else "turn_off",
+                     detail="Headings are read down the first column" if on else "Headings are read across the first row")
+
+    def set_start_row(self, number: int) -> None:
+        """The first row (or column, for Rows Down) a turn may write to; 0 means the first empty one."""
+        number = max(0, int(number))
+        if number == int(self.settings.preferences["start_row"]):
             return
-        self._on_event(Event("ignored", detail=say))
+        self.settings.preferences["start_row"] = number
+        self.settings.save()
+        self._append_target = None
+        if hasattr(self.bridge, "set_start_row"):
+            self.bridge.set_start_row(number)
+        self._on_event(Event("ignored", detail=f"Turns start at row {number}" if number else "Turns start at the first empty row"))
 
     def start_new_row(self) -> None:
         """Stop adding to the current row: the next turn starts a fresh one."""
@@ -406,6 +425,9 @@ class Controller:
             self._search(event)
         elif event.kind == "clear_search":
             self._clear_search(event)
+        elif event.kind == "turn_option":
+            done = self._turn_event(event.detail.lower())
+            event.kind, event.detail = done.kind, done.detail
         elif event.kind == "undo":
             messages = self.undo()
             event.kind = "undone" if messages[0] != "Nothing to undo" else "ignored"

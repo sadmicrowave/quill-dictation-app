@@ -28,7 +28,7 @@ A file you pick this way that no program has open yet is **started in its own pr
 
 ### Spreadsheets that are already open
 
-Under a muted line, **Available Spreadsheets** lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. The list refreshes by itself while the panel is open. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
+Under a muted line, the **Files** section lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. Type in the **Filter files** box to narrow the list. With nothing open it says *No open spreadsheet files have been detected.* The list refreshes by itself while the panel is open. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
 
 **File > Use the Open Workbook** goes back to the workbook open in your spreadsheet program.
 

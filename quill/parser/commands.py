@@ -29,6 +29,10 @@ class Action(Enum):
     SORT_TERMS      = auto()
     OPEN_TERM_HELPER = auto()
     UNDO            = auto()
+    APPEND_ON       = auto()   # turn options, by voice
+    APPEND_OFF      = auto()
+    ROWS_DOWN_ON    = auto()
+    ROWS_DOWN_OFF   = auto()
     NONE            = auto()   # no command found in this segment
 
 

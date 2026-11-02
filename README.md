@@ -512,3 +512,10 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Turn settings**: *Next Row* or *Append To* (cells join with commas; `Controller.append_to_row`), and *Columns Across* or *Rows Down* (`TransposedGrid` lets the same bridge code read sheets whose headings run down the first column).
 - The countdown shows just the seconds; the Next button is a media-style skip icon the height of Start; every plain button now has an accent border.
 - App icon cells are more saturated purple.
+
+## Phase 58: panel polish, voice turn options, starting row
+
+- Panel: titled (Files / Turn Options) with an X; a Filter files box; the empty message sits at the top of the section. On macOS the title bar icons move left of the panel's edge as it slides and a one-point line runs through the title bar; icons get a rounded muted fill on hover and while their panel is open.
+- Voice: *append on/off*, *append mode*, *row mode*, *rows down*, *columns across* (`Action.APPEND_ON` ...), with `turn_on` / `turn_off` cues. `keywords_version` is now 3.
+- `start_row` preference (turn page): where a record may start; 0 = the first empty row.
+- Term Helper: opens at the bottom left of the main window's screen the first time, then where it was left (`sorting_x/y/width`); minimum width follows its rows; its Start button matches the main one's height.

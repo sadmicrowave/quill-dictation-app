@@ -360,6 +360,9 @@ QRadioButton::indicator {{ width: 14px; height: 14px; border-radius: 8px; border
 QRadioButton::indicator:checked {{ background: {t['accent']}; border: 1px solid {t['accent']}; }}
 QFrame#sidePanel {{ background: transparent; border: none; border-left: 1px solid {rgba(t['border'], 0.7)}; }}
 QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
+QLabel[panelTitle="true"] {{ font-weight: 600; }}
+QToolButton[chromeIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
+QToolButton[chromeIcon="true"]:hover {{ background: {rgba(t['text'], 0.10)}; }}
 QLabel[panelName="true"] {{ font-weight: 600; }}
 QLabel[panelName="true"][muted="true"] {{ font-weight: 400; font-style: italic; color: {t['muted']}; }}
 QListWidget#panelList {{ background: transparent; border: none; outline: none; padding: 0; }}

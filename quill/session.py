@@ -36,6 +36,9 @@ from quill.parser.phrase_parser import merge_values, parse
 from quill.parser.tokens import display_name, tokenize
 from quill.parser.vocab import Vocabulary
 
+#: The spoken turn options (the controller carries them out).
+TURN_OPTIONS = frozenset({Action.APPEND_ON, Action.APPEND_OFF, Action.ROWS_DOWN_ON, Action.ROWS_DOWN_OFF})
+
 #: A term to sort: (suggested column or None, spoken words).
 TermKey = tuple["str | None", str]
 
@@ -335,6 +338,8 @@ class Session:
             return [Event("open_term_helper")]
         if action is Action.UNDO:
             return [Event("undo")]
+        if action in TURN_OPTIONS:
+            return [Event("turn_option", detail=action.name)]
         return []
 
     def _commit(self) -> list[Event]:

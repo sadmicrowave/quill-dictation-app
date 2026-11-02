@@ -38,10 +38,10 @@ SOUNDS_DIR = pathlib.Path(__file__).parent / "sounds"
 
 #: Spoken for the other cues in echo mode; dismiss uses the kind of event.
 _ECHO_FIXED = {"sort": "Please Sort", "error": "Problem"}
-_DISMISS_WORDS = {"skipped": "Ignored", "undone": "Undone", "discarded": "Deleted"}
+_DISMISS_WORDS = {"skipped": "Ignored", "undone": "Undone", "discarded": "Deleted", "turn_off": "Off"}
 
-_SUCCESS_KINDS = {"add_values", "alias_added", "searched", "cleared"}
-_DISMISS_KINDS = {"skipped", "undone", "discarded"}
+_SUCCESS_KINDS = {"add_values", "alias_added", "searched", "cleared", "turn_on"}
+_DISMISS_KINDS = {"skipped", "undone", "discarded", "turn_off"}
 _ERROR_KINDS = {"error", "unsure"}
 
 #: Events that are answers given in the Term Helper (their confirmation sounds can be turned off in Settings).

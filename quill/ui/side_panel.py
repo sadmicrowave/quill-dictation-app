@@ -16,13 +16,17 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSpinBox,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -36,7 +40,9 @@ PANEL_WIDTH = 236
 NEXT_ROW, APPEND_TO = "next_row", "append"
 FILE_PAGE, TURN_PAGE = "file", "turn"
 NO_FILE_TEXT = "No file connected"
-NO_OTHERS_TEXT = "No other spreadsheets are open on this computer."
+NO_OTHERS_TEXT = "No open spreadsheet files have been detected."
+NO_MATCH_TEXT = "No files match."
+TITLES = {"file": "Files", "turn": "Turn Options"}
 LIST_ROLE = Qt.ItemDataRole.UserRole
 
 
@@ -70,6 +76,8 @@ class SidePanel(QFrame):
     mode_changed = Signal(str)                  # NEXT_ROW or APPEND_TO
     layout_changed = Signal(bool)               # True: headings run down the first column
     new_row_requested = Signal()
+    start_row_changed = Signal(int)
+    close_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -81,6 +89,22 @@ class SidePanel(QFrame):
         self.setVisible(False)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        header = QWidget()                      # the panel's title, and the X that closes it
+        header.setProperty("keepMargins", True)
+        top = QHBoxLayout(header)
+        top.setContentsMargins(14, 8, 8, 0)
+        self.title_label = QLabel(TITLES["file"])
+        self.title_label.setProperty("panelTitle", True)
+        top.addWidget(self.title_label, 1)
+        self.close_button = QToolButton()
+        self.close_button.setProperty("chromeIcon", True)       # the flat, rounded-on-hover icon look
+        self.close_button.setToolTip("Close")
+        self.close_button.setAccessibleName("Close the Side Panel")
+        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_button.clicked.connect(self.close_requested)
+        top.addWidget(self.close_button)
+        outer.addWidget(header)
         self.stack = QStackedWidget()
         outer.addWidget(self.stack)
         self.stack.addWidget(self._build_file_page())
@@ -122,7 +146,15 @@ class SidePanel(QFrame):
         layout.addSpacing(4)
         layout.addWidget(_rule())
         layout.addSpacing(4)
-        layout.addWidget(_heading("Available Spreadsheets"))
+        layout.addWidget(_heading("Files"))
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Filter files")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self._filter)
+        layout.addWidget(self.search)
+        self.empty_label = _note(NO_OTHERS_TEXT)
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(self.empty_label)
         self.available = QListWidget()
         self.available.setObjectName("panelList")
         self.available.setFrameShape(QFrame.Shape.NoFrame)
@@ -131,8 +163,7 @@ class SidePanel(QFrame):
         self.available.setMinimumHeight(60)
         self.available.itemClicked.connect(lambda item: self.file_chosen.emit(item.data(LIST_ROLE)))
         layout.addWidget(self.available, 1)
-        self.empty_label = _note(NO_OTHERS_TEXT)
-        layout.addWidget(self.empty_label)
+        layout.addStretch(0)                    # takes the room (and keeps the message at the top) while the list is hidden
         return page
 
     def _build_turn_page(self) -> QWidget:
@@ -159,6 +190,18 @@ class SidePanel(QFrame):
         layout.addSpacing(4)
         layout.addWidget(_rule())
         layout.addSpacing(4)
+        self.start_heading = _heading("Starting Row")
+        layout.addWidget(self.start_heading)
+        self.start_spin = QSpinBox()
+        self.start_spin.setRange(0, 1_048_576)
+        self.start_spin.setSpecialValueText("Auto")
+        self.start_spin.setToolTip("The first row a turn may write to. Auto uses the first empty row below the headings.")
+        self.start_spin.valueChanged.connect(lambda n: None if self._syncing else self.start_row_changed.emit(n))
+        layout.addWidget(self.start_spin)
+        layout.addWidget(_note("Auto uses the first empty row under the headings. Type a row number if your data starts elsewhere."))
+        layout.addSpacing(4)
+        layout.addWidget(_rule())
+        layout.addSpacing(4)
         layout.addWidget(_heading("Sheet Layout"))
         self.across_radio = QRadioButton("Columns Across")
         self.down_radio = QRadioButton("Rows Down")
@@ -182,6 +225,32 @@ class SidePanel(QFrame):
     def show_page(self, page: str) -> None:
         """Show the ``"file"`` or the ``"turn"`` page."""
         self.stack.setCurrentIndex(1 if page == TURN_PAGE else 0)
+        self.title_label.setText(TITLES[TURN_PAGE if page == TURN_PAGE else FILE_PAGE])
+
+    def set_colors(self, text: str) -> None:
+        """Redraw the icons (the X, the search magnifier) in the theme's text colour."""
+        from quill.ui.icons import make_icon
+        self.close_button.setIcon(make_icon("close", text, 16))
+        self.search.addAction(make_icon("search", text, 15), QLineEdit.ActionPosition.LeadingPosition) \
+            if not self.search.actions() else self.search.actions()[0].setIcon(make_icon("search", text, 15))
+
+    def _filter(self, text: str) -> None:
+        """Show only the files whose name holds *text*."""
+        wanted = text.strip().lower()
+        shown = 0
+        for i in range(self.available.count()):
+            item = self.available.item(i)
+            hide = bool(wanted) and wanted not in item.text().lower()
+            item.setHidden(hide)
+            shown += not hide
+        self._show_state(shown)
+
+    def _show_state(self, shown: int) -> None:
+        """The list when something shows; otherwise a message at the top of the section."""
+        total = self.available.count()
+        self.available.setVisible(shown > 0)
+        self.empty_label.setText(NO_MATCH_TEXT if total and not shown else NO_OTHERS_TEXT)
+        self.empty_label.setVisible(shown == 0)
 
     @property
     def page(self) -> str:
@@ -208,16 +277,18 @@ class SidePanel(QFrame):
             item.setToolTip(tip)
             item.setData(LIST_ROLE, data)
             self.available.addItem(item)
-        self.empty_label.setVisible(not entries)
+        self._filter(self.search.text())
 
     def available_names(self) -> list[str]:
         """The names in the list, top to bottom."""
         return [self.available.item(i).text() for i in range(self.available.count())]
 
-    def set_turn(self, mode: str, vertical: bool) -> None:
+    def set_turn(self, mode: str, vertical: bool, start_row: int = 0) -> None:
         """Show the turn settings (without reporting them back as a change)."""
         self._syncing = True
         try:
+            self.start_spin.setValue(start_row)
+            self.start_heading.setText("Starting Column" if vertical else "Starting Row")
             (self.append_radio if mode == APPEND_TO else self.next_row_radio).setChecked(True)
             (self.down_radio if vertical else self.across_radio).setChecked(True)
         finally:

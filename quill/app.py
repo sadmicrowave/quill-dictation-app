@@ -271,6 +271,9 @@ class QuillApp:
             self.qapp._quill_click_through = PopupClickThrough(self.qapp)   # one click on Start / Stop works with a drop-down open
             self.qapp.installEventFilter(self.qapp._quill_click_through)
         self.sorting.on_done = self.window.sorting_finished
+        self.sorting.restore_place(int(self.settings.preferences["sorting_x"]), int(self.settings.preferences["sorting_y"]),
+                                   int(self.settings.preferences["sorting_width"]))
+        self.sorting.on_geometry = self._sorting_moved
         self._wire_panel()
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
@@ -743,13 +746,40 @@ class QuillApp:
         panel.mode_changed.connect(self.controller.set_turn_mode)
         panel.layout_changed.connect(self.controller.set_vertical)
         panel.new_row_requested.connect(self.controller.start_new_row)
-        panel.set_turn(self.controller.turn_mode, self.controller.vertical)
-        self.window.set_panel_listener(self._panel_toggled)
+        panel.start_row_changed.connect(self.controller.set_start_row)
+        self._sync_turn_panel()
+        self.window.set_panel_listener(self._panel_toggled, self._panel_width)
         self._panel_timer = QTimer()                 # while the panel is open, keep its list of open spreadsheets current
         self._panel_timer.setInterval(OPEN_FILES_EVERY_MS)
         self._panel_timer.timeout.connect(self.refresh_open_files)
 
+    def _sorting_moved(self, x: int, y: int, width: int) -> None:
+        """The Term Helper was moved or resized: it opens there from now on (set once, kept)."""
+        prefs = self.settings.preferences
+        prefs["sorting_x"], prefs["sorting_y"], prefs["sorting_width"] = x, y, width
+        self.settings.save()
+
+    def _sync_turn_panel(self) -> None:
+        """Show the saved turn options on the panel's turn page."""
+        c = self.controller
+        self.window.panel.set_turn(c.turn_mode, c.vertical, int(self.settings.preferences["start_row"]))
+
+    def _panel_width(self, width: int) -> None:
+        """The panel is at *width* (it slides): the title bar icons stay left of its edge, which gets a line."""
+        if self._titlebar is not None:
+            self._titlebar.set_inset(width)
+
+    def _show_titlebar_panel(self, page: str) -> None:
+        """Keep the folder / turn icon of the open panel filled."""
+        if self._titlebar is not None:
+            self._titlebar.set_extra_active(0, page == FILE_PAGE)
+            self._titlebar.set_extra_active(1, page == TURN_PAGE)
+
     def _panel_toggled(self, page: str) -> None:
+        self._show_titlebar_panel(page)
+        self._panel_toggled_pages(page)
+
+    def _panel_toggled_pages(self, page: str) -> None:
         """The panel opened on *page* or closed (""): look for open spreadsheets only while the file page shows."""
         if page == FILE_PAGE:
             self.refresh_open_files()
@@ -757,7 +787,7 @@ class QuillApp:
         else:
             self._panel_timer.stop()
         if page == TURN_PAGE:
-            self.window.panel.set_turn(self.controller.turn_mode, self.controller.vertical)
+            self._sync_turn_panel()
 
     def _scan_open_files(self) -> list[OpenFile]:
         """Ask the running spreadsheet programs what they have open (runs off the GUI thread)."""
@@ -1100,6 +1130,9 @@ class QuillApp:
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
+        elif kind in ("turn_on", "turn_off"):
+            self._sync_turn_panel()                                  # a spoken option moves the panel's choice too
+            self._show_titlebar_panel(self.window.panel_page)
         elif kind == "committed":
             self.window.clear_mini_error()
             self.window.set_last_saved(event.detail, event.record)
@@ -1156,7 +1189,7 @@ class QuillApp:
             "committed": "Saved Row", "discarded": "Row Discarded",
             "updated": "Heard", "confirm": "Question",
             "searched": "Search", "cleared": "Search Cleared", "unsure": "Unsure",
-            "undone": "Undo",
+            "undone": "Undo", "turn_on": "Turn Option", "turn_off": "Turn Option",
         }
         label = labels.get(event.kind)
         return f"{label}: {event.detail}".rstrip(": ") if label else event.detail

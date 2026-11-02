@@ -52,7 +52,7 @@ class TestLoadSave(SettingsCase):
 
     def test_unknown_action_in_file_skipped(self):
         (self.dir / Settings.KEYWORDS_FILE).write_text(
-            'keywords_version = 2\n[keywords]\n"go" = "START_LISTENING"\n"zap" = "TELEPORT"\n', encoding="utf-8")
+            'keywords_version = 3\n[keywords]\n"go" = "START_LISTENING"\n"zap" = "TELEPORT"\n', encoding="utf-8")
         self.assertEqual(Settings.load(self.dir).keywords, {"go": Action.START_LISTENING})
 
     def test_bad_preference_types_and_theme_ignored(self):

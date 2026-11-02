@@ -169,6 +169,7 @@ class MainWindow:
         self._panel_page = FILE_PAGE
         self._panel_animation: QVariantAnimation | None = None
         self._pending_panel = ""             # a page to open once the full window is back (the panel is not in the mini view)
+        self._on_panel_width: Callable[[int], None] = lambda width: None
         self._on_panel_toggled: Callable[[str], None] = lambda page: None   # told the open page, or "" when it closes
         self._workbook_name = ""
         self._workbook_path = ""
@@ -234,6 +235,7 @@ class MainWindow:
         shell.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self._shell.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.panel = SidePanel()
+        self.panel.close_requested.connect(self.close_panel)
         shell.addWidget(central, 1)
         shell.addWidget(self.panel)
 
@@ -497,6 +499,7 @@ class MainWindow:
             self._on_panel_toggled("")
         self.panel.setFixedWidth(0)
         self.panel.setVisible(False)
+        self._on_panel_width(0)
 
     def _mini_detail_need(self) -> int:
         """The mini view's height from which there is room for the stream and the row."""
@@ -590,9 +593,11 @@ class MainWindow:
         """The page the open panel shows (``"file"`` or ``"turn"``); "" while it is closed."""
         return self._panel_page if self._panel_open else ""
 
-    def set_panel_listener(self, callback: Callable[[str], None]) -> None:
-        """Call *callback* with the page that opened, or "" when the panel closed."""
+    def set_panel_listener(self, callback: Callable[[str], None], on_width: Callable[[int], None] | None = None) -> None:
+        """Call *callback* with the page that opened, or "" when the panel closed; *on_width* with the panel's
+        width at every step of its slide (the title bar icons and line follow it)."""
         self._on_panel_toggled = callback
+        self._on_panel_width = on_width or (lambda width: None)
 
     def toggle_panel(self, page: str) -> None:
         """The folder / turn icon: open the panel on *page*, switch to it, or close the panel if it already shows it."""
@@ -648,10 +653,12 @@ class MainWindow:
         def done() -> None:
             panel.setFixedWidth(width)
             panel.setVisible(width > 0)
+            self._on_panel_width(width)
             self._keep_minimum()
 
         if not animate:
             panel.setFixedWidth(width)
+            self._on_panel_width(width)
             self._resize_to(target, window.height(), then=done)
             return
         animation = QVariantAnimation(window)
@@ -659,7 +666,7 @@ class MainWindow:
         animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         animation.setStartValue(start)
         animation.setEndValue(width)
-        animation.valueChanged.connect(lambda value: panel.setFixedWidth(int(value)))
+        animation.valueChanged.connect(lambda value: (panel.setFixedWidth(int(value)), self._on_panel_width(int(value))))
         self._panel_animation = animation
         window.setMinimumSize(0, 0)
         animation.start()
@@ -1325,6 +1332,7 @@ class MainWindow:
         self._on_accent, self._text_color, self._accent = on_accent, text_color, accent
         if self._window is None:
             return                      # not built yet; setup() draws them
+        self.panel.set_colors(text_color)
         self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")

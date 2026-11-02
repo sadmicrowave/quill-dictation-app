@@ -63,6 +63,9 @@ class WorkbookBridge(ABC):
         The default ignores it; the grid-based bridges honour it.
         """
 
+    def set_start_row(self, number: int) -> None:
+        """The first row (first column when the headings run down) a new record may use; 0 = the first empty one."""
+
     def open_workbooks(self) -> list[str]:
         """Names of every workbook that can be targeted (for a picker).
 

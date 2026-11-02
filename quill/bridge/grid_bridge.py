@@ -59,6 +59,7 @@ class GridBridge(WorkbookBridge):
 
     def __init__(self) -> None:
         self._grid: Grid | None = None
+        self._start_row = 0                     # records may not start above this row (0 = no limit)
         self._vertical = False                  # headings down the first column, one record per column
         self._discovery = Discovery()
         self._name = ""
@@ -107,6 +108,9 @@ class GridBridge(WorkbookBridge):
     @property
     def vertical(self) -> bool:
         return self._vertical
+
+    def set_start_row(self, number: int) -> None:
+        self._start_row = max(0, int(number))
 
     def set_vertical(self, vertical: bool) -> None:
         vertical = bool(vertical)
@@ -190,7 +194,7 @@ class GridBridge(WorkbookBridge):
     def append_row(self, sheet_name: str, values: dict[str, object]) -> int:
         grid = self._require()
         header_row, columns = self._column_map(grid, sheet_name, values)
-        row = self._next_free_row(grid, sheet_name, header_row, sorted(columns.values()))
+        row = self._next_free_row(grid, sheet_name, max(header_row, self._start_row - 1), sorted(columns.values()))
         for name, value in values.items():
             if value is not None:
                 grid.write(sheet_name, row, columns[normalize_header(name)], value)
@@ -200,7 +204,7 @@ class GridBridge(WorkbookBridge):
     def append_to_row(self, sheet_name: str, row: int | None, values: dict[str, object]) -> int:
         grid = self._require()
         header_row, columns = self._column_map(grid, sheet_name, values)
-        target = row if row is not None else self._next_free_row(grid, sheet_name, header_row, sorted(columns.values()))
+        target = row if row is not None else self._next_free_row(grid, sheet_name, max(header_row, self._start_row - 1), sorted(columns.values()))
         for name, value in values.items():
             if value is None:
                 continue

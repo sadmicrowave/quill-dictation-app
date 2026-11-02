@@ -272,7 +272,8 @@ class TitlebarCase(DemoCase):
     def setUp(self):
         super().setUp()
         self.fake_button = type("B", (), {"mini": None, "set_mini": lambda s, m: setattr(s, "mini", m),
-                                          "set_extra_enabled": lambda s, i, f: None,
+                                          "set_extra_enabled": lambda s, i, f: None, "set_inset": lambda s, w: setattr(s, "inset", w),
+                                          "set_extra_active": lambda s, i, on: None,
                                           "set_extra_image": lambda s, i, png, tip, muted: setattr(s, "file", (tip, muted)) or True,
                                           "set_enabled": lambda s, f: None})()
         self.made = []
