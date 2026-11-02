@@ -84,6 +84,13 @@ class XlsxBridge(GridBridge):
         """Reload the file from disk, discarding unsaved in-memory state."""
         self.connect()
 
+    def take_changes(self) -> list[tuple[str, int, int, object]]:
+        grid = self._grid
+        taken = list(getattr(grid, "changes", []))
+        if grid is not None and hasattr(grid, "changes"):
+            grid.changes.clear()
+        return taken
+
     @property
     def dirty(self) -> bool:
         return self._dirty

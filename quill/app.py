@@ -25,6 +25,7 @@ from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
 from quill.bridge.hosts import HostApp, OpenFile, SpreadsheetHosts
+from quill.bridge.numbers_mirror import MirrorResult, NumbersMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
@@ -166,12 +167,15 @@ class QuillApp:
         file_chooser: Callable[[], str | None] | None = None,
         live_bridge_factory: Callable[[], WorkbookBridge] = get_bridge,
         hosts: SpreadsheetHosts | None = None,
+        mirror: NumbersMirror | None = None,
     ) -> None:
         self.qapp = qapp
         self._file_chooser = file_chooser or self._ask_for_file
         self._live_bridge_factory = live_bridge_factory
         self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
+        self.mirror = mirror or NumbersMirror()      # shows each turn's cells in an open Numbers document as they are written
+        self._mirror_warned = False
         self._probe_ticks = 0
         self._settings_dialog: SettingsDialog | None = None    # the open Settings window, if any
         self._model_busy, self._model_note = False, ""          # the speech model download, shown in Settings
@@ -436,6 +440,35 @@ class QuillApp:
                 log.info("working on %s, open in %s", path.name, host_app.name)
                 self.window.append_log(f"Found {path.name} open in {host_app.name}: working on it directly.")
                 return
+
+    def _show_in_viewer(self) -> None:
+        """Quill just wrote to the file: show the same cells in the program that has it open, as they are written.
+
+        Numbers is shown the cells directly (no reload, so no import warning and nothing flickers). Anything else, or
+        Numbers failing to take them, falls back to asking the program to load the file again after a quiet moment.
+        """
+        bridge = self.controller.bridge
+        if not isinstance(bridge, XlsxBridge) or not getattr(bridge, "host_reload", True):
+            return
+        changes = bridge.take_changes()
+        if not changes:
+            self._host_reload.start()
+            return
+        path = bridge.workbook_path
+
+        def show() -> MirrorResult:
+            return self.mirror.push(path, changes)
+
+        def shown(result: object) -> None:
+            if isinstance(result, MirrorResult) and result.ok:
+                return                                              # Numbers has them: nothing to reload
+            if isinstance(result, MirrorResult) and result.reason == "denied" and not self._mirror_warned:
+                self._mirror_warned = True
+                self.window.append_log("Numbers did not let Quill show rows as they are written. Allow it in System Settings > "
+                                       "Privacy & Security > Automation (Quill > Numbers).", "warning")
+            self._host_reload.start()                               # not in Numbers (or it said no): the older way
+
+        self.run_in_background(show, shown)
 
     def _reload_host(self) -> None:
         """Ask the program showing the file to load what Quill just saved (or say what to do by hand)."""
@@ -1275,8 +1308,7 @@ class QuillApp:
         self._handle_event(event)
         if event.kind in self._WRITE_EVENTS:
             self._remember_mtime()
-            if isinstance(self.controller.bridge, XlsxBridge) and getattr(self.controller.bridge, "host_reload", True):
-                self._host_reload.start()                 # after a quiet moment, so a burst of rows reloads once
+            self._show_in_viewer()
         self._sync_mic()
 
     def _handle_event(self, event: Event) -> None:

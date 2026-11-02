@@ -549,3 +549,9 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - The side panel's edge is draggable (`PanelGrip`, remembered as `panel_width`); the log has a bottom grip and sits closer to its heading.
 - Sounds: `Event.spoken`; a click never plays one. Start with no file opens the Files panel, then blinks Open File and opens the file window. Quill listens only while the file is open in a spreadsheet program.
 - Speech Model has its own page (radio buttons, size next to the name, an Installed pill). Default text size 14 (`prefs_version` moves old 12s once). `UI_STYLE.md` lists the one style per element type.
+
+## Phase 63: live rows in Numbers
+
+- `quill/bridge/numbers_mirror.py` (`NumbersMirror`): after Quill writes the file, the cells it just wrote (`OpenpyxlGrid.changes`, taken with `XlsxBridge.take_changes`, in real sheet coordinates) are set in the open Numbers document through one AppleScript run. Cells travel as separate arguments (never spliced into the script), Numbers is never started by it, the document is found by name (`name` or `name.numbers`: imported documents report no file path), tables grow as needed, dates and numbers keep their types. Verified against the real Numbers on this Mac, including end to end through the app (a spoken row appeared in Numbers with no reload).
+- The app (`_show_in_viewer`) falls back to the old close-and-reopen reload only when Numbers cannot take the cells (not running, no such document, permission refused: logged once with where to allow it).
+- Optional real-Numbers test: `QUILL_NUMBERS_LIVE=1 QUILL_NUMBERS_FILE=<xlsx open in Numbers>`.

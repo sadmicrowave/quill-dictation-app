@@ -7,7 +7,7 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 | App | How Quill works with it | You do |
 |---|---|---|
 | **Excel** (Mac, Windows) | Live: rows appear as you speak | Nothing |
-| **Numbers** | Works on the Excel file (`.xlsx`) open in Numbers, then asks Numbers to reload it | Open an `.xlsx` (for a `.numbers` sheet: **File > Export To > Excel** once) |
+| **Numbers** | Works on the Excel file (`.xlsx`) open in Numbers **and shows every row in Numbers as it is written** (no reload) | Open an `.xlsx` (for a `.numbers` sheet: **File > Export To > Excel** once). The first time, allow Quill to control Numbers |
 | **LibreOffice Calc** | Works on the open `.xlsx` file | **File > Reload** now and then |
 | **Others, Google Drive copies** | Works on the `.xlsx` file | Reopen the file to see new rows |
 
@@ -30,6 +30,10 @@ A file you pick this way that no program has open yet is **started in its own pr
 ### Where the data starts
 
 Press the **gear** at the right of **Active File** for the **file settings** (an overlay): **Headings Row** (**Automatic** finds the headings), **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), and **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
+
+### Rows appearing live in Numbers
+
+While an `.xlsx` is open in **Numbers**, each cell Quill writes to the file is also set in the open Numbers document the moment the turn ends, so you watch the rows arrive and confirm them. Nothing is reloaded, so Numbers does not show its "may look different" warning again. The first time, macOS asks whether Quill may control Numbers: allow it (later: System Settings > Privacy & Security > Automation). Numbers keeps its own copy, so once you have edited, it calls the document *name.numbers*; Quill finds it either way. If Numbers cannot take the rows, Quill falls back to asking it to load the file again after a quiet moment.
 
 ### When another program holds the file
 

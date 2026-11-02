@@ -63,6 +63,12 @@ class WorkbookBridge(ABC):
         The default ignores it; the grid-based bridges honour it.
         """
 
+    def take_changes(self) -> list[tuple[str, int, int, object]]:
+        """The cells written since the last call, as ``(sheet, row, column, value)`` in sheet coordinates, and forget them.
+
+        Only a bridge that edits a file keeps them (so a program showing the file can be shown the same cells)."""
+        return []
+
     def select_record(self, sheet_name: str, number: int) -> None:
         """Put the spreadsheet's cursor on record *number* (a row; a column when the headings run down). Best effort."""
 

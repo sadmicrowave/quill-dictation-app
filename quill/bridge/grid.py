@@ -144,11 +144,16 @@ def cell_text(value: object) -> str:
     return str(value).strip()
 
 
+#: Most written cells remembered for a viewer program before the oldest are dropped.
+MAX_CHANGES = 5000
+
+
 class OpenpyxlGrid(Grid):
     """A :class:`Grid` over an openpyxl workbook object."""
 
     def __init__(self, wb) -> None:
         self._wb = wb
+        self.changes: list[tuple[str, int, int, object]] = []      # cells written, in sheet coordinates, until taken
         self._hidden: dict[str, set[int]] = {}      # rows we hid, per sheet
         self._cursor: dict[str, tuple[int, int]] = {}
 
@@ -184,6 +189,9 @@ class OpenpyxlGrid(Grid):
     def write(self, sheet: str, row: int, col: int, value: object) -> None:
         cell = self._ws(sheet).cell(row=row, column=col)
         cell.value = value
+        self.changes.append((sheet, row, col, value))          # (so a viewer program can be shown the same cells)
+        if len(self.changes) > MAX_CHANGES:                    # nobody is taking them (no viewer): keep only the newest
+            del self.changes[:MAX_CHANGES // 4]
         if isinstance(value, str) and "\n" in value:          # several values in one cell: one per line
             from copy import copy
             alignment = copy(cell.alignment)
