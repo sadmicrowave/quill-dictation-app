@@ -143,19 +143,22 @@ class TestSettingsPieces(unittest.TestCase):
         self.d.build()
 
     def test_the_speech_model_can_be_downloaded_from_settings(self):
-        self.assertEqual(self.d.model_button.text(), "Download")
-        self.assertTrue(self.d.model_button.isEnabled())
-        self.d.model_button.click()
+        row = self.d.model_rows["standard"]
+        self.assertFalse(row.download_button.isHidden())
+        self.assertTrue(row.download_button.isEnabled())
+        row.download_button.click()
         self.assertEqual(self.downloads, ["standard"])
 
     def test_progress_and_the_installed_state_show_on_the_row(self):
+        row = self.d.model_rows["standard"]
         self.d.set_model_state("Downloading… 40%", True)
-        self.assertEqual(self.d.model_row.description_label.text(), "Downloading… 40%")
-        self.assertFalse(self.d.model_button.isEnabled())
+        self.assertEqual(row.description_label.text(), "Downloading… 40%")
+        self.assertFalse(row.download_button.isEnabled())
         self.installed = True
         self.d.set_model_state("", False)
-        self.assertIn("Installed", self.d.model_row.description_label.text())
-        self.assertFalse(self.d.model_button.isEnabled())
+        self.assertFalse(row.installed_pill.isHidden())                      # the pill, not the words "Installed" in the text
+        self.assertNotIn("Installed", row.description_label.text())
+        self.assertTrue(row.download_button.isHidden())
 
     def test_cancel_leaves_the_window_view_and_size_alone(self):
         self.d._original = dict(self.settings.preferences)         # as taken when the window opened

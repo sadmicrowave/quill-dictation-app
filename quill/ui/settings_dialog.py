@@ -24,6 +24,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -60,6 +61,7 @@ from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
 from quill.ui.hints import fill_missing_tips
 from quill.ui.settings_widgets import (
+    ModelRow,
     PillField,
     FlatCombo,
     GuardedCombo,
@@ -79,7 +81,21 @@ BINDABLE_ACTIONS = [a for a in Action if a is not Action.NONE]
 
 #: Sidebar groups: (caption, [page titles]).
 GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
-          ("Voice and Commands", ["Keywords"])]
+          ("Voice and Commands", ["Keywords", "Speech Model"])]
+
+#: The speech models, in the order they are offered: (key, name, download size, what it does for the quality).
+SPEECH_MODELS = (
+    ("standard", "Standard", "40 MB",
+     "A small, fast model that shows your words as you say them. Good for clear speech and everyday words; it can "
+     "mishear unusual words, names and numbers."),
+    ("better", "Better", "130 MB",
+     "A larger model with a much bigger vocabulary. It still shows words as you speak, but unusual words, names and "
+     "numbers are heard correctly far more often. It uses more memory."),
+    ("best", "Best", "145 MB",
+     "Adds a second listen: after each pause, the whole phrase is re-read by a Whisper model that uses the words around "
+     "each one to decide what it was, which fixes most of the mistakes that are left. The corrected words replace the "
+     "live ones a moment after you pause. It builds on the Standard model."),
+)
 
 THEME_ICONS = {"auto": "monitor", "light": "sun", "dark": "moon"}
 
@@ -189,15 +205,14 @@ class SettingsDialog:
         self.dock_check: ToggleSwitch | None = None
         self.sorting_opacity_check: ToggleSwitch | None = None
         self.sorting_sounds_check: ToggleSwitch | None = None
-        self.model_button: QPushButton | None = None
-        self.quality_combo: QComboBox | None = None
+        self.model_rows: dict[str, ModelRow] = {}
         self.model_row: SettingRow | None = None
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
     # ------------------------------------------------------------------ #
 
-    #: The Settings window fades with the window-opacity setting but never below this, so it stays readable.
+    #: The Settings window's background thins with the window-opacity setting but never below this, so it stays readable.
     MIN_DIALOG_OPACITY = 70
 
     def exec(self) -> bool:
@@ -300,6 +315,8 @@ class SettingsDialog:
         opacity = max(int(prefs["opacity"]), self.MIN_DIALOG_OPACITY)
         colors = colors_for(dark, str(prefs["accent"]))
         apply_opacity(self.root, opacity, int(prefs["blur"]))        # first: Qt marks a fully opaque window opaque
+        self.root.setProperty("quillMinAlpha", self.MIN_DIALOG_OPACITY / 100)      # its background never thins below this
+        self.root.update()
         apply_chrome(self._dialog, dark, colors, opacity=opacity, blur=int(prefs["blur"]))
         self.theme_combo.refresh_icons(colors["text"])               # the Theme icons follow the light / dark colours
 
@@ -369,7 +386,7 @@ class SettingsDialog:
                         self.dock_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check):
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
-        for control in (self.quality_combo, self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
+        for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
                         self.pack_combo, self.echo_combo):
             control.currentIndexChanged.connect(self._live)
         for control in (self.font_spin, self.history_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin):
@@ -407,7 +424,7 @@ class SettingsDialog:
         prefs["opacity"] = self.opacity_slider.value()
         prefs["sorting_follows_opacity"] = self.sorting_opacity_check.isChecked()
         prefs["sorting_sounds"] = self.sorting_sounds_check.isChecked()
-        prefs["speech_quality"] = self.quality_combo.currentData()
+        prefs["speech_quality"] = self.selected_quality
         prefs["blur"] = self.blur_slider.value()
         prefs["history_limit"] = self.history_spin.value()
         prefs["feedback"] = self.feedback_combo.currentData()
@@ -540,30 +557,27 @@ class SettingsDialog:
         self.rows.append(row)
         return row
 
+    @property
+    def selected_quality(self) -> str:
+        """The speech model whose radio button is checked."""
+        return next((k for k, row in self.model_rows.items() if row.radio.isChecked()), "standard")
+
+    def _quality_chosen(self, key: str) -> None:
+        """A model's radio button was checked: show where it stands, and tell the application."""
+        self.set_model_state("", False)
+        self._live()
+
     def set_model_state(self, note: str, busy: bool) -> None:
-        """Show whether the speech model is installed, or how its download is going (*note*, while *busy*)."""
-        if self.model_row is None:
+        """Show, for each model, whether it is installed (a pill) or can be downloaded (a button), and how a download is
+        going (*note*, on the chosen model's description, while *busy*)."""
+        if not getattr(self, "model_rows", None):
             return
-        quality = self.quality_combo.currentData()
-        installed = bool(self._model_installed(quality))
-        size = {"better": "about 130 MB", "best": "about 145 MB"}.get(quality, "about 40 MB")
-        if note:
-            text = note
-        elif installed:
-            text = ("Installed. Quill listens on this computer; nothing you say is sent anywhere. "
-                    + {"better": "Better hears more words correctly, but uses more memory.",
-                       "best": "Best re-reads each phrase with a Whisper model: the most accurate, "
-                               "with the words appearing a moment after each pause."}.get(quality, ""))
-        else:
-            text = (f"Not installed. It is {size}, downloaded once, and then works without internet. "
-                    + {"better": "Better mishears fewer words than Standard.",
-                       "best": "Best is the most accurate: a Whisper model re-reads each phrase."}.get(
-                           quality, "Quill needs it to hear you."))
-        self.model_row.description_label.setText(text.strip())
-        self.model_row.description_label.setVisible(True)
-        self.quality_combo.setEnabled(not busy)
-        self.model_button.setEnabled(not busy and not installed)
-        self.model_button.setText("Installed" if installed and not busy else "Download")
+        chosen = self.selected_quality
+        for key, row in self.model_rows.items():
+            row.set_installed(bool(self._model_installed(key)), busy)
+            row.radio.setEnabled(not busy)
+            original = next(d for k, _, _, d in SPEECH_MODELS if k == key)
+            row.description_label.setText(note if (note and key == chosen) else original)
 
     def _build_pages(self) -> None:
         prefs = self._settings.preferences
@@ -611,29 +625,6 @@ class SettingsDialog:
         self._add("General", page, "Quiet Time Before Stopping",
                   "Seconds of silence after which listening stops (3 to 3600).", self.auto_stop_spin,
                   "auto off timer idle silence shut off timeout seconds")
-        logs = QPushButton("Open Log Folder")
-        logs.setToolTip("Quill writes what it does, and any error, to a log file here")
-        logs.clicked.connect(lambda: self._on_open_logs())
-        self._add("General", page, "Troubleshooting",
-                  "If something goes wrong, the log file shows what happened.", logs, "log file errors diagnostics")
-        self.quality_combo = FlatCombo()
-        for key, label in (("standard", "Standard"), ("better", "Better"), ("best", "Best")):
-            self.quality_combo.addItem(label, key)
-        self.quality_combo.setCurrentIndex(self.quality_combo.findData(prefs["speech_quality"]))
-        self.model_button = QPushButton("Download")
-        self.model_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.model_button.clicked.connect(lambda: self._on_download_model(self.quality_combo.currentData()))
-        holder = QWidget()
-        holder.setProperty("keepMargins", True)
-        side = QHBoxLayout(holder)
-        side.setContentsMargins(0, 0, 0, 0)
-        side.setSpacing(8)
-        side.addWidget(self.quality_combo)
-        side.addWidget(self.model_button)
-        self.model_row = self._add("General", page, "Speech Model", "", holder,
-                                   "download vosk offline recognition voice model install quality better accuracy mishear")
-        self.quality_combo.currentIndexChanged.connect(lambda _=0: self.set_model_state("", False))
-        self.set_model_state("", False)
         self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
         self.history_spin.setValue(int(prefs["history_limit"]))
@@ -641,6 +632,32 @@ class SettingsDialog:
         self.history_spin.setToolTip("How many sorting answers Undo can step back through")
         self._add("General", page, "Undo Remembers",
                   "How many of your latest sorting answers can be taken back.", self.history_spin, "history")
+        logs = QPushButton("Open Log Folder")
+        logs.setToolTip("Quill writes what it does, and any error, to a log file here")
+        logs.clicked.connect(lambda: self._on_open_logs())
+        self._add("General", page, "Troubleshooting",
+                  "If something goes wrong, the log file shows what happened.", logs, "log file errors diagnostics")
+        page.addStretch(1)
+
+        # --- Speech Model: one radio button per model, only one can be chosen
+        page = self._page("Speech Model", "How Quill turns your voice into words. It all happens on this computer: nothing you say is sent anywhere.")
+        self.model_rows: dict[str, ModelRow] = {}
+        self.quality_group = QButtonGroup(self.root)
+        for key, name, size, description in SPEECH_MODELS:
+            row = ModelRow(key, name, size, description)
+            self.quality_group.addButton(row.radio)
+            row.chosen.connect(self._quality_chosen)
+            row.download_requested.connect(lambda k: self._on_download_model(k))
+            self._page_rows["Speech Model"].append(row)
+            self.rows.append(row)
+            page.addWidget(row)
+            self.model_rows[key] = row
+        start = self.model_rows[str(prefs["speech_quality"])].radio
+        start.blockSignals(True)                                           # (the saved choice is not a change)
+        start.setChecked(True)
+        start.blockSignals(False)
+        self._model_note = ""
+        self.set_model_state("", False)
         page.addStretch(1)
 
         # --- Appearance
@@ -672,14 +689,14 @@ class SettingsDialog:
         self.opacity_slider, self.opacity_label, box = _slider(
             *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included")
         self._add("Appearance", page, "Window Opacity",
-                  "How solid the window is. 100% is completely solid; lower makes the whole window, text and "
-                  "controls included, see-through. The lowest is 10%.", box,
+                  "How solid the window's background is. 100% is completely solid; lower lets what is behind the window "
+                  "show through, while text and controls stay crisp. The lowest is 10%.", box,
                   "transparent transparency")
         self.blur_slider, self.blur_label, box = _slider(
             *BLUR_RANGE, int(prefs["blur"]), "How strongly the desktop behind the window is blurred")
         self._add("Appearance", page, "Window Blur",
-                  "Frosts what you see through the window (macOS and Windows 11). Only visible when opacity is "
-                  "below 100%, since a solid window hides it. 0% is off.", box,
+                  "How much what you see through the window is blurred. Only visible when opacity is below 100%, since "
+                  "a solid window hides it. 0% is off, so what is behind stays sharp.", box,
                   "glass vibrancy acrylic")
         self.sorting_opacity_check = ToggleSwitch()
         self.sorting_opacity_check.setChecked(bool(prefs["sorting_follows_opacity"]))
@@ -746,6 +763,7 @@ class SettingsDialog:
         keyword_box = QWidget()
         inner = QVBoxLayout(keyword_box)
         inner.setContentsMargins(0, 6, 0, 0)
+        self.table.itemSelectionChanged.connect(self._show_selection)
         inner.addWidget(self.table, 1)
         buttons = QHBoxLayout()
         for label, slot in (("Add", self.add_row), ("Remove", self.remove_selected),
@@ -833,6 +851,18 @@ class SettingsDialog:
             combo.addItem(action_label(candidate), candidate)
         combo.setCurrentIndex(BINDABLE_ACTIONS.index(action if isinstance(action, Action) else Action.NEXT_ROW))
         self.table.setCellWidget(row, 1, combo)
+        self._show_selection()
+
+    def _show_selection(self) -> None:
+        """The row-selection colour is the accent: text on it is the on-accent colour, so the drop-down in a selected row
+        is told it is selected (a cell widget does not follow the table's own selection colours)."""
+        chosen = {i.row() for i in self.table.selectedIndexes()}
+        for r in range(self.table.rowCount()):
+            combo = self.table.cellWidget(r, 1)
+            if combo is not None and bool(combo.property("rowSelected")) != (r in chosen):
+                combo.setProperty("rowSelected", r in chosen)
+                combo.style().unpolish(combo)
+                combo.style().polish(combo)
 
     def remove_selected(self) -> None:
         """Delete the selected rows (or the current one)."""

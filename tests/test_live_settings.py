@@ -67,11 +67,13 @@ class TestLiveUpdate(LiveCase):
         self.assertEqual((p["history_limit"], p["speak_sort_prompts"], p["auto_voice_sort"]), (20, True, True))
 
     def test_the_running_window_follows_the_slider(self):
-        self.d.blur_slider.setValue(0)
-        self.d.opacity_slider.setValue(50)
-        self.assertAlmostEqual(self.app.window.widget.windowOpacity(), 0.5, 2)
-        self.d.opacity_slider.setValue(100)
-        self.assertAlmostEqual(self.app.window.widget.windowOpacity(), 1.0, 2)
+        for blur in (0, 60):
+            self.d.blur_slider.setValue(blur)
+            self.d.opacity_slider.setValue(50)
+            self.assertAlmostEqual(_app.property("quillBackdrop"), 0.5, 2, f"blur {blur}")     # the background thins
+            self.assertEqual(self.app.window.widget.windowOpacity(), 1.0)                       # the window itself stays opaque
+            self.d.opacity_slider.setValue(100)
+            self.assertAlmostEqual(_app.property("quillBackdrop"), 1.0, 2)
 
     def test_live_changes_are_not_logged_as_saved(self):
         self.d.font_spin.setValue(13)
@@ -111,11 +113,14 @@ class TestLiveUpdate(LiveCase):
     def test_the_settings_window_follows_opacity_but_never_below_the_floor(self):
         self.d.blur_slider.setValue(0)
         self.d.opacity_slider.setValue(30)
-        self.assertAlmostEqual(self.d._dialog.windowOpacity(), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
+        self.assertAlmostEqual(self.d.root.property("quillMinAlpha"), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
+        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.3, 2)         # the app's windows thin to the slider ...
+        painted = self.d.root.grab().toImage().pixelColor(5, 5).alpha()
+        self.assertAlmostEqual(painted / 255, SettingsDialog.MIN_DIALOG_OPACITY / 100, delta=0.02)   # ... Settings stops at its floor
         self.d.opacity_slider.setValue(85)
-        self.assertAlmostEqual(self.d._dialog.windowOpacity(), 0.85, 2)
+        self.assertAlmostEqual(self.d.root.grab().toImage().pixelColor(5, 5).alpha() / 255, 0.85, delta=0.02)
         self.d.opacity_slider.setValue(100)
-        self.assertAlmostEqual(self.d._dialog.windowOpacity(), 1.0, 2)
+        self.assertAlmostEqual(self.d.root.grab().toImage().pixelColor(5, 5).alpha() / 255, 1.0, delta=0.02)
 
     def test_open_settings_wires_live_updates_and_cancel_through_the_app(self):
         # The app's own dialog: change, cancel, and everything is as it was.

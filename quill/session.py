@@ -131,6 +131,8 @@ class Event:
     where it was heard, and whether the value already existed)."""
     filled: list | None = None
     """add_values/alias_added: the subset of ``cells`` the controller actually wrote."""
+    spoken: bool = False
+    """The user's speech caused this (a click did not). Only spoken events make a confirmation sound."""
 
 
 @dataclass

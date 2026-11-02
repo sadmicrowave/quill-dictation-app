@@ -60,7 +60,7 @@ from quill.ui.main_widgets import (
     StreamBox,
 )
 from quill.ui.theme import install_backdrop, apply_spacing
-from quill.ui.side_panel import FILE_PAGE, PANEL_WIDTH, SidePanel, TURN_PAGE
+from quill.ui.side_panel import FILE_PAGE, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH, SidePanel, TURN_PAGE
 from quill.ui.widgets import (
     ElidedLabel,
     HeadingToggle,
@@ -97,6 +97,9 @@ MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
 MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and opens at it the first time
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user drags it to another)
 LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
+#: Gap (px) between the "Log" heading and the log box.
+LOG_HEADING_GAP = 1
+MIN_CONTENT_WIDTH = 330     # the content (everything but the side panel) is never dragged narrower than this
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
@@ -171,6 +174,8 @@ class MainWindow:
         self._native_settings_button = False
         self._native_file_button = False
         self._native_turn_button = False
+        self._panel_width = PANEL_WIDTH      # how wide it opens (the user drags the edge to change it)
+        self._on_panel_size: Callable[[int], None] = lambda width: None
         self._panel_open = False             # the side panel is open (or sliding open)
         self._panel_page = FILE_PAGE
         self._panel_animation: QVariantAnimation | None = None
@@ -246,6 +251,8 @@ class MainWindow:
         self._shell.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.panel = SidePanel()
         self.panel.close_requested.connect(self.close_panel)
+        self.panel.width_dragged.connect(self._panel_dragged)
+        self.panel.width_released.connect(lambda: self._on_panel_size(self._panel_width))
         self.panel.settings_requested.connect(self.show_file_settings)
         shell.addWidget(central, 1)
         shell.addWidget(self.panel)
@@ -393,11 +400,20 @@ class MainWindow:
         footer_row = QHBoxLayout()                          # "Log" on the left, the last saved row on the right
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         footer_row.addWidget(self.last_label, 1)
-        layout.addLayout(footer_row)
         self.log = QTextEdit()                # (not the plain-text kind: it can hang a long line's wrap under the message)
         self.log.setReadOnly(True)
         self.log.document().setUndoRedoEnabled(False)
-        layout.addWidget(self.log)
+        log_block = QVBoxLayout()                           # the heading sits close to its box, in either spacing
+        log_block.setContentsMargins(0, 0, 0, 0)
+        log_block.setSpacing(LOG_HEADING_GAP)
+        log_block.setProperty("keepSpacing", True)
+        log_block.addLayout(footer_row)
+        log_block.addWidget(self.log)
+        layout.addLayout(log_block)
+        self.log_grip = ResizeGrip(central)         # drag the bottom edge of the log: it and the window grow or shrink together
+        self.log_grip.dragged.connect(self._log_grip_dragged)
+        self.log_grip.released.connect(lambda: self._on_log_height(self._log_height))
+        self.log.installEventFilter(_GripPlacer(self.log, self.log_grip))
         layout.addStretch(0)         # soaks up spare height in the compact mini view (and while it grows back), so nothing drifts down
         self._spacer_index = layout.count() - 1
 
@@ -638,7 +654,40 @@ class MainWindow:
         self._on_panel_toggled(page)
         if not self._panel_open:
             self._panel_open = True
-            self._slide_panel(PANEL_WIDTH)
+            self._slide_panel(self._panel_width)
+
+    def set_panel_size_listener(self, callback: Callable[[int], None]) -> None:
+        """Call *callback* with the panel's width whenever the user finishes dragging it to a new one."""
+        self._on_panel_size = callback
+
+    def restore_panel_width(self, width: int) -> None:
+        """Use the panel width the user left it at (kept within the limits)."""
+        self._panel_width = max(PANEL_MIN_WIDTH, min(PANEL_MAX_WIDTH, int(width or PANEL_WIDTH)))
+
+    @property
+    def panel_width(self) -> int:
+        """The width the panel opens at."""
+        return self._panel_width
+
+    def _panel_room(self) -> int:
+        """The most the panel can be right now: what is left of the window once the content has its own minimum."""
+        content = max(self._layout.minimumSize().width(), MIN_CONTENT_WIDTH)
+        return max(PANEL_MIN_WIDTH, min(PANEL_MAX_WIDTH, self._window.width() - content))
+
+    def _panel_dragged(self, dx: int) -> None:
+        """The panel's edge was dragged *dx* px to the right: the panel narrows and the content widens, or the reverse. The
+        window keeps its size, and the content never gets narrower than it can work at."""
+        if self._window is None or not self._panel_open or self._panel_animation_running():
+            return
+        width = max(PANEL_MIN_WIDTH, min(self._panel_room(), self.panel.width() - dx))
+        if width != self.panel.width():
+            self._panel_width = width
+            self.panel.setFixedWidth(width)
+            self._on_panel_width(width)                       # the title bar's line, title and icons follow
+            self._settle_minimum()
+
+    def _panel_animation_running(self) -> bool:
+        return self._panel_animation is not None and self._panel_animation.state() == QVariantAnimation.State.Running
 
     def show_file_settings(self) -> None:
         """Open the file settings overlay under the gear button of the Files page."""
@@ -825,6 +874,24 @@ class MainWindow:
         floor = max(self._layout.minimumSize().height(), MIN_WINDOW[1])
         window.resize(window.width(), max(floor, window.height() + dy))
 
+    def _log_grip_dragged(self, dy: int) -> None:
+        """The bottom edge of the log was dragged *dy* px (down is positive): the log takes the difference and the window
+        grows or shrinks by the same amount, so what is above does not move. Height only."""
+        window = self._window
+        if window is None or self._view_mini or self._log_busy or self._log_collapsed or not self.log.isVisibleTo(window):
+            return
+        wanted = max(LOG_MIN_HEIGHT, min(LOG_MAX_HEIGHT, self._log_height + dy))
+        change = wanted - self._log_height
+        if not change:
+            return
+        screen = window.screen()
+        if change > 0 and screen is not None and window.height() + change > screen.availableGeometry().height():
+            return
+        self._log_height = wanted
+        self.log.setFixedHeight(wanted)
+        self._layout.activate()
+        window.resize(window.width(), window.height() + change)
+
     def _fit_height(self) -> int:
         """The height the window needs right now (the layout is recomputed first, as Qt only does that lazily)."""
         layout = self._layout
@@ -901,6 +968,8 @@ class MainWindow:
         self.row_table.setVisible(detail)
         self.row_grip.allowed = full                                         # (only the full window is resized this way)
         self.row_grip.setVisible(full and detail)
+        self.log_grip.allowed = full
+        self.log_grip.setVisible(full and self.log.isVisibleTo(self._window))
         self.last_label.setVisible(full and self._has_last_saved)
         self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
@@ -1322,11 +1391,12 @@ class MainWindow:
         self._has_last_saved = True
         self._refresh_visibility()
 
-    def append_log(self, text: str, level: str = "info") -> None:
+    def append_log(self, text: str, level: str = "info", reveal: bool = True) -> None:
         """Add a timestamped line to the log (and to the log file, for troubleshooting).
 
         *level* is ``"info"``, ``"warning"`` or ``"error"``. Warnings and errors say so after the time and are
-        coloured (every error the same red); an error also opens the log if it is collapsed, so it is seen.
+        coloured (every error the same red); an error also opens the log if it is collapsed, so it is seen (unless *reveal* is
+        False: the user is already being shown the way out, by the interface itself).
         """
         label, color = LOG_LEVELS.get(level, LOG_LEVELS["info"])
         logging.getLogger("quill").log({"error": logging.ERROR, "warning": logging.WARNING}.get(level, logging.INFO), text)
@@ -1359,7 +1429,7 @@ class MainWindow:
             self._mini_error = text                                 # the mini view shows a red "!" until it is seen
             self.error_button.setToolTip(f"{text}\nClick to go back to the full window and the Log")
             self._refresh_visibility()
-            if self._log_collapsed:
+            if self._log_collapsed and reveal:
                 self._set_collapsed("log", False)
 
     def clear_mini_error(self) -> None:
@@ -1400,6 +1470,7 @@ class MainWindow:
             return                      # not built yet; setup() draws them
         self.panel.set_colors(text_color, accent)
         self.row_grip.set_color(text_color)
+        self.log_grip.set_color(text_color)
         self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")

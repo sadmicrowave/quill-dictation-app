@@ -70,10 +70,8 @@ class TestConnectionChip(unittest.TestCase):
         self.assertFalse(FIRST_PERSON.search(tip), FIRST_PERSON.search(tip))
         for part in ("Not connected", "read lists from", "write rows to"):
             self.assertIn(part, tip)
-        self.assertIn("<b>", tip)                                                  # bold, italics and spacing
-        self.assertIn("<i>", tip)
-        self.assertIn("line-height", tip)
-        self.assertIn("letter-spacing", tip)
+        self.assertNotIn("<", tip)                                                 # plain text, like every other tooltip
+        self.assertTrue(tip.isascii())                                             # no emoji or symbols
 
     def test_the_app_supplied_hint_has_no_first_person_either(self):
         from quill.controller import NO_WORKBOOK_HELP

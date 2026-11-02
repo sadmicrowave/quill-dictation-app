@@ -132,22 +132,24 @@ class TestSettingsChoice(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.settings = Settings.load(pathlib.Path(self._tmp.name))
-        self.installed = {"standard": True, "better": False}
+        self.installed = {"standard": True, "better": False, "best": False}
         self.asked = []
         self.d = SettingsDialog(self.settings, on_download_model=self.asked.append,
                                 model_installed=lambda quality: self.installed[quality])
         self.d.build()
 
     def test_choosing_better_shows_its_state_and_downloads_that_one(self):
-        self.assertEqual(self.d.model_button.text(), "Installed")
-        self.d.quality_combo.setCurrentIndex(self.d.quality_combo.findData("better"))
-        self.assertEqual(self.d.model_button.text(), "Download")
-        self.assertIn("130 MB", self.d.model_row.description_label.text())
-        self.d.model_button.click()
+        standard, better = self.d.model_rows["standard"], self.d.model_rows["better"]
+        self.assertFalse(standard.installed_pill.isHidden())
+        self.assertTrue(standard.download_button.isHidden())
+        better.radio.setChecked(True)
+        self.assertFalse(better.download_button.isHidden())
+        self.assertIn("130 MB", better.title_label.text())
+        better.download_button.click()
         self.assertEqual(self.asked, ["better"])
 
     def test_the_choice_is_stored_live(self):
-        self.d.quality_combo.setCurrentIndex(self.d.quality_combo.findData("better"))
+        self.d.model_rows["better"].radio.setChecked(True)
         self.assertEqual(self.settings.preferences["speech_quality"], "better")
 
     def test_a_bad_stored_value_goes_back_to_standard(self):

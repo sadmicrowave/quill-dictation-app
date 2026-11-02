@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QSlider, QSpinBox, QStyle,
+    QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QSizePolicy, QSlider, QSpinBox, QStyle,
     QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -55,6 +55,7 @@ class SettingRow(QWidget):
             self.description_label.hide()           # (never setVisible(True): on a wrapped label it forces a layout pass, ~20 ms a row)
         text.addWidget(self.description_label)
         line.addLayout(text, 1)
+        self.line = line                            # (the model rows put their radio button at its left)
         if isinstance(control, (QComboBox, QSpinBox)) or control.property("valueControl"):
             control.setFixedWidth(CONTROL_WIDTH)
             control.setMinimumHeight(CONTROL_HEIGHT)
@@ -69,6 +70,48 @@ class SettingRow(QWidget):
     def matches(self, query: str) -> bool:
         """True if every word of *query* appears in this row's text."""
         return all(word in self.search_text for word in query.lower().split())
+
+
+class ModelRow(SettingRow):
+    """One speech model on the Speech Model page: a radio button (only one can be chosen), the model's name in bold with
+    its download size beside it, a description of what it does for the quality, and on the right either an
+    "Installed" pill (no fill, in the accent colour) or a Download button.
+    """
+
+    chosen = Signal(str)                       # the model's key, when its radio button is checked
+    download_requested = Signal(str)
+
+    def __init__(self, key: str, name: str, size: str, description: str) -> None:
+        self.key = key
+        self.installed_pill = QLabel("Installed")
+        self.installed_pill.setProperty("installedPill", True)           # drawn by the theme: accent border, no fill
+        self.installed_pill.setToolTip(f"The {name} model is installed on this computer")
+        self.download_button = QPushButton("Download")
+        self.download_button.setToolTip(f"Download the {name} model ({size}); it is downloaded once")
+        self.download_button.clicked.connect(lambda: self.download_requested.emit(self.key))
+        holder = QWidget()
+        holder.setProperty("keepMargins", True)
+        side = QHBoxLayout(holder)
+        side.setContentsMargins(0, 0, 0, 0)
+        side.setSpacing(8)
+        side.addWidget(self.installed_pill)
+        side.addWidget(self.download_button)
+        super().__init__(name, description, holder, f"{name} {size} speech model download install quality")
+        self.title_label.setTextFormat(Qt.TextFormat.RichText)
+        self.title_label.setText(f"<b>{name}</b>&nbsp;&nbsp;{size}")        # the name bold, the size not
+        self.radio = QRadioButton()
+        self.radio.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.radio.setToolTip(f"Use the {name} model")
+        self.radio.toggled.connect(lambda on: self.chosen.emit(self.key) if on else None)
+        self.line.insertWidget(0, self.radio, 0, Qt.AlignmentFlag.AlignTop)
+        self.title_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.title_label.mousePressEvent = lambda event: self.radio.click()       # the name is a label for the radio
+
+    def set_installed(self, installed: bool, busy: bool = False) -> None:
+        """Show the Installed pill for a model that is on this computer, the Download button for one that is not."""
+        self.installed_pill.setVisible(installed and not busy)
+        self.download_button.setVisible(not installed)
+        self.download_button.setEnabled(not busy)
 
 
 class _WheelGuard:

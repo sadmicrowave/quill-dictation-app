@@ -146,31 +146,34 @@ class TestMacChrome(unittest.TestCase):
     def test_a_view_without_a_window_is_left_alone(self):
         self.assertFalse(chrome.mac_chrome(5, True, COLORS, appkit=FakeAppKit(None)))
 
-    def test_blur_adds_one_vibrancy_view_behind_the_content(self):
+    def test_the_stand_in_vibrancy_view_is_added_once_behind_the_content_when_the_window_server_cannot_blur(self):
         window, kit = FakeWindow(), FakeAppKit(FakeWindow())
         window = kit._window
-        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=60)
-        self.assertEqual(len(kit.holder.added), 3)                    # the blur, the frost wash over it and the title bar tint
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=70, blur=60)
+        self.assertEqual(len(kit.holder.added), 2)                    # the blur and the title bar tint
         view, where, _ = kit.holder.added[0]
         self.assertEqual(where, -1)                                   # below the content
         self.assertEqual(view.identifier(), chrome.BLUR_ID)
         self.assertEqual((view.props["material"], view.props["blending"], view.props["state"]), (7, 0, 1))
         self.assertEqual(view.props["mask"], 18)                      # grows with the window
-        self.assertIn(("opaque", False), window.calls)                # blur needs a see-through window
-        self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), window.calls)         # title bar solid at 100% opacity
-        self.assertEqual(view.props["alpha"], 1.0)                           # always the whole blur (the slider sets the frost)
-        frost, where, _ = kit.holder.added[1]
-        self.assertEqual(frost.identifier(), chrome.FROST_ID)
-        self.assertEqual(frost.props["colour"][3], round(chrome.FROST_MAX * 0.6, 2))
-        tint, where, _ = kit.holder.added[2]
-        self.assertEqual(tint.props["colour"][3], 1.0)                       # the title bar tint is solid at full opacity
-        self.assertEqual(tint.props["frame"], ((0, 80), (100, 20)))          # over the title bar only
+        self.assertIn(("opaque", False), window.calls)                # see-through needs a see-through window
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.0)), window.calls)  # on a clear backing
+        self.assertEqual(view.props["alpha"], 1.0)                    # always the whole blur
+        tint, where, _ = kit.holder.added[1]
+        self.assertEqual(tint.props["colour"][3], 0.7)                # the title bar thins with the window
+        self.assertEqual(tint.props["frame"], ((0, 80), (100, 20)))   # over the title bar only
 
-    def test_blur_is_not_added_twice_but_its_strength_updates(self):
+    def test_a_solid_window_gets_no_blur_at_any_setting(self):
+        kit = FakeAppKit(FakeWindow())
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=100, blur=100)
+        self.assertEqual(kit.holder.added, [])
+        self.assertIn(("opaque", True), kit._window.calls)
+
+    def test_the_blur_view_is_not_added_twice(self):
         existing = FakeView(chrome.BLUR_ID)
         kit = FakeAppKit(FakeWindow(), FakeHolder([existing]))
-        chrome.mac_chrome(5, False, COLORS, appkit=kit, blur=30)
-        self.assertEqual([v.identifier() for v, *_ in kit.holder.added], [chrome.FROST_ID, chrome.TINT_ID])   # only these are new
+        chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=60, blur=30)
+        self.assertEqual([v.identifier() for v, *_ in kit.holder.added], [chrome.TINT_ID])   # only the tint is new
         self.assertEqual(existing.props["alpha"], 1.0)
 
     def test_zero_blur_is_solid_and_has_no_view(self):
@@ -190,10 +193,10 @@ class TestMacChrome(unittest.TestCase):
         kit = FakeAppKit(FakeWindow())
         chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=70)
         self.assertIn(("opaque", False), kit._window.calls)
-        self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), kit._window.calls)   # no blur: the backdrop stays solid; the window fades as a whole
+        self.assertIn(("bg", (0.98, 0.98, 0.96, 0.0)), kit._window.calls)   # the system backing is clear; Qt paints the thinner background
         kit = FakeAppKit(FakeWindow())
         chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=70, blur=100)
-        self.assertTrue(any(call[0] == "bg" and call[1][3] < 1 for call in kit._window.calls))   # blur: the backdrop thins out
+        self.assertTrue(any(call[0] == "bg" and call[1][3] == 0.0 for call in kit._window.calls))
 
     def test_full_opacity_and_no_blur_is_a_solid_window(self):
         kit = FakeAppKit(FakeWindow())
@@ -341,8 +344,8 @@ class TestFontSize(unittest.TestCase):
         self._tmp.cleanup()
         theme.apply_theme(_app, "light", font_size=12)
 
-    def test_default_is_twelve_and_is_clamped_on_load(self):
-        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 12)
+    def test_default_is_fourteen_and_is_clamped_on_load(self):
+        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 14)
         (self.dir / "keywords.toml").write_text("[preferences]\nfont_size = 90\n")
         self.assertEqual(Settings.load(self.dir).preferences["font_size"], FONT_SIZE_RANGE[1])
         (self.dir / "keywords.toml").write_text("[preferences]\nfont_size = 2\n")
@@ -363,10 +366,10 @@ class TestFontSize(unittest.TestCase):
         settings = Settings.load(self.dir)
         dlg = SettingsDialog(settings)
         dlg.build()
-        self.assertEqual(dlg.font_spin.value(), 12)
-        dlg.font_spin.setValue(14)
+        self.assertEqual(dlg.font_spin.value(), 14)
+        dlg.font_spin.setValue(16)
         self.assertTrue(dlg.try_accept())
-        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 14)
+        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 16)
         dlg.font_spin.setValue(99)
         self.assertEqual(dlg.font_spin.value(), FONT_SIZE_RANGE[1])
 

@@ -1982,12 +1982,54 @@ class TestTitleBarScale(unittest.TestCase):
 
 
 class TestBlurIsReallyBlur(unittest.TestCase):
-    def test_the_blur_view_is_never_half_faded(self):
-        """A half-faded blur lets the sharp desktop through, which looked like plain transparency."""
+    """The pixels are checked by tools/verify_window_effects.py on a real screen; these check what produces them."""
+
+    def test_the_slider_maps_to_the_window_servers_blur_radius(self):
+        from quill.ui import chrome
+        self.assertEqual([chrome.blur_radius(v) for v in (0, 50, 100)], [0, chrome.MAX_BLUR_RADIUS // 2, chrome.MAX_BLUR_RADIUS])
+        self.assertEqual(chrome.blur_radius(-5), 0)
+        self.assertEqual(chrome.blur_radius(900), chrome.MAX_BLUR_RADIUS)
+
+    def test_the_radius_is_given_to_the_window_server_for_that_window(self):
+        import ctypes
+        from quill.ui import chrome
+        calls = []
+
+        class Fn:
+            def __init__(self, result=0): self.result = result; self.argtypes = None; self.restype = None
+            def __call__(self, *args): calls.append(args); return self.result
+
+        class Lib:
+            CGSMainConnectionID = Fn(7)
+            CGSSetWindowBackgroundBlurRadius = Fn(0)
+
+        window = type("W", (), {"windowNumber": lambda s: 4242})()
+        with mock.patch.object(ctypes, "CDLL", return_value=Lib()):
+            self.assertTrue(chrome.set_background_blur(window, 30))
+        self.assertIn((7, 4242, 30), calls)
+
+    def test_a_missing_window_server_call_is_reported_not_raised(self):
+        import ctypes
+        from quill.ui import chrome
+        with mock.patch.object(ctypes, "CDLL", side_effect=OSError("no")):
+            self.assertFalse(chrome.set_background_blur(object(), 30))
+
+    def test_mac_chrome_sets_a_clear_backing_so_the_blur_has_something_to_show_through(self):
+        from quill.ui import chrome
+        from tests.test_chrome_and_layout import COLORS, FakeAppKit, FakeWindow
+        for opacity, blur, clear in ((100, 0, False), (100, 60, False), (99, 0, True), (50, 60, True)):
+            kit = FakeAppKit(FakeWindow())
+            chrome.mac_chrome(5, True, COLORS, appkit=kit, opacity=opacity, blur=blur)
+            calls = kit._window.calls
+            self.assertIn(("opaque", not clear), calls, (opacity, blur))
+            backing = [c[1][3] for c in calls if c[0] == "bg"]
+            self.assertEqual(backing, [0.0 if clear else 1.0], (opacity, blur))
+
+    def test_the_vibrancy_view_is_only_the_stand_in_and_never_half_faded(self):
         from quill.ui import chrome
 
         class View:
-            def __init__(self): self.alpha = None; self._id = ""; self.layer_color = None
+            def __init__(self): self.alpha = None; self._id = ""; self.layer_color = None; self.removed = False
             @classmethod
             def alloc(cls): return cls()
             def initWithFrame_(self, f): return self
@@ -2000,15 +2042,15 @@ class TestBlurIsReallyBlur(unittest.TestCase):
             def setAlphaValue_(self, a): self.alpha = a
             def setWantsLayer_(self, v): pass
             def setFrame_(self, f): pass
+            def removeFromSuperview(self): self.removed = True
             def layer(self): return type("L", (), {"setBackgroundColor_": lambda s, c: setattr(self, "layer_color", c)})()
             def bounds(self): return type("B", (), {"size": type("S", (), {"width": 100, "height": 100})()})()
             def frame(self): return type("F", (), {"size": type("S", (), {"width": 100, "height": 80})()})()
 
         class Holder(View):
             def __init__(self): super().__init__(); self.subviews_ = []
-            def subviews(self): return self.subviews_
+            def subviews(self): return list(self.subviews_)
             def addSubview_positioned_relativeTo_(self, v, pos, rel): self.subviews_.append(v)
-            def bounds(self): return type("B", (), {"size": type("S", (), {"width": 100, "height": 100})()})()
 
         class Color:
             @staticmethod
@@ -2017,17 +2059,118 @@ class TestBlurIsReallyBlur(unittest.TestCase):
         kit = type("Kit", (), {"NSVisualEffectView": View, "NSView": View, "NSColor": Color})
         holder = Holder()
         view = type("V", (), {"superview": lambda s: holder, "frame": lambda s: type("F", (), {"size": type("S", (), {"width": 100, "height": 80})()})()})()
-        for strength in (0.2, 0.6, 1.0):
-            chrome._set_blur(view, kit, strength, None, (0.1, 0.1, 0.1, 0.4))
-            effect = next(v for v in holder.subviews_ if v.identifier() == chrome.BLUR_ID)
-            self.assertEqual(effect.alpha, 1.0, strength)                              # always the whole blur
-        frost = next(v for v in holder.subviews_ if v.identifier() == chrome.FROST_ID)
-        self.assertAlmostEqual(frost.layer_color[1], chrome.FROST_MAX * 1.0)           # the slider sets the frost instead
+        chrome._set_blur(view, kit, 1.0, None, (0.1, 0.1, 0.1, 0.4))
+        effect = next(v for v in holder.subviews_ if v.identifier() == chrome.BLUR_ID)
+        self.assertEqual(effect.alpha, 1.0)
+        self.assertFalse([v for v in holder.subviews_ if v.identifier() == chrome.FROST_ID])        # no wash over the blur
+        tint = next(v for v in holder.subviews_ if v.identifier() == chrome.TINT_ID)
+        self.assertEqual(tint.layer_color[1], 0.4)                                               # the title bar thins with the window
+        chrome._set_blur(view, kit, 0.0, None, None)                                              # solid window: nothing left behind
+        self.assertTrue(effect.removed and tint.removed)
 
-    def test_the_opacity_no_longer_weakens_the_blur(self):
+    def test_the_opacity_does_not_weaken_the_blur(self):
         import inspect
         from quill.ui import chrome
         self.assertNotIn("min(1.0, opacity / 100)", inspect.getsource(chrome.mac_chrome))
+
+    def test_the_traffic_lights_are_drawn_larger_and_spread_a_little(self):
+        from quill.ui import chrome
+        applied = []
+
+        class Button:
+            def __init__(self, i): self.i = i
+            def setWantsLayer_(self, v): pass
+            def layer(self): return type("L", (), {"setAffineTransform_": lambda s, t: applied.append((self.i, t))})()
+
+        window = type("W", (), {"standardWindowButton_": lambda s, i: Button(i)})()
+        self.assertTrue(chrome.larger_traffic_lights(window))
+        self.assertEqual([i for i, _ in applied], [0, 1, 2])
+        for i, t in applied:
+            self.assertEqual((t[0], t[3]), (chrome.TRAFFIC_SCALE, chrome.TRAFFIC_SCALE))
+            self.assertEqual(t[4], chrome.TRAFFIC_SHIFT * i)
+        self.assertGreaterEqual(chrome.TRAFFIC_SCALE, 1.25)
+        self.assertFalse(chrome.larger_traffic_lights(object()))                                  # no window buttons: quiet
+
+    def test_every_window_gets_them_when_it_is_styled_and_again_when_it_is_shown(self):
+        import inspect
+        from quill.ui import chrome
+        self.assertIn("larger_traffic_lights(window)", inspect.getsource(chrome.mac_chrome))
+        self.assertIn("_redraw_lights", inspect.getsource(chrome._TitleFilter))
+
+
+class TestPanelChromeFollowsTheTitleBar(unittest.TestCase):
+    """The system may rebuild the title bar's views after ours were added; the panel's line, title and X must follow."""
+
+    def test_the_three_views_move_into_the_current_title_bar(self):
+        from quill.ui import chrome
+
+        class View:
+            def __init__(self, name=""): self.name = name; self.sup = None; self.hidden = None; self.origin = None; self.layer_ = None
+            @classmethod
+            def alloc(cls): return cls()
+            def initWithFrame_(self, f): return self
+            def setIdentifier_(self, i): self.name = i
+            def setWantsLayer_(self, v): pass
+            def setAutoresizingMask_(self, m): pass
+            def setHidden_(self, h): self.hidden = h
+            def superview(self): return self.sup
+            def removeFromSuperview(self): self.sup = None
+            def setFrame_(self, f): self.frame_ = f
+            def setFrameOrigin_(self, o): self.origin = o
+            def frame(self): return type("F", (), {"origin": type("P", (), {"x": 0, "y": 8})(), "size": type("S", (), {"width": 40, "height": 14})()})()
+            def layer(self): return type("L", (), {"setBackgroundColor_": lambda s, c: None})()
+            def setStringValue_(self, t): pass
+            def sizeToFit(self): pass
+
+        class Bar(View):
+            def __init__(self, width): super().__init__("bar"); self.width = width
+            def addSubview_(self, v): v.sup = self
+            def bounds(self): return type("B", (), {"size": type("S", (), {"width": self.width, "height": 52})()})()
+            def effectiveAppearance(self): return type("A", (), {"name": lambda s: "NSAppearanceNameDarkAqua"})()
+
+        class Light(View):
+            def __init__(self, window): super().__init__("light"); self.window = window
+            def superview(self): return self.window.bar
+            def frame(self): return type("F", (), {"origin": type("P", (), {"x": 7, "y": 18})(), "size": type("S", (), {"width": 14, "height": 16})()})()
+
+        class Window:
+            def __init__(self): self.bar = Bar(453)
+            def standardWindowButton_(self, i): return Light(self)
+
+        class Color:
+            @staticmethod
+            def colorWithWhite_alpha_(w, a): return type("C", (), {"CGColor": lambda s: ("c", a)})()
+            @staticmethod
+            def labelColor(): return "label"
+
+        class Font:
+            @staticmethod
+            def systemFontOfSize_weight_(a, b): return "font"
+
+        class Text(View):
+            @classmethod
+            def labelWithString_(cls, t): return cls()
+            def setFont_(self, f): pass
+            def setTextColor_(self, c): pass
+
+        class Button(View):
+            def setImage_(self, i): pass
+            def setToolTip_(self, t): pass
+
+        kit = type("Kit", (), {"NSView": View, "NSTextField": Text, "NSFont": Font, "NSColor": Color,
+                               "NSImage": type("I", (), {"imageWithSystemSymbolName_accessibilityDescription_": staticmethod(lambda n, d: None)})})
+        window = Window()
+        panel = chrome._PanelChrome(kit, window, lambda: None, lambda cb, width=None: (Button(), None))
+        old_bar = window.bar
+        self.assertTrue(all(v.superview() is old_bar for v in (panel.line, panel.title, panel.close)))
+        window.bar = Bar(689)                                           # the system rebuilt the title bar
+        panel.place(236)
+        for view in (panel.line, panel.title, panel.close):
+            self.assertIs(view.superview(), window.bar)                 # ... and the views came along
+            self.assertFalse(view.hidden)
+        self.assertEqual(panel.title.origin[0], 689 - 236 + 14)         # placed from the NEW bar's width
+        panel.place(0)
+        self.assertTrue(all(v.hidden for v in (panel.line, panel.title, panel.close)))
 
 
 class TestNavCaptions(unittest.TestCase):
@@ -2039,6 +2182,494 @@ class TestNavCaptions(unittest.TestCase):
         self.assertGreaterEqual(len(captions), 2)
         for caption in captions:
             self.assertFalse(caption.flags() & Qt.ItemFlag.ItemIsSelectable)
+
+
+# --------------------------------------------------------------------------- #
+# Round five                                                                   #
+# --------------------------------------------------------------------------- #
+
+class TestSoundsOnlyForSpeech(PanelApp):
+    def setUp(self):
+        super().setUp()
+        self.played = []
+        self.app.sound_player = self.played.append
+        self.app.feedback._play = self.played.append
+
+    def test_an_event_made_by_a_click_is_not_marked_as_spoken_and_one_made_by_speech_is(self):
+        seen = []
+        controller = Controller(XlsxBridge(self.plants), Settings.load(self.dir / "cfg2"), on_event=seen.append)
+        controller.connect()
+        controller.set_listening(True)                                      # the Start button
+        controller.next_row()                                               # the Next button
+        controller.set_turn_mode("append")                                  # the panel
+        self.assertTrue(seen and not any(e.spoken for e in seen), [(e.kind, e.spoken) for e in seen])
+        seen.clear()
+        controller.handle_transcript("fern")
+        controller.handle_transcript("next row")
+        self.assertTrue(seen and all(e.spoken for e in seen), [(e.kind, e.spoken) for e in seen])
+
+    def test_start_with_no_file_makes_no_sound_even_though_it_logs_an_error(self):
+        app = self.app
+        app.controller.bridge = DeadExcel()
+        app.connected = False
+        app.controller.connected = False
+        app.toggle_listening(True)
+        app.feedback.flush()
+        self.assertEqual(self.played, [])
+        self.assertIn("No spreadsheet is connected", app.window.log.toPlainText())
+
+    def test_a_click_on_a_term_helper_button_makes_no_sound_but_a_spoken_answer_does(self):
+        from quill.session import Decision
+        c = self.app.controller
+        c.handle_transcript("start listening")
+        c.handle_transcript("zorb next row")
+        self.app.feedback.flush()
+        self.played.clear()
+        key = c.pending_terms()[0]
+        self.app.resolve_term(key, Decision.ignore(), key[1])
+        self.app.feedback.flush()
+        self.assertEqual(self.played, [])
+
+
+class TestStartWithNoFile(PanelApp):
+    def setUp(self):
+        super().setUp()
+        self.app.controller.bridge = DeadExcel()
+        self.app.connected = False
+        self.app.controller.connected = False
+        self.app.window.set_not_connected(True)
+        self.asked = []
+        self.app._file_chooser = lambda: self.asked.append(1) or None
+
+    def test_the_first_click_opens_the_files_panel_and_nothing_else(self):
+        self.app.toggle_listening(True)
+        self.assertEqual(self.app.window.panel_page, FILE_PAGE)
+        self.assertEqual(self.asked, [])
+
+    def test_the_log_gets_the_error_but_does_not_open_itself(self):
+        self.app.window.set_log_collapsed(True)
+        self.app.toggle_listening(True)
+        self.assertIn("No spreadsheet is connected", self.app.window.log.toPlainText())
+        self.assertTrue(self.app.window.log_collapsed)
+
+    def test_a_click_while_the_panel_is_already_open_blinks_the_button_and_opens_the_file_window(self):
+        self.app.toggle_listening(True)
+        button = self.app.window.panel.file_button
+        self.app.toggle_listening(True)
+        self.assertEqual(self.asked, [1])
+        self.assertIn("#34C759", button.styleSheet())                       # green, the Term Helper's own blink
+        self.assertIn("rgba(52, 199, 89", button.styleSheet())
+        from PySide6.QtTest import QTest
+        QTest.qWait(850)
+        self.assertEqual(button.styleSheet(), "")                           # ... and it goes out again
+
+    def test_the_panel_open_on_the_turn_page_is_switched_to_files_first(self):
+        self.app.window.open_panel(TURN_PAGE)
+        self.app.toggle_listening(True)
+        self.assertEqual(self.app.window.panel_page, FILE_PAGE)
+        self.assertEqual(self.asked, [])
+
+    def test_the_blink_is_the_one_the_term_helper_uses(self):
+        from quill.ui.sorting_window import TermRow
+        from quill.ui.theme import FLASH_STYLES
+        self.assertIs(TermRow.FLASH_STYLES, FLASH_STYLES)
+
+
+class TestFileMustBeOpenToBeSeen(PanelApp):
+    """Quill is an overlay for the spreadsheet program: it listens only while the file is open there."""
+
+    def setUp(self):
+        super().setUp()
+        self._env = mock.patch.dict("os.environ", {}, clear=False)
+        self._env.start()
+        __import__("os").environ.pop("QUILL_NO_HOSTS", None)
+        self.hosts.running = lambda: []
+        self.app._open_files = []
+        self.app._viewer_running = False
+
+    def tearDown(self):
+        self._env.stop()
+        super().tearDown()
+
+    def test_start_waits_while_the_file_is_open_nowhere_and_asks_for_it_to_be_opened(self):
+        self.app.toggle_listening(True)
+        self.assertFalse(self.app.controller.session.listening)
+        self.assertIn("Waiting for plants.xlsx to open in your spreadsheet program", self.app.window.log.toPlainText())
+        self.assertEqual(self.hosts.launched, [str(self.plants.resolve())])
+
+    def test_start_works_once_the_file_is_listed_as_open(self):
+        self.app._open_files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.app.toggle_listening(True)
+        self.assertTrue(self.app.controller.session.listening)
+
+    def test_a_running_spreadsheet_program_counts_when_it_does_not_report_its_documents(self):
+        self.app._viewer_running = True
+        self.assertTrue(self.app._viewer_open())
+
+    def test_live_excel_always_counts(self):
+        self.app.controller.bridge = type("Live", (), {"workbook_path": "/x/a.xlsx", "workbook_name": "a.xlsx"})()
+        self.assertTrue(self.app._viewer_open())
+
+    def test_nothing_is_written_to_the_file_before_it_is_open(self):
+        before = self.plants.read_bytes()
+        self.app.toggle_listening(True)
+        self.app.controller.handle_transcript("fern")                      # (stopped, so nothing is taken down)
+        self.app.controller.handle_transcript("next row")
+        self.assertEqual(self.plants.read_bytes(), before)
+
+    def test_a_failed_launch_says_so(self):
+        self.hosts.launch = lambda path: False
+        self.app.toggle_listening(True)
+        self.assertIn("Could not open plants.xlsx in a spreadsheet program", self.app.window.log.toPlainText())
+
+    def test_choosing_a_file_starts_it_in_its_program_first(self):
+        self.chosen = [str(self.other)]
+        self.app._file_chooser = lambda: self.chosen[0]
+        self.app.choose_spreadsheet_file()
+        self.assertEqual(self.hosts.launched, [str(self.other)])
+        self.assertFalse(self.app.controller.session.listening)
+
+
+class TestFontSizeDefault(Dir):
+    def test_the_default_is_fourteen(self):
+        from quill.ui.theme import DEFAULT_FONT_SIZE
+        self.assertEqual((Settings.load(self.dir).preferences["font_size"], DEFAULT_FONT_SIZE), (14, 14))
+
+    def test_settings_saved_with_the_old_default_move_to_the_new_one_once(self):
+        (self.dir / Settings.KEYWORDS_FILE).write_text("[preferences]\nfont_size = 12\n")
+        settings = Settings.load(self.dir)
+        self.assertEqual(settings.preferences["font_size"], 14)
+        settings.preferences["font_size"] = 12                             # the user chooses 12 on purpose afterwards
+        settings.save()
+        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 12)
+
+    def test_a_size_the_user_chose_is_kept(self):
+        (self.dir / Settings.KEYWORDS_FILE).write_text("[preferences]\nfont_size = 16\n")
+        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 16)
+
+    def test_the_window_still_fits_its_content_at_that_size(self):
+        theme_app = _app
+        w = MainWindow()
+        w.setup()
+        w.widget.show()
+        _app.processEvents()
+        self.assertGreaterEqual(w.widget.width(), w._layout.minimumSize().width())
+        self.assertGreaterEqual(w.widget.height(), w._layout.minimumSize().height())
+        w.widget.close()
+        self.assertIsNotNone(theme_app)
+
+
+class TestPanelWidthByDragging(PanelApp):
+    def setUp(self):
+        super().setUp()
+        MainWindow.animation_ms, self._saved = 0, MainWindow.animation_ms
+        self.w = self.app.window
+        self.w.widget.show()
+        self.w.open_panel(FILE_PAGE)
+        _app.processEvents()
+
+    def tearDown(self):
+        MainWindow.animation_ms = self._saved
+        super().tearDown()
+
+    def test_the_edge_has_a_grip_you_can_drag_sideways(self):
+        grip = self.w.panel.grip
+        self.assertEqual(grip.cursor().shape(), Qt.CursorShape.SplitHCursor)
+        self.assertEqual((grip.x(), grip.height()), (0, self.w.panel.height()))
+        self.assertTrue(grip.toolTip())
+
+    def test_dragging_left_widens_the_panel_and_narrows_the_content_at_the_same_window_size(self):
+        window, content, panel = self.w.widget.width(), self.w.root.width(), self.w.panel.width()
+        self.w.panel.width_dragged.emit(-40)
+        _app.processEvents()
+        self.assertEqual(self.w.panel.width(), panel + 40)
+        self.assertEqual(self.w.widget.width(), window)
+        self.assertEqual(self.w.root.width(), content - 40)
+
+    def test_dragging_right_narrows_it_but_not_below_the_least(self):
+        from quill.ui.side_panel import PANEL_MIN_WIDTH
+        self.w.panel.width_dragged.emit(5000)
+        self.assertEqual(self.w.panel.width(), PANEL_MIN_WIDTH)
+
+    def test_dragging_left_stops_before_the_content_gets_too_small(self):
+        from quill.ui.main_window import MIN_CONTENT_WIDTH
+        self.w.panel.width_dragged.emit(-5000)
+        _app.processEvents()
+        self.assertGreaterEqual(self.w.root.width(), MIN_CONTENT_WIDTH)
+        self.assertGreaterEqual(self.w.root.width(), self.w._layout.minimumSize().width())
+
+    def test_the_title_bar_follows_every_step(self):
+        widths = []
+        self.w.set_panel_listener(lambda page: None, widths.append)
+        self.w.panel.width_dragged.emit(-30)
+        self.assertEqual(widths[-1], self.w.panel.width())
+
+    def test_the_new_width_is_remembered_restored_and_used_the_next_time_it_opens(self):
+        self.w.panel.width_dragged.emit(-60)
+        self.w.panel.width_released.emit()
+        width = self.w.panel.width()
+        self.assertEqual(self.app.settings.preferences["panel_width"], width)
+        self.w.close_panel()
+        self.w.open_panel(FILE_PAGE)
+        _app.processEvents()
+        self.assertEqual(self.w.panel.width(), width)
+        other = MainWindow()
+        other.setup()
+        other.restore_panel_width(300)
+        self.assertEqual(other.panel_width, 300)
+        other.restore_panel_width(5)
+        self.assertEqual(other.panel_width, 200)
+
+    def test_a_drag_with_the_panel_closed_does_nothing(self):
+        self.w.close_panel()
+        _app.processEvents()
+        self.w.panel.width_dragged.emit(-50)
+        self.assertEqual(self.w.panel.width(), 0)
+
+    def test_the_remembered_window_width_never_includes_the_panel(self):
+        sizes = []
+        self.w._on_resized = lambda width, height: sizes.append(width)
+        self.w.panel.width_dragged.emit(-40)
+        self.w.report_size()
+        self.assertEqual(sizes[-1], self.w.widget.width() - self.w.panel.width())
+
+
+class TestLogGripAndHeading(PanelApp):
+    def setUp(self):
+        super().setUp()
+        self.w = self.app.window
+        self.w.widget.show()
+        self.w.set_log_collapsed(False)
+        _app.processEvents()
+
+    def test_the_log_has_a_grip_on_its_bottom_edge_for_the_height_only(self):
+        grip, log = self.w.log_grip, self.w.log
+        self.assertTrue(grip.isVisibleTo(self.w.widget))
+        self.assertEqual(grip.cursor().shape(), Qt.CursorShape.SizeVerCursor)
+        self.assertEqual(grip.geometry().bottom(), log.geometry().bottom())
+        self.assertEqual((grip.x(), grip.width()), (log.x(), log.width()))
+
+    def test_dragging_it_down_grows_the_log_and_the_window_together_and_never_sideways(self):
+        width, height, log = self.w.widget.width(), self.w.widget.height(), self.w.log_height
+        self.w.log_grip.dragged.emit(40)
+        _app.processEvents()
+        self.assertEqual(self.w.log_height, log + 40)
+        self.assertEqual(self.w.log.height(), log + 40)
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (width, height + 40))
+
+    def test_dragging_it_up_shrinks_both_and_stops_at_the_least(self):
+        from quill.ui.main_window import LOG_MIN_HEIGHT
+        self.w.log_grip.dragged.emit(-9999)
+        self.assertEqual(self.w.log_height, LOG_MIN_HEIGHT)
+
+    def test_it_is_remembered(self):
+        self.w.log_grip.dragged.emit(30)
+        self.w.log_grip.released.emit()
+        self.assertEqual(self.app.settings.preferences["log_height"], 150)
+
+    def test_it_is_gone_while_the_log_is_hidden_and_in_the_mini_view(self):
+        self.w.set_log_collapsed(True)
+        _app.processEvents()
+        self.assertFalse(self.w.log_grip.isVisibleTo(self.w.widget))
+        self.w.set_log_collapsed(False)
+        self.w.set_mini(True)
+        _app.processEvents()
+        self.assertFalse(self.w.log_grip.isVisibleTo(self.w.widget))
+
+    def test_the_log_heading_sits_close_to_its_box_in_both_spacings(self):
+        from quill.ui.main_window import LOG_HEADING_GAP
+        for spacing in ("compact", "comfortable"):
+            self.app.settings.preferences["spacing"] = spacing
+            self.app.apply_settings(quiet=True)
+            _app.processEvents()
+            gap = self.w.log.geometry().top() - self.w.log_toggle.geometry().bottom()
+            heading = self.w.log_toggle.mapTo(self.w.root, self.w.log_toggle.rect().bottomLeft()).y()
+            box = self.w.log.mapTo(self.w.root, self.w.log.rect().topLeft()).y()
+            self.assertLessEqual(box - heading, LOG_HEADING_GAP + 6, spacing)
+            self.assertIsNotNone(gap)
+
+
+class TestSettingsRound5(unittest.TestCase):
+    def setUp(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        self.installed = {"standard": True, "better": False, "best": False}
+        self.d = SettingsDialog(Settings.defaults(), model_installed=lambda q: self.installed[q],
+                                on_download_model=lambda q: None)
+        self.dlg = self.d.build()
+
+    def test_troubleshooting_is_the_last_setting_on_the_general_page(self):
+        titles = [r.title for r in self.d._page_rows["General"]]
+        self.assertEqual(titles[-1], "Troubleshooting")
+        self.assertEqual(titles.count("Troubleshooting"), 1)
+
+    def test_the_speech_model_has_its_own_page_under_voice_and_commands(self):
+        from quill.ui.settings_dialog import GROUPS
+        caption, pages = GROUPS[1]
+        self.assertEqual(caption, "Voice and Commands")
+        self.assertIn("Speech Model", pages)
+        self.assertNotIn("Speech Model", [r.title for r in self.d._page_rows["General"]])
+
+    def test_each_model_is_a_radio_button_and_only_one_can_be_chosen(self):
+        rows = self.d.model_rows
+        self.assertEqual(list(rows), ["standard", "better", "best"])
+        self.assertTrue(rows["standard"].radio.isChecked())
+        rows["better"].radio.setChecked(True)
+        self.assertEqual([k for k, r in rows.items() if r.radio.isChecked()], ["better"])
+        self.assertEqual(self.d.selected_quality, "better")
+
+    def test_the_name_is_bold_and_the_size_beside_it_is_not(self):
+        for key, size in (("standard", "40 MB"), ("better", "130 MB"), ("best", "145 MB")):
+            title = self.d.model_rows[key].title_label.text()
+            name = key.title()
+            self.assertIn(f"<b>{name}</b>", title)
+            self.assertTrue(title.endswith(size), title)
+            self.assertNotIn(f"<b>{size}", title)
+
+    def test_the_descriptions_say_how_each_model_improves_the_quality(self):
+        text = {k: r.description_label.text().lower() for k, r in self.d.model_rows.items()}
+        self.assertIn("unusual words", text["better"])
+        self.assertIn("vocabulary", text["better"])
+        self.assertIn("second listen", text["best"])
+        self.assertIn("whisper", text["best"])
+        self.assertIn("mishear", text["standard"])
+        for words in text.values():
+            self.assertNotIn("not installed", words)
+            self.assertNotIn("installed.", words)
+
+    def test_an_installed_model_wears_a_no_fill_accent_pill_and_the_others_have_a_download_button(self):
+        standard, better = self.d.model_rows["standard"], self.d.model_rows["better"]
+        self.assertFalse(standard.installed_pill.isHidden())
+        self.assertEqual(standard.installed_pill.text(), "Installed")
+        self.assertTrue(standard.download_button.isHidden())
+        self.assertTrue(better.installed_pill.isHidden())
+        self.assertFalse(better.download_button.isHidden())
+        from quill.ui.theme import colors_for, stylesheet_for
+        for dark in (False, True):
+            sheet = stylesheet_for(dark)
+            rule = sheet[sheet.index('QLabel[installedPill="true"]'): sheet.index("}", sheet.index('QLabel[installedPill="true"]'))]
+            self.assertIn("rgba(", rule)                                          # (no visible fill: a 0.5 % tint, so the corners round)
+            self.assertIn(", 1)", rule)
+            self.assertIn(colors_for(dark, "violet")["accent"], rule)
+
+    def test_installing_a_model_swaps_its_button_for_the_pill(self):
+        self.installed["better"] = True
+        self.d.set_model_state("", False)
+        self.assertFalse(self.d.model_rows["better"].installed_pill.isHidden())
+        self.assertTrue(self.d.model_rows["better"].download_button.isHidden())
+
+    def test_the_selected_rows_drop_down_text_is_the_on_accent_colour_and_clears_when_deselected(self):
+        from quill.ui.theme import colors_for, stylesheet_for
+        self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))
+        self.d.table.selectRow(1)
+        combos = [self.d.table.cellWidget(r, 1) for r in range(3)]
+        self.assertEqual([bool(c.property("rowSelected")) for c in combos], [False, True, False])
+        self.d.table.selectRow(2)
+        self.assertEqual([bool(c.property("rowSelected")) for c in combos], [False, False, True])
+        for dark in (False, True):
+            sheet = stylesheet_for(dark)
+            rule = sheet[sheet.index('QComboBox[flat="true"][rowSelected="true"]'): sheet.index("}", sheet.index('QComboBox[flat="true"][rowSelected="true"]'))]
+            self.assertIn(colors_for(dark, "violet")["on_accent"], rule)
+
+
+class TestTitleBarIconStates(unittest.TestCase):
+    def test_leaving_a_panel_clears_the_icons_fill_and_a_stuck_hover(self):
+        from quill.ui import chrome
+        from tests.test_titlebar_and_refresh import FakeAppKit
+
+        class Button:
+            def __init__(self): self._on = False; self._hover = True; self.refreshed = 0
+            def refreshFill(self): self.refreshed += 1
+
+        kit = FakeAppKit()
+        buttons = [Button(), Button(), Button()]
+        group = chrome.TitlebarButton(Button(), None, None, kit, [(b, None) for b in buttons])
+        group.set_extra_active(1, True)
+        self.assertTrue(buttons[1]._on)
+        group.set_extra_active(1, False)                                       # the Turn icon after the File icon was pressed
+        self.assertFalse(buttons[1]._on)
+        self.assertFalse(buttons[1]._hover)                                    # (a missed mouse-exit must not keep it filled)
+        self.assertEqual(buttons[1].refreshed, 2)
+
+    def test_the_app_marks_only_the_open_pages_icon(self):
+        app = PanelApp()
+        app.setUp()
+        try:
+            calls = []
+            app.app._titlebar = type("T", (), {"set_extra_active": lambda s, i, on: calls.append((i, on)),
+                                               "set_panel_title": lambda s, t: None, "set_inset": lambda s, w: None})()
+            app.app._panel_toggled(TURN_PAGE)
+            app.app._panel_toggled(FILE_PAGE)
+            app.app._panel_toggled("")
+            self.assertEqual(calls, [(0, False), (1, True), (0, True), (1, False), (0, False), (1, False)])
+        finally:
+            app._tmp.cleanup()
+
+    def test_the_pointer_is_checked_for_real_not_just_remembered(self):
+        import inspect
+        from quill.ui import chrome
+        src = inspect.getsource(chrome._button_class)
+        self.assertIn("pointerInside", src)
+        self.assertIn("mouseLocationOutsideOfEventStream", src)
+
+
+class TestOneStyleForTooltipsEverywhere(unittest.TestCase):
+    EMOJI = __import__("re").compile("[\U0001F000-\U0001FFFF\u2600-\u27BF\u2B00-\u2BFF\u2190-\u21FF]")
+
+    def all_tips(self):
+        from PySide6.QtWidgets import QAbstractItemView, QWidget as W
+        from tests.test_side_panel_and_turns import TestControlsFollowTheirStyle
+        tips = []
+        for name, root in TestControlsFollowTheirStyle().windows().items():
+            for widget in [root, *root.findChildren(W)]:
+                if widget.toolTip():
+                    tips.append((name, type(widget).__name__, widget.toolTip()))
+            for view in root.findChildren(QAbstractItemView):
+                for r in range(view.model().rowCount()):
+                    tip = view.model().index(r, 0).data(Qt.ItemDataRole.ToolTipRole)
+                    if tip:
+                        tips.append((name, "item", str(tip)))
+        return tips
+
+    def test_every_tooltip_is_plain_text_so_the_one_tip_style_draws_all_of_them(self):
+        odd = [t for t in self.all_tips() if ("<" in t[2] and ">" in t[2]) or self.EMOJI.search(t[2])]
+        self.assertEqual(odd, [])
+
+    def test_the_not_connected_pill_uses_a_plain_tip_like_every_other_control(self):
+        from quill.ui.widgets import CenteredToolTips, connection_tip
+        w = MainWindow()
+        w.setup()
+        tip = w.connection_chip.toolTip()
+        self.assertEqual(tip, connection_tip())
+        self.assertIsNotNone(CenteredToolTips.position(__import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(10, 10), tip))
+        self.assertFalse(("<" in tip and ">" in tip))
+        w.set_not_connected(True, "A longer reason that has to be wrapped over several lines so it reads as a block " * 2)
+        self.assertNotIn("<", w.connection_chip.toolTip())
+
+    def test_a_multi_line_tip_is_measured_by_its_widest_line_and_stays_on_screen(self):
+        from PySide6.QtCore import QPoint
+        from quill.ui.widgets import CenteredToolTips
+        filt = CenteredToolTips()
+        room = _app.primaryScreen().availableGeometry()
+        filt.show_tip(QPoint(room.left() + 1, room.top() + 1), "Not connected\nQuill has no spreadsheet to read lists from or write rows to.")
+        self.assertGreaterEqual(filt.window.geometry().left(), room.left())
+        filt.window.hide()
+
+
+class TestStyleGuideIsWrittenDown(unittest.TestCase):
+    def test_the_ui_style_rules_exist_in_the_repository_and_name_every_element_type(self):
+        import pathlib
+        guide = pathlib.Path(__file__).resolve().parents[1] / "UI_STYLE.md"
+        self.assertTrue(guide.is_file())
+        text = guide.read_text(encoding="utf-8").lower()
+        for word in ("button", "link", "input", "drop-down", "placeholder", "pill", "tool tip", "switch", "icon", "hover"):
+            self.assertIn(word, text, word)
+
+    def test_the_effects_check_tool_is_there_and_covers_opacity_and_blur(self):
+        import pathlib
+        tool = pathlib.Path(__file__).resolve().parents[1] / "tools" / "verify_window_effects.py"
+        text = tool.read_text(encoding="utf-8")
+        for needle in ("opacity 100 is solid", "blurred", "more blur"):
+            self.assertIn(needle, text)
 
 
 if __name__ == "__main__":

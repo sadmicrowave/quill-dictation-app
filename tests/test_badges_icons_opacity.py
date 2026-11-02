@@ -2,6 +2,7 @@
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QApplication, QWidget
@@ -196,10 +197,11 @@ class TestNoteStyle(unittest.TestCase):
 
 
 class TestOpacityAndBlur(unittest.TestCase):
-    """Opacity fades the whole window; blur only frosts what shows through it.
+    """Opacity thins the window's background; blur then blurs what shows through it (macOS; see below for the rest).
 
-    (Measured on a real macOS window with a striped backdrop: opacity 100 shows no
-    stripes at any blur; opacity 50 shows sharp stripes at blur 0 and blurred ones at blur 100.)
+    The pixels are checked on a real screen by ``tools/verify_window_effects.py`` (a striped window behind Quill):
+    opacity 100 is solid at any blur; opacity 50 shows sharp stripes at blur 0 and none at blur 60 or 100. These
+    tests check the settings that produce that: the backdrop alpha, the opaque window, the window server's radius.
     """
 
     def setUp(self):
@@ -270,58 +272,70 @@ class TestOpacityAndBlur(unittest.TestCase):
 
     # -- opacity fades the whole root: background, controls and text together --------------------
 
-    def test_lower_opacity_fades_the_whole_window_content(self):
+    def test_lower_opacity_thins_the_background_not_the_window(self):
         app = self.make_app(opacity=60, blur=0)
-        self.assertEqual(self.faded(app.window.root), 0.6)
-        self.assertIsNone(self.faded(app.sorting.root))               # the Term Helper stays solid by default
+        self.assertIsNone(self.faded(app.window.root))                   # the window itself stays opaque: the blur needs that
+        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.6)       # its background is what is see-through
+        self.assertTrue(app.sorting.root.property("quillSolid"))          # the Term Helper stays solid by default
         app.settings.preferences["sorting_follows_opacity"] = True
         app.apply_settings(quiet=True)
-        self.assertEqual(self.faded(app.sorting.root), 0.6)           # ... unless it is told to follow
-        self.assertFalse(app.sorting.root.property("quillSolid"))
+        self.assertFalse(app.sorting.root.property("quillSolid"))         # ... unless it is told to follow
 
-    def test_without_blur_the_whole_window_fades_and_returns_to_solid(self):
-        app = self.make_app(blur=0)
-        app.settings.preferences["opacity"] = 35
-        app.apply_settings(quiet=True)
-        self.assertEqual(self.faded(app.window.root), 0.35)
-        app.settings.preferences["opacity"] = 100
-        app.apply_settings(quiet=True)
-        self.assertIsNone(self.faded(app.window.root))
+    def test_the_opacity_works_with_and_without_blur_alike(self):
+        for blur in (0, 40, 100):
+            app = self.make_app(blur=blur)
+            app.settings.preferences["opacity"] = 35
+            app.apply_settings(quiet=True)
+            self.assertAlmostEqual(_app.property("quillBackdrop"), 0.35, msg=f"blur {blur}")
+            app.settings.preferences["opacity"] = 100
+            app.apply_settings(quiet=True)
+            self.assertEqual(_app.property("quillBackdrop"), 1.0, f"blur {blur}")
 
-    def test_with_blur_the_window_stays_opaque_and_only_its_background_thins(self):
-        app = self.make_app(blur=80)
-        app.settings.preferences["opacity"] = 35
-        app.apply_settings(quiet=True)
-        self.assertIsNone(self.faded(app.window.root))                    # not faded as a whole: that would let the sharp desktop leak
-        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.35)       # the background is see-through instead
-        app.settings.preferences["opacity"] = 100
-        app.apply_settings(quiet=True)
-        self.assertEqual(_app.property("quillBackdrop"), 1.0)
-
-    def test_opacity_is_the_windows_own_and_never_a_graphics_effect(self):
+    def test_the_window_stays_opaque_on_macos_and_fades_as_a_whole_elsewhere_without_blur(self):
         root = QWidget()
-        theme.apply_opacity(root, 80)
-        self.assertAlmostEqual(root.windowOpacity(), 0.8)
-        theme.apply_opacity(root, 40)
-        self.assertAlmostEqual(root.windowOpacity(), 0.4)
-        self.assertIsNone(root.graphicsEffect())
+        with mock.patch("quill.ui.theme.sys.platform", "darwin"):
+            theme.apply_opacity(root, 40, 0)
+            self.assertEqual(root.windowOpacity(), 1.0)
+        with mock.patch("quill.ui.theme.sys.platform", "win32"):
+            theme.apply_opacity(root, 40, 0)
+            self.assertAlmostEqual(root.windowOpacity(), 0.4)               # the older behaviour, kept where it was not changed
+            theme.apply_opacity(root, 40, 80)
+            self.assertEqual(root.windowOpacity(), 1.0)
+
+    def test_no_graphics_effect_is_ever_left_on_a_window(self):
+        root = QWidget()
         root.setGraphicsEffect(QGraphicsOpacityEffect(root))          # one left over from an older version
         theme.apply_opacity(root, 90)
         self.assertIsNone(root.graphicsEffect())
 
     def test_apply_opacity_clamps(self):
         root = QWidget()
-        theme.apply_opacity(root, -50)
-        self.assertEqual(root.windowOpacity(), 0.0)
-        theme.apply_opacity(root, 500)
-        self.assertEqual(root.windowOpacity(), 1.0)
+        with mock.patch("quill.ui.theme.sys.platform", "win32"):
+            theme.apply_opacity(root, -50)
+            self.assertEqual(root.windowOpacity(), 0.0)
+            theme.apply_opacity(root, 500)
+            self.assertEqual(root.windowOpacity(), 1.0)
 
-    def test_the_background_thins_only_when_blur_is_on(self):
-        self.assertEqual(theme.backdrop_alpha(100, 100), 1.0)             # solid window: solid background
-        self.assertEqual(theme.backdrop_alpha(50, 0), 1.0)                # no blur: the window fades as a whole instead
-        self.assertEqual(theme.backdrop_alpha(50, 100), 0.5)
-        self.assertLess(theme.backdrop_alpha(50, 100), theme.backdrop_alpha(80, 100))
-        self.assertGreater(theme.backdrop_alpha(0, 100), 0.05)            # never fully clear
+    def test_the_background_alpha_follows_the_opacity_on_macos_whatever_the_blur(self):
+        with mock.patch("quill.ui.theme.sys.platform", "darwin"):
+            self.assertEqual(theme.backdrop_alpha(100, 100), 1.0)             # solid window: solid background
+            self.assertEqual(theme.backdrop_alpha(100, 0), 1.0)
+            self.assertEqual(theme.backdrop_alpha(50, 0), 0.5)                # and without blur too (it used to stay solid)
+            self.assertEqual(theme.backdrop_alpha(50, 100), 0.5)
+            self.assertLess(theme.backdrop_alpha(50, 100), theme.backdrop_alpha(80, 100))
+            self.assertGreater(theme.backdrop_alpha(0, 100), 0.05)            # never fully clear
+        with mock.patch("quill.ui.theme.sys.platform", "win32"):
+            self.assertEqual(theme.backdrop_alpha(50, 0), 1.0)                # (elsewhere the window fades as a whole)
+
+    def test_a_window_can_ask_for_a_floor_under_its_background_alpha(self):
+        theme.set_backdrop(_app, 0.2)
+        root = QWidget()
+        root.setObjectName("settingsRoot")
+        theme.install_backdrop(root)
+        root.setProperty("quillMinAlpha", 0.7)
+        root.resize(40, 40)
+        self.assertAlmostEqual(root.grab().toImage().pixelColor(5, 5).alpha() / 255, 0.7, delta=0.01)
+        theme.set_backdrop(_app, 1.0)
 
     def test_a_windows_background_is_painted_with_the_backdrop_alpha_and_changing_it_does_not_restyle(self):
         theme.apply_theme(_app, "light", "violet", "compact", backdrop=1.0)
@@ -389,7 +403,9 @@ class TestOpacityAndBlur(unittest.TestCase):
         dlg.build()
         texts = {r.title: r.description_label.text() for r in dlg.rows}
         self.assertIn("100%", texts["Window Opacity"])
-        self.assertIn("see-through", texts["Window Blur"] + texts["Window Opacity"])
+        self.assertIn("show through", texts["Window Opacity"])
+        self.assertIn("blurred", texts["Window Blur"])
+        self.assertIn("below 100%", texts["Window Blur"])
 
 
 class TestThemeSwitching(unittest.TestCase):

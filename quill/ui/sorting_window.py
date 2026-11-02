@@ -44,7 +44,7 @@ from quill.session import Decision, TermKey
 from quill.ui.chrome import SYMBOL_HELP, SYMBOL_UNDO, add_titlebar_button
 from quill.ui.hints import fill_missing_tips
 from quill.ui.settings_widgets import FlatCombo
-from quill.ui.theme import install_backdrop, apply_spacing
+from quill.ui.theme import FLASH_STYLES, install_backdrop, apply_spacing
 from quill.ui.widgets import ListenButton, pill, pillify
 
 #: Called with (key, decision, corrected words) when the user decides.
@@ -197,12 +197,7 @@ class TermRow(QFrame):
         return (f"🎤 Say: {pill('yes')} ({meaning}) {pill('same as …')} {pill('ignore')} "
                 f"{pill('later')}")
 
-    #: Border and tint of the blink that confirms an answer: (border colour, tint) per outcome.
-    FLASH_STYLES = {
-        "accepted": ("#34C759", "rgba(52, 199, 89, 0.14)"),      # green: the term was added or made an alias
-        "ignored": ("#8E8E93", "rgba(142, 142, 147, 0.16)"),     # grey: a deliberate "no", nothing was added
-        "error": ("#FF3B30", "rgba(255, 59, 48, 0.14)"),         # red: the answer could not be carried out
-    }
+    FLASH_STYLES = FLASH_STYLES                                       # (the one blink the whole app uses: see theme.py)
 
     #: How long the chosen column is shown lit in the drop-down before the row itself blinks (ms).
     CHOICE_MS = 240

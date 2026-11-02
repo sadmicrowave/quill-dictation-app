@@ -8,6 +8,8 @@ the toolkit makes by itself.
 
 from __future__ import annotations
 
+import re
+
 from PySide6.QtWidgets import QAbstractButton, QComboBox, QLabel, QLineEdit, QToolButton, QWidget
 
 #: Plain words on a button -> what pressing it does.
@@ -28,6 +30,14 @@ KNOWN_TIPS = {
 
 #: Qt's own parts that are clickable but are not Quill's to explain.
 _TOOLKIT = ("qt_menubar_ext_button", "qt_tableview_cornerbutton", "qt_scrollarea", "qt_")
+
+
+_PICTOGRAPHS = re.compile("[\U0001F000-\U0001FFFF\u2600-\u27BF\u2B00-\u2BFF\u2190-\u21FF\uFE0F\u200D]")
+
+
+def plain(text: str) -> str:
+    """*text* without emoji and symbols (a heading such as "👋 Welcome" becomes "Welcome"), for hover text."""
+    return " ".join(_PICTOGRAPHS.sub("", text).split())
 
 
 def is_clickable(widget: QWidget) -> bool:

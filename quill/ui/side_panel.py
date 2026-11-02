@@ -21,7 +21,8 @@ import datetime as dt
 import os
 import string
 
-from PySide6.QtCore import QSize, Qt, Signal
+import shiboken6
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -43,11 +44,13 @@ from PySide6.QtWidgets import (
 )
 
 from quill.ui.settings_widgets import FlatCombo
-from quill.ui.theme import install_backdrop
+from quill.ui.theme import FLASH_STYLES, install_backdrop
 from quill.ui.widgets import ElidedLabel
 
 #: Width (px) of the panel when it is open.
 PANEL_WIDTH = 236
+#: The least and most (px) the user may drag the panel to; the most is also limited so the content never gets too small.
+PANEL_MIN_WIDTH, PANEL_MAX_WIDTH = 200, 520
 
 NEXT_ROW, APPEND_TO = "next_row", "append"
 FILE_PAGE, TURN_PAGE = "file", "turn"
@@ -56,6 +59,8 @@ NO_OTHERS_TEXT = "No open spreadsheet files detected."
 NO_MATCH_TEXT = "No files match."
 TITLES = {"file": "Files", "turn": "Turn Options"}
 AUTOMATIC = "Automatic"
+#: How long (ms) the Open File button's blink stays on.
+FLASH_MS = 700
 LETTERS = string.ascii_uppercase                  # the columns a custom starting / headings column can be (A to Z)
 LIST_ROLE = Qt.ItemDataRole.UserRole
 
@@ -287,6 +292,38 @@ class FileSettings(QFrame):
             self._syncing = False
 
 
+class PanelGrip(QWidget):
+    """A thin strip over the panel's left edge that is dragged sideways to make the panel wider or narrower.
+
+    ``dragged`` carries how far (px) the pointer moved since the last step: positive is to the right (a narrower panel).
+    """
+
+    dragged = Signal(int)
+    released = Signal()
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.SplitHCursor)
+        self.setToolTip("Drag left or right to resize the panel")
+        self.setFixedWidth(7)
+        self._last: int | None = None
+
+    def mousePressEvent(self, event) -> None:                       # noqa: N802 (Qt name)
+        self._last = int(event.globalPosition().x())
+
+    def mouseMoveEvent(self, event) -> None:                        # noqa: N802 (Qt name)
+        if self._last is not None:
+            x = int(event.globalPosition().x())
+            if x != self._last:
+                step, self._last = x - self._last, x
+                self.dragged.emit(step)
+
+    def mouseReleaseEvent(self, event) -> None:                     # noqa: N802 (Qt name)
+        if self._last is not None:
+            self._last = None
+            self.released.emit()
+
+
 class FileButton(QPushButton):
     """The active file as a button: a folder icon and the file's name (shortened with an ellipsis), or "Open File"."""
 
@@ -320,6 +357,8 @@ class SidePanel(QFrame):
     start_row_changed = Signal(int)             # 0: automatic
     headings_row_changed = Signal(int)          # 0: automatic
     close_requested = Signal()
+    width_dragged = Signal(int)                 # the edge was dragged: pixels to the right (positive makes the panel narrower)
+    width_released = Signal()
     settings_requested = Signal()               # the gear button (the window shows the overlay)
     keywords_requested = Signal()               # the Keywords link on the turn page
 
@@ -346,6 +385,9 @@ class SidePanel(QFrame):
         edge.setProperty("panelEdge", True)
         edge.setFixedWidth(1)
         shell.addWidget(edge)
+        self.grip = PanelGrip(self)                 # the same edge, wide enough to grab
+        self.grip.dragged.connect(self.width_dragged)
+        self.grip.released.connect(self.width_released)
         body = QWidget()
         body.setProperty("keepMargins", True)
         outer = QVBoxLayout(body)
@@ -378,6 +420,20 @@ class SidePanel(QFrame):
         button.setAccessibleName(name)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         return button
+
+    @staticmethod
+    def resizeEvent(self, event) -> None:                           # noqa: N802 (Qt name)
+        super().resizeEvent(event)
+        self._place_grip()
+
+    def showEvent(self, event) -> None:                             # noqa: N802 (Qt name)
+        super().showEvent(event)
+        self._place_grip()
+
+    def _place_grip(self) -> None:
+        """The grip covers the panel's left edge, top to bottom."""
+        self.grip.setGeometry(0, 0, self.grip.width(), self.height())
+        self.grip.raise_()
 
     @staticmethod
     def _scrolled(page: QWidget) -> QScrollArea:
@@ -502,6 +558,14 @@ class SidePanel(QFrame):
     # ------------------------------------------------------------------ #
     # What the pages show                                                  #
     # ------------------------------------------------------------------ #
+
+    def flash_file_button(self, outcome: str = "accepted") -> None:
+        """Blink the Open File button (green by default), the way a Term Helper row blinks when it is satisfied: it points
+        at the way out of "no file is connected"."""
+        border, tint = FLASH_STYLES.get(outcome, FLASH_STYLES["accepted"])
+        button = self.file_button
+        button.setStyleSheet(f"QPushButton {{ border: 1px solid {border}; background: {tint}; }}")
+        QTimer.singleShot(FLASH_MS, lambda: button.setStyleSheet("") if shiboken6.isValid(button) else None)
 
     def show_page(self, page: str) -> None:
         """Show the ``"file"`` or the ``"turn"`` page."""

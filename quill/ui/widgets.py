@@ -598,20 +598,11 @@ def pillify(text: str) -> str:
 
 
 def connection_tip(hint: str | None = None) -> str:
-    """The tooltip of the "File not connected" chip, as short lines with bold, italics and icons.
-
-    Spaced out (line height, letter spacing) so it can be taken in at a glance rather than read as a paragraph.
-    A plain *hint* replaces the default explanation.
-    """
-    import html
+    """The tooltip of the "File not connected" pill: plain lines, like every other tooltip in the app (no markup, no
+    symbols, so it is drawn by the same tip as everything else). A *hint* replaces the default explanation."""
     if hint:
-        body = "<br>".join(html.escape(line) for line in wrap_tip(hint).splitlines())
-        return f'<div style="line-height:150%; letter-spacing:0.3px">{body}</div>'
-    return (
-        '<div style="line-height:155%; letter-spacing:0.35px">'
-        '<b><span style="color:#E0A030">⚠&nbsp;&nbsp;Not connected</span></b><br>'
-        'Quill has no spreadsheet to <i>read lists from</i><br>or <i>write rows to</i>.'
-        '</div>')
+        return wrap_tip(hint)
+    return "Not connected\nQuill has no spreadsheet to read lists from or write rows to."
 
 
 def wrap_tip(text: str, width: int = 52) -> str:

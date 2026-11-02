@@ -281,14 +281,21 @@ class TestAppFeedback(DemoCase):
         self.assertEqual(self.cues(), ["sort"])
         self.assertTrue(self.app.sorting.widget.isVisible())
 
-    def test_ignore_plays_the_dismiss_cue(self):
+    def test_a_click_on_ignore_makes_no_sound(self):
         self.hear("start listening", SENTENCE, "next row")
         self.played.clear()
         key = self.app.controller.pending_terms()[0]
         from quill.session import Decision
         self.app.resolve_term(key, Decision.ignore(), key[1])
         self.app.feedback.flush()
-        self.assertEqual(self.cues(), ["dismiss"])
+        self.assertEqual(self.cues(), [])                              # clicks confirm themselves on screen
+
+    def test_saying_ignore_plays_the_dismiss_cue(self):
+        self.hear("start listening", SENTENCE, "next row")
+        self.played.clear()
+        self.app.controller.start_voice_sort()
+        self.hear("ignore")
+        self.assertIn("dismiss", self.cues())
 
     def test_a_voice_chain_gives_one_cue(self):
         self.hear("start listening", SENTENCE, "next row")

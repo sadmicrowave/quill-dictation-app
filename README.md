@@ -541,3 +541,11 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - Blur: the vibrancy view is always at full strength (a half-faded one let the sharp desktop show through, which looked like plain transparency); the slider sets a frost wash (`FROST_ID`) over it instead.
 - Keywords table: phrases are `PillField` pills (`PILL_BG` / `PILL_FG` in theme.py), actions are `FlatCombo`. Captions in the Settings list show an arrow, not a hand.
 - Texts: "Open File" everywhere; the not-connected tooltip and error shortened; `TestControlsFollowTheirStyle` walks every window and fails on a drop-down, switch, slider or spin box that is not the decided class.
+
+## Phase 62: effects measured, panel and log sizing, sounds only for speech
+
+- **Opacity and blur** are now verified on a real screen: `tools/verify_window_effects.py` puts a striped window behind Quill and measures it (opacity 100 solid; 50 sharp at blur 0, blurred at 60 and 100; lower opacity moves the background further; more blur smooths wide bands). Opacity thins the window's background alone (Qt's own paint alpha, `theme.backdrop_alpha`); the blur is the window server's own call with the slider's radius (`chrome.set_background_blur`), not a half-faded vibrancy view.
+- Title bar: the panel's views are re-attached to whatever title bar the system has now (they were lost when it rebuilt it); the window buttons are drawn 1.3x; a stuck hover fill is cleared.
+- The side panel's edge is draggable (`PanelGrip`, remembered as `panel_width`); the log has a bottom grip and sits closer to its heading.
+- Sounds: `Event.spoken`; a click never plays one. Start with no file opens the Files panel, then blinks Open File and opens the file window. Quill listens only while the file is open in a spreadsheet program.
+- Speech Model has its own page (radio buttons, size next to the name, an Installed pill). Default text size 14 (`prefs_version` moves old 12s once). `UI_STYLE.md` lists the one style per element type.

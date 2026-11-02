@@ -219,8 +219,7 @@ class TestBestInTheApp(unittest.TestCase):
         from quill.ui.settings_dialog import SettingsDialog
         d = SettingsDialog(self.settings, model_installed=lambda q: True)
         d.build()
-        self.assertEqual([d.quality_combo.itemData(i) for i in range(d.quality_combo.count())],
-                         ["standard", "better", "best"])
+        self.assertEqual(list(d.model_rows), ["standard", "better", "best"])
 
 
 if __name__ == "__main__":

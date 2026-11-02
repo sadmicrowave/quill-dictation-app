@@ -59,7 +59,8 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "history_limit": 100,     # how many sorting answers undo remembers
     "accent": "violet",   # one of ACCENTS (ui/theme.py)
     "spacing": "compact",     # "compact" | "comfortable"
-    "font_size": 12,          # base text size in points
+    "font_size": 14,          # base text size in points (14 since preferences version 2; 12 before)
+    "prefs_version": 2,       # raised when a default changes that saved settings should follow
     "log_collapsed": True,    # the main window's log starts hidden (a click on "Log" opens it)
     "hide_dock_icon": False,  # macOS: keep Quill out of the Dock (it stays in the menu bar)
     "window_width": 0,        # the full window's size when Quill last closed (0 = not saved yet)
@@ -69,6 +70,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "settings_page": "",      # the Settings page that was open when the window was last closed
     "settings_width": 0,      # and the window's size then (0 = default)
     "settings_height": 0,
+    "panel_width": 236,       # how wide the side panel opens (dragged by the user)
     "log_height": 120,        # how tall the log is while open (dragged by the user)
     "mini_mode": False,       # the main window starts as the small overlay
     "mini_on_top": True,      # the mini view floats above other windows
@@ -218,6 +220,10 @@ class Settings:
                 # Keep a value only if it has the same type as the default (bool is not int).
                 if value is not None and type(value) is type(default):
                     settings.preferences[key] = value
+        if int(prefs.get("prefs_version", 1) if isinstance(prefs, dict) else 1) < 2:      # settings saved before the new default size
+            if settings.preferences["font_size"] == 12:
+                settings.preferences["font_size"] = int(DEFAULT_PREFERENCES["font_size"])
+        settings.preferences["prefs_version"] = int(DEFAULT_PREFERENCES["prefs_version"])
         settings.account = clean_account(data.get("account") if isinstance(data.get("account"), dict) else None)
         raw_aliases = data.get("aliases")
         if isinstance(raw_aliases, dict):
@@ -238,6 +244,7 @@ class Settings:
         settings.preferences["opacity"] = max(low, min(high, int(settings.preferences["opacity"])))
         low, high = BLUR_RANGE
         settings.preferences["blur"] = max(low, min(high, int(settings.preferences["blur"])))
+        settings.preferences["panel_width"] = max(200, min(520, int(settings.preferences["panel_width"])))
         settings.preferences["log_height"] = max(60, min(600, int(settings.preferences["log_height"])))
         settings.preferences["headings_row"] = max(0, min(1_048_576, int(settings.preferences["headings_row"])))
         settings.preferences["start_row"] = max(0, min(1_048_576, int(settings.preferences["start_row"])))

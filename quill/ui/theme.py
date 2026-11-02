@@ -13,6 +13,7 @@ when the user changes it.
 
 from __future__ import annotations
 import pathlib
+import sys
 import tempfile
 
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -56,7 +57,7 @@ DENSITIES = {
 TEXT_INSET = 12
 
 DEFAULT_ACCENT = "violet"
-DEFAULT_FONT_SIZE = 12
+DEFAULT_FONT_SIZE = 14
 DEFAULT_SPACING = "compact"
 
 
@@ -153,17 +154,25 @@ _ICON_CACHE: dict[tuple[str, str, str], dict[str, str]] = {}
 def backdrop_alpha(opacity: int, blur: int) -> float:
     """How solid a window's own background paint is.
 
-    With no blur the whole window is faded by its opacity (see :func:`apply_opacity`) and the background stays
-    solid (1.0). With blur on, the window is "frosted glass": the background thins out as opacity drops, so the
-    blurred desktop behind shows through it, while the controls stay crisp.
+    The opacity setting thins the *background* only (controls and text stay solid); the blur setting then decides how
+    blurred what shows through it is. At 100 the background is solid whatever the blur. (Windows keeps the older
+    behaviour, where without blur the whole window fades; see :func:`apply_opacity`.)
     """
-    if int(blur) <= 0:
+    if sys.platform != "darwin" and int(blur) <= 0:
         return 1.0
     return round(max(0.08, min(100, max(0, int(opacity))) / 100), 3)
 
 
 #: The look of spoken words and phrases wherever they appear: a deep violet pill with white text.
 PILL_BG, PILL_FG = "#5E4A99", "#FFFFFF"
+
+#: Border and tint of the blink that confirms something: (border colour, tint) per outcome. One blink for the whole app
+#: (a Term Helper row, the Open File button ...).
+FLASH_STYLES = {
+    "accepted": ("#34C759", "rgba(52, 199, 89, 0.14)"),      # green: it worked / it is what was asked for
+    "ignored": ("#8E8E93", "rgba(142, 142, 147, 0.16)"),     # grey: a deliberate "no", nothing was added
+    "error": ("#FF3B30", "rgba(255, 59, 48, 0.14)"),         # red: it could not be carried out
+}
 
 ROOT_NAMES = ("mainRoot", "sidePanel", "settingsRoot", "sortingRoot", "helpRoot")
 
@@ -183,7 +192,8 @@ class _BackdropPainter(QObject):
                 color = QColor(colors["bg"])
                 alpha = app.property("quillBackdrop")
                 solid = obj.property("quillSolid")                  # a window that opts out of the opacity setting
-                color.setAlphaF(1.0 if alpha is None or solid else float(alpha))
+                floor = float(obj.property("quillMinAlpha") or 0.0)   # a window that never thins below this (Settings)
+                color.setAlphaF(1.0 if alpha is None or solid else max(float(alpha), floor))
                 painter = QPainter(obj)
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
                 painter.fillRect(obj.rect(), color)
@@ -366,6 +376,8 @@ QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }
 QLineEdit[pillField="true"] {{ background: {PILL_BG}; color: {PILL_FG}; border: 1px solid {PILL_BG}; border-radius: 0; padding: 2px 6px;   /* square-cornered, like the pills in text */
               selection-background-color: {rgba(PILL_FG, 0.35)}; selection-color: {PILL_FG}; }}
 QLineEdit[pillField="true"]:focus {{ border: 1px solid {PILL_FG}; }}
+QLabel[installedPill="true"] {{ background: {rgba(t['accent'], 0.005)}; color: {t['accent']}; border: 1px solid {t['accent']}; border-radius: 11px; padding: 1px 12px; }}
+QComboBox[flat="true"][rowSelected="true"] {{ color: {t['on_accent']}; }}
 QLabel[panelTitle="true"] {{ font-weight: 400; }}
 QLabel[panelHeading="true"] {{ font-weight: 600; color: {t['text']}; }}
 QLabel[panelValue="true"] {{ font-weight: 400; font-style: normal; color: {t['text']}; }}
@@ -470,17 +482,16 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
 def apply_opacity(root: QWidget, percent: int, blur: int = 0) -> None:
     """Make a window see-through to *percent* opacity.
 
-    Without blur the whole window (background, controls and text together) is faded with the window's own
-    opacity, done by the compositor. (An earlier version faded the root widget with a graphics effect; on macOS
-    that left ghost copies of the text and stale pieces of the previous theme.) With blur on the window stays
-    fully opaque as an object and only its background thins (see :func:`backdrop_alpha`), because a faded
-    window would let the *sharp* desktop leak through instead of the blurred one. *root* may be any widget of
-    the window.
+    On macOS the window itself stays fully opaque as an object and only its background thins (see
+    :func:`backdrop_alpha`): that is what lets the window server blur the desktop behind it by the blur setting.
+    Elsewhere, without blur, the whole window (background, controls and text together) is faded with the window's own
+    opacity, done by the compositor. (An earlier version faded the root widget with a graphics effect; on macOS that
+    left ghost copies of the text and stale pieces of the previous theme.) *root* may be any widget of the window.
     """
     percent = max(0, min(100, int(percent)))
     if root.graphicsEffect() is not None:
         root.setGraphicsEffect(None)                       # no effect may be left over from before
-    root.window().setWindowOpacity(1.0 if int(blur) > 0 else percent / 100)
+    root.window().setWindowOpacity(1.0 if (sys.platform == "darwin" or int(blur) > 0) else percent / 100)
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:
@@ -502,7 +513,7 @@ def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:
             continue                           # another window that is a child of this one (Settings, Term Helper, a
                                                # drop-down's pop-up list) keeps its own layout; findChildren reaches it too
         parent = layout.parent()
-        if not (isinstance(parent, QWidget) and parent.property("keepSpacing")):     # (a layout whose pieces must touch)
+        if not (layout.property("keepSpacing") or (isinstance(parent, QWidget) and parent.property("keepSpacing"))):   # (pieces that must touch)
             layout.setSpacing(d["gap"])
         if isinstance(parent, QWidget) and not parent.property("keepMargins"):   # a widget's own layout, not a nested one
             m = d["margin"]

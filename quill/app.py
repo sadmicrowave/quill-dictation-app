@@ -180,6 +180,7 @@ class QuillApp:
         self._ready_note_pending = False             # the model is ready but a warning is showing: the note waits for a connection
         self._open_files: list[OpenFile] = []        # spreadsheets other programs have open (the side panel's list)
         self._open_files_busy = False
+        self._viewer_running = False
         self._host_noted = False
         self._host_reload = QTimer()
         self._host_reload.setSingleShot(True)
@@ -295,6 +296,8 @@ class QuillApp:
         self._rebuild_watchers = [watch_native_window(w, self._native_rebuilt)
                                   for w in (self.window.widget, self.sorting.widget) if w is not None]
         self.window.set_stream_classifier(self._match_heard_words)
+        self.window.restore_panel_width(int(self.settings.preferences["panel_width"]))
+        self.window.set_panel_size_listener(self._panel_size_changed)
         self.window.restore_log_height(int(self.settings.preferences["log_height"]))
         self.window.set_log_height_listener(self._log_height_changed)
         self.window.restore_mini_size(int(self.settings.preferences["mini_width"]),
@@ -644,7 +647,17 @@ class QuillApp:
             self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None,
                                   quiet=True)
             if not self.connected:                  # nothing to fill in yet: the Files panel opens, to pick or choose a file
-                self.window.open_panel(FILE_PAGE)
+                if self.window.panel_page == FILE_PAGE:         # already showing: point at Open File and open the file window
+                    self.window.panel.flash_file_button()
+                    self.choose_spreadsheet_file()
+                else:
+                    self.window.open_panel(FILE_PAGE)
+        if active and self.connected and not self._viewer_open():     # Quill only writes to a file that is open to be seen
+            self.window.append_log(f"Waiting for {self.controller.bridge.workbook_name} to open in your spreadsheet program. "
+                                   "Quill writes to the file only while it is open there: press Start again once it is.",
+                                   "warning", reveal=False)
+            self._open_in_viewer()
+            return
         self.controller.set_listening(active)   # explains what to do if there is no workbook
 
     def next_row(self) -> None:
@@ -821,6 +834,11 @@ class QuillApp:
         if off > 0.5:
             QTimer.singleShot(140, lambda: self._align_titlebar(tries - 1))
 
+    def _panel_size_changed(self, width: int) -> None:
+        """The user dragged the side panel to a new width: it opens that wide from now on."""
+        self.settings.preferences["panel_width"] = int(width)
+        self.settings.save()
+
     def _log_height_changed(self, height: int) -> None:
         """The user dragged the log to a new height: it opens that tall from now on."""
         self.settings.preferences["log_height"] = int(height)
@@ -874,7 +892,43 @@ class QuillApp:
             live = bridge if hasattr(bridge, "open_workbook_files") else self._live_bridge_factory()
             return live.open_workbook_files()
 
+        self._viewer_running = bool(self.hosts.running())                 # (any spreadsheet program is running at all)
         return self.hosts.open_files(excel_files)
+
+    def _viewer_open(self) -> bool:
+        """Is the connected file open in a spreadsheet program the user can see?
+
+        Quill is an overlay for the user's spreadsheet program, not a stand-alone editor: it writes to a file only while
+        that file is open there, so every row can be seen arriving and confirmed. Excel is driven live, so it always
+        counts. For a file, it must be listed as open in some program; failing that, a spreadsheet program must at least
+        be running (some programs do not report their documents). Where the system cannot be asked, it counts.
+        """
+        bridge = self.controller.bridge
+        if os.environ.get("QUILL_NO_HOSTS") or not isinstance(bridge, XlsxBridge) or not bridge.workbook_path:
+            return True
+        wanted = os.path.realpath(bridge.workbook_path)
+        if any(f.path and os.path.realpath(f.path) == wanted for f in self._open_files):
+            return True
+        return self._viewer_running
+
+    def _open_in_viewer(self) -> None:
+        """Start the connected file in its own program (in the background), then look again until it shows up there."""
+        path = self.controller.bridge.workbook_path
+        name = self.controller.bridge.workbook_name
+
+        def launch() -> bool:
+            return self.hosts.launch(path)
+
+        def launched(ok: object) -> None:
+            if ok:
+                for delay in (400, 1500):
+                    QTimer.singleShot(delay, lambda: bring_app_forward(self.window.widget))
+                for delay in (1500, 3500, 7000, 12000):
+                    QTimer.singleShot(delay, self.refresh_open_files)
+            else:
+                self.window.append_log(f"Could not open {name} in a spreadsheet program. Open it yourself, then press Start.", "warning")
+
+        self.run_in_background(launch, launched)
 
     def refresh_open_files(self) -> None:
         """Look again for spreadsheets open in other programs (never two looks at once)."""
@@ -1229,7 +1283,8 @@ class QuillApp:
         kind = event.kind
         if kind in ("committed", "discarded", "stopped"):
             self.window.end_stream()                  # the row is over: the next words start a new stream
-        self.feedback.request(event)
+        if event.spoken:                                          # a click confirms itself on screen: no sound
+            self.feedback.request(event)
         if not self._cue_timer.isActive():
             self._cue_timer.start()
         if kind == "started":
@@ -1241,6 +1296,8 @@ class QuillApp:
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
+            self.window.append_log(event.detail, "error", reveal=False)   # logged, but the Log stays shut: the Files panel is the answer
+            return
         elif kind in ("turn_on", "turn_off"):
             self._sync_turn_panel()                                  # a spoken option moves the panel's choice too
             self._show_titlebar_panel(self.window.panel_page)

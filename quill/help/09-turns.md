@@ -75,3 +75,9 @@ The **Log** and the **Last Saved** line say *Row 4 (added to)* for these turns.
 - **Rows Down**: your sheet is turned the other way. The headings run down the **first column** and every record is a **column** (B, C, D ...). The drop-down lists are read from the heading in each row, and each turn fills the next empty column; the Log says *Column C*.
 
 You can switch whenever you like; the choice is remembered. **Searching** needs the headings across the top, so it says so while **Rows Down** is on.
+
+## Sizes and sounds
+
+Drag the edge of the side panel to make it wider or narrower (the window keeps its size; the content never gets smaller than it can work at). Drag the dots under the matched-words box, or on the bottom edge of the **Log**, to change their heights. Quill remembers all of them.
+
+Confirmation sounds play only for things you **say**. A click confirms itself on screen and stays silent.

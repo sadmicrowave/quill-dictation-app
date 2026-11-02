@@ -59,7 +59,14 @@ class Controller:
         self.bridge = bridge
         self.settings = settings
         self.speaker = speaker
-        self._on_event = on_event or (lambda event: None)
+        raw_event = on_event or (lambda event: None)
+        self._spoken_depth = 0                              # above 0 while a spoken phrase is being carried out
+
+        def tagged(event: Event) -> None:
+            event.spoken = self._spoken_depth > 0           # said, or clicked? Only what was said makes a sound
+            raw_event(event)
+
+        self._on_event = tagged
         self._on_speech = on_speech or (lambda speaking: None)
         self.vocab = Vocabulary()
         self.session = Session(self.vocab, CommandMatcher(settings.keywords), today=today)
@@ -143,6 +150,13 @@ class Controller:
 
     def handle_transcript(self, text: str) -> None:
         """Process one recognised phrase end to end."""
+        self._spoken_depth += 1
+        try:
+            self._handle_spoken(text)
+        finally:
+            self._spoken_depth -= 1
+
+    def _handle_spoken(self, text: str) -> None:
         if self.voice_sorter is not None:
             self._voice_sort(text)
             return
