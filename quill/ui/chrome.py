@@ -17,6 +17,7 @@ The platform calls are injectable so the logic is testable on any machine.
 
 from __future__ import annotations
 
+import shiboken6
 from PySide6.QtCore import QEvent, QObject, QTimer
 import contextlib
 import sys
@@ -115,10 +116,37 @@ class _TitleFilter(QObject):
 
 
 def _redraw_lights(widget) -> None:
-    """Scale the window's close / minimise / zoom buttons again (the system makes new layers when it shows a window)."""
+    """Scale the window's close / minimise / zoom buttons again (the system makes new layers when it shows a window), and
+    put the side panel's line, title and X back in the title bar the system has now."""
+    refresh_chrome(widget)
+
+
+def refresh_chrome_soon(widget) -> None:
+    """:func:`refresh_chrome` now and again a moment later (the system lays the title bar out again after a change of look,
+    and resets what was set in the meantime)."""
+    for delay in (0, 200, 700):
+        QTimer.singleShot(delay, lambda: refresh_chrome(widget) if shiboken6.isValid(widget) else None)
+
+
+def refresh_chrome(widget) -> None:
+    """Re-attach and re-place what the title bar holds for the side panel (its line, title and X), and the bottom rule.
+
+    The system may rebuild a window's title bar views whenever its look changes (opacity, blur, theme) or it is shown, and
+    anything added to the old ones is then gone; call this after such a change. The window buttons are drawn larger again too.
+    """
     try:
+        if not _native_platform(sys.platform) or not shiboken6.isValid(widget) or not widget.isVisible():
+            return                                           # (headless runs, or a window that is gone or hidden)
+        kit = getattr(widget, "_quill_titlebar", None)
+        if kit is not None:
+            kit.refresh()
+        import AppKit
         import objc
-        larger_traffic_lights(objc.objc_object(c_void_p=int(widget.winId())).window())
+        window = objc.objc_object(c_void_p=int(widget.winId())).window()
+        if window is not None:
+            larger_traffic_lights(window)
+        if window is not None and getattr(widget, "_quill_title_filter", None) is not None:
+            title_bar_rule(AppKit, window.standardWindowButton_(0).superview(), window)
     except Exception:
         pass
 
@@ -195,7 +223,7 @@ def plain_title(widget) -> bool:
             window.setTitleVisibility_(1)                            # hide the bold system title
             widget.windowTitleChanged.connect(lambda text, v=label, c=close: _retitle(v, c, text, getattr(widget, "_quill_title_inset", 0.0)))
         _retitle(label, close, widget.windowTitle(), getattr(widget, "_quill_title_inset", 0.0))
-        title_bar_rule(AppKit, bar)
+        title_bar_rule(AppKit, bar, window)
         return True
     except Exception:
         return False
@@ -207,20 +235,38 @@ def muted_line_color(appkit, bar):
     return appkit.NSColor.colorWithWhite_alpha_(1.0 if dark else 0.0, 0.14)
 
 
-def title_bar_rule(appkit, bar) -> None:
+def bar_extent(window, bar) -> tuple[float, float]:
+    """Where the title bar is inside *bar*, as ``(y of its bottom edge, its height)``.
+
+    *bar* is what holds the window's close button: usually the title bar itself, but while the window is see-through the
+    system makes it the whole frame view, with the title bar at its top.
+    """
+    height = bar.bounds().size.height
+    try:
+        bar_height = window.frame().size.height - window.contentView().frame().size.height
+    except Exception:
+        return 0.0, height
+    if bar_height <= 0 or bar_height > height:
+        return 0.0, height
+    return height - bar_height, bar_height
+
+
+def title_bar_rule(appkit, bar, window=None) -> None:
     """One muted line along the bottom of the title bar, across its whole width (so across the side panel's part too).
 
-    Added to (or found in) *bar*, the title bar's view, and redrawn in the bar's current light or dark look.
+    Added to (or found in) *bar* (see :func:`bar_extent` for where the title bar is in it), and drawn in its current light or
+    dark look.
     """
     size = bar.bounds().size
+    bottom = bar_extent(window, bar)[0] if window is not None else 0.0
     rule = next((v for v in bar.subviews() if v.identifier() == _RULE_ID), None)
     if rule is None:
-        rule = appkit.NSView.alloc().initWithFrame_(((0, 0), (size.width, 1)))
+        rule = appkit.NSView.alloc().initWithFrame_(((0, bottom), (size.width, 1)))
         rule.setIdentifier_(_RULE_ID)
         rule.setWantsLayer_(True)
-        rule.setAutoresizingMask_(_NS_VIEW_WIDTH)            # follows the window's width
+        rule.setAutoresizingMask_(_NS_VIEW_WIDTH | _NS_VIEW_MIN_Y_MARGIN)       # follows the width, keeps its place under the top
         bar.addSubview_(rule)
-    rule.setFrame_(((0, 0), (size.width, 1)))
+    rule.setFrame_(((0, bottom), (size.width, 1)))
     rule.layer().setBackgroundColor_(muted_line_color(appkit, bar).CGColor())
 
 
@@ -634,6 +680,14 @@ class TitlebarButton:
         except Exception:
             pass
 
+    def refresh(self) -> None:
+        """Put the panel's pieces back in the current title bar and place them again (see :func:`refresh_chrome`)."""
+        try:
+            if self._panel is not None:
+                self._panel.place(self._inset)
+        except Exception:
+            pass
+
     def set_panel_title(self, text: str) -> None:
         """The side panel's title, drawn in the title bar."""
         try:
@@ -841,6 +895,8 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         result = TitlebarButton(button, controller, target, appkit, extras, holder, row, row_x, width, panel, reference, window)
         if not symbol:
             result.set_mini(mini)
+        if side == "right" and appkit_real and not symbol:
+            widget._quill_titlebar = result                 # (so refresh_chrome can find it)
         if reference is not None:
             result.settle()                         # (icons level with the title, in this window and any other)
         return result
@@ -880,7 +936,7 @@ class _PanelChrome:
         for view in (self.line, self.title, self.close):
             view.setAutoresizingMask_(1)                # keeps its distance from the right edge
             view.setHidden_(True)
-        self.line.setAutoresizingMask_(1 | 16)          # (the line also follows the bar's height)
+        self.line.setAutoresizingMask_(1 | 8)           # (the line keeps its distance from the right edge and the top)
         self._attach()
 
     def _reference(self):
@@ -909,9 +965,10 @@ class _PanelChrome:
         self._attach()
         ref = self._reference()
         bar = ref.superview()
-        width, height = bar.bounds().size.width, bar.bounds().size.height
+        width = bar.bounds().size.width
+        bottom, height = bar_extent(self._window, bar)        # (the title bar, wherever it is in what holds the buttons)
         self.line.layer().setBackgroundColor_(muted_line_color(self._appkit, bar).CGColor())
-        self.line.setFrame_(((width - points, 0), (1, height)))
+        self.line.setFrame_(((width - points, bottom), (1, height)))
         middle = ref.frame().origin.y + ref.frame().size.height / 2
         size = self.title.frame().size
         self.title.setFrameOrigin_((width - points + 14, middle - size.height / 2))

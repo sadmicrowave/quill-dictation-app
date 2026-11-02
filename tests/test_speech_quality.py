@@ -246,3 +246,81 @@ class TestRemovingAModelFolder(unittest.TestCase):
         self.assertEqual(fallback_choice("best", lambda k: k == "better"), "better")
         self.assertEqual(fallback_choice("best", lambda k: False), "standard")
         self.assertEqual(fallback_choice("better", lambda k: k in ("best", "standard")), "best")
+
+
+class TestSpeechModelOnTheTurnPanel(unittest.TestCase):
+    """The Turn Options panel picks the speech model while dictating: no restart, no file reload."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = pathlib.Path(self._tmp.name)
+        self.standard, self.better = self.dir / "standard", self.dir / "better"
+        self.better_present = True
+        self.used, self.listeners = [], []
+
+        def factory(model, t, e):
+            listener = FakeListener(model, t, e)
+            self.used.append(model)
+            self.listeners.append(listener)
+            return listener
+
+        self.settings = Settings.load(self.dir / "cfg")
+        self.app = QuillApp(
+            _app, self.settings, XlsxBridge(make_workbook(self.dir / "w.xlsx")), listener_factory=factory,
+            model_finder=lambda c: self.standard, speaker=FakeSpeaker(),
+            better_finder=lambda: self.better if self.better_present else None,
+            whisper_finder=lambda: None, whisper_engine=lambda: False)
+        self.app.start()
+        self.panel = self.app.window.panel
+
+    def names(self):
+        return [self.panel.model_combo.itemText(i) for i in range(self.panel.model_combo.count())]
+
+    def test_the_drop_down_lists_the_three_models_and_marks_the_missing_one(self):
+        self.assertEqual(self.names(), ["Quick", "Broad", "Careful (not installed)"])
+        self.assertEqual(self.panel.model_combo.currentData(), "standard")
+
+    def test_picking_an_installed_model_swaps_the_listener_at_once_and_keeps_listening(self):
+        self.app.toggle_listening(True)
+        self.app.controller.handle_transcript("start listening")
+        session = self.app.controller.session
+        bridge = self.app.controller.bridge
+        before = len(self.used)
+        self.panel.model_combo.setCurrentIndex(self.panel.model_combo.findData("better"))
+        self.panel.model_combo.activated.emit(self.panel.model_combo.currentIndex())
+        self.assertEqual(self.used[before:], [self.better])                      # a new listener, with the other model
+        self.assertEqual(self.settings.preferences["speech_quality"], "better")
+        self.assertIs(self.app.controller.session, session)                       # same turn state ...
+        self.assertIs(self.app.controller.bridge, bridge)                         # ... and the same file, not reloaded
+        self.assertTrue(self.app.controller.session.listening)
+        self.assertTrue(self.app._mic_open)                                       # the microphone is open again
+        self.assertFalse(self.listeners[before - 1].running if hasattr(self.listeners[before - 1], "running") else False)
+
+    def test_picking_a_model_that_is_not_installed_opens_the_models_page_and_changes_nothing(self):
+        opened = []
+        self.app.open_settings = lambda page=None: opened.append(page)
+        self.panel.model_combo.setCurrentIndex(self.panel.model_combo.findData("best"))
+        self.panel.model_combo.activated.emit(self.panel.model_combo.currentIndex())
+        self.assertEqual(opened, ["Speech Model"])
+        self.assertEqual(self.settings.preferences["speech_quality"], "standard")
+        self.assertEqual(self.panel.model_combo.currentData(), "standard")        # back to the model in use
+
+    def test_the_drop_down_follows_installs_removals_and_the_settings_choice(self):
+        self.better_present = False
+        self.app.sync_model_panel()
+        self.assertEqual(self.names()[1], "Broad (not installed)")
+        self.better_present = True
+        self.settings.preferences["speech_quality"] = "better"
+        self.app.apply_settings(quiet=True)
+        self.assertEqual(self.names()[1], "Broad")
+        self.assertEqual(self.panel.model_combo.currentData(), "better")
+
+    def test_the_settings_page_shows_the_choice_made_on_the_panel_and_cancel_keeps_it(self):
+        self.app.open_settings()
+        dialog = self.app._settings_dialog
+        self.panel.model_combo.setCurrentIndex(self.panel.model_combo.findData("better"))
+        self.panel.model_combo.activated.emit(self.panel.model_combo.currentIndex())
+        self.assertTrue(dialog.model_rows["better"].radio.isChecked())
+        self.assertEqual(dialog._original["speech_quality"], "better")
+        dialog.close_now() if hasattr(dialog, "close_now") else None

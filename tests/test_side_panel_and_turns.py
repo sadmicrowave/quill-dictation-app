@@ -2582,14 +2582,12 @@ class TestSettingsRound5(unittest.TestCase):
     def test_each_model_says_what_it_costs_in_memory_and_time(self):
         for key, words in (("standard", "165 MB"), ("better", "415 MB"), ("best", "700 MB")):
             self.assertIn(words, self.d.model_rows[key].cost_label.text())
-        self.assertIn("~1s", self.d.model_rows["better"].cost_label.text())
-        self.assertIn("~.5s", self.d.model_rows["best"].cost_label.text())
-        self.assertIn("Displays heard words in real-time as you speak.", self.d.model_rows["standard"].cost_label.text())
+        self.assertEqual([self.d.model_rows[k].cost_label.text() for k in ("standard", "better", "best")],
+                         ["Memory: ~165 MB", "Memory: ~415 MB (+250 MB / +1s)", "Memory: ~700 MB (+535 MB / Pause + .5s)"])
         for row in self.d.model_rows.values():
             text = row.cost_label.text() + row.description_label.text()
             self.assertNotIn("about", text)
             self.assertNotIn("around ", row.cost_label.text())
-            self.assertNotIn("second ", row.cost_label.text())                  # (numbers: ~1s, ~.5s)
 
     def test_the_memory_line_is_muted_and_the_description_is_not(self):
         for row in self.d.model_rows.values():
@@ -2613,13 +2611,14 @@ class TestSettingsRound5(unittest.TestCase):
         rows = d.model_rows
         self.assertFalse(rows["standard"].uninstall_button.isHidden())     # installed but bundled: shown, greyed out
         self.assertFalse(rows["standard"].uninstall_button.isEnabled())
-        self.assertIn("ships with Quill", rows["standard"].uninstall_button.toolTip())
+        self.assertEqual(rows["standard"].uninstall_button.toolTip(),
+                         "Quick is the base Speech Model which more advanced models build upon. It cannot be uninstalled.")
         self.assertFalse(rows["better"].uninstall_button.isHidden())
         self.assertTrue(rows["best"].uninstall_button.isHidden())          # not installed
         tip = rows["better"].uninstall_button.toolTip()
-        self.assertIn("Removes the Broad model", tip)
-        self.assertIn("Quick", tip)                                     # what takes over
-        self.assertNotIn("once", tip)
+        self.assertEqual(tip, "Removes the Broad model from this computer and frees its disk space.")
+        for words in ("install it again", "one in use", "switches", "MB"):
+            self.assertNotIn(words, tip)
 
     def test_uninstall_asks_the_application(self):
         asked = []

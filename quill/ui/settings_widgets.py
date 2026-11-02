@@ -99,7 +99,7 @@ class ModelRow(SettingRow):
     def __init__(self, key: str, name: str, size: str, description: str, cost: str = "") -> None:
         self.key = key
         self.download_button = QPushButton("Install")
-        self.download_button.setToolTip(f"Install the {name} model ({size})")
+        self.download_button.setToolTip(f"Install the {name} model.")
         self.download_button.clicked.connect(lambda: self.download_requested.emit(self.key))
         self.uninstall_button = QPushButton("Uninstall")
         self.uninstall_button.clicked.connect(lambda: self.uninstall_requested.emit(self.key))
@@ -129,6 +129,7 @@ class ModelRow(SettingRow):
         self.cost_label.setProperty("modelCost", True)
         self.cost_label.setVisible(bool(cost))
         text.addWidget(self.cost_label)
+        self.line.setAlignment(holder, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)      # the buttons sit level with the name
         self.radio = QRadioButton()
         self.radio.setCursor(Qt.CursorShape.PointingHandCursor)
         self.radio.setToolTip(f"Use the {name} model.")

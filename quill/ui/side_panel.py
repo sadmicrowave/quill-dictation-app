@@ -367,6 +367,7 @@ class SidePanel(QFrame):
     """The panel itself (see the module notes). It starts closed: zero width and hidden."""
 
     open_file_requested = Signal()
+    speech_model_chosen = Signal(str)           # the key of the model picked in the Turn Options drop-down
     refresh_requested = Signal()                # the refresh icon beside Available Files
     file_chosen = Signal(object)                # the data of the picked list entry
     mode_changed = Signal(str)                  # NEXT_ROW or APPEND_TO
@@ -581,6 +582,16 @@ class SidePanel(QFrame):
         self.new_row_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.new_row_button.clicked.connect(self.new_row_requested)
         layout.addWidget(self.new_row_button)
+        layout.addSpacing(4)
+        layout.addWidget(_rule())
+        layout.addSpacing(4)
+        layout.addWidget(_heading("Speech Model"))
+        self.model_combo = FlatCombo()
+        self.model_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.model_combo.activated.connect(self._model_picked)
+        layout.addWidget(self.model_combo)
+        self.model_note = _note("Takes effect straight away. A model that is not installed opens Settings > Speech Model.")
+        layout.addWidget(self.model_note)
         layout.addStretch(1)
         self.next_row_radio.setChecked(True)
         self.new_row_button.setEnabled(False)
@@ -707,6 +718,24 @@ class SidePanel(QFrame):
         self.available.setVisible(shown > 0)
         self.empty_label.setText(NO_MATCH_TEXT if total and not shown else NO_OTHERS_TEXT)
         self.empty_label.setVisible(shown == 0 and not self._refreshing)
+
+    #: The speech models as the drop-down lists them: (key, name). Set by :meth:`set_speech_models`.
+    def set_speech_models(self, models: list[tuple[str, str, bool]], current: str) -> None:
+        """Fill the Speech Model drop-down with ``(key, name, installed)`` and show *current* (without reporting a choice)."""
+        blocked = self.model_combo.blockSignals(True)
+        try:
+            self.model_combo.clear()
+            for key, name, installed in models:
+                self.model_combo.addItem(name if installed else f"{name} (not installed)", key)
+            self.model_combo.setCurrentIndex(max(0, self.model_combo.findData(current)))
+            self.model_combo.setToolTip("Choose the speech model that turns your voice into words.")
+        finally:
+            self.model_combo.blockSignals(blocked)
+
+    def _model_picked(self, index: int) -> None:
+        key = self.model_combo.itemData(index)
+        if key:
+            self.speech_model_chosen.emit(str(key))
 
     def _mode_toggled(self, mode: str) -> None:
         """A radio button was checked: Next is only usable (and only looks usable) while Append To is chosen."""

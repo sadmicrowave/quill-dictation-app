@@ -62,6 +62,7 @@ from quill.ui.chrome import (
     apply_chrome,
     FileDialogWarmer,
     bring_app_forward,
+    refresh_chrome_soon,
     set_title_inset,
     set_dock_icon_visible,
     watch_native_window,
@@ -612,7 +613,7 @@ class QuillApp:
                 self._loaded_quality = "better"
                 return better
             self.window.append_log("The Broad speech model is not installed yet: using the Quick one. "
-                                   "Download it in Settings, under General.", "warning")
+                                   "Install it in Settings, under Speech Model.", "warning")
         self._loaded_quality = "standard"
         return self._model_finder(str(self.settings.preferences["model_path"]))
 
@@ -686,6 +687,7 @@ class QuillApp:
             self.window.append_log(f"Now using the {QUALITY_LABELS[self.settings.preferences['speech_quality']]} speech model")
             self._reload_listener()
         self._show_model_state()
+        self.sync_model_panel()
 
     def _use_best_installed(self) -> None:
         """Once, on the first start with this feature, choose the best model already installed."""
@@ -711,7 +713,7 @@ class QuillApp:
     def _start_listener(self) -> None:
         model = self._find_model()
         if model is None:
-            self.window.append_log("No speech model found. Download one (about 40 MB) in Settings, under General, "
+            self.window.append_log("No speech model found. Install one in Settings, under Speech Model, "
                                    "to start dictating.", "warning")
             return
         self.listener = self._listener_factory(model, self.relay.transcript.emit, self.relay.error.emit)
@@ -926,9 +928,11 @@ class QuillApp:
         """Connect the side panel's choices to the application, and fill in what it shows."""
         panel = self.window.panel
         panel.settings.apply_density(str(self.settings.preferences["spacing"]))
+        self.sync_model_panel()
         panel.open_file_requested.connect(self.choose_spreadsheet_file)
         panel.file_chosen.connect(self._panel_pick)
         panel.refresh_requested.connect(self.refresh_open_files)
+        panel.speech_model_chosen.connect(self.choose_speech_model)
         panel.mode_changed.connect(self.controller.set_turn_mode)
         panel.layout_changed.connect(self.controller.set_vertical)
         panel.new_row_requested.connect(self.controller.start_new_row)
@@ -1401,6 +1405,7 @@ class QuillApp:
                     apply_spacing(window, str(prefs["spacing"]))
                 apply_opacity(root, opacity, blur)                  # first: Qt marks a fully opaque window opaque
                 apply_chrome(window, dark, colors, opacity=opacity, blur=blur)    # ... which the chrome may undo
+                refresh_chrome_soon(window)              # the system may have rebuilt the title bar: the panel's pieces go back in
         self.window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         self.sorting.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
         if self.help is not None:
@@ -1418,6 +1423,7 @@ class QuillApp:
         self.controller.apply_settings()
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
         self._apply_dock()
+        self.sync_model_panel()
         quality = str(self.settings.preferences["speech_quality"])
         if quality != self._loaded_quality and self.listener is not None and self.quality_installed(quality):
             self._reload_listener()                          # the user chose the other speech model
@@ -1458,7 +1464,7 @@ class QuillApp:
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self.window.set_not_connected(True)
             self.tray.notify(NO_WORKBOOK_HELP)
-            self.window.append_log(event.detail, "error", reveal=False)   # logged, but the Log stays shut: the Files panel is the answer
+            self.window.append_log(event.detail)                          # logged as plain information (no red "!" in the mini view, the Log stays shut): the Files panel and the file window are the answer
             return
         elif kind in ("turn_on", "turn_off"):
             self._sync_turn_panel()                                  # a spoken option moves the panel's choice too
@@ -1695,6 +1701,7 @@ class QuillApp:
             return
         self._model_note = ""
         self._show_model_state()
+        self.sync_model_panel()
         self.window.append_log(f"{QUALITY_LABELS[self._downloading]} speech model installed")
         if self._downloading != str(self.settings.preferences["speech_quality"]):
             self.settings.preferences["speech_quality"] = self._downloading        # the model just installed is the one wanted
@@ -1705,6 +1712,30 @@ class QuillApp:
     def model_installed(self) -> bool:
         """Whether a speech model can be found (for the Settings page)."""
         return self.quality_installed("standard")
+
+    def sync_model_panel(self) -> None:
+        """Show, in the Turn Options drop-down, which models there are, which are installed and which is in use."""
+        panel = getattr(self.window, "panel", None)
+        if panel is not None:
+            panel.set_speech_models([(key, QUALITY_LABELS[key], self.quality_installed(key)) for key in QUALITY_LABELS],
+                                    str(self.settings.preferences["speech_quality"]))
+
+    def choose_speech_model(self, quality: str) -> None:
+        """The Turn Options drop-down picked a model: use it at once (the listener is swapped, nothing else is touched), or,
+        for one that is not installed, open Settings > Speech Model so the user can read about it and install it."""
+        if quality not in QUALITY_LABELS:
+            return
+        if not self.quality_installed(quality):
+            self.sync_model_panel()                                       # (back to the model in use)
+            self.open_settings("Speech Model")
+            return
+        if quality == str(self.settings.preferences["speech_quality"]):
+            return
+        self.settings.preferences["speech_quality"] = quality
+        self.settings.save()
+        self.apply_settings(quiet=True)
+        if self._settings_dialog is not None:
+            self._settings_dialog.show_chosen_model(quality)
 
     def _show_model_state(self) -> None:
         """Tell the open Settings window how the speech model download is going (nothing to do when it is closed)."""

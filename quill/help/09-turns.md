@@ -2,7 +2,7 @@
 
 A **turn** is one round of you speaking and Quill answering: the words you say, Quill's match to your columns, the Term Helper if a word needs sorting, and the writing of those matches. **Next** (the button, or saying "next row") ends the turn and starts the next.
 
-Press the **turn** icon (two speech bubbles) in the title bar. The **side panel** eases in with the turn settings; press the icon again to ease it away. The folder icon opens the same panel on its file page. The panel is titled **Turn Options** here; a link opens **Settings > Keywords**, where each turn setting can be given a spoken phrase.
+Press the **turn** icon (two speech bubbles) in the title bar. The **side panel** eases in with the turn settings; press the icon again to ease it away. The folder icon opens the same panel on its file page. The panel is titled **Turn Options** here; a link opens **Settings > Keywords**, where each turn setting can be given a spoken phrase. At the bottom, **Speech Model** lists Quick, Broad and Careful: picking an installed one switches to it at once, in the middle of dictating, with no restart and no file reload (the row you are building and the file stay as they are). Picking one that is not installed opens **Settings > Speech Model**, where you can read about it and choose Install.
 
 ![The side panel's turn page](images/side-panel-turn.png)
 

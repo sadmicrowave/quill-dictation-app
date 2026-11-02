@@ -120,6 +120,16 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
         quill.tray.notify.assert_called_with(NO_WORKBOOK_HELP)
         self.assertEqual(self.speaker.said, [])                    # the popup shows it; nothing is spoken
 
+    def test_no_file_is_not_an_error_the_files_panel_is_the_answer(self):
+        quill = self.make_app()
+        quill.window.set_mini(True)
+        quill.window.toggle_button.click()
+        text = quill.window.log.toPlainText()
+        self.assertIn("No spreadsheet is connected", text)         # still in the log ...
+        self.assertNotIn("Error", text)                                  # ... as plain information
+        self.assertFalse(quill.window._mini_error)                       # ... so no red "!" in the mini view
+        self.assertFalse(quill.window.error_button.isVisibleTo(quill.window.widget))
+
 
 class TestWatcher(AppPresenceCase):
     def test_attaches_when_workbook_appears(self):

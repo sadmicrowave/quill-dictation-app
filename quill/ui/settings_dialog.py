@@ -90,16 +90,16 @@ SPEECH_MODELS = (
     ("standard", "Quick", "40 MB",
      "A small, fast model that shows your words as you say them. Good for clear speech and everyday words; it can "
      "mishear unusual words, names and numbers.",
-     "Uses ~165 MB of memory. Displays heard words in real-time as you speak."),
+     "Memory: ~165 MB"),
     ("better", "Broad", "130 MB",
      "A larger model with a much bigger vocabulary. It still shows words as you speak, but unusual words, names and "
      "numbers are heard correctly far more often.",
-     "Uses ~415 MB of memory (~250 MB more than Quick). Decodes at ~real-time speed, so words can trail by ~1s."),
+     "Memory: ~415 MB (+250 MB / +1s)"),
     ("best", "Careful", "145 MB",
      "Adds a second listen: after each pause, the whole phrase is re-read by a model that uses the words around "
      "each one to decide what it was, which fixes most of the mistakes that are left. The corrected words replace the "
      "live ones a moment after you pause. It builds on the Quick model.",
-     "Uses ~700 MB of memory (~535 MB more than Quick). Each phrase is corrected ~.5s after you pause."),
+     "Memory: ~700 MB (+535 MB / Pause + .5s)"),
 )
 
 #: The programs a chosen spreadsheet can be opened in: (preference value, label).
@@ -589,19 +589,24 @@ class SettingsDialog:
         self.set_model_state("", False)
         self._live()
 
+    def show_chosen_model(self, key: str) -> None:
+        """The model was chosen somewhere else (the Turn Options panel): check its radio button here, without reporting it."""
+        row = getattr(self, "model_rows", {}).get(key)
+        if self._original:
+            self._original["speech_quality"] = key                          # (so Cancel does not take the choice back)
+        if row is not None and not row.radio.isChecked():
+            blocked = row.radio.blockSignals(True)
+            row.radio.setChecked(True)
+            row.radio.blockSignals(blocked)
+
     def _uninstall_tip(self, key: str) -> str:
-        """What Uninstall does for the model *key* (which model takes over if it is in use), or why it is greyed out."""
+        """What Uninstall does for the model *key*, or why it is greyed out."""
         names = {k: name for k, name, *_ in SPEECH_MODELS}
         if not self._model_removable(key):
-            if key == "standard" and self._model_installed("best"):
-                return f"{names['best']} builds on {names['standard']}, so {names['standard']} stays while {names['best']} is installed."
             if key == "standard":
-                return f"{names['standard']} ships with Quill, so it cannot be uninstalled."
+                return f"{names['standard']} is the base Speech Model which more advanced models build upon. It cannot be uninstalled."
             return f"{names[key]} cannot be uninstalled."
-        successor = fallback_choice(key, lambda other: other != key and bool(self._model_installed(other)))
-        return (f"Removes the {names[key]} model from this computer and frees its disk space.\n"
-                f"If it is the one in use, Quill switches to the {names[successor]} model.\n"
-                f"You can install it again at any time.")
+        return f"Removes the {names[key]} model from this computer and frees its disk space."
 
     def set_model_state(self, note: str, busy: bool) -> None:
         """Show, for each model, whether it is installed (a pill) or can be downloaded (a button), and how a download is
