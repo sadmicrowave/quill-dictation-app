@@ -89,7 +89,8 @@ class TestCheckboxAndHeadings(unittest.TestCase):
         sheet = theme.stylesheet_for(False)
         for selector in ('QLabel[heading="true"]', 'QToolButton[heading="true"]'):
             self.assertNotIn("font-weight", rule(sheet, selector))
-        self.assertNotIn("font-weight: 700", sheet)
+        bold = [block.split("{")[0].strip() for block in sheet.split("}") if "font-weight: 700" in block]
+        self.assertTrue(all(sel in ('QLabel#pageTitle', 'QLabel[modelName="true"]') for sel in bold), bold)     # only these are bold
 
     def test_dialog_checkboxes_exist(self):
         with tempfile.TemporaryDirectory() as tmp:

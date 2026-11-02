@@ -57,10 +57,12 @@ from quill.config.settings import (
 )
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.licensing import LicenseService
+from quill.listener.model import fallback_choice
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
 from quill.ui.hints import fill_missing_tips
 from quill.ui.settings_widgets import (
+    NavDelegate,
     ModelRow,
     PillField,
     FlatCombo,
@@ -87,15 +89,23 @@ GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
 SPEECH_MODELS = (
     ("standard", "Standard", "40 MB",
      "A small, fast model that shows your words as you say them. Good for clear speech and everyday words; it can "
-     "mishear unusual words, names and numbers."),
+     "mishear unusual words, names and numbers.",
+     "Uses about 165 MB of memory. Keeps up with your speech."),
     ("better", "Better", "130 MB",
      "A larger model with a much bigger vocabulary. It still shows words as you speak, but unusual words, names and "
-     "numbers are heard correctly far more often. It uses more memory."),
+     "numbers are heard correctly far more often.",
+     "Uses about 415 MB of memory (about 250 MB more than Standard). It decodes about as fast as you speak, so words "
+     "can trail by around a second."),
     ("best", "Best", "145 MB",
-     "Adds a second listen: after each pause, the whole phrase is re-read by a Whisper model that uses the words around "
+     "Adds a second listen: after each pause, the whole phrase is re-read by a model that uses the words around "
      "each one to decide what it was, which fixes most of the mistakes that are left. The corrected words replace the "
-     "live ones a moment after you pause. It builds on the Standard model."),
+     "live ones a moment after you pause. It builds on the Standard model.",
+     "Uses about 700 MB of memory (about 535 MB more than Standard). Each phrase is corrected about half a second after "
+     "you pause."),
 )
+
+#: The programs a chosen spreadsheet can be opened in: (preference value, label).
+OPEN_WITH_CHOICES = (("auto", "Automatic"), ("numbers", "Numbers"), ("libreoffice", "LibreOffice"), ("excel", "Excel"))
 
 THEME_ICONS = {"auto": "monitor", "light": "sun", "dark": "moon"}
 
@@ -165,7 +175,10 @@ class SettingsDialog:
         return GROUPS + ([("Account", ["Account"])] if self.SHOW_ACCOUNT else [])
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
-                 on_open_logs=None, on_help=None, on_download_model=None, model_installed=None) -> None:
+                 on_open_logs=None, on_help=None, on_download_model=None, model_installed=None,
+                 on_uninstall_model=None, model_removable=None) -> None:
+        self._on_uninstall_model = on_uninstall_model or (lambda quality: None)
+        self._model_removable = model_removable or (lambda quality: False)
         self._on_download_model = on_download_model or (lambda quality: None)
         self._model_installed = model_installed or (lambda quality: True)
         self._on_help = on_help
@@ -193,6 +206,7 @@ class SettingsDialog:
         self.opacity_slider: QSlider | None = None
         self.blur_slider: QSlider | None = None
         self.feedback_combo: QComboBox | None = None
+        self.open_with_combo: QComboBox | None = None
         self.pack_combo: QComboBox | None = None
         self.echo_combo: QComboBox | None = None
         self.history_spin: QSpinBox | None = None
@@ -387,7 +401,7 @@ class SettingsDialog:
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
-                        self.pack_combo, self.echo_combo):
+                        self.pack_combo, self.echo_combo, self.open_with_combo):
             control.currentIndexChanged.connect(self._live)
         for control in (self.font_spin, self.history_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin):
             control.valueChanged.connect(self._live)
@@ -430,6 +444,7 @@ class SettingsDialog:
         prefs["feedback"] = self.feedback_combo.currentData()
         prefs["sound_pack"] = self.pack_combo.currentData()
         prefs["echo_style"] = self.echo_combo.currentData()
+        prefs["open_with"] = self.open_with_combo.currentData()
 
     # ------------------------------------------------------------------ #
     # Sidebar and search                                                   #
@@ -440,21 +455,26 @@ class SettingsDialog:
         side.setObjectName("settingsSidebar")
         side.setFixedWidth(236)
         layout = QVBoxLayout(side)
-        layout.setContentsMargins(14, 16, 14, 12)
+        layout.setContentsMargins(0, 16, 0, 12)             # (the list runs the pane's full width, so a caption's line does)
         layout.setSpacing(10)
+        top = QVBoxLayout()
+        top.setContentsMargins(14, 0, 14, 0)
+        top.setSpacing(10)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.filter)
-        layout.addWidget(self.search)
+        top.addWidget(self.search)
         self.empty_label = QLabel("No settings match your search.")
         self.empty_label.setProperty("muted", True)
         self.empty_label.setWordWrap(True)
         self.empty_label.setVisible(False)
-        layout.addWidget(self.empty_label)
+        top.addWidget(self.empty_label)
+        layout.addLayout(top)
         self.nav = QListWidget()
         self.nav.setObjectName("settingsNav")
         self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.nav.setItemDelegate(NavDelegate(self.nav))
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.nav.currentRowChanged.connect(self._show_page)
         layout.addWidget(self.nav, 1)
@@ -537,12 +557,15 @@ class SettingsDialog:
         layout.setSpacing(0)
         heading = QLabel(title)
         heading.setObjectName("pageTitle")
+        heading.setIndent(0)                              # flush with the rows below it
         layout.addWidget(heading)
         if intro:
+            layout.addSpacing(8)                          # air above and below the description
             note = QLabel(intro)
             note.setWordWrap(True)
             note.setProperty("muted", True)
             layout.addWidget(note)
+            layout.addSpacing(14)
         layout.addSpacing(8)
         scroll.setWidget(holder)
         self._page_index[title] = self.pages.addWidget(scroll)
@@ -567,6 +590,13 @@ class SettingsDialog:
         self.set_model_state("", False)
         self._live()
 
+    def _uninstall_tip(self, key: str) -> str:
+        """What Uninstall does for the model *key*, including which model takes over if it is the one in use."""
+        names = {k: name for k, name, *_ in SPEECH_MODELS}
+        successor = fallback_choice(key, lambda other: other != key and bool(self._model_installed(other)))
+        return (f"Removes the {names[key]} model from this computer and frees its disk space. If it is the one in use, "
+                f"Quill switches to the {names[successor]} model. You can install it again at any time.")
+
     def set_model_state(self, note: str, busy: bool) -> None:
         """Show, for each model, whether it is installed (a pill) or can be downloaded (a button), and how a download is
         going (*note*, on the chosen model's description, while *busy*)."""
@@ -574,9 +604,10 @@ class SettingsDialog:
             return
         chosen = self.selected_quality
         for key, row in self.model_rows.items():
-            row.set_installed(bool(self._model_installed(key)), busy)
+            row.set_installed(bool(self._model_installed(key)), busy, bool(self._model_removable(key)),
+                              self._uninstall_tip(key))
             row.radio.setEnabled(not busy)
-            original = next(d for k, _, _, d in SPEECH_MODELS if k == key)
+            original = next(d for k, _, _, d, _ in SPEECH_MODELS if k == key)
             row.description_label.setText(note if (note and key == chosen) else original)
 
     def _build_pages(self) -> None:
@@ -635,19 +666,30 @@ class SettingsDialog:
         logs = QPushButton("Open Log Folder")
         logs.setToolTip("Quill writes what it does, and any error, to a log file here")
         logs.clicked.connect(lambda: self._on_open_logs())
+        self.open_with_combo = FlatCombo()
+        for key, label in OPEN_WITH_CHOICES:
+            self.open_with_combo.addItem(label, key)
+        self.open_with_combo.setCurrentIndex(max(0, self.open_with_combo.findData(prefs["open_with"])))
+        self._add("General", page, "Open Files With",
+                  "The program Quill opens a spreadsheet in when you pick one that is not open yet. Quill shows each row in "
+                  "Numbers and LibreOffice as it is written; Excel is updated in place. Automatic uses the program your "
+                  "computer opens that kind of file with.", self.open_with_combo, "numbers libreoffice excel program viewer")
         self._add("General", page, "Troubleshooting",
                   "If something goes wrong, the log file shows what happened.", logs, "log file errors diagnostics")
         page.addStretch(1)
 
         # --- Speech Model: one radio button per model, only one can be chosen
-        page = self._page("Speech Model", "How Quill turns your voice into words. It all happens on this computer: nothing you say is sent anywhere.")
+        page = self._page("Speech Model", ("How Quill turns your voice into words. It all happens on this computer: nothing you say is sent anywhere. A model "
+                           "is installed once, then works without an internet connection. Memory and speed figures are estimates for a "
+                           "typical laptop; older computers are slower."))
         self.model_rows: dict[str, ModelRow] = {}
         self.quality_group = QButtonGroup(self.root)
-        for key, name, size, description in SPEECH_MODELS:
-            row = ModelRow(key, name, size, description)
+        for key, name, size, description, cost in SPEECH_MODELS:
+            row = ModelRow(key, name, size, description, cost)
             self.quality_group.addButton(row.radio)
             row.chosen.connect(self._quality_chosen)
             row.download_requested.connect(lambda k: self._on_download_model(k))
+            row.uninstall_requested.connect(lambda k: self._on_uninstall_model(k))
             self._page_rows["Speech Model"].append(row)
             self.rows.append(row)
             page.addWidget(row)

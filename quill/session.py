@@ -270,6 +270,23 @@ class Session:
         self._forget_heard(key)
         return [Event(kind, detail=detail, values=values, cells=cells, resolved=info)]
 
+    #: Most "probably spells out" hints kept (they are looked up while a term waits, so a few hundred is far more than needed).
+    MAX_HINTS = 200
+
+    def forget_terms(self) -> None:
+        """Drop everything about unsorted terms (what is waiting, heard and where): the workbook they were heard in is gone."""
+        self.pending, self._voice_open, self._reask = None, False, False
+        self.pool.clear()
+        self.alias_hints.clear()
+        self.origins.clear()
+        self.row_terms.clear()
+
+    def _trim_hints(self) -> None:
+        """Keep the hints of terms still waiting, and drop the rest once there are too many."""
+        if len(self.alias_hints) > self.MAX_HINTS:
+            waiting = set(self.pending or []) | set(self.pool)
+            self.alias_hints = {key: hint for key, hint in self.alias_hints.items() if key in waiting}
+
     def _forget_heard(self, key: TermKey) -> None:
         """*key* was answered (or its row thrown away): it is no longer waiting to be announced or saved with the row."""
         self.pool.pop(key, None)
@@ -303,6 +320,7 @@ class Session:
                 self.pending = [*(self.pending or []), key]
             if cand.alias_of:
                 self.alias_hints[key] = cand.alias_of[1]
+                self._trim_hints()
         events: list[Event] = []
         if result.updates or result.candidates:
             detail = ", ".join(f"{k}={_show(v)}" for k, v in result.updates.items())

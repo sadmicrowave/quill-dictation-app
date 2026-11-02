@@ -25,6 +25,7 @@ from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
 from quill.bridge.hosts import HostApp, OpenFile, SpreadsheetHosts
+from quill.bridge.libreoffice_mirror import LibreOfficeMirror
 from quill.bridge.numbers_mirror import MirrorResult, NumbersMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -36,6 +37,9 @@ from quill.listener.model import (
     BETTER,
     SPECS,
     WHISPER_SIZE_MB,
+    fallback_choice,
+    remove_model,
+    user_model_dir as _user_model_dir,
     download_spec,
     download_whisper,
     ensure_model,
@@ -117,7 +121,7 @@ READY_NOTE = "Speech model ready. The microphone is off until you press Start."
 FLUSH_EVERY_MS = 5000
 FLUSH_COPY_AFTER = 3
 #: How often (ms) the side panel looks again for spreadsheets other programs have open, while it is showing.
-OPEN_FILES_EVERY_MS = 4000
+OPEN_FILES_EVERY_MS = 30000
 
 
 #: The speech quality choices and their names in the window.
@@ -168,6 +172,7 @@ class QuillApp:
         live_bridge_factory: Callable[[], WorkbookBridge] = get_bridge,
         hosts: SpreadsheetHosts | None = None,
         mirror: NumbersMirror | None = None,
+        lo_mirror: LibreOfficeMirror | None = None,
     ) -> None:
         self.qapp = qapp
         self._file_chooser = file_chooser or self._ask_for_file
@@ -175,7 +180,9 @@ class QuillApp:
         self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
         self.mirror = mirror or NumbersMirror()      # shows each turn's cells in an open Numbers document as they are written
+        self.lo_mirror = lo_mirror or LibreOfficeMirror()      # ... and in an open LibreOffice Calc document
         self._mirror_warned = False
+        self._lo_noted = False
         self._probe_ticks = 0
         self._settings_dialog: SettingsDialog | None = None    # the open Settings window, if any
         self._model_busy, self._model_note = False, ""          # the speech model download, shown in Settings
@@ -237,6 +244,7 @@ class QuillApp:
         self._whisper_engine, self._refiner_factory = whisper_engine, refiner_factory
         self._loaded_quality = ""                       # which speech model the running listener uses
         self._downloading = "standard"
+        self._model_remover = remove_model
         self._mic_open = False
         self._seen_mtime: int | None = None      # last known state of the workbook file
         self._titlebar = None                    # the resize icon in the title bar, where supported
@@ -318,6 +326,7 @@ class QuillApp:
         self._install_titlebar_button()
         self.window.set_file_mode(isinstance(self.controller.bridge, XlsxBridge))
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
+        self._use_best_installed()
         self._start_listener()
         self._watcher.start()
         self._flush_timer.start()
@@ -441,6 +450,22 @@ class QuillApp:
                 self.window.append_log(f"Found {path.name} open in {host_app.name}: working on it directly.")
                 return
 
+    def _mirror_everywhere(self, path: str, changes: list) -> MirrorResult:
+        """Offer the written cells to each program that can show them live; the first that has the file takes them.
+
+        The program known to hold the file (from the last look at what is open) is asked first.
+        """
+        known = next((f.app for f in self._open_files if f.path and os.path.realpath(f.path) == os.path.realpath(path)), "")
+        order = [self.lo_mirror, self.mirror] if "libre" in known.lower() else [self.mirror, self.lo_mirror]
+        failure = MirrorResult(False, "nodoc")
+        for mirror in order:
+            result = mirror.push(path, changes)
+            if result.ok:
+                return result
+            if result.reason in ("denied", "error") or failure.reason == "nodoc":
+                failure = result
+        return failure
+
     def _show_in_viewer(self) -> None:
         """Quill just wrote to the file: show the same cells in the program that has it open, as they are written.
 
@@ -448,25 +473,31 @@ class QuillApp:
         Numbers failing to take them, falls back to asking the program to load the file again after a quiet moment.
         """
         bridge = self.controller.bridge
-        if not isinstance(bridge, XlsxBridge) or not getattr(bridge, "host_reload", True):
+        if not isinstance(bridge, XlsxBridge):
             return
-        changes = bridge.take_changes()
+        changes = bridge.take_changes()                              # (always taken: they are not kept once this turn is written)
+        if not getattr(bridge, "host_reload", True):
+            return
         if not changes:
             self._host_reload.start()
             return
         path = bridge.workbook_path
 
         def show() -> MirrorResult:
-            return self.mirror.push(path, changes)
+            return self._mirror_everywhere(path, changes)
 
         def shown(result: object) -> None:
             if isinstance(result, MirrorResult) and result.ok:
-                return                                              # Numbers has them: nothing to reload
+                if self.lo_mirror.installed_note and not self._lo_noted:
+                    self._lo_noted = True
+                    self.window.append_log("Quill added a small script to LibreOffice (quill_mirror.py in its user scripts folder) so "
+                                           "rows can appear there as they are written. It is safe to delete.")
+                return                                              # the program has them: nothing to reload
             if isinstance(result, MirrorResult) and result.reason == "denied" and not self._mirror_warned:
                 self._mirror_warned = True
                 self.window.append_log("Numbers did not let Quill show rows as they are written. Allow it in System Settings > "
                                        "Privacy & Security > Automation (Quill > Numbers).", "warning")
-            self._host_reload.start()                               # not in Numbers (or it said no): the older way
+            self._host_reload.start()                               # not in a program that takes live rows (or it said no): the older way
 
         self.run_in_background(show, shown)
 
@@ -600,6 +631,59 @@ class QuillApp:
         if quality == "best":
             return self._whisper_finder() is not None and self._whisper_engine()
         return self._model_finder(str(self.settings.preferences["model_path"])) is not None
+
+    def _model_folder(self, quality: str):
+        """Where the model for *quality* is installed (None if it is not)."""
+        if quality == "better":
+            return self._better_finder()
+        if quality == "best":
+            return self._whisper_finder()
+        return self._model_finder(str(self.settings.preferences["model_path"]))
+
+    def quality_removable(self, quality: str) -> bool:
+        """Whether Settings may offer to uninstall *quality*: it was downloaded (a bundled model stays), and taking it
+        away must leave something to listen with (Best builds on Standard, so Standard stays while Best is installed)."""
+        folder = self._model_folder(quality)
+        if folder is None:
+            return False
+        try:
+            root = _user_model_dir().resolve()
+            if root not in pathlib.Path(folder).resolve().parents:
+                return False
+        except OSError:
+            return False
+        if quality == "standard":
+            return self.quality_installed("better") and not self.quality_installed("best")
+        return True
+
+    def uninstall_model(self, quality: str) -> None:
+        """Delete the downloaded model for *quality*, and move to the next best one if it was in use."""
+        if not self.quality_removable(quality):
+            return
+        try:
+            freed = self._model_remover(self._model_folder(quality))
+        except (OSError, ValueError) as exc:
+            self.window.append_log(f"Could not remove the {QUALITY_LABELS[quality]} speech model: {exc}", "error")
+            return
+        self.window.append_log(f"{QUALITY_LABELS[quality]} speech model removed ({freed // (1024 * 1024)} MB freed)")
+        if str(self.settings.preferences["speech_quality"]) == quality:
+            self.settings.preferences["speech_quality"] = fallback_choice(quality, self.quality_installed)
+            self.settings.save()
+            self.window.append_log(f"Now using the {QUALITY_LABELS[self.settings.preferences['speech_quality']]} speech model")
+            self._reload_listener()
+        self._show_model_state()
+
+    def _use_best_installed(self) -> None:
+        """Once, on the first start with this feature, choose the best model already installed."""
+        prefs = self.settings.preferences
+        if prefs["model_migrated"]:
+            return
+        prefs["model_migrated"] = True
+        for quality in ("best", "better"):
+            if self.quality_installed(quality):
+                prefs["speech_quality"] = quality
+                break
+        self.settings.save()
 
     def _reload_listener(self) -> None:
         """Listen with the model now chosen: close the microphone and the old listener, then start the new one."""
@@ -813,6 +897,7 @@ class QuillApp:
         panel = self.window.panel
         panel.open_file_requested.connect(self.choose_spreadsheet_file)
         panel.file_chosen.connect(self._panel_pick)
+        panel.refresh_requested.connect(self.refresh_open_files)
         panel.mode_changed.connect(self.controller.set_turn_mode)
         panel.layout_changed.connect(self.controller.set_vertical)
         panel.new_row_requested.connect(self.controller.start_new_row)
@@ -950,7 +1035,7 @@ class QuillApp:
         name = self.controller.bridge.workbook_name
 
         def launch() -> bool:
-            return self.hosts.launch(path)
+            return self.hosts.launch(path, str(self.settings.preferences["open_with"]))
 
         def launched(ok: object) -> None:
             if ok:
@@ -1031,7 +1116,7 @@ class QuillApp:
             if found and any(f.path and os.path.realpath(f.path) == wanted for f in found):
                 self._attach_live_if_open_in_excel()
                 return
-            if found is not None and self.hosts.launch(path):
+            if found is not None and self.hosts.launch(path, str(self.settings.preferences["open_with"])):
                 for delay in (400, 1500):                          # a program that starts slowly may still take the focus
                     QTimer.singleShot(delay, lambda: bring_app_forward(self.window.widget))
                 for delay in (2500, 6000, 12000):                  # then notice if Excel is the one that opened it
@@ -1075,7 +1160,8 @@ class QuillApp:
         self._settings_dialog = SettingsDialog(
             self.settings, self.window.widget, on_preview=self.preview_feedback,
             on_change=lambda: self.apply_settings(quiet=True),
-            on_download_model=self.download_model, model_installed=self.quality_installed)
+            on_download_model=self.download_model, model_installed=self.quality_installed,
+            on_uninstall_model=self.uninstall_model, model_removable=self.quality_removable)
         self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
         if page:
@@ -1566,8 +1652,11 @@ class QuillApp:
         self._model_note = ""
         self._show_model_state()
         self.window.append_log(f"{QUALITY_LABELS[self._downloading]} speech model installed")
-        if self.listener is None or self._downloading == str(self.settings.preferences["speech_quality"]):
-            self._reload_listener()                           # listen with what was just downloaded (if it is the one chosen)
+        if self._downloading != str(self.settings.preferences["speech_quality"]):
+            self.settings.preferences["speech_quality"] = self._downloading        # the model just installed is the one wanted
+            self.settings.save()
+            self._show_model_state()
+        self._reload_listener()                               # listen with what was just downloaded
 
     def model_installed(self) -> bool:
         """Whether a speech model can be found (for the Settings page)."""

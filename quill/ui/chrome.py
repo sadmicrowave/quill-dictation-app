@@ -94,6 +94,9 @@ def no_window_shadow(widget, platform: str | None = None) -> bool:
 
 
 _TITLE_ID = "quillWindowTitle"
+_RULE_ID = "quillBarRule"
+#: The size (pt) of the window title and of the side panel's title in the title bar. Fixed: no setting changes it.
+TITLE_POINTS = 14
 
 
 class _TitleFilter(QObject):
@@ -185,16 +188,40 @@ def plain_title(widget) -> bool:
         if label is None:
             label = AppKit.NSTextField.labelWithString_(widget.windowTitle())
             label.setIdentifier_(_TITLE_ID)
-            label.setFont_(AppKit.NSFont.systemFontOfSize_weight_(13, 0.0))
+            label.setFont_(AppKit.NSFont.systemFontOfSize_weight_(TITLE_POINTS, 0.0))
             label.setTextColor_(AppKit.NSColor.labelColor())            # full strength, not the muted grey
             label.setAutoresizingMask_(13)                           # centred sideways, fixed distance from the top
             bar.addSubview_(label)
             window.setTitleVisibility_(1)                            # hide the bold system title
             widget.windowTitleChanged.connect(lambda text, v=label, c=close: _retitle(v, c, text, getattr(widget, "_quill_title_inset", 0.0)))
         _retitle(label, close, widget.windowTitle(), getattr(widget, "_quill_title_inset", 0.0))
+        title_bar_rule(AppKit, bar)
         return True
     except Exception:
         return False
+
+
+def muted_line_color(appkit, bar):
+    """The colour of the title bar's thin lines: the text colour at a low strength, for the bar's light or dark look."""
+    dark = "Dark" in str(bar.effectiveAppearance().name())
+    return appkit.NSColor.colorWithWhite_alpha_(1.0 if dark else 0.0, 0.14)
+
+
+def title_bar_rule(appkit, bar) -> None:
+    """One muted line along the bottom of the title bar, across its whole width (so across the side panel's part too).
+
+    Added to (or found in) *bar*, the title bar's view, and redrawn in the bar's current light or dark look.
+    """
+    size = bar.bounds().size
+    rule = next((v for v in bar.subviews() if v.identifier() == _RULE_ID), None)
+    if rule is None:
+        rule = appkit.NSView.alloc().initWithFrame_(((0, 0), (size.width, 1)))
+        rule.setIdentifier_(_RULE_ID)
+        rule.setWantsLayer_(True)
+        rule.setAutoresizingMask_(_NS_VIEW_WIDTH)            # follows the window's width
+        bar.addSubview_(rule)
+    rule.setFrame_(((0, 0), (size.width, 1)))
+    rule.layer().setBackgroundColor_(muted_line_color(appkit, bar).CGColor())
 
 
 def _retitle(label, close, text: str, inset: float = 0.0) -> None:
@@ -691,8 +718,9 @@ _ICON_WIDTH, _ICON_HEIGHT, _ICON_GAP = 36, 30, 2
 SYMBOL_POINTS = 16
 #: Size (pt) of the folder's own picture.
 FOLDER_POINTS = 19
-#: How far (pt) the right-hand icons are moved right, so their last glyph lines up with the Start button's right edge.
-_RIGHT_NUDGE = 1
+#: The room (pt) between the right-hand icons' last hover box and what is to its right: the window's edge, or the side
+#: panel's line while the panel is open.
+_RIGHT_MARGIN = 8
 #: How far (pt) the left-hand icons are moved right, clear of the larger window buttons.
 _LEFT_NUDGE = 8
 
@@ -772,31 +800,26 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
                 extra_button.setToolTip_(label)
             extras.append((extra_button, extra_target))
         controller = appkit.NSTitlebarAccessoryViewController.alloc().init()
-        if extras:                                    # extra icons first (left), the resize icon last (right)
-            views = [e[0] for e in extras] + [button]
-            x = 0.0                                   # every icon gets the same 36 x 30 box (a stack view would shrink each to its picture)
-            for view in views:
-                view.setFrame_(((x, 0), (_ICON_WIDTH, _ICON_HEIGHT)))
-                x += _ICON_WIDTH + _ICON_GAP
-            width = x - _ICON_GAP
-            row = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, _ICON_HEIGHT)))
-            for view in views:
-                row.addSubview_(view)
-            row_x = _RIGHT_NUDGE if side != "left" else _LEFT_NUDGE
-            if side == "left":
-                width += row_x                                  # (room for the row's offset, so it is not clipped)
-            holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, _ICON_HEIGHT)))
-            row.setFrameOrigin_((row_x, 0))
-            holder.addSubview_(row)
-            controller.setView_(holder)
-        else:
-            controller.setView_(button)
+        views = [e[0] for e in extras] + [button]     # extra icons first (left), the main icon last (right)
+        x = 0.0                                       # every icon gets the same 36 x 30 box (a stack view would shrink each to its picture)
+        for view in views:
+            view.setFrame_(((x, 0), (_ICON_WIDTH, _ICON_HEIGHT)))
+            x += _ICON_WIDTH + _ICON_GAP
+        width = x - _ICON_GAP
+        row = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, _ICON_HEIGHT)))
+        for view in views:
+            row.addSubview_(view)
+        row_x = _LEFT_NUDGE if side == "left" else 0.0
+        width += row_x if side == "left" else _RIGHT_MARGIN       # (room for the row's offset, or the margin on its right)
+        holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, _ICON_HEIGHT)))
+        row.setFrameOrigin_((row_x, 0))
+        holder.addSubview_(row)
+        controller.setView_(holder)
         controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)
         window.addTitlebarAccessoryViewController_(controller)
         panel = _PanelChrome(appkit, window, on_panel_close, make_button) if side == "right" and appkit_real else None
         reference = window.standardWindowButton_(0) if appkit_real else None
-        result = TitlebarButton(button, controller, target, appkit, extras, holder if extras else None,
-                                row if extras else None, row_x if extras else 0.0, width if extras else 0, panel, reference, window)
+        result = TitlebarButton(button, controller, target, appkit, extras, holder, row, row_x, width, panel, reference, window)
         if not symbol:
             result.set_mini(mini)
         if reference is not None:
@@ -828,7 +851,7 @@ class _PanelChrome:
         self.line.setIdentifier_(_DIVIDER_ID)
         self.line.setWantsLayer_(True)
         self.title = appkit.NSTextField.labelWithString_("")
-        self.title.setFont_(appkit.NSFont.systemFontOfSize_weight_(13, 0.0))      # regular, not bold
+        self.title.setFont_(appkit.NSFont.systemFontOfSize_weight_(TITLE_POINTS, 0.0))      # regular, not bold
         self.title.setTextColor_(appkit.NSColor.labelColor())
         self.close, self._target = make_button(on_close or (lambda: None), _ICON_WIDTH)
         image = _symbol(appkit, "xmark", "Close")
@@ -868,9 +891,7 @@ class _PanelChrome:
         ref = self._reference()
         bar = ref.superview()
         width, height = bar.bounds().size.width, bar.bounds().size.height
-        dark = "Dark" in str(bar.effectiveAppearance().name())
-        shade = self._appkit.NSColor.colorWithWhite_alpha_(1.0 if dark else 0.0, 0.14)
-        self.line.layer().setBackgroundColor_(shade.CGColor())
+        self.line.layer().setBackgroundColor_(muted_line_color(self._appkit, bar).CGColor())
         self.line.setFrame_(((width - points, 0), (1, height)))
         middle = ref.frame().origin.y + ref.frame().size.height / 2
         size = self.title.frame().size

@@ -144,8 +144,9 @@ def cell_text(value: object) -> str:
     return str(value).strip()
 
 
-#: Most written cells remembered for a viewer program before the oldest are dropped.
-MAX_CHANGES = 5000
+#: Most written cells remembered for a viewer program between one push and the next (a turn writes a handful). Past it
+#: the list is dropped and the viewer is asked to reload the file instead (see :meth:`OpenpyxlGrid.take_changes`).
+MAX_CHANGES = 500
 
 
 class OpenpyxlGrid(Grid):
@@ -154,6 +155,7 @@ class OpenpyxlGrid(Grid):
     def __init__(self, wb) -> None:
         self._wb = wb
         self.changes: list[tuple[str, int, int, object]] = []      # cells written, in sheet coordinates, until taken
+        self.changes_lost = False                   # too many were waiting: the list was dropped, a viewer must reload
         self._hidden: dict[str, set[int]] = {}      # rows we hid, per sheet
         self._cursor: dict[str, tuple[int, int]] = {}
 
@@ -189,9 +191,11 @@ class OpenpyxlGrid(Grid):
     def write(self, sheet: str, row: int, col: int, value: object) -> None:
         cell = self._ws(sheet).cell(row=row, column=col)
         cell.value = value
-        self.changes.append((sheet, row, col, value))          # (so a viewer program can be shown the same cells)
-        if len(self.changes) > MAX_CHANGES:                    # nobody is taking them (no viewer): keep only the newest
-            del self.changes[:MAX_CHANGES // 4]
+        if not self.changes_lost:
+            self.changes.append((sheet, row, col, value))      # (so a viewer program can be shown the same cells)
+            if len(self.changes) > MAX_CHANGES:                # nobody is taking them: do not keep them, say so instead
+                self.changes.clear()
+                self.changes_lost = True
         if isinstance(value, str) and "\n" in value:          # several values in one cell: one per line
             from copy import copy
             alignment = copy(cell.alignment)

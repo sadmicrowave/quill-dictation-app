@@ -350,6 +350,7 @@ class SidePanel(QFrame):
     """The panel itself (see the module notes). It starts closed: zero width and hidden."""
 
     open_file_requested = Signal()
+    refresh_requested = Signal()                # the refresh icon beside Available Files
     file_chosen = Signal(object)                # the data of the picked list entry
     mode_changed = Signal(str)                  # NEXT_ROW or APPEND_TO
     layout_changed = Signal(bool)               # True: headings run down the first column
@@ -497,7 +498,14 @@ class SidePanel(QFrame):
         layout.addSpacing(4)
         layout.addWidget(_rule())
         layout.addSpacing(4)
-        layout.addWidget(_heading("Available Files"))
+        heading_line = QHBoxLayout()
+        heading_line.setContentsMargins(0, 0, 0, 0)
+        heading_line.addWidget(_heading("Available Files"), 1)
+        self.refresh_button = self._chrome_button("Look for open spreadsheets now (the list also refreshes every 30 seconds)",
+                                                  "Refresh the List")
+        self.refresh_button.clicked.connect(self.refresh_requested)
+        heading_line.addWidget(self.refresh_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(heading_line)
         layout.addWidget(_note("Spreadsheet files currently open on your computer."))
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
@@ -583,6 +591,7 @@ class SidePanel(QFrame):
         self._colors = (text, accent)
         self.close_button.setIcon(make_icon("close", text, 16))
         self.settings_button.setIcon(make_icon("gear", text, 16))
+        self.refresh_button.setIcon(make_icon("refresh", text, 16))
         if not self.search.actions():
             self.search.addAction(make_icon("search", text, 15), QLineEdit.ActionPosition.LeadingPosition)
         else:

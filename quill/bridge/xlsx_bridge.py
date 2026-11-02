@@ -85,10 +85,13 @@ class XlsxBridge(GridBridge):
         self.connect()
 
     def take_changes(self) -> list[tuple[str, int, int, object]]:
+        """The cells written since the last call, which are then forgotten (empty if too many had piled up: reload instead)."""
         grid = self._grid
-        taken = list(getattr(grid, "changes", []))
-        if grid is not None and hasattr(grid, "changes"):
-            grid.changes.clear()
+        if grid is None or not hasattr(grid, "changes"):
+            return []
+        taken = [] if getattr(grid, "changes_lost", False) else list(grid.changes)
+        grid.changes.clear()
+        grid.changes_lost = False
         return taken
 
     @property

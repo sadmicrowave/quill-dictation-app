@@ -50,6 +50,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "model_path": "",         # Vosk model folder; empty = search the usual places
     "last_workbook": "",      # re-selected on launch when still open
     "workbook_file": "",      # an .xlsx opened with Open File (no Excel needed); "" = live Excel
+    "open_with": "auto",      # the program a chosen file is opened in: "auto" (the system's), "numbers", "libreoffice", "excel"
     "spreadsheet_app": "auto",  # "auto" finds Excel, Numbers, LibreOffice ... by itself; reserved for a picker
     "prompt_timeout_s": 20,   # seconds to wait for a yes/no answer
     "auto_voice_sort": False,  # start voice sorting as soon as terms need sorting
@@ -60,6 +61,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "accent": "violet",   # one of ACCENTS (ui/theme.py)
     "spacing": "compact",     # "compact" | "comfortable"
     "font_size": 14,          # base text size in points (14 since preferences version 2; 12 before)
+    "model_migrated": False,   # the speech model was once switched to the best one installed
     "prefs_version": 2,       # raised when a default changes that saved settings should follow
     "log_collapsed": True,    # the main window's log starts hidden (a click on "Log" opens it)
     "hide_dock_icon": False,  # macOS: keep Quill out of the Dock (it stays in the menu bar)
@@ -214,6 +216,8 @@ class Settings:
                     if action in NEW_ACTIONS and phrase not in settings.keywords:
                         settings.keywords[phrase] = action
         prefs = data.get("preferences")
+        if not isinstance(prefs, dict):
+            settings.preferences["model_migrated"] = True          # a new user has nothing to move to a better model
         if isinstance(prefs, dict):
             for key, default in DEFAULT_PREFERENCES.items():
                 value = prefs.get(key)
@@ -232,7 +236,7 @@ class Settings:
                     settings.aliases[column] = {
                         str(k).lower(): str(v) for k, v in mapping.items() if isinstance(v, str)
                     }
-        for key, allowed in (("feedback", MODES), ("turn_mode", ("next_row", "append")), ("speech_quality", ("standard", "better", "best")), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS),
+        for key, allowed in (("feedback", MODES), ("open_with", ("auto", "numbers", "libreoffice", "excel")), ("turn_mode", ("next_row", "append")), ("speech_quality", ("standard", "better", "best")), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS),
                              ("accent", ACCENTS), ("spacing", SPACINGS)):
             if settings.preferences[key] not in allowed:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]

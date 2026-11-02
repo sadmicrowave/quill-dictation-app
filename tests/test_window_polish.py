@@ -115,7 +115,7 @@ class TestConnectionChip(unittest.TestCase):
     def test_chip_style_is_a_pill_in_the_theme_colour_in_both_themes(self):
         for dark in (False, True):
             sheet = theme.stylesheet_for(dark)
-            start = sheet.index('QLabel[chip="warn"] {')
+            start = sheet.index('QLabel[chip="warn"]')
             rule = sheet[start: sheet.index("}", start)]
             accent = theme.colors_for(dark, "violet")["accent"]                  # the theme's accent, not an amber warning colour
             self.assertIn(theme.rgba(accent, 0.6), rule)
@@ -206,11 +206,14 @@ class TestTitlebarSettings(unittest.TestCase):
         self.assertEqual(kit.window.accessories[0].layout, 2)             # right side of the title bar
         self.assertIs(button._button, resize)                             # the resize icon stays the one that swaps
 
-    def test_without_extras_there_is_no_stack(self):
+    def test_a_lone_icon_sits_in_a_holder_with_a_margin_on_its_right_like_every_other_group(self):
         native()
         kit = FakeAppKit()
-        chrome.add_titlebar_button(_fake_widget(), lambda: None, platform="darwin", appkit=kit)
-        self.assertIsInstance(kit.window.accessories[0].view, FakeButton)
+        button = chrome.add_titlebar_button(_fake_widget(), lambda: None, platform="darwin", appkit=kit)
+        holder = kit.window.accessories[0].view
+        self.assertNotIsInstance(holder, FakeButton)
+        self.assertEqual(button._base_width, chrome._ICON_WIDTH + chrome._RIGHT_MARGIN)
+        self.assertEqual(button._row_x, 0.0)
 
     def test_the_settings_icon_is_a_known_symbol(self):
         self.assertEqual(chrome.SYMBOL_SETTINGS, "slider.horizontal.3")

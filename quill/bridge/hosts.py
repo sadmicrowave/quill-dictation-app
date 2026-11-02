@@ -163,8 +163,12 @@ class SpreadsheetHosts:
                     found.append(OpenFile(path.name, str(path), app.name))
         return found
 
-    def launch(self, path: str | pathlib.Path) -> bool:
-        """Open *path* in the system's program for it, without bringing that program to the front (macOS) .
+    #: The programs a user may choose to open files with (setting ``open_with``) and their names on a Mac.
+    OPEN_WITH = {"numbers": "Numbers", "libreoffice": "LibreOffice", "excel": "Microsoft Excel"}
+
+    def launch(self, path: str | pathlib.Path, program: str = "auto") -> bool:
+        """Open *path* in a program, without bringing that program to the front (macOS): the system's program for the
+        file, or the one the user chose (``numbers``, ``libreoffice``, ``excel``).
 
         Returns:
             True if the request was made.
@@ -173,7 +177,9 @@ class SpreadsheetHosts:
             return False
         try:
             if self._platform == "darwin":
-                return subprocess.run(["open", "-g", str(path)], capture_output=True, timeout=COMMAND_TIMEOUT_S,   # noqa: S603, S607
+                chosen = self.OPEN_WITH.get(program)
+                command = ["open", "-g", *(["-a", chosen] if chosen else []), str(path)]
+                return subprocess.run(command, capture_output=True, timeout=COMMAND_TIMEOUT_S,                # noqa: S603
                                       check=False).returncode == 0
             if self._platform == "win32":
                 os.startfile(str(path))                       # type: ignore[attr-defined]  # noqa: S606

@@ -160,8 +160,8 @@ class TestTitlebarButton(unittest.TestCase):
         self.assertIsNotNone(button)
         controller = kit.window.accessories[0]
         self.assertEqual(controller.layout, 2)                         # NSLayoutAttributeRight
-        self.assertFalse(controller.view.bordered)                     # just the icon, no box
-        self.assertEqual(controller.view.action, "toggle:")
+        self.assertFalse(button._button.bordered)                      # just the icon, no box
+        self.assertEqual(button._button.action, "toggle:")
 
     def test_clicking_it_calls_back(self):
         native()

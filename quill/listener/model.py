@@ -132,6 +132,35 @@ def user_model_dir() -> pathlib.Path:
         return pathlib.Path.home() / ".quill" / "model"
 
 
+#: Which model takes over when one is removed, best first (the first of them that is installed).
+FALLBACKS = {"best": ("better", "standard"), "better": ("best", "standard"), "standard": ("better",)}
+
+
+def fallback_choice(removed: str, installed) -> str:
+    """The model to use once *removed* is gone: the first of its fallbacks that ``installed(key)`` says is on this computer
+    ("standard" when none is: it ships with Quill)."""
+    return next((key for key in FALLBACKS.get(removed, ()) if installed(key)), "standard")
+
+
+def remove_model(folder: pathlib.Path, allowed_root: pathlib.Path | None = None) -> int:
+    """Delete a downloaded model's *folder* and return the bytes freed.
+
+    Only a folder inside the user's own model folder is ever deleted (never a bundled model, never the folder itself).
+
+    Raises:
+        ValueError: *folder* is outside the allowed root.
+        OSError: it could not be deleted.
+    """
+    import shutil
+    root = (allowed_root or user_model_dir()).resolve()
+    target = pathlib.Path(folder).resolve()
+    if target == root or root not in target.parents:
+        raise ValueError(f"{folder} is not inside {root}")
+    size = sum(f.stat().st_size for f in target.rglob("*") if f.is_file())
+    shutil.rmtree(target)
+    return size
+
+
 def find_spec_model(spec: ModelSpec, search_dirs: list[pathlib.Path] | None = None) -> pathlib.Path | None:
     """The unpacked folder of *spec*'s model, if it is installed in one of the search folders."""
     for base in search_dirs if search_dirs is not None else default_search_dirs():

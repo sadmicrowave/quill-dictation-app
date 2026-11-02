@@ -8,7 +8,7 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 |---|---|---|
 | **Excel** (Mac, Windows) | Live: rows appear as you speak | Nothing |
 | **Numbers** | Works on the Excel file (`.xlsx`) open in Numbers **and shows every row in Numbers as it is written** (no reload) | Open an `.xlsx` (for a `.numbers` sheet: **File > Export To > Excel** once). The first time, allow Quill to control Numbers |
-| **LibreOffice Calc** | Works on the open `.xlsx` file | **File > Reload** now and then |
+| **LibreOffice Calc** | Works on the open `.xlsx` file **and shows every row in LibreOffice as it is written** (no reload) | Open an `.xlsx`. Quill adds a small script (`quill_mirror.py`) to LibreOffice's user scripts folder the first time; it is safe to delete |
 | **Others, Google Drive copies** | Works on the `.xlsx` file | Reopen the file to see new rows |
 
 > 💡 Quill looks for an open sheet every few seconds. Open one at any time and Quill finds it.
@@ -31,6 +31,10 @@ A file you pick this way that no program has open yet is **started in its own pr
 
 Press the **gear** at the right of **Active File** for the **file settings** (an overlay): **Headings Row** (**Automatic** finds the headings), **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), and **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
 
+### Rows appearing live in LibreOffice
+
+It works the same way in **LibreOffice Calc**, through a small script Quill puts in LibreOffice's own user scripts folder (and says so in the log once). Quill never starts LibreOffice for this and never keeps the cells: they are handed over and forgotten. If LibreOffice cannot take them, Quill asks it to load the file again after a quiet moment.
+
 ### Rows appearing live in Numbers
 
 While an `.xlsx` is open in **Numbers**, each cell Quill writes to the file is also set in the open Numbers document the moment the turn ends, so you watch the rows arrive and confirm them. Nothing is reloaded, so Numbers does not show its "may look different" warning again. The first time, macOS asks whether Quill may control Numbers: allow it (later: System Settings > Privacy & Security > Automation). Numbers keeps its own copy, so once you have edited, it calls the document *name.numbers*; Quill finds it either way. If Numbers cannot take the rows, Quill falls back to asking it to load the file again after a quiet moment.
@@ -41,7 +45,7 @@ If Excel has the file you chose, Quill works through Excel itself (no file to fi
 
 ### Spreadsheets that are already open
 
-Under a muted line, the **Available Files** section lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. Type in the **Search** box to narrow the list. With nothing open it says *No open spreadsheet files detected.* The list refreshes by itself while the panel is open. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
+Under a muted line, the **Available Files** section lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. Type in the **Search** box to narrow the list. With nothing open it says *No open spreadsheet files detected.* The list refreshes by itself every 30 seconds while the panel is open, and the **refresh** icon beside the heading looks again at once. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
 
 **File > Use the Open Workbook** goes back to the workbook open in your spreadsheet program.
 

@@ -174,7 +174,17 @@ class TestWrittenCellsAreRemembered(unittest.TestCase):
         for i in range(MAX_CHANGES + 100):
             grid.write(wb.active.title, 1, 1, i)
         self.assertLessEqual(len(grid.changes), MAX_CHANGES)
-        self.assertEqual(grid.changes[-1][3], MAX_CHANGES + 99)                    # the newest are kept
+        self.assertTrue(grid.changes_lost)                                          # (and a viewer is told to reload, not shown half)
+
+    def test_a_pile_that_was_dropped_is_taken_as_nothing_so_the_viewer_reloads(self):
+        bridge = XlsxBridge(make_workbook(pathlib.Path(tempfile.mkdtemp()) / "p.xlsx"))
+        bridge.connect()
+        for i in range(MAX_CHANGES + 5):
+            bridge._grid.write("Inventory", 1, 1, i)
+        self.assertEqual(bridge.take_changes(), [])
+        bridge._grid.write("Inventory", 2, 1, "x")                                 # recording starts again
+        self.assertEqual(bridge.take_changes(), [("Inventory", 2, 1, "x")])
+        self.assertEqual(bridge.take_changes(), [])                                # and what was taken is forgotten
 
     def test_a_bridge_that_does_not_edit_a_file_has_none(self):
         from quill.bridge.base import WorkbookBridge
@@ -183,7 +193,7 @@ class TestWrittenCellsAreRemembered(unittest.TestCase):
 
 class FakeMirror:
     def __init__(self, result=MirrorResult(True, "ok")):
-        self.result, self.pushed = result, []
+        self.result, self.pushed, self.installed_note = result, [], False
 
     def push(self, path, changes):
         self.pushed.append((path, list(changes)))
@@ -266,6 +276,49 @@ class TestAppShowsRowsInNumbers(AppWithMirror):
         self.assertEqual(self.mirror.pushed, [])
 
 
+class TestAppAlsoShowsRowsInLibreOffice(AppWithMirror):
+    def make(self, mirror=None, lo=None):
+        self.lo = lo or FakeMirror()
+        os.environ["QUILL_NO_HOSTS"] = "1"
+        self.app = QuillApp(_app, Settings.load(self.dir / "cfg"), XlsxBridge(self.plants),
+                            listener_factory=lambda *a: FakeListener(*a), model_finder=lambda c: self.dir,
+                            speaker=FakeSpeaker(), sound_player=lambda p: None, live_bridge_factory=lambda: DeadExcel(),
+                            hosts=FakeHosts(), mirror=mirror or self.mirror, lo_mirror=self.lo)
+        self.app.run_in_background = lambda work, done: done(work())
+        self.app.start()
+        self.app.controller.handle_transcript("start listening")
+
+    def test_the_other_program_gets_the_cells_when_numbers_does_not_have_the_file(self):
+        self.make(FakeMirror(MirrorResult(False, "nodoc")), FakeMirror())
+        self.turn()
+        self.assertEqual(self.lo.pushed[-1][1], [("Inventory", 4, 1, "Fern"), ("Inventory", 4, 2, "Small")])
+        self.assertFalse(self.app._host_reload.isActive())                      # LibreOffice has them: no reload
+
+    def test_numbers_having_them_means_libreoffice_is_not_asked(self):
+        self.turn()
+        self.assertEqual(self.lo.pushed, [])
+
+    def test_the_program_known_to_hold_the_file_is_asked_first(self):
+        from quill.bridge.hosts import OpenFile
+        self.app._open_files = [OpenFile("plants.xlsx", str(self.plants.resolve()), "LibreOffice")]
+        self.turn()
+        self.assertTrue(self.lo.pushed)
+        self.assertEqual(self.mirror.pushed, [])
+
+    def test_when_neither_has_it_the_old_reload_still_happens(self):
+        self.make(FakeMirror(MirrorResult(False, "nodoc")), FakeMirror(MirrorResult(False, "notrunning")))
+        self.turn()
+        self.assertTrue(self.app._host_reload.isActive())
+
+    def test_the_added_script_is_announced_once(self):
+        self.lo.installed_note = True
+        self.make(FakeMirror(MirrorResult(False, "nodoc")), self.lo)
+        self.lo.installed_note = True
+        self.turn()
+        self.turn("cactus")
+        self.assertEqual(self.app.window.log.toPlainText().count("small script to LibreOffice"), 1)
+
+
 @unittest.skipUnless(sys.platform == "darwin" and os.environ.get("QUILL_NUMBERS_LIVE") == "1",
                      "needs Numbers on this Mac: QUILL_NUMBERS_LIVE=1 with plants.xlsx open in it")
 class TestRealNumbers(Env):
@@ -279,3 +332,33 @@ class TestRealNumbers(Env):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHeardTermsDoNotOutliveTheirWorkbook(unittest.TestCase):
+    def test_switching_workbook_forgets_what_was_waiting_but_reconnecting_the_same_one_does_not(self):
+        from quill.controller import Controller
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        first, second = make_workbook(tmp / "a.xlsx"), make_workbook(tmp / "b.xlsx")
+        bridge = XlsxBridge(first)
+        controller = Controller(bridge, Settings.load(tmp / "cfg"), FakeSpeaker())
+        controller.connect()
+        controller.session.pending = [("Color", "teal")]
+        controller.session.pool[("Color", "teal")] = 1
+        controller.session.alias_hints[("Color", "teal")] = "T"
+        controller.session.origins[("Color", "teal")] = ("Inventory", 4)
+        controller.connect()                                          # the same file again (a refresh)
+        self.assertEqual(controller.session.pending, [("Color", "teal")])
+        controller.connect(str(second))
+        self.assertIsNone(controller.session.pending)
+        self.assertFalse(controller.session.pool or controller.session.alias_hints or controller.session.origins)
+
+    def test_hints_are_bounded(self):
+        from quill.session import Session
+        from quill.parser.commands import CommandMatcher
+        from quill.parser.vocab import Vocabulary
+        session = Session(Vocabulary(), CommandMatcher({}))
+        session.pending = [("C", "x0")]
+        for i in range(session.MAX_HINTS + 50):
+            session.alias_hints[("C", f"x{i}")] = "X"
+        session._trim_hints()
+        self.assertEqual(set(session.alias_hints), {("C", "x0")})                 # only the one still waiting is kept

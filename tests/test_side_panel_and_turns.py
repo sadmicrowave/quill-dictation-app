@@ -293,8 +293,9 @@ class FakeHosts(SpreadsheetHosts):
     def open_files(self, excel_files=None):
         return list(self.files)
 
-    def launch(self, path):
+    def launch(self, path, program="auto"):
         self.launched.append(str(path))
+        self.launched_with = program
         return True
 
 
@@ -1187,6 +1188,22 @@ class TestLockedFilesInTheApp(PanelApp):
         use.assert_not_called()
 
 
+class TestAvailableFilesRefresh(PanelApp):
+    def test_the_list_polls_every_30_seconds_while_the_file_page_shows(self):
+        from quill.app import OPEN_FILES_EVERY_MS
+        self.assertEqual(OPEN_FILES_EVERY_MS, 30_000)
+        self.assertEqual(self.app._panel_timer.interval(), 30_000)
+
+    def test_the_refresh_icon_looks_again_at_once(self):
+        button = self.app.window.panel.refresh_button
+        self.assertFalse(button.icon().isNull())
+        self.assertIn("30 seconds", button.toolTip())
+        self.app._open_files_busy = False
+        with mock.patch.object(self.app, "run_in_background") as run:
+            button.click()
+        run.assert_called_once()                                  # a scan was started
+
+
 class TestMiniKeepsThePill(unittest.TestCase):
     def test_the_mini_start_button_still_shows_the_pill_with_its_words(self):
         w = MainWindow()
@@ -1657,7 +1674,7 @@ class TestNotConnectedPill(unittest.TestCase):
         for dark in (False, True):
             for accent in ("violet", "blue", "green"):
                 sheet = theme.stylesheet_for(dark, accent)
-                rule = sheet[sheet.index('QLabel[chip="warn"] {'): sheet.index("}", sheet.index('QLabel[chip="warn"] {'))]
+                rule = sheet[sheet.index('QLabel[chip="warn"]'): sheet.index("}", sheet.index('QLabel[chip="warn"]'))]
                 self.assertIn(theme.rgba(theme.colors_for(dark, accent)["accent"], 0.6), rule, (dark, accent))
 
 
@@ -2318,7 +2335,7 @@ class TestFileMustBeOpenToBeSeen(PanelApp):
         self.assertEqual(self.plants.read_bytes(), before)
 
     def test_a_failed_launch_says_so(self):
-        self.hosts.launch = lambda path: False
+        self.hosts.launch = lambda path, program="auto": False
         self.app.toggle_listening(True)
         self.assertIn("Could not open plants.xlsx in a spreadsheet program", self.app.window.log.toPlainText())
 
@@ -2517,39 +2534,82 @@ class TestSettingsRound5(unittest.TestCase):
         self.assertEqual([k for k, r in rows.items() if r.radio.isChecked()], ["better"])
         self.assertEqual(self.d.selected_quality, "better")
 
-    def test_the_name_is_bold_and_the_size_beside_it_is_not(self):
+    def test_the_name_is_bold_and_the_size_beside_it_is_italic_and_muted(self):
+        from quill.ui.theme import stylesheet_for
         for key, size in (("standard", "40 MB"), ("better", "130 MB"), ("best", "145 MB")):
-            title = self.d.model_rows[key].title_label.text()
-            name = key.title()
-            self.assertIn(f"<b>{name}</b>", title)
-            self.assertTrue(title.endswith(size), title)
-            self.assertNotIn(f"<b>{size}", title)
+            row = self.d.model_rows[key]
+            self.assertEqual(row.title_label.text(), key.title())
+            self.assertTrue(row.title_label.property("modelName"))
+            self.assertEqual(row.size_label.text(), size)
+            self.assertTrue(row.size_label.property("modelSize"))
+        sheet = stylesheet_for(False)
+        rule = sheet[sheet.index('QLabel[modelSize="true"]'): sheet.index("}", sheet.index('QLabel[modelSize="true"]'))]
+        self.assertIn("italic", rule)
+        self.assertIn("color", rule)
+        self.assertIn("700", sheet[sheet.index('QLabel[modelName="true"]'):][:80])
+
+    def test_each_model_says_what_it_costs_in_memory_and_time(self):
+        for key, words in (("standard", "165 MB"), ("better", "415 MB"), ("best", "700 MB")):
+            self.assertIn(words, self.d.model_rows[key].cost_label.text())
+        self.assertIn("second", self.d.model_rows["better"].cost_label.text())
+        self.assertIn("second", self.d.model_rows["best"].cost_label.text())
+
+    def test_the_pane_says_a_model_is_installed_once_and_no_button_repeats_it(self):
+        intro = self.d.pages.widget(self.d._page_index["Speech Model"]).findChildren(QLabel)
+        self.assertTrue(any("installed once" in label.text() for label in intro))
+        for row in self.d.model_rows.values():
+            for button in (row.download_button, row.uninstall_button):
+                self.assertNotIn("once", button.toolTip())
+        self.assertEqual(self.d.model_rows["better"].download_button.text(), "Install")
+
+    def test_uninstall_only_shows_for_an_installed_model_that_may_be_removed(self):
+        removable = {"standard": False, "better": True, "best": True}
+        from quill.ui.settings_dialog import SettingsDialog
+        self.installed.update(better=True, best=False)
+        d = SettingsDialog(Settings.defaults(), model_installed=lambda q: self.installed[q], model_removable=lambda q: removable[q])
+        d.build()
+        rows = d.model_rows
+        self.assertTrue(rows["standard"].uninstall_button.isHidden())      # installed but bundled
+        self.assertFalse(rows["better"].uninstall_button.isHidden())
+        self.assertTrue(rows["best"].uninstall_button.isHidden())          # not installed
+        tip = rows["better"].uninstall_button.toolTip()
+        self.assertIn("Removes the Better model", tip)
+        self.assertIn("Standard", tip)                                     # what takes over
+        self.assertNotIn("once", tip)
+
+    def test_uninstall_asks_the_application(self):
+        asked = []
+        from quill.ui.settings_dialog import SettingsDialog
+        d = SettingsDialog(Settings.defaults(), model_installed=lambda q: True, model_removable=lambda q: True,
+                           on_uninstall_model=asked.append)
+        d.build()
+        d.model_rows["best"].uninstall_button.click()
+        self.assertEqual(asked, ["best"])
 
     def test_the_descriptions_say_how_each_model_improves_the_quality(self):
         text = {k: r.description_label.text().lower() for k, r in self.d.model_rows.items()}
         self.assertIn("unusual words", text["better"])
         self.assertIn("vocabulary", text["better"])
         self.assertIn("second listen", text["best"])
-        self.assertIn("whisper", text["best"])
+        self.assertIn("re-read", text["best"])
         self.assertIn("mishear", text["standard"])
         for words in text.values():
             self.assertNotIn("not installed", words)
             self.assertNotIn("installed.", words)
 
-    def test_an_installed_model_wears_a_no_fill_accent_pill_and_the_others_have_a_download_button(self):
+    def test_an_installed_model_wears_the_same_pill_as_file_not_connected_and_the_others_have_an_install_button(self):
         standard, better = self.d.model_rows["standard"], self.d.model_rows["better"]
         self.assertFalse(standard.installed_pill.isHidden())
         self.assertEqual(standard.installed_pill.text(), "Installed")
+        self.assertEqual(standard.installed_pill.property("chip"), "status")
         self.assertTrue(standard.download_button.isHidden())
         self.assertTrue(better.installed_pill.isHidden())
         self.assertFalse(better.download_button.isHidden())
-        from quill.ui.theme import colors_for, stylesheet_for
+        self.assertEqual(better.download_button.text(), "Install")
+        from quill.ui.theme import stylesheet_for
         for dark in (False, True):
             sheet = stylesheet_for(dark)
-            rule = sheet[sheet.index('QLabel[installedPill="true"]'): sheet.index("}", sheet.index('QLabel[installedPill="true"]'))]
-            self.assertIn("rgba(", rule)                                          # (no visible fill: a 0.5 % tint, so the corners round)
-            self.assertIn(", 1)", rule)
-            self.assertIn(colors_for(dark, "violet")["accent"], rule)
+            self.assertIn('QLabel[chip="warn"], QLabel[chip="status"]', sheet)    # one rule draws both pills
 
     def test_installing_a_model_swaps_its_button_for_the_pill(self):
         self.installed["better"] = True
@@ -2674,3 +2734,26 @@ class TestStyleGuideIsWrittenDown(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOpenFilesWithSetting(unittest.TestCase):
+    def setUp(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        self.settings = Settings.defaults()
+        self.d = SettingsDialog(self.settings)
+        self.d.build()
+
+    def test_it_lists_the_programs_and_starts_on_the_saved_one(self):
+        self.assertEqual([self.d.open_with_combo.itemData(i) for i in range(self.d.open_with_combo.count())],
+                         ["auto", "numbers", "libreoffice", "excel"])
+        self.assertEqual(self.d.open_with_combo.currentData(), "auto")
+
+    def test_choosing_one_is_saved_with_the_other_preferences(self):
+        self.d.open_with_combo.setCurrentIndex(self.d.open_with_combo.findData("libreoffice"))
+        self.d._store_preferences()
+        self.assertEqual(self.settings.preferences["open_with"], "libreoffice")
+
+    def test_the_row_is_on_the_general_page_before_troubleshooting(self):
+        titles = [r.title for r in self.d._page_rows["General"]]
+        self.assertEqual(titles[-1], "Troubleshooting")
+        self.assertEqual(titles[-2], "Open Files With")

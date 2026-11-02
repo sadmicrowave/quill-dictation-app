@@ -15,7 +15,11 @@ what can be checked; this page is what cannot.
 | **Switch / slider / spin box** | `ToggleSwitch`, `GuardedSlider`, `GuardedSpinBox` | `settings_widgets.py` |
 | **Radio button** | accent-filled circle; its description is muted text under the name | `QRadioButton` rule |
 | **Pill (spoken word or phrase)** | `PILL_BG` violet with white text, square-cornered; editable ones are `PillField` | `theme.PILL_BG/PILL_FG`, `widgets.pill`, `PillField` |
-| **Status pill** | no fill, accent border and text (`Installed`) | `QLabel[installedPill]` |
+| **Status pill** | the same pill as *File not connected*: tinted accent fill, accent border, rounded (`Installed`) | `QLabel[chip]` (`warn` / `status`) in `theme.py` |
+| **Page title (Settings)** | bold, flush with the rows beneath it; the description under it has air above and below | `QLabel#pageTitle`, `SettingsDialog._page` |
+| **Group caption (Settings list)** | muted, with a one-pixel muted line under it across the pane | `NavDelegate` |
+| **Title bar** | title 14 pt, fixed; a one-pixel muted line along its bottom across the window (and the side panel); 8 pt of room right of the last icon | `chrome.TITLE_POINTS`, `title_bar_rule`, `_RIGHT_MARGIN` |
+| **Model size / cost text** | size in italics, muted; cost line muted | `QLabel[modelSize]`, `[modelCost]` |
 | **Placeholder / hint text** | muted, italic | `QLabel[placeholder]`, `[note]` |
 | **Section title in the side panel** | bold; muted small text under it | `QLabel[panelHeading]`, `[panelNote]` |
 | **Chrome icon** | 36 x 30 box, 16 pt symbol, rounded muted fill on hover and while its panel is open | `chrome.py` |

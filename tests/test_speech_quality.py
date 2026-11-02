@@ -144,7 +144,7 @@ class TestSettingsChoice(unittest.TestCase):
         self.assertTrue(standard.download_button.isHidden())
         better.radio.setChecked(True)
         self.assertFalse(better.download_button.isHidden())
-        self.assertIn("130 MB", better.title_label.text())
+        self.assertEqual("130 MB", better.size_label.text())
         better.download_button.click()
         self.assertEqual(self.asked, ["better"])
 
@@ -159,3 +159,90 @@ class TestSettingsChoice(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUninstallingAndChoosingOnInstall(unittest.TestCase):
+    """A finished install is chosen; an uninstall hands over to the next best model; an old setup moves up once."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = pathlib.Path(self._tmp.name)
+        self.root = self.dir / "models"
+        self.root.mkdir()
+        self.standard = self.root / "standard"
+        self.better = self.root / "better"
+        for folder in (self.standard, self.better):
+            folder.mkdir()
+            (folder / "f.bin").write_bytes(b"x" * 2048)
+        self.used = []
+        self.settings = Settings.load(self.dir / "cfg")
+        self.app = QuillApp(
+            _app, self.settings, XlsxBridge(make_workbook(self.dir / "w.xlsx")),
+            listener_factory=lambda model, t, e: self.used.append(model) or FakeListener(model, t, e),
+            model_finder=lambda c: self.standard, speaker=FakeSpeaker(),
+            better_finder=lambda: self.better if self.better_present else None,
+            whisper_finder=lambda: None, whisper_engine=lambda: False)
+        self.removed = []
+        self.app._model_remover = lambda folder: self.removed.append(folder) or 2048
+        import quill.app as A
+        self._real_dir = A._user_model_dir
+        A._user_model_dir = lambda: self.root
+        self.addCleanup(setattr, A, "_user_model_dir", self._real_dir)
+        self.better_present = True
+
+    def test_a_finished_install_becomes_the_chosen_model(self):
+        self.app.start()
+        self.app._downloading = "better"
+        self.app._on_model_ready(self.better)
+        self.assertEqual(self.settings.preferences["speech_quality"], "better")
+        self.assertEqual(self.used[-1], self.better)
+
+    def test_removing_the_chosen_model_switches_to_the_next_best_one(self):
+        self.settings.preferences["speech_quality"] = "better"
+        self.app.start()
+        self.app.uninstall_model("better")
+        self.assertEqual(self.removed, [self.better])
+        self.assertEqual(self.settings.preferences["speech_quality"], "standard")
+
+    def test_the_bundled_model_is_never_removed(self):
+        self.app._model_finder = lambda c: self.dir / "elsewhere"
+        self.assertFalse(self.app.quality_removable("standard"))
+        self.app.uninstall_model("standard")
+        self.assertEqual(self.removed, [])
+
+    def test_standard_stays_while_best_builds_on_it(self):
+        self.app._whisper_finder = lambda: self.root / "whisper"
+        self.app._whisper_engine = lambda: True
+        self.assertFalse(self.app.quality_removable("standard"))
+
+    def test_an_old_setup_with_a_better_model_installed_moves_up_once(self):
+        self.settings.preferences["model_migrated"] = False
+        self.app.start()
+        self.assertEqual(self.settings.preferences["speech_quality"], "better")
+        self.assertTrue(self.settings.preferences["model_migrated"])
+        self.settings.preferences["speech_quality"] = "standard"           # the user's later choice is left alone
+        self.app._use_best_installed()
+        self.assertEqual(self.settings.preferences["speech_quality"], "standard")
+
+
+class TestRemovingAModelFolder(unittest.TestCase):
+    def test_only_a_folder_inside_the_models_folder_is_deleted(self):
+        from quill.listener.model import fallback_choice, remove_model
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp) / "models"
+            inside = root / "m"
+            inside.mkdir(parents=True)
+            (inside / "a.bin").write_bytes(b"x" * 100)
+            outside = pathlib.Path(tmp) / "other"
+            outside.mkdir()
+            with self.assertRaises(ValueError):
+                remove_model(outside, root)
+            with self.assertRaises(ValueError):
+                remove_model(root, root)
+            self.assertEqual(remove_model(inside, root), 100)
+            self.assertFalse(inside.exists())
+            self.assertTrue(outside.exists())
+        self.assertEqual(fallback_choice("best", lambda k: k == "better"), "better")
+        self.assertEqual(fallback_choice("best", lambda k: False), "standard")
+        self.assertEqual(fallback_choice("better", lambda k: k in ("best", "standard")), "best")

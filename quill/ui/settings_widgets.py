@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QSizePolicy, QSlider, QSpinBox, QStyle,
-    QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget,
+    QStyledItemDelegate, QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget,
 )
 
 from quill.ui.icons import make_icon
@@ -72,33 +72,66 @@ class SettingRow(QWidget):
         return all(word in self.search_text for word in query.lower().split())
 
 
+class NavDelegate(QStyledItemDelegate):
+    """Draws the settings list as usual, and a one-pixel muted line along the bottom of each group caption, across the whole
+    width of the pane."""
+
+    def paint(self, painter, option, index) -> None:
+        super().paint(painter, option, index)
+        if index.data(Qt.ItemDataRole.AccessibleDescriptionRole) == "caption":
+            painter.save()
+            painter.setPen(option.palette.color(QPalette.ColorRole.Mid))
+            y = option.rect.bottom()
+            painter.drawLine(option.rect.left(), y, option.rect.right(), y)
+            painter.restore()
+
+
 class ModelRow(SettingRow):
     """One speech model on the Speech Model page: a radio button (only one can be chosen), the model's name in bold with
-    its download size beside it, a description of what it does for the quality, and on the right either an
-    "Installed" pill (no fill, in the accent colour) or a Download button.
+    its download size (italic, muted) beside it, what it does for the quality, what it costs in memory and time, and on the
+    right an "Installed" status pill with an Uninstall button, or an Install button.
     """
 
     chosen = Signal(str)                       # the model's key, when its radio button is checked
     download_requested = Signal(str)
+    uninstall_requested = Signal(str)
 
-    def __init__(self, key: str, name: str, size: str, description: str) -> None:
+    def __init__(self, key: str, name: str, size: str, description: str, cost: str = "") -> None:
         self.key = key
         self.installed_pill = QLabel("Installed")
-        self.installed_pill.setProperty("installedPill", True)           # drawn by the theme: accent border, no fill
+        self.installed_pill.setProperty("chip", "status")               # the same pill as "File not connected"
         self.installed_pill.setToolTip(f"The {name} model is installed on this computer")
-        self.download_button = QPushButton("Download")
-        self.download_button.setToolTip(f"Download the {name} model ({size}); it is downloaded once")
+        self.download_button = QPushButton("Install")
+        self.download_button.setToolTip(f"Install the {name} model ({size})")
         self.download_button.clicked.connect(lambda: self.download_requested.emit(self.key))
+        self.uninstall_button = QPushButton("Uninstall")
+        self.uninstall_button.clicked.connect(lambda: self.uninstall_requested.emit(self.key))
         holder = QWidget()
         holder.setProperty("keepMargins", True)
         side = QHBoxLayout(holder)
         side.setContentsMargins(0, 0, 0, 0)
         side.setSpacing(8)
         side.addWidget(self.installed_pill)
+        side.addWidget(self.uninstall_button)
         side.addWidget(self.download_button)
-        super().__init__(name, description, holder, f"{name} {size} speech model download install quality")
-        self.title_label.setTextFormat(Qt.TextFormat.RichText)
-        self.title_label.setText(f"<b>{name}</b>&nbsp;&nbsp;{size}")        # the name bold, the size not
+        super().__init__(name, description, holder, f"{name} {size} speech model download install uninstall quality memory")
+        text = self.line.itemAt(0).layout()
+        self.size_label = QLabel(size)
+        self.size_label.setProperty("modelSize", True)                  # italic and muted, by the theme
+        self.title_label.setProperty("modelName", True)                 # bold, by the theme
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(10)
+        text.removeWidget(self.title_label)
+        header.addWidget(self.title_label)
+        header.addWidget(self.size_label)
+        header.addStretch(1)
+        text.insertLayout(0, header)
+        self.cost_label = QLabel(cost)
+        self.cost_label.setWordWrap(True)
+        self.cost_label.setProperty("modelCost", True)
+        self.cost_label.setVisible(bool(cost))
+        text.addWidget(self.cost_label)
         self.radio = QRadioButton()
         self.radio.setCursor(Qt.CursorShape.PointingHandCursor)
         self.radio.setToolTip(f"Use the {name} model")
@@ -107,9 +140,12 @@ class ModelRow(SettingRow):
         self.title_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.title_label.mousePressEvent = lambda event: self.radio.click()       # the name is a label for the radio
 
-    def set_installed(self, installed: bool, busy: bool = False) -> None:
-        """Show the Installed pill for a model that is on this computer, the Download button for one that is not."""
+    def set_installed(self, installed: bool, busy: bool = False, removable: bool = False, uninstall_tip: str = "") -> None:
+        """Show the Installed pill (and, if it may be removed, Uninstall) for a model that is on this computer, the Install
+        button for one that is not."""
         self.installed_pill.setVisible(installed and not busy)
+        self.uninstall_button.setVisible(installed and removable and not busy)
+        self.uninstall_button.setToolTip(uninstall_tip)
         self.download_button.setVisible(not installed)
         self.download_button.setEnabled(not busy)
 

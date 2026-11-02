@@ -79,6 +79,8 @@ class Controller:
         """Seconds the spoken sorting question waits so a cue can play first (set by the app)."""
         self.history = History(int(settings.preferences["history_limit"]))
         """The most recent sorting decisions, newest last, for :meth:`undo`."""
+        self._connected_to = ""
+        """Which workbook the last :meth:`connect` reached (a different one clears the heard terms)."""
         self._append_target: tuple[str, int] | None = None
         """``(sheet, record)`` that "append to" turns keep adding to (None: the next turn starts a new record)."""
 
@@ -100,6 +102,10 @@ class Controller:
             self.bridge.set_start_row(int(self.settings.preferences["start_row"]))
             self.bridge.set_headings_row(int(self.settings.preferences["headings_row"]))
         self.bridge.connect(workbook)
+        here = str(getattr(self.bridge, "workbook_path", "") or workbook or "")
+        if self._connected_to and here != self._connected_to:
+            self.session.forget_terms()                    # other workbook: what was heard for the last one means nothing here
+        self._connected_to = here
         self.reload_vocab()
         self.connected = True
 

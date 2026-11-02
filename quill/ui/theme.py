@@ -113,7 +113,7 @@ def palette_for(dark: bool, accent: str = DEFAULT_ACCENT) -> QPalette:
         (QPalette.ColorRole.ButtonText, "text"), (QPalette.ColorRole.ToolTipBase, "surface"),
         (QPalette.ColorRole.ToolTipText, "text"), (QPalette.ColorRole.PlaceholderText, "muted"),
         (QPalette.ColorRole.Highlight, "accent"), (QPalette.ColorRole.HighlightedText, "on_accent"),
-        (QPalette.ColorRole.Link, "accent"),
+        (QPalette.ColorRole.Link, "accent"), (QPalette.ColorRole.Mid, "border"),
     ):
         palette.setColor(role, QColor(t[key]))
     for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
@@ -303,7 +303,7 @@ QMenu::item:disabled {{ color: {t['disabled']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
 QLabel[heading="true"] {{ color: {t['muted']}; }}
-QLabel[chip="warn"] {{ background: {rgba(t['accent'], 0.16)}; color: {t['text']};
+QLabel[chip="warn"], QLabel[chip="status"] {{ background: {rgba(t['accent'], 0.16)}; color: {t['text']};
               border: 1px solid {rgba(t['accent'], 0.6)}; border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
 QFrame[listenPill="true"] {{ background: transparent; border: 1px solid {t['accent']}; border-radius: 12px; }}
 QPushButton[accent="true"] QFrame[listenPill="true"] {{ border: 1px solid {rgba(t['on_accent'], 0.7)}; }}
@@ -346,14 +346,14 @@ QTreeWidget#helpNav::item:selected {{ background: {rgba(t['text'], 0.10)}; color
 QTextBrowser#helpPage {{ background: transparent; border: none; }}
 QWidget#settingsSidebar {{ border-right: 1px solid {t['border']}; }}
 QListWidget#settingsNav {{ background: transparent; border: none; outline: none; padding: 0; }}
-QListWidget#settingsNav::item {{ padding: 8px 12px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}
+QListWidget#settingsNav::item {{ padding: 8px 12px; margin: 1px 14px; border-radius: 8px; color: {t['text']}; }}
 QListWidget#settingsNav::item:hover {{ background: {rgba(t['text'], 0.06)}; }}
 QListWidget#settingsNav::item:selected {{ background: {rgba(t['text'], 0.10)}; color: {t['text']}; }}
-QListWidget#settingsNav::item:disabled {{ color: {t['muted']}; padding: 14px 12px 4px 12px; background: transparent; }}
+QListWidget#settingsNav::item:disabled {{ color: {t['muted']}; margin: 1px 0; padding: 14px 26px 6px 26px; background: transparent; }}
 QScrollArea#settingsPage, QWidget#settingsPageBody {{ background: transparent; }}
 QWidget#settingsFooter {{ border-top: 1px solid {t['border']}; }}
 QFrame#settingsDivider {{ background: {t['border']}; border: none; }}
-QLabel#pageTitle {{ padding-bottom: 4px; }}
+QLabel#pageTitle {{ font-weight: 700; padding-bottom: 2px; }}
 QLabel[muted="true"] {{ color: {t['muted']}; }}
 QComboBox[flat="true"], QSpinBox[flat="true"] {{ background: transparent; border: 1px solid transparent;
               border-radius: 8px; padding: 6px 34px 6px 12px; }}
@@ -376,7 +376,9 @@ QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }
 QLineEdit[pillField="true"] {{ background: {PILL_BG}; color: {PILL_FG}; border: 1px solid {PILL_BG}; border-radius: 0; padding: 2px 6px;   /* square-cornered, like the pills in text */
               selection-background-color: {rgba(PILL_FG, 0.35)}; selection-color: {PILL_FG}; }}
 QLineEdit[pillField="true"]:focus {{ border: 1px solid {PILL_FG}; }}
-QLabel[installedPill="true"] {{ background: {rgba(t['accent'], 0.005)}; color: {t['accent']}; border: 1px solid {t['accent']}; border-radius: 11px; padding: 1px 12px; }}
+QLabel[modelName="true"] {{ font-weight: 700; }}
+QLabel[modelSize="true"] {{ font-weight: 400; font-style: italic; color: {t['muted']}; }}
+QLabel[modelCost="true"] {{ font-weight: 400; color: {t['muted']}; }}
 QComboBox[flat="true"][rowSelected="true"] {{ color: {t['on_accent']}; }}
 QLabel[panelTitle="true"] {{ font-weight: 400; }}
 QLabel[panelHeading="true"] {{ font-weight: 600; color: {t['text']}; }}
