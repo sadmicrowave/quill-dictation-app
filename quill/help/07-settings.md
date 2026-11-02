@@ -39,7 +39,7 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 
 ### Open Files With
 
-**Settings > General > Open Files With** chooses the program Quill opens a spreadsheet in when you pick one that is not open yet: *Automatic* (what your computer opens that kind of file with), Numbers, LibreOffice or Excel. Numbers and LibreOffice show each row as Quill writes it; Excel is updated in place.
+**Settings > General > Open Files With** chooses the program Quill opens a spreadsheet in when you pick one that is not open yet: *Automatic* (what your computer opens that kind of file with), Numbers, LibreOffice or Excel. Every program is listed; the ones not installed on this computer are grey and last. Text Size defaults to 14. Numbers and LibreOffice show each row as Quill writes it; Excel is updated in place.
 
 ## 🧠 Speech model
 

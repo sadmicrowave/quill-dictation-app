@@ -176,7 +176,8 @@ class SettingsDialog:
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
                  on_open_logs=None, on_help=None, on_download_model=None, model_installed=None,
-                 on_uninstall_model=None, model_removable=None) -> None:
+                 on_uninstall_model=None, model_removable=None, program_available=None) -> None:
+        self._program_available = program_available or (lambda program: True)
         self._on_uninstall_model = on_uninstall_model or (lambda quality: None)
         self._model_removable = model_removable or (lambda quality: False)
         self._on_download_model = on_download_model or (lambda quality: None)
@@ -667,9 +668,15 @@ class SettingsDialog:
         logs.setToolTip("Quill writes what it does, and any error, to a log file here")
         logs.clicked.connect(lambda: self._on_open_logs())
         self.open_with_combo = FlatCombo()
-        for key, label in OPEN_WITH_CHOICES:
+        usable = [(k, l) for k, l in OPEN_WITH_CHOICES if self._program_available(k)]
+        missing = [(k, l) for k, l in OPEN_WITH_CHOICES if not self._program_available(k)]
+        for key, label in usable + missing:                    # every program is listed; the ones not installed are grey, last
             self.open_with_combo.addItem(label, key)
-        self.open_with_combo.setCurrentIndex(max(0, self.open_with_combo.findData(prefs["open_with"])))
+        for row in range(len(usable), len(usable) + len(missing)):
+            item = self.open_with_combo.model().item(row)
+            item.setEnabled(False)
+            item.setToolTip("Not installed on this computer")
+        self.open_with_combo.setCurrentIndex(max(0, self.open_with_combo.findData(prefs["open_with"]) if self._program_available(prefs["open_with"]) else 0))
         self._add("General", page, "Open Files With",
                   "The program Quill opens a spreadsheet in when you pick one that is not open yet. Quill shows each row in "
                   "Numbers and LibreOffice as it is written; Excel is updated in place. Automatic uses the program your "
@@ -726,7 +733,7 @@ class SettingsDialog:
         self.font_spin.setRange(*FONT_SIZE_RANGE)
         self.font_spin.setValue(int(prefs["font_size"]))
         self.font_spin.setSuffix(" pt")
-        self._add("Appearance", page, "Text Size", "The size of text throughout Quill (default 12).",
+        self._add("Appearance", page, "Text Size", "The size of text throughout Quill (default 14).",
                   self.font_spin, "font")
         self.opacity_slider, self.opacity_label, box = _slider(
             *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included")

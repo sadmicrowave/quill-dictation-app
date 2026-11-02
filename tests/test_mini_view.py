@@ -665,3 +665,13 @@ class TestPlaceholdersMatchToThePixel(unittest.TestCase):
             image = window.widget.grab().toImage()
             self.assertEqual(self.inked_box(window, window.stream, image),
                              self.inked_box(window, window.row_table, image), spacing)
+
+
+class TestOldMiniSizeIsWidened(unittest.TestCase):
+    def test_a_remembered_width_below_the_current_minimum_is_raised(self):
+        w = MainWindow()
+        w.setup()
+        w.restore_mini_size(300, 200)
+        self.assertEqual(w._mini_size.width(), MainWindow.MINI_WIDTH)
+        w.restore_mini_size(520, 200)
+        self.assertEqual(w._mini_size.width(), 520)

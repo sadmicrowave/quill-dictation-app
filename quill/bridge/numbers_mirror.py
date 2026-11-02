@@ -125,6 +125,24 @@ end parseDate
 '''
 
 
+#: Takes the document's file name as argument 1; answers ``ok`` if Numbers has such a document open (it changes nothing).
+PROBE = r'''
+on run argv
+  if application "Numbers" is not running then return "notrunning"
+  set docName to item 1 of argv
+  tell application "Numbers"
+    repeat with oneDoc in documents
+      try
+        set docTitle to name of oneDoc
+        if docTitle is docName or docTitle starts with (docName & ".") then return "ok"
+      end try
+    end repeat
+  end tell
+  return "nodoc"
+end run
+'''
+
+
 @dataclass(frozen=True)
 class MirrorResult:
     """How an attempt to show cells in Numbers went."""
@@ -183,6 +201,13 @@ class NumbersMirror:
         extension (the file's own path is not reported for imported documents), and once edited it becomes
         ``name.numbers``; the script accepts either."""
         return pathlib.Path(path).stem
+
+    def has_document(self, path: str | os.PathLike) -> bool:
+        """Does a running Numbers have a document for *path* open? (Asked without changing anything.)"""
+        if os.environ.get("QUILL_NO_HOSTS"):
+            return False
+        code, out, _ = self._run(["osascript", "-e", PROBE, self.document_name(path)])
+        return code == 0 and out.strip() == "ok"
 
     def push(self, path: str | os.PathLike, changes: list[tuple[str, int, int, object]]) -> MirrorResult:
         """Show *changes* (``(sheet, row, column, value)`` in sheet coordinates) in the Numbers document for *path*."""

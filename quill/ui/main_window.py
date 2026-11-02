@@ -572,6 +572,7 @@ class MainWindow:
     def restore_mini_size(self, width: int, height: int) -> None:
         """Use a remembered size for the mini view the next time it is entered."""
         if width >= 200 and height >= 60:
+            width = max(width, self.MINI_WIDTH)             # (a size remembered before the title bar grew would crowd its icons)
             self._mini_size = QSize(width, height)
             if self._window is not None and self._mini and self._view_mini:
                 self._window.resize(width, height)

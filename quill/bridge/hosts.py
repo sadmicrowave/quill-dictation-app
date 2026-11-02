@@ -166,6 +166,26 @@ class SpreadsheetHosts:
     #: The programs a user may choose to open files with (setting ``open_with``) and their names on a Mac.
     OPEN_WITH = {"numbers": "Numbers", "libreoffice": "LibreOffice", "excel": "Microsoft Excel"}
 
+    #: Where each program lives on a Mac (checked in /Applications and the user's own Applications folder).
+    _MAC_BUNDLES = {"numbers": "Numbers.app", "libreoffice": "LibreOffice.app", "excel": "Microsoft Excel.app"}
+
+    def installed(self, program: str) -> bool:
+        """Is *program* (``auto``, ``numbers``, ``libreoffice``, ``excel``) on this computer? ``auto`` always is."""
+        if program == "auto":
+            return True
+        if self._platform == "darwin":
+            bundle = self._MAC_BUNDLES.get(program)
+            return bool(bundle) and any((root / bundle).is_dir() for root in (pathlib.Path("/Applications"), pathlib.Path.home() / "Applications"))
+        if self._platform == "win32":
+            roots = [os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")]
+            if program == "libreoffice":
+                return any((pathlib.Path(r) / "LibreOffice" / "program" / "soffice.exe").is_file() for r in roots)
+            if program == "excel":
+                return any(list(pathlib.Path(r, "Microsoft Office").glob("**/EXCEL.EXE")) for r in roots if pathlib.Path(r, "Microsoft Office").is_dir())
+            return False
+        import shutil
+        return program == "libreoffice" and shutil.which("soffice") is not None
+
     def launch(self, path: str | pathlib.Path, program: str = "auto") -> bool:
         """Open *path* in a program, without bringing that program to the front (macOS): the system's program for the
         file, or the one the user chose (``numbers``, ``libreoffice``, ``excel``).
@@ -177,7 +197,7 @@ class SpreadsheetHosts:
             return False
         try:
             if self._platform == "darwin":
-                chosen = self.OPEN_WITH.get(program)
+                chosen = self.OPEN_WITH.get(program) if self.installed(program) else None       # (not installed: the system's choice)
                 command = ["open", "-g", *(["-a", chosen] if chosen else []), str(path)]
                 return subprocess.run(command, capture_output=True, timeout=COMMAND_TIMEOUT_S,                # noqa: S603
                                       check=False).returncode == 0

@@ -31,9 +31,13 @@ A file you pick this way that no program has open yet is **started in its own pr
 
 Press the **gear** at the right of **Active File** for the **file settings** (an overlay): **Headings Row** (**Automatic** finds the headings), **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), and **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
 
+### Several programs at once
+
+You can have Excel open with one workbook, Numbers with another and LibreOffice with a third. Quill writes only while the active file is open in one of them, and each turn is shown in the program that has that file: switching the active file (in the **Files** panel or with **Open File**) switches where the rows appear, with nothing to set. If the file is open nowhere, Quill opens it for you; **Start** waits until it is open.
+
 ### Rows appearing live in LibreOffice
 
-It works the same way in **LibreOffice Calc**, through a small script Quill puts in LibreOffice's own user scripts folder (and says so in the log once). Quill never starts LibreOffice for this and never keeps the cells: they are handed over and forgotten. If LibreOffice cannot take them, Quill asks it to load the file again after a quiet moment.
+It works the same way in **LibreOffice Calc**, through a small script Quill puts in LibreOffice's own user scripts folder (and says so in the log once). Choosing a file with **Open File** also opens it in the program set under **Settings > General > Open Files With** (or your computer's choice), so Quill never works without a program showing the file; the live display itself never starts a program, and Quill never keeps the cells: they are handed over and forgotten. If LibreOffice cannot take them, Quill asks it to load the file again after a quiet moment.
 
 ### Rows appearing live in Numbers
 

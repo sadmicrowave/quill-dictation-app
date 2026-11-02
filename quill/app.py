@@ -451,12 +451,21 @@ class QuillApp:
                 return
 
     def _mirror_everywhere(self, path: str, changes: list) -> MirrorResult:
-        """Offer the written cells to each program that can show them live; the first that has the file takes them.
+        """Show the written cells in the program that has the file open, as each turn ends.
 
-        The program known to hold the file (from the last look at what is open) is asked first.
+        With several programs open at once (Excel with one workbook, Numbers with another, LibreOffice with a third), each
+        turn goes to the program the last look at what is open found the file in; so switching the active file switches
+        where the rows appear, with nothing to set. If that look has not found the file yet, each program is asked in turn.
         """
-        known = next((f.app for f in self._open_files if f.path and os.path.realpath(f.path) == os.path.realpath(path)), "")
-        order = [self.lo_mirror, self.mirror] if "libre" in known.lower() else [self.mirror, self.lo_mirror]
+        known = next((f.app for f in self._open_files if f.path and os.path.realpath(f.path) == os.path.realpath(path)), "").lower()
+        if "libre" in known:
+            order = [self.lo_mirror]
+        elif "numbers" in known:
+            order = [self.mirror]
+        elif known:
+            return MirrorResult(False, "nodoc")                 # a program with no live display (WPS ...): the reload fallback
+        else:
+            order = [self.mirror, self.lo_mirror]
         failure = MirrorResult(False, "nodoc")
         for mirror in order:
             result = mirror.push(path, changes)
@@ -1011,23 +1020,32 @@ class QuillApp:
             return live.open_workbook_files()
 
         self._viewer_running = bool(self.hosts.running())                 # (any spreadsheet program is running at all)
-        return self.hosts.open_files(excel_files)
+        found = self.hosts.open_files(excel_files)
+        active = getattr(bridge, "workbook_path", "") if isinstance(bridge, XlsxBridge) else ""
+        if active and not any(f.path and os.path.realpath(f.path) == os.path.realpath(active) for f in found):
+            for name, mirror in (("Numbers", self.mirror), ("LibreOffice", self.lo_mirror)):          # these report imported documents
+                try:                                                                                  # by name only, so ask each
+                    if mirror.has_document(active):
+                        found.append(OpenFile(pathlib.Path(active).name, active, name))
+                        break
+                except Exception:                                                                     # (a helper never stops a scan)
+                    log.debug("could not ask %s", name, exc_info=True)
+        return found
 
     def _viewer_open(self) -> bool:
         """Is the connected file open in a spreadsheet program the user can see?
 
-        Quill is an overlay for the user's spreadsheet program, not a stand-alone editor: it writes to a file only while
-        that file is open there, so every row can be seen arriving and confirmed. Excel is driven live, so it always
-        counts. For a file, it must be listed as open in some program; failing that, a spreadsheet program must at least
-        be running (some programs do not report their documents). Where the system cannot be asked, it counts.
+        Quill is an overlay for the user's spreadsheet programs, not a stand-alone editor: it writes to a file only while
+        that file is open in one of them (whichever it is: Excel, Numbers, LibreOffice ... even several at once, each with
+        its own file), so every row can be seen arriving and confirmed. Excel is driven live, so it always counts. For a
+        file, it must be listed as open in some program (:meth:`_scan_open_files` asks each program, including the ones
+        that report a document by name only). Where the system cannot be asked, it counts.
         """
         bridge = self.controller.bridge
         if os.environ.get("QUILL_NO_HOSTS") or not isinstance(bridge, XlsxBridge) or not bridge.workbook_path:
             return True
         wanted = os.path.realpath(bridge.workbook_path)
-        if any(f.path and os.path.realpath(f.path) == wanted for f in self._open_files):
-            return True
-        return self._viewer_running
+        return any(f.path and os.path.realpath(f.path) == wanted for f in self._open_files)
 
     def _open_in_viewer(self) -> None:
         """Start the connected file in its own program (in the background), then look again until it shows up there."""
@@ -1161,7 +1179,8 @@ class QuillApp:
             self.settings, self.window.widget, on_preview=self.preview_feedback,
             on_change=lambda: self.apply_settings(quiet=True),
             on_download_model=self.download_model, model_installed=self.quality_installed,
-            on_uninstall_model=self.uninstall_model, model_removable=self.quality_removable)
+            on_uninstall_model=self.uninstall_model, model_removable=self.quality_removable,
+            program_available=self.hosts.installed)
         self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
         if page:

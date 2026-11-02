@@ -33,7 +33,7 @@ from quill.bridge.numbers_mirror import MirrorResult
 log = logging.getLogger("quill.libreoffice")
 
 SCRIPT_NAME = "quill_mirror.py"
-SCRIPT_VERSION = 1
+SCRIPT_VERSION = 2
 #: Seconds to wait for LibreOffice to run the script and answer.
 ANSWER_TIMEOUT_S = 10
 #: Fields of a change, as the script gets them: ``[sheet, row, column, kind, text]``.
@@ -67,6 +67,8 @@ def apply():
                 break
         if document is None:
             return _answer("nodoc")
+        if job.get("probe"):
+            return _answer("ok")
         sheets = document.getSheets()
         date_key = None
         for sheet_name, row, column, kind, text in job["changes"]:
@@ -234,9 +236,13 @@ class LibreOfficeMirror:
             log.warning("could not install the LibreOffice script: %s", exc)
             return False
 
-    def push(self, path: str | os.PathLike, changes: list[tuple[str, int, int, object]]) -> MirrorResult:
+    def has_document(self, path: str | os.PathLike) -> bool:
+        """Does a running LibreOffice have *path* open? (Asked through the same script, which then changes nothing.)"""
+        return self.push(path, [], probe=True).ok
+
+    def push(self, path: str | os.PathLike, changes: list[tuple[str, int, int, object]], probe: bool = False) -> MirrorResult:
         """Show *changes* (``(sheet, row, column, value)`` in sheet coordinates) in the LibreOffice document for *path*."""
-        if not changes:
+        if not changes and not probe:
             return MirrorResult(True, "ok")
         if os.environ.get("QUILL_NO_HOSTS"):
             return MirrorResult(False, "disabled")
@@ -252,7 +258,7 @@ class LibreOfficeMirror:
             folder.mkdir(parents=True, exist_ok=True)
             answer = folder / "out.json"
             answer.unlink(missing_ok=True)
-            job = {"urls": file_addresses(path), "changes": [change_fields(*c) for c in changes]}
+            job = {"urls": file_addresses(path), "changes": [change_fields(*c) for c in changes], "probe": probe}
             temp = folder / "in.json.tmp"
             temp.write_text(json.dumps(job), encoding="utf-8")
             os.replace(temp, folder / "in.json")

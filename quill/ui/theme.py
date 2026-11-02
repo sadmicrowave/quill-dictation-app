@@ -232,6 +232,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     surf = t["surface"]                                  # whole window (and, for blur, to its background only)
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
+QWidget {{ font-size: {font_size}pt; }}
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QFrame#sidePanel, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.26 if dark else 0.08)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.6)};
@@ -273,6 +274,7 @@ QComboBox QAbstractItemView::item {{ padding: 6px 10px; min-height: 22px; border
               color: {t['text']}; }}
 QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected {{
               background: {hover}; color: {t['text']}; }}
+QComboBox QAbstractItemView::item:disabled {{ color: {t['disabled']}; background: transparent; }}
 
 QPlainTextEdit, QTextEdit, QTableWidget {{ background: {surf}; color: {t['text']};
               border: 1px solid {t['border']}; border-radius: 10px; padding: 4px;

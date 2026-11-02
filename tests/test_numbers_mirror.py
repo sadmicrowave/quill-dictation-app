@@ -5,6 +5,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from unittest import mock
 
 import openpyxl
@@ -195,6 +196,9 @@ class FakeMirror:
     def __init__(self, result=MirrorResult(True, "ok")):
         self.result, self.pushed, self.installed_note = result, [], False
 
+    def has_document(self, path):
+        return False
+
     def push(self, path, changes):
         self.pushed.append((path, list(changes)))
         return self.result
@@ -319,6 +323,50 @@ class TestAppAlsoShowsRowsInLibreOffice(AppWithMirror):
         self.assertEqual(self.app.window.log.toPlainText().count("small script to LibreOffice"), 1)
 
 
+class TestSeveralProgramsAtOnce(AppWithMirror):
+    """Excel with one workbook, Numbers with another, LibreOffice with a third: each turn goes where its file is shown."""
+
+    def setUp(self):
+        super().setUp()
+        from quill.bridge.hosts import OpenFile
+        self.book1 = make_workbook(self.dir / "workbook1.xlsx")
+        self.book2 = make_workbook(self.dir / "workbook2.xlsx")
+        self.book3 = make_workbook(self.dir / "workbook3.xlsx")
+        self.numbers, self.libre = FakeMirror(), FakeMirror()
+        self.app.mirror, self.app.lo_mirror = self.numbers, self.libre
+        self.app._open_files = [OpenFile("workbook1.xlsx", str(self.book1), "Excel", live=True),
+                                OpenFile("workbook2.xlsx", str(self.book2), "Numbers"),
+                                OpenFile("workbook3.xlsx", str(self.book3), "LibreOffice Calc")]
+
+    def row_goes_to(self, path):
+        self.app.open_workbook_file(str(path))
+        self.app._open_files = self.app._open_files        # (the list is what the last look found)
+        self.numbers.pushed.clear()
+        self.libre.pushed.clear()
+        if not self.app.controller.session.listening:
+            self.app.controller.handle_transcript("start listening")
+        self.turn()
+        return bool(self.numbers.pushed), bool(self.libre.pushed)
+
+    def test_each_file_is_shown_in_the_program_that_has_it(self):
+        self.assertEqual(self.row_goes_to(self.book2), (True, False))          # Numbers
+        self.assertEqual(self.row_goes_to(self.book3), (False, True))          # LibreOffice
+        self.assertEqual(self.row_goes_to(self.book2), (True, False))          # and back: nothing to set
+
+    def test_a_file_in_a_program_with_no_live_display_is_not_offered_to_the_others(self):
+        from quill.bridge.hosts import OpenFile
+        self.app._open_files = [OpenFile("workbook2.xlsx", str(self.book2), "WPS Office")]
+        self.assertEqual(self.row_goes_to(self.book2), (False, False))
+        self.assertTrue(self.app._host_reload.isActive())                      # the reload fallback
+
+    def test_a_file_that_excel_has_is_worked_in_excel(self):
+        from unittest import mock
+        self.app.open_workbook_file(str(self.book1))
+        with mock.patch.object(self.app, "use_live_excel") as use, mock.patch.object(self.app, "connect_workbook"):
+            self.app._attach_live_if_open_in_excel()
+        use.assert_called()
+
+
 @unittest.skipUnless(sys.platform == "darwin" and os.environ.get("QUILL_NUMBERS_LIVE") == "1",
                      "needs Numbers on this Mac: QUILL_NUMBERS_LIVE=1 with plants.xlsx open in it")
 class TestRealNumbers(Env):
@@ -362,3 +410,47 @@ class TestHeardTermsDoNotOutliveTheirWorkbook(unittest.TestCase):
             session.alias_hints[("C", f"x{i}")] = "X"
         session._trim_hints()
         self.assertEqual(set(session.alias_hints), {("C", "x0")})                 # only the one still waiting is kept
+
+
+class TestAskingWhetherAProgramHasTheFile(unittest.TestCase):
+    def setUp(self):
+        patch = unittest.mock.patch.dict("os.environ", {}, clear=False)
+        patch.start()
+        self.addCleanup(patch.stop)
+        os.environ.pop("QUILL_NO_HOSTS", None)
+
+    def test_numbers_is_asked_by_document_name_and_changes_nothing(self):
+        mirror, run = mirror_with(0, "ok")
+        self.assertTrue(mirror.has_document("/x/plants.xlsx"))
+        self.assertEqual(run.calls[0][-1], "plants")
+        self.assertIn("documents", run.calls[0][2])
+        self.assertNotIn("set value", run.calls[0][2])
+        self.assertFalse(mirror_with(0, "nodoc")[0].has_document("/x/p.xlsx"))
+        self.assertFalse(mirror_with(0, "notrunning")[0].has_document("/x/p.xlsx"))
+
+    def test_libreoffice_is_asked_through_its_script_with_a_probe_job(self):
+        import json
+        from quill.bridge.libreoffice_mirror import LibreOfficeMirror
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        (tmp / "LibreOffice" / "4" / "user").mkdir(parents=True)
+        seen = {}
+
+        def runner(args):
+            seen["job"] = json.loads((tmp / "mirror" / "in.json").read_text())
+            (tmp / "mirror" / "out.json").write_text("ok")
+            return 0
+
+        mirror = LibreOfficeMirror(runner=runner, scripts_dir=tmp / "LibreOffice/4/user/Scripts/python", base=tmp / "mirror",
+                                   running=lambda: True, soffice="/x/soffice", wait_s=1)
+        with unittest.mock.patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("QUILL_NO_HOSTS", None)
+            self.assertTrue(mirror.has_document("/x/a.xlsx"))
+        self.assertTrue(seen["job"]["probe"])
+        self.assertEqual(seen["job"]["changes"], [])
+
+    def test_hosts_know_which_programs_are_installed(self):
+        from quill.bridge.hosts import SpreadsheetHosts
+        hosts = SpreadsheetHosts("darwin", lambda a: "")
+        self.assertTrue(hosts.installed("auto"))
+        self.assertFalse(hosts.installed("nonsense"))
+        self.assertIsInstance(hosts.installed("numbers"), bool)

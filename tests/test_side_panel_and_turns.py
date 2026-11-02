@@ -299,6 +299,23 @@ class FakeHosts(SpreadsheetHosts):
         return True
 
 
+class NoMirror:
+    """A live display that never has the file (the tests must not ask the real Numbers or LibreOffice)."""
+
+    installed_note = False
+
+    def __init__(self, has=False):
+        self.has, self.pushed = has, []
+
+    def has_document(self, path):
+        return self.has
+
+    def push(self, path, changes):
+        from quill.bridge.numbers_mirror import MirrorResult
+        self.pushed.append((path, list(changes)))
+        return MirrorResult(self.has, "ok" if self.has else "nodoc")
+
+
 class PanelApp(Dir):
     def setUp(self):
         super().setUp()
@@ -309,7 +326,8 @@ class PanelApp(Dir):
         self.chosen = [None]
         self.app = QuillApp(_app, self.settings, XlsxBridge(self.plants), listener_factory=lambda *a: FakeListener(*a),
                             model_finder=lambda c: self.dir, speaker=FakeSpeaker(), sound_player=lambda p: None,
-                            file_chooser=lambda: self.chosen[0], live_bridge_factory=lambda: DeadExcel(), hosts=self.hosts)
+                            file_chooser=lambda: self.chosen[0], live_bridge_factory=lambda: DeadExcel(), hosts=self.hosts,
+                            mirror=NoMirror(), lo_mirror=NoMirror())
         self.app.run_in_background = lambda work, done: done(work())          # no helper thread in tests
         self.app.start()
 
@@ -2319,8 +2337,20 @@ class TestFileMustBeOpenToBeSeen(PanelApp):
         self.app.toggle_listening(True)
         self.assertTrue(self.app.controller.session.listening)
 
-    def test_a_running_spreadsheet_program_counts_when_it_does_not_report_its_documents(self):
+    def test_a_running_program_does_not_count_unless_it_has_this_file(self):
         self.app._viewer_running = True
+        self.assertFalse(self.app._viewer_open())                           # (some other program is running: not enough)
+
+    def test_a_program_that_reports_its_documents_by_name_only_counts_when_it_has_the_file(self):
+        self.app.mirror = NoMirror(has=True)
+        self.app.refresh_open_files()
+        self.assertTrue(self.app._viewer_open())
+        self.assertEqual([(f.name, f.app) for f in self.app._open_files], [("plants.xlsx", "Numbers")])
+
+    def test_libreoffice_is_asked_too(self):
+        self.app.lo_mirror = NoMirror(has=True)
+        self.app.refresh_open_files()
+        self.assertEqual([f.app for f in self.app._open_files], ["LibreOffice"])
         self.assertTrue(self.app._viewer_open())
 
     def test_live_excel_always_counts(self):
@@ -2743,10 +2773,28 @@ class TestOpenFilesWithSetting(unittest.TestCase):
         self.d = SettingsDialog(self.settings)
         self.d.build()
 
-    def test_it_lists_the_programs_and_starts_on_the_saved_one(self):
+    def test_it_lists_every_program_and_starts_on_the_saved_one(self):
         self.assertEqual([self.d.open_with_combo.itemData(i) for i in range(self.d.open_with_combo.count())],
                          ["auto", "numbers", "libreoffice", "excel"])
         self.assertEqual(self.d.open_with_combo.currentData(), "auto")
+
+    def test_programs_that_are_not_installed_stay_listed_but_grey_and_last(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        have = {"auto": True, "numbers": False, "libreoffice": True, "excel": False}
+        d = SettingsDialog(Settings.defaults(), program_available=lambda k: have[k])
+        d.build()
+        combo = d.open_with_combo
+        self.assertEqual([combo.itemData(i) for i in range(combo.count())], ["auto", "libreoffice", "numbers", "excel"])
+        self.assertEqual([combo.model().item(i).isEnabled() for i in range(4)], [True, True, False, False])
+        self.assertIn("Not installed", combo.model().item(2).toolTip())
+
+    def test_a_saved_program_that_is_gone_shows_automatic(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        settings = Settings.defaults()
+        settings.preferences["open_with"] = "numbers"
+        d = SettingsDialog(settings, program_available=lambda k: k != "numbers")
+        d.build()
+        self.assertEqual(d.open_with_combo.currentData(), "auto")
 
     def test_choosing_one_is_saved_with_the_other_preferences(self):
         self.d.open_with_combo.setCurrentIndex(self.d.open_with_combo.findData("libreoffice"))
@@ -2757,3 +2805,35 @@ class TestOpenFilesWithSetting(unittest.TestCase):
         titles = [r.title for r in self.d._page_rows["General"]]
         self.assertEqual(titles[-1], "Troubleshooting")
         self.assertEqual(titles[-2], "Open Files With")
+
+
+class TestTextSizeReachesEveryWidget(PanelApp):
+    def test_every_label_button_and_field_is_drawn_at_the_chosen_size(self):
+        from PySide6.QtWidgets import QAbstractButton, QLineEdit
+        from quill.ui.theme import apply_theme
+        for size in (14, 17):
+            apply_theme(_app, "light", "violet", "compact", size)
+            self.app.window.open_panel("file")
+            sizes = {type(w).__name__: w.font().pointSizeF() for w in _app.allWidgets()
+                     if isinstance(w, (QLabel, QAbstractButton, QLineEdit))}
+            self.assertTrue(sizes)
+            self.assertEqual({v for v in sizes.values()}, {float(size)}, sizes)
+
+    def test_the_description_names_the_real_default(self):
+        from quill.config.settings import DEFAULT_PREFERENCES
+        from quill.ui.settings_dialog import SettingsDialog
+        d = SettingsDialog(Settings.defaults())
+        d.build()
+        row = next(r for r in d.rows if r.title == "Text Size")
+        self.assertIn(f"default {DEFAULT_PREFERENCES['font_size']}", row.description_label.text())
+
+
+class TestGreyDropDownEntries(unittest.TestCase):
+    def test_a_disabled_entry_in_any_drop_down_list_is_drawn_grey_and_does_not_highlight(self):
+        from quill.ui.theme import colors_for, stylesheet_for
+        for dark in (False, True):
+            sheet = stylesheet_for(dark)
+            start = sheet.index("QComboBox QAbstractItemView::item:disabled")
+            rule = sheet[start: sheet.index("}", start)]
+            self.assertIn(colors_for(dark, "violet")["disabled"], rule)
+            self.assertGreater(start, sheet.index("QComboBox QAbstractItemView::item:hover"))      # later, so it wins
