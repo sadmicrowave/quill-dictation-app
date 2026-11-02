@@ -173,6 +173,7 @@ class MainWindow:
         self._on_panel_toggled: Callable[[str], None] = lambda page: None   # told the open page, or "" when it closes
         self._workbook_name = ""
         self._workbook_path = ""
+        self._workbook_kind = ""
         self._sheet_name = ""
         self._native_undo_button = False
         self._text_color = "#1F1E1D"
@@ -1058,10 +1059,14 @@ class MainWindow:
             self._workbook_path = ""
         self._show_file_state()
 
-    def set_workbook_path(self, path: str) -> None:
-        """Note the full path of the file in use (the side panel shows it when the name is hovered)."""
-        self._workbook_path = path
+    def set_workbook_path(self, path: str, kind: str = "") -> None:
+        """Note the full path of the file in use and what it is open in (the side panel shows both)."""
+        self._workbook_path, self._workbook_kind = path, kind
         self._show_file_state()
+
+    def set_native_panel_header(self, native: bool) -> None:
+        """The title bar draws the panel's title and close button, so the panel's own are hidden."""
+        self.panel.set_native_header(native)
 
     def _show_file_state(self) -> None:
         """Draw the folder icon: muted and closed with no file, solid and open with one."""
@@ -1078,7 +1083,7 @@ class MainWindow:
             muted.setAlpha(110)
             color = muted.name(QColor.NameFormat.HexArgb)
         self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", color, 18))
-        self.panel.set_active(self._workbook_name, self._sheet_name, self._workbook_path)
+        self.panel.set_active(self._workbook_name, self._sheet_name, self._workbook_path, self._workbook_kind)
         self._on_file_state(has, self._workbook_name, self._sheet_name)
 
     def _row_table_height(self) -> int:
@@ -1332,7 +1337,7 @@ class MainWindow:
         self._on_accent, self._text_color, self._accent = on_accent, text_color, accent
         if self._window is None:
             return                      # not built yet; setup() draws them
-        self.panel.set_colors(text_color)
+        self.panel.set_colors(text_color, accent)
         self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")

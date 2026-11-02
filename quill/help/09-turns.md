@@ -10,13 +10,30 @@ Press the **turn** icon (two speech bubbles) in the title bar. The **side panel*
 
 - **Next Row** (the default): every turn is written to a new row.
 - **Append To**: every turn adds to the **same row**. A cell that already holds a value keeps it and gets the new one after a comma, so a *Fruit* column can end up as `Apple, Banana, Cherry`. Several values heard in one turn are separated by commas too.
-  - Press **Start a New Row** (it is only enabled in this mode) when you want the next turn to begin a fresh row.
+  - Press **Next** in the panel (a skip-forward icon; enabled only in this mode) when you want the next turn to begin a fresh row.
   - Changing the mode, the file or the sheet also starts a fresh row.
   - A cell that holds a formula is left alone.
 
 ## Starting Row
 
 Quill starts a record at the **first empty row under the headings** (the first row whose cells are all empty or computed, so a gap in the middle gets filled). **Starting Row** in the panel changes that: type a row number and turns begin there (never above the headings). **Auto** (0) is the default. With **Rows Down** it reads **Starting Column**.
+
+## By voice
+
+Say these while listening (change them in Settings > Keywords); a rising sound means *on*, a lower one with the word "off" means *off*:
+
+| Say | Does |
+|---|---|
+| **"Append on"** / **"Append mode"** | Append To |
+| **"Append off"** / **"Row mode"** | Next Row |
+| **"Rows down"** | Rows Down |
+| **"Columns across"** | Columns Across |
+
+The panel's choice follows what you say.
+
+The **Log** and the **Last Saved** line say *Row 4 (added to)* for these turns.
+
+Starting Row, Sheet Layout and Headings Row are on the **Files** page, near the file's details (see [the spreadsheet page](help:spreadsheet)). With **Rows Down** the headings run down the first column and each turn fills the next column; the Log says *Column C*. **Searching** needs the headings across the top.
 
 ## By voice
 

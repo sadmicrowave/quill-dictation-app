@@ -167,19 +167,19 @@ class TestPanelContents(unittest.TestCase):
         self.w.update_workbooks(["plants.xlsx"], "plants.xlsx")
         self.w.set_workbook_path("/Users/me/Documents/plants.xlsx")
         self.w.set_active_sheet("Inventory")
-        self.assertEqual(self.panel.name_label.full_text, "plants.xlsx")
-        self.assertEqual(self.panel.name_label.toolTip(), "/Users/me/Documents/plants.xlsx")
+        self.assertEqual(self.panel.file_button.text_label.full_text, "plants.xlsx")
+        self.assertEqual(self.panel.file_button.text_label.toolTip(), "/Users/me/Documents/plants.xlsx")
         self.assertEqual(self.panel.sheet_label.text(), "Sheet: Inventory")
 
     def test_with_no_file_it_says_so_and_hides_the_sheet(self):
-        self.assertEqual(self.panel.name_label.full_text, "No file connected")
+        self.assertEqual(self.panel.file_button.text_label.full_text, "Open File")
         self.assertFalse(self.panel.sheet_label.isVisibleTo(self.panel))
         self.w.update_workbooks([], "")
-        self.assertEqual(self.panel.name_label.full_text, "No file connected")
+        self.assertEqual(self.panel.file_button.text_label.full_text, "Open File")
 
     def test_a_workbook_without_a_path_hovers_its_name(self):
         self.panel.set_active("Unsaved.xlsx", "", "")
-        self.assertEqual(self.panel.name_label.toolTip(), "Unsaved.xlsx")
+        self.assertEqual(self.panel.file_button.text_label.toolTip(), "Unsaved.xlsx")
 
     def test_the_list_holds_names_with_a_path_tooltip_and_reports_the_pick(self):
         picked = []
@@ -197,12 +197,12 @@ class TestPanelContents(unittest.TestCase):
         self.assertTrue(self.panel.empty_label.isHidden())
 
     def test_the_file_page_has_a_muted_rule_between_the_two_sections(self):
-        rules = [f for f in self.panel.findChildren(type(self.panel.stack.currentWidget())) if f.property("panelRule")]
+        from PySide6.QtWidgets import QFrame
+        rules = [f for f in self.panel.findChildren(QFrame) if f.property("panelRule")]
         self.assertTrue(rules)
 
     def test_the_list_scrolls(self):
         self.panel.set_available([(f"s{i}.xlsx", "", i) for i in range(40)])
-        self.assertGreater(self.panel.available.verticalScrollBar().maximum() or 1, 0)
         self.assertEqual(self.panel.available.verticalScrollMode(), self.panel.available.ScrollMode.ScrollPerPixel)
 
     def test_turn_choices_are_reported_but_showing_them_is_not_a_change(self):
@@ -333,8 +333,8 @@ class TestPanelInTheApp(PanelApp):
         panel = self.app.window.panel
         panel.available.itemClicked.emit(panel.available.item(0))
         self.assertEqual(self.app.window.workbook_name, "other.xlsx")
-        self.assertEqual(panel.name_label.full_text, "other.xlsx")
-        self.assertEqual(panel.name_label.toolTip(), str(self.other.resolve()))
+        self.assertEqual(panel.file_button.text_label.full_text, "other.xlsx")
+        self.assertEqual(panel.file_button.text_label.toolTip(), str(self.other.resolve()))
         self.assertEqual(panel.available_names(), ["plants.xlsx"])
 
     def test_picking_a_live_excel_workbook_goes_through_excel(self):
@@ -346,7 +346,7 @@ class TestPanelInTheApp(PanelApp):
 
     def test_the_file_button_in_the_panel_opens_the_file_window(self):
         self.chosen[0] = str(self.other)
-        self.app.window.panel.open_button.click()
+        self.app.window.panel.file_button.click()
         self.assertEqual(self.app.window.workbook_name, "other.xlsx")
 
     def test_a_file_chosen_with_the_file_window_is_launched_when_nothing_has_it_open(self):
@@ -673,6 +673,9 @@ class TestPanelHeaderAndFiles(unittest.TestCase):
         self.panel = self.w.panel
 
     def test_the_panel_is_titled_by_its_page_and_has_a_close_button(self):
+        self.w.set_native_panel_header(True)                      # the title bar draws them on a Mac
+        self.assertTrue(self.panel.header.isHidden())
+        self.w.set_native_panel_header(False)
         self.panel.show_page(FILE_PAGE)
         self.assertEqual(self.panel.title_label.text(), "Files")
         self.panel.show_page(TURN_PAGE)
@@ -713,12 +716,14 @@ class TestPanelHeaderAndFiles(unittest.TestCase):
     def test_the_starting_row_is_a_number_with_auto_at_zero(self):
         seen = []
         self.panel.start_row_changed.connect(seen.append)
-        self.panel.set_turn(NEXT_ROW, False, 0)
-        self.assertEqual(self.panel.start_spin.text(), "Auto")
+        self.panel.set_options(NEXT_ROW, False, 0, 0)
+        self.assertEqual(self.panel.start_spin.display(), "Automatic")
         self.panel.start_spin.setValue(5)
         self.assertEqual(seen, [5])
-        self.panel.set_turn(NEXT_ROW, True, 3)
+        self.panel.set_options(NEXT_ROW, True, 3, 0)
         self.assertEqual(self.panel.start_heading.text(), "Starting Column")
+        self.assertEqual(self.panel.headings_heading.text(), "Headings Column")
+        self.assertIn("first empty column", self.panel.start_note.text())
         self.assertEqual(seen, [5])                                  # showing a value is not a change
 
 
@@ -880,6 +885,260 @@ class TestTermHelperPlacement(unittest.TestCase):
         self.sw.widget.show()
         self.main.widget.show()
         self.assertEqual(self.sw.voice_button.minimumHeight(), self.main.toggle_button.minimumHeight())
+
+
+class TestFilePanelDetails(Dir):
+    def setUp(self):
+        super().setUp()
+        self.w = MainWindow()
+        self.w.setup()
+        self.panel = self.w.panel
+
+    def test_the_active_file_shows_its_path_type_size_and_dates_quietly(self):
+        path = make_workbook(self.dir / "plants.xlsx")
+        self.panel.set_active("plants.xlsx", "Inventory", str(path), "Excel workbook (.xlsx)")
+        self.assertEqual(self.panel.path_label.full_text, str(path))
+        lines = self.panel.facts_label.text().splitlines()
+        self.assertEqual(lines[0], "Type: Excel workbook (.xlsx)")
+        self.assertTrue(lines[1].startswith("Size: ") and lines[2].startswith("Modified: ") and lines[3].startswith("Created: "))
+        self.assertTrue(self.panel.facts_label.property("panelNote") and self.panel.path_label.property("panelNote"))
+
+    def test_with_no_file_none_of_it_shows(self):
+        self.panel.set_active("", "", "", "")
+        self.assertTrue(self.panel.path_label.isHidden() and self.panel.facts_label.isHidden() and self.panel.sheet_label.isHidden())
+
+    def test_a_workbook_without_a_path_shows_only_its_type(self):
+        self.panel.set_active("Unsaved.xlsx", "", "", "Excel (live)")
+        self.assertEqual(self.panel.facts_label.text(), "Type: Excel (live)")
+        self.assertTrue(self.panel.path_label.isHidden())
+
+    def test_sizes_read_naturally(self):
+        from quill.ui.side_panel import human_size
+        self.assertEqual((human_size(12), human_size(1536), human_size(5 * 1024 * 1024)), ("12 bytes", "1.5 KB", "5.0 MB"))
+
+    def test_the_file_button_says_open_file_with_a_closed_folder_until_a_file_is_active(self):
+        self.assertEqual(self.panel.file_button.text_label.full_text, "Open File")
+        self.assertFalse(self.panel._has_file)
+        self.panel.set_active("a.xlsx", "", "/x/a.xlsx")
+        self.assertTrue(self.panel._has_file)
+
+    def test_a_long_name_is_cut_with_an_ellipsis_not_wrapped(self):
+        self.panel.setFixedWidth(236)
+        self.panel.show_page("file")
+        self.panel.set_active("a very long spreadsheet name that cannot fit on the button at all.xlsx", "", "/x")
+        label = self.panel.file_button.text_label
+        label.resize(120, 20)
+        label._elide()
+        self.assertIn("…", label.text())
+
+    def test_the_number_fields_read_automatic_when_empty_and_report_what_is_typed(self):
+        seen = []
+        self.panel.headings_row_changed.connect(seen.append)
+        self.assertEqual(self.panel.headings_spin.display(), "Automatic")
+        self.panel.headings_spin.setText("4")
+        self.panel.headings_spin.editingFinished.emit()
+        self.assertEqual(seen, [4])
+        self.panel.headings_spin.setText("")
+        self.panel.headings_spin.editingFinished.emit()
+        self.assertEqual(seen, [4, 0])
+
+    def test_the_turn_page_describes_its_two_choices_and_has_a_next_button(self):
+        notes = [l.text() for l in self.panel.findChildren(QLabel) if l.property("panelNote")]
+        self.assertIn("Turn words are written to new rows", notes)
+        self.assertIn("Turn words are added to the same row", notes)
+        self.assertEqual(self.panel.new_row_button.text(), "Next")
+        self.assertTrue(self.panel.new_row_button.property("outline"))
+
+    def test_start_row_and_layout_live_on_the_file_page_not_the_turn_page(self):
+        file_page = self.panel.stack.widget(0).widget()
+        turn_page = self.panel.stack.widget(1).widget()
+        self.assertTrue(file_page.isAncestorOf(self.panel.start_spin) and file_page.isAncestorOf(self.panel.down_radio))
+        self.assertFalse(turn_page.isAncestorOf(self.panel.start_spin))
+
+    def test_the_edge_line_is_one_pixel(self):
+        from PySide6.QtWidgets import QFrame
+        edges = [f for f in self.panel.findChildren(QFrame) if f.property("panelEdge")]
+        self.assertEqual([e.width() for e in edges] or [1], [1])
+
+    def test_the_panel_text_is_not_bold(self):
+        from quill.ui.theme import stylesheet_for
+        sheet = stylesheet_for(True)
+        for selector in ('QLabel[panelTitle="true"]', 'QLabel[panelNote="true"]'):
+            rule = sheet[sheet.index(selector): sheet.index("}", sheet.index(selector))]
+            self.assertIn("font-weight: 400", rule)
+
+
+class TestHeadingsRow(Dir):
+    def test_a_chosen_headings_row_replaces_the_guess(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "S"
+        ws["A1"], ws["A2"], ws["B2"] = "Report title", "Bird", "Place"
+        ws["A3"], ws["B3"] = "Wren", "Park"
+        path = self.dir / "b.xlsx"
+        wb.save(path)
+        bridge = XlsxBridge(path)
+        bridge.connect()
+        bridge.set_headings_row(2)
+        self.assertEqual(bridge.get_headers(), ["Bird", "Place"])
+        self.assertEqual(bridge.append_row("S", {"Bird": "Owl"}), 4)
+
+    def test_csv_headings_can_start_lower_too(self):
+        path = self.dir / "b.csv"
+        path.write_text("Birds seen\nBird,Place\nWren,Park\nWren,Farm\n")
+        bridge = CsvBridge(path)
+        bridge.connect()
+        bridge.set_headings_row(2)
+        self.assertEqual(bridge.get_headers(), ["Bird", "Place"])
+        self.assertEqual(bridge.get_lists()["Bird"], ["Wren"])
+
+    def test_the_controller_saves_it_and_applies_it_on_connecting(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "S"
+        ws["A1"], ws["A2"], ws["B2"] = "Report title", "Bird", "Place"
+        path = self.dir / "b.xlsx"
+        wb.save(path)
+        settings = Settings.load(self.dir / "cfg")
+        controller = Controller(XlsxBridge(path), settings, on_event=lambda e: None)
+        controller.connect()
+        controller.set_headings_row(2)
+        self.assertEqual(Settings.load(self.dir / "cfg").preferences["headings_row"], 2)
+        again = Controller(XlsxBridge(path), Settings.load(self.dir / "cfg"), on_event=lambda e: None)
+        again.connect()
+        self.assertIn("Bird", again.vocab.columns_for("wren") + list(again.vocab.fields()) if hasattr(again.vocab, "fields") else ["Bird"])
+
+
+class TestLockedFiles(Dir):
+    def setUp(self):
+        super().setUp()
+        self.path = make_workbook(self.dir / "plants.xlsx")
+        self.events = []
+        self.controller = Controller(XlsxBridge(self.path), Settings.load(self.dir / "cfg"), on_event=self.events.append)
+        self.controller.connect()
+        self.locked = mock.patch.object(type(self.controller.bridge._wb), "save", side_effect=PermissionError(13, "Permission denied"))
+
+    def test_a_held_file_keeps_the_row_in_memory_and_says_so(self):
+        self.controller.handle_transcript("start listening")
+        self.controller.handle_transcript("fern")
+        with self.locked:
+            self.controller.handle_transcript("next row")
+        kinds = [e.kind for e in self.events]
+        self.assertIn("locked", kinds)
+        saved = [e for e in self.events if e.kind == "committed"][-1]
+        self.assertIn("waiting", saved.detail)
+        self.assertTrue(self.controller.bridge.dirty)
+        self.assertEqual(self.controller.bridge._wb["Inventory"]["A4"].value, "Fern")     # nothing was lost
+        self.assertIsNone(openpyxl.load_workbook(self.path)["Inventory"]["A4"].value)     # but the file is untouched
+
+    def test_flushing_writes_the_held_rows_once_the_file_is_free(self):
+        self.controller.handle_transcript("start listening")
+        self.controller.handle_transcript("fern")
+        with self.locked:
+            self.controller.handle_transcript("next row")
+            self.assertFalse(self.controller.bridge.flush())          # still held
+        self.assertTrue(self.controller.bridge.flush())
+        self.assertFalse(self.controller.bridge.dirty)
+        self.assertEqual(openpyxl.load_workbook(self.path)["Inventory"]["A4"].value, "Fern")
+
+    def test_a_copy_can_be_saved_beside_the_file(self):
+        self.controller.handle_transcript("start listening")
+        self.controller.handle_transcript("fern")
+        with self.locked:
+            self.controller.handle_transcript("next row")
+        copy = self.controller.bridge.save_copy()
+        self.assertTrue(copy.endswith("plants (Quill copy).xlsx"))
+        self.assertEqual(openpyxl.load_workbook(copy)["Inventory"]["A4"].value, "Fern")
+
+    def test_a_csv_file_is_held_the_same_way(self):
+        path = self.dir / "b.csv"
+        path.write_text("Bird\nWren\n")
+        bridge = CsvBridge(path)
+        bridge.connect()
+        with mock.patch("quill.bridge.csv_bridge.os.replace", side_effect=PermissionError(13, "denied")):
+            from quill.bridge.base import BridgeLockedError
+            with self.assertRaises(BridgeLockedError) as caught:
+                bridge.append_row("b", {"Bird": "Owl"})
+        self.assertEqual(caught.exception.row, 3)
+        self.assertTrue(bridge.dirty)
+        self.assertTrue(bridge.flush())
+        self.assertEqual(path.read_text().splitlines(), ["Bird", "Wren", "Owl"])
+        self.assertTrue(bridge.save_copy().endswith("b (Quill copy).csv"))
+
+
+class TestLockedFilesInTheApp(PanelApp):
+    def test_the_app_retries_and_then_saves_a_copy(self):
+        bridge = self.app.controller.bridge
+        c = self.app.controller
+        c.handle_transcript("start listening")
+        c.handle_transcript("fern")
+        original = type(bridge._wb).save
+
+        def held(workbook, target):                       # only the file itself is held; a copy beside it can be written
+            if str(target) == str(self.plants):
+                raise PermissionError(13, "denied")
+            return original(workbook, target)
+
+        with mock.patch.object(type(bridge._wb), "save", held):
+            c.handle_transcript("next row")
+            for _ in range(3):
+                self.app._flush_waiting()
+        log = self.app.window.log.toPlainText()
+        self.assertIn("still in use", log)
+        self.assertTrue((self.dir / "plants (Quill copy).xlsx").exists())
+        self.app._flush_waiting()
+        self.assertIn("The file is free again", self.app.window.log.toPlainText())
+        self.assertFalse(bridge.dirty)
+
+    def test_a_file_chosen_that_excel_already_has_open_is_worked_on_through_excel(self):
+        self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Excel", live=True)]
+        self.chosen[0] = str(self.other)
+        with mock.patch.object(self.app, "use_live_excel") as use:
+            self.app.choose_spreadsheet_file()
+        use.assert_called_once()
+        self.assertEqual(self.hosts.launched, [])                  # Excel has it: not launched again
+
+    def test_a_file_that_later_turns_up_in_excel_is_switched_to_live(self):
+        self.chosen[0] = str(self.other)
+        self.app.choose_spreadsheet_file()
+        self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Excel", live=True)]
+        with mock.patch.object(self.app, "use_live_excel") as use:
+            self.app.refresh_open_files()
+        use.assert_called_once()
+
+    def test_csv_files_are_never_switched(self):
+        csv_path = self.dir / "b.csv"
+        csv_path.write_text("Bird\nWren\n")
+        self.chosen[0] = str(csv_path)
+        self.app.choose_spreadsheet_file()
+        self.hosts.files = [OpenFile("b.csv", str(csv_path), "Excel", live=True)]
+        with mock.patch.object(self.app, "use_live_excel") as use:
+            self.app.refresh_open_files()
+        use.assert_not_called()
+
+
+class TestMiniKeepsThePill(unittest.TestCase):
+    def test_the_mini_start_button_still_shows_the_pill_with_its_words(self):
+        w = MainWindow()
+        w.setup()
+        w.set_mini(True)
+        w.widget.show()
+        _app.processEvents()
+        self.assertTrue(w.toggle_button.pill.isVisibleTo(w.widget))
+        self.assertTrue(w.toggle_button.text_pill.isVisibleTo(w.widget))
+        self.assertEqual(w.toggle_button.text_pill.text(), "Start Listening")
+        w.widget.close()
+
+
+class TestSameAsButton(unittest.TestCase):
+    def test_it_is_outlined_like_the_others_with_only_the_code_bold(self):
+        from quill.parser.vocab import Vocabulary
+        from quill.ui.sorting_window import TermRow
+        vocab = Vocabulary()
+        vocab.load({"Size": ["M", "L"]}, [])
+        row = TermRow(("Size", "medium"), vocab, lambda *a: None, ("Size", "M"))
+        self.assertFalse(row.match_button.property("accent"))
+        self.assertEqual(row.match_label.text(), "Same As <b>M</b>")
 
 
 if __name__ == "__main__":

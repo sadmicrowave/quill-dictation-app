@@ -224,13 +224,14 @@ def _column_header(ws, header_row: int, col: int, first_row: int) -> str:
 # Discovery                                                            #
 # ------------------------------------------------------------------ #
 
-def discover(wb, vertical: bool = False) -> Discovery:
+def discover(wb, vertical: bool = False, headings: int = 0) -> Discovery:
     """Introspect an openpyxl workbook for list sources and header rows.
 
     Args:
         wb: An openpyxl workbook (loaded with formulas, not cached values).
         vertical: The headings run down the first column (one record per column), so a list's drop-down covers
             a *row* range and its heading is in that row's first cell. The header rows are then not used.
+        headings: The row (column, when *vertical*) that holds the headings; 0 finds it.
 
     Returns:
         A :class:`Discovery`. When the same header has lists on several sheets
@@ -239,7 +240,7 @@ def discover(wb, vertical: bool = False) -> Discovery:
     result = Discovery()
     for ws in wb.worksheets:
         if not vertical:
-            result.header_rows[ws.title] = _sheet_header_row(ws)
+            result.header_rows[ws.title] = headings or _sheet_header_row(ws)
 
     for ws in wb.worksheets:
         header_row = result.header_rows.get(ws.title, 1)
@@ -248,7 +249,7 @@ def discover(wb, vertical: bool = False) -> Discovery:
                 continue
             for cell_range in dv.sqref.ranges:
                 if vertical:
-                    headers = [_header_text(ws.cell(row=row, column=1).value)
+                    headers = [_header_text(ws.cell(row=row, column=headings or 1).value)
                                for row in range(cell_range.min_row, cell_range.max_row + 1)]
                 else:
                     headers = [_column_header(ws, header_row, col, cell_range.min_row)

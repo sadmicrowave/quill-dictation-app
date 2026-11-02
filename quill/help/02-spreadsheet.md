@@ -18,13 +18,21 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 No spreadsheet app open? Quill can fill a file by itself.
 
 1. Press the **folder** icon in the title bar, left of the turn and Settings icons. The **side panel** eases in on the right (press the folder again to ease it away). The icon is grey and closed while no file is open, and solid and open once one is; hover it to see the file's name and the open sheet.
-2. In the panel's **Active File** section, hover the file's name to see its **full path**; the sheet is shown under it. Press **Open File…** for the standard file window (it opens where you last picked a file, or use **File > Open Spreadsheet File…**), and pick an `.xlsx` or a `.csv` file.
+2. The panel's **Active File** section is one button: it reads **Open File** (with a folder) until a file is active, then shows the file's name. Press it for the standard file window, which opens where the active file is (or use **File > Open Spreadsheet File…**), and pick an `.xlsx` or a `.csv` file. Under it, in quiet text: the sheet, the file's path (one line), what it is open in (Excel, LibreOffice, CSV ...), its size and when it was modified and created.
    Pressing **Start** with no file open opens this window for you.
 3. Dictate. Quill remembers the file next time.
 
 A file you pick this way that no program has open yet is **started in its own program** as well (in the background, so Quill stays in front).
 
 ![The side panel's file page](images/side-panel-file.png)
+
+### Where the data starts
+
+Also on this page: **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), **Sheet Layout** (Columns Across or Rows Down) and **Headings Row** (**Automatic** finds the headings; type a number to choose). With Rows Down these read *Column*.
+
+### When another program holds the file
+
+If Excel has the file you chose, Quill works through Excel itself (no file to fight over). If a program refuses the save (Excel on Windows), Quill keeps your rows, tries again every few seconds, says so in the **Log**, and after a few tries saves them to *name (Quill copy)* beside the file.
 
 ### Spreadsheets that are already open
 

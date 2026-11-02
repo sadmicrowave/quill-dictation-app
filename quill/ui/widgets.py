@@ -246,7 +246,7 @@ class ListenButton(QPushButton):
             self.countdown_label.setText(f"{seconds}s")
 
     def set_compact(self, compact: bool) -> None:
-        """The mini view keeps just the icon of the pill (no words, no outline)."""
+        """The mini view keeps the whole pill (icon, words, outline): only the room around it is tighter."""
         self._compact = compact
         self.pill.setProperty("compact", compact)
         self._repolish(self.pill)
@@ -269,7 +269,7 @@ class ListenButton(QPushButton):
     def _show_text(self) -> None:
         text = self._live_text if self._active else self._idle_text
         self.text_pill.setText(text)
-        self.text_pill.setVisible(not self._compact)
+        self.text_pill.setVisible(True)
         self.pill.setVisible(not self._notice)
         self.setToolTip(self.fixed_tip or text)
         self.setAccessibleName(text)

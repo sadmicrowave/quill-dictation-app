@@ -79,6 +79,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "sorting_sounds": True,   # Term Helper answers (added, ignored, a problem) play their confirmation sound
     "sorting_follows_opacity": False,   # the Term Helper fades like the main window (off: it stays solid and easy to read)
     "turn_mode": "next_row",  # "next_row": each turn is a new row | "append": each turn adds to the same row
+    "headings_row": 0,        # the row (column, when headings run down) that holds the headings; 0 = find it
     "start_row": 0,           # first row (first column when headings run down) a turn may write to; 0 = the first empty one
     "sorting_x": -1,          # where the Term Helper window was left (-1 = not yet: it opens at the main window's screen corner)
     "sorting_y": -1,
@@ -236,6 +237,7 @@ class Settings:
         settings.preferences["opacity"] = max(low, min(high, int(settings.preferences["opacity"])))
         low, high = BLUR_RANGE
         settings.preferences["blur"] = max(low, min(high, int(settings.preferences["blur"])))
+        settings.preferences["headings_row"] = max(0, min(1_048_576, int(settings.preferences["headings_row"])))
         settings.preferences["start_row"] = max(0, min(1_048_576, int(settings.preferences["start_row"])))
         low, high = FONT_SIZE_RANGE
         settings.preferences["font_size"] = max(low, min(high, int(settings.preferences["font_size"])))

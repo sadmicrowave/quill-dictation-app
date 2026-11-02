@@ -24,7 +24,7 @@ import re
 import openpyxl
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
-from quill.bridge.base import BridgeError
+from quill.bridge.base import BridgeError, BridgeLockedError
 from quill.bridge.grid import OpenpyxlGrid, cell_text, is_blank
 from quill.bridge.introspect import Discovery
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -116,6 +116,9 @@ class CsvBridge(XlsxBridge):
         except csv.Error:
             return ","
 
+    def _rediscover(self) -> None:
+        self._date_format = self._learn_date_formats()        # (a CSV file has no drop-down lists to find again)
+
     # ------------------------------------------------------------------ #
     # What the data says                                                   #
     # ------------------------------------------------------------------ #
@@ -126,8 +129,9 @@ class CsvBridge(XlsxBridge):
         width, last = grid.last_col(self._sheet), grid.last_row(self._sheet)
         if width == 0:
             return {}
-        headers = grid.read(self._sheet, 1, 1, 1, width)[0]
-        data = grid.read(self._sheet, 2, 1, max(last - 1, 0), width) if last > 1 else []
+        top = self._header_row(grid, self._sheet)
+        headers = grid.read(self._sheet, top, 1, 1, width)[0]
+        data = grid.read(self._sheet, top + 1, 1, max(last - top, 0), width) if last > top else []
         found: dict[str, list[str]] = {}
         for index, header in enumerate(headers):
             if is_blank(header):
@@ -245,18 +249,28 @@ class CsvBridge(XlsxBridge):
         return str(value)
 
     def _after_write(self) -> None:
+        try:
+            self._write_text(self._path)
+        except OSError as exc:
+            self._dirty = True
+            raise BridgeLockedError(f"{self._path.name} is in use by another program ({exc.strerror or exc})") from exc
+        self._dirty = False
+
+    def _write_copy(self, target: pathlib.Path) -> None:
+        self._write_text(target)
+
+    def _write_text(self, target: pathlib.Path) -> None:
+        """Write the sheet as delimited text to *target* (a temporary file first, then moved into place)."""
         grid = self._raw()
         sheet = self._wb[self._sheet]
         last, width = grid.last_row(self._sheet), grid.last_col(self._sheet)
-        tmp = self._path.with_name(self._path.name + ".quill-tmp")
+        tmp = target.with_name(target.name + ".quill-tmp")
         try:
             with open(tmp, "w", encoding="utf-8-sig" if self._bom else "utf-8", newline="") as handle:
                 writer = csv.writer(handle, delimiter=self._delimiter, lineterminator=self._newline)
                 for r, row in enumerate(sheet.iter_rows(min_row=1, max_row=last, max_col=width, values_only=True), start=1):
                     writer.writerow([self._text(v, r if self._vertical else c) for c, v in enumerate(row, start=1)])
-            os.replace(tmp, self._path)
-        except OSError as exc:
-            raise BridgeError(f"Could not save {self._path.name}: {exc}") from exc
+            os.replace(tmp, target)
         finally:
             tmp.unlink(missing_ok=True)
 

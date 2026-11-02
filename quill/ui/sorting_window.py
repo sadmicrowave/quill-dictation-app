@@ -126,8 +126,15 @@ class TermRow(QFrame):
         self.same_menu.aboutToShow.connect(self._fill_same_menu)
         self.same_button.setMenu(self.same_menu)
         self.ignore_button = QPushButton("Ignore")
-        self.match_button = QPushButton(f"Same As {self.short_code}" if self.short_code else "")
-        self.match_button.setProperty("accent", True)          # the likely answer, filled in the theme colour
+        self.match_button = QPushButton()                      # the likely answer: outlined like the rest, "Same As" plain, the code bold
+        self.match_button.setProperty("keepMargins", True)
+        inside = QHBoxLayout(self.match_button)
+        inside.setContentsMargins(14, 0, 14, 0)
+        self.match_label = QLabel(f"Same As <b>{self.short_code}</b>" if self.short_code else "")
+        self.match_label.setTextFormat(Qt.TextFormat.RichText)
+        self.match_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        inside.addWidget(self.match_label)
+        self.match_button.setMinimumWidth(self.match_label.sizeHint().width() + 30)
         self.match_button.setVisible(bool(self.short_code))
         self.match_button.setToolTip("Another name for the short code Quill thinks this is")
 

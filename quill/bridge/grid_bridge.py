@@ -12,7 +12,7 @@ import dataclasses
 import datetime as dt
 import re
 
-from quill.bridge.base import BridgeError, WorkbookBridge
+from quill.bridge.base import BridgeError, BridgeLockedError, WorkbookBridge
 from quill.bridge.filters import ColumnFilter
 from quill.bridge.grid import Grid, TransposedGrid, cell_text, is_blank
 from quill.bridge.introspect import (
@@ -59,6 +59,7 @@ class GridBridge(WorkbookBridge):
 
     def __init__(self) -> None:
         self._grid: Grid | None = None
+        self._headings_row = 0                  # the row (column) that holds the headings; 0 = find it
         self._start_row = 0                     # records may not start above this row (0 = no limit)
         self._vertical = False                  # headings down the first column, one record per column
         self._discovery = Discovery()
@@ -112,6 +113,16 @@ class GridBridge(WorkbookBridge):
     def set_start_row(self, number: int) -> None:
         self._start_row = max(0, int(number))
 
+    def set_headings_row(self, number: int) -> None:
+        number = max(0, int(number))
+        if number != self._headings_row:
+            self._headings_row = number
+            if self._grid is not None:
+                self._rediscover()
+
+    def _rediscover(self) -> None:
+        """Find the drop-down lists again (after the layout or the headings row changed); the open file is not reloaded."""
+
     def set_vertical(self, vertical: bool) -> None:
         vertical = bool(vertical)
         if vertical == self._vertical:
@@ -119,7 +130,7 @@ class GridBridge(WorkbookBridge):
         self._vertical = vertical
         self._saved_cursor = None
         if self._grid is not None:
-            self.refresh()                       # the drop-down lists are found differently for the other layout
+            self._rediscover()                   # the drop-down lists are found differently for the other layout
 
     # ------------------------------------------------------------------ #
     # Introspection                                                        #
@@ -160,6 +171,8 @@ class GridBridge(WorkbookBridge):
         return values
 
     def _header_row(self, grid: Grid, sheet: str) -> int:
+        if self._headings_row:
+            return self._headings_row
         known = self._discovery.header_rows.get(sheet)
         if known:
             return known
@@ -198,8 +211,16 @@ class GridBridge(WorkbookBridge):
         for name, value in values.items():
             if value is not None:
                 grid.write(sheet_name, row, columns[normalize_header(name)], value)
-        self._after_write()
+        self._saved_row(row)
         return row
+
+    def _saved_row(self, row: int) -> None:
+        """Save after writing record *row*; if the file is held, the error says which record was written."""
+        try:
+            self._after_write()
+        except BridgeLockedError as exc:
+            exc.row = row
+            raise
 
     def append_to_row(self, sheet_name: str, row: int | None, values: dict[str, object]) -> int:
         grid = self._require()
@@ -217,7 +238,7 @@ class GridBridge(WorkbookBridge):
                 grid.write(sheet_name, target, column, value if not isinstance(value, str) else text)
             else:
                 grid.write(sheet_name, target, column, f"{cell_text(existing)}, {text}")
-        self._after_write()
+        self._saved_row(target)
         return target
 
     def set_value(self, sheet_name: str, row: int, column: str, value: object) -> bool:

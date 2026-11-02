@@ -13,7 +13,7 @@ import sys
 
 import openpyxl
 
-from quill.bridge.base import BridgeError
+from quill.bridge.base import BridgeError, BridgeLockedError
 from quill.bridge.grid import OpenpyxlGrid
 from quill.bridge.grid_bridge import GridBridge
 from quill.bridge.introspect import ListSource, discover
@@ -33,6 +33,7 @@ class XlsxBridge(GridBridge):
         super().__init__()
         self._path = pathlib.Path(path) if path else None
         self._wb = None
+        self._dirty = False                      # changes are in memory but the file is held by another program
 
     def connect(self, workbook: str | None = None) -> None:
         # The picker and saved settings pass a workbook *name*; only a path that
@@ -52,7 +53,7 @@ class XlsxBridge(GridBridge):
         self._path = path
         self._name = path.name
         self._grid = OpenpyxlGrid(self._wb)
-        self._discovery = discover(self._wb, self._vertical)
+        self._discovery = discover(self._wb, self._vertical, self._headings_row)
 
     def disconnect(self) -> None:
         super().disconnect()
@@ -75,12 +76,45 @@ class XlsxBridge(GridBridge):
     def open_workbooks(self) -> list[str]:
         return [self._path.name] if self._path and self._path.exists() else []
 
+    def _rediscover(self) -> None:
+        if self._wb is not None:
+            self._discovery = discover(self._wb, self._vertical, self._headings_row)
+
     def refresh(self) -> None:
         """Reload the file from disk, discarding unsaved in-memory state."""
         self.connect()
 
+    @property
+    def dirty(self) -> bool:
+        return self._dirty
+
     def _after_write(self) -> None:
-        self._wb.save(self._path)
+        try:
+            self._wb.save(self._path)
+        except OSError as exc:                       # another program holds the file (Excel on Windows does)
+            self._dirty = True
+            raise BridgeLockedError(f"{self._path.name} is in use by another program ({exc.strerror or exc})") from exc
+        self._dirty = False
+
+    def flush(self) -> bool:
+        if not self._dirty:
+            return True
+        try:
+            self._after_write()
+        except BridgeLockedError:
+            return False
+        return True
+
+    def save_copy(self) -> str:
+        copy = self._path.with_name(f"{self._path.stem} (Quill copy){self._path.suffix}")
+        try:
+            self._write_copy(copy)
+        except OSError:
+            return ""
+        return str(copy)
+
+    def _write_copy(self, target: pathlib.Path) -> None:
+        self._wb.save(target)
 
     def _add_inline(self, source: ListSource, value: str) -> None:
         """Rewrite the inline validation formula(s) to include *value*."""

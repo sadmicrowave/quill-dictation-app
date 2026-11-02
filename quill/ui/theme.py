@@ -293,9 +293,7 @@ QLabel[heading="true"] {{ color: {t['muted']}; }}
 QLabel[chip="warn"] {{ background: {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.16)}; color: {WARNING_DARK if dark else WARNING_LIGHT};
               border: 1px solid {rgba(WARNING_DARK if dark else WARNING_LIGHT, 0.5)}; border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
 QFrame[listenPill="true"] {{ background: transparent; border: 1px solid {t['accent']}; border-radius: 12px; }}
-QFrame[listenPill="true"][compact="true"] {{ border: none; }}
 QPushButton[accent="true"] QFrame[listenPill="true"] {{ border: 1px solid {rgba(t['on_accent'], 0.7)}; }}
-QPushButton[accent="true"] QFrame[listenPill="true"][compact="true"] {{ border: none; }}
 QFrame[listenPill="true"] QLabel {{ background: transparent; color: {t['text']}; font-weight: 500; }}
 QPushButton[accent="true"] QFrame[listenPill="true"] QLabel {{ color: {t['on_accent']}; }}
 QLabel[placeholder="true"] {{ font-style: italic; color: {t['muted']}; }}
@@ -358,9 +356,11 @@ QCheckBox {{ spacing: 10px; }}
 QRadioButton {{ spacing: 8px; font-weight: 600; }}
 QRadioButton::indicator {{ width: 14px; height: 14px; border-radius: 8px; border: 1px solid {t['muted']}; background: transparent; }}
 QRadioButton::indicator:checked {{ background: {t['accent']}; border: 1px solid {t['accent']}; }}
-QFrame#sidePanel {{ background: transparent; border: none; border-left: 1px solid {rgba(t['border'], 0.7)}; }}
+QFrame#sidePanel {{ background: transparent; border: none; }}
+QFrame[panelEdge="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
 QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
-QLabel[panelTitle="true"] {{ font-weight: 600; }}
+QLabel[panelTitle="true"] {{ font-weight: 400; }}
+QLabel[panelNote="true"] {{ font-weight: 400; font-style: normal; color: {t['muted']}; }}
 QToolButton[chromeIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[chromeIcon="true"]:hover {{ background: {rgba(t['text'], 0.10)}; }}
 QLabel[panelName="true"] {{ font-weight: 600; }}

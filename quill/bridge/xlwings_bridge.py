@@ -110,6 +110,10 @@ class XlwingsBridge(GridBridge):
         except Exception as exc:
             raise BridgeError(f"Could not bring '{self._name}' to the front: {exc}") from exc
 
+    def _rediscover(self) -> None:
+        if self._book is not None:
+            self._load_structure()
+
     def refresh(self) -> None:
         self._require()
         self._load_structure()
@@ -127,6 +131,6 @@ class XlwingsBridge(GridBridge):
             return
         try:
             wb = openpyxl.load_workbook(path, keep_vba=path.suffix.lower() == ".xlsm")
-            self._discovery = discover(wb, self._vertical)
+            self._discovery = discover(wb, self._vertical, self._headings_row)
         except Exception as exc:
             self.discovery_warning = f"Could not read lists from {path.name}: {exc}"

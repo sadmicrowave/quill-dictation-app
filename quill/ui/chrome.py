@@ -97,9 +97,12 @@ _TITLE_ID = "quillWindowTitle"
 
 
 class _TitleFilter(QObject):
-    """Re-applies the plain title whenever its window is shown (the native window may be rebuilt on show)."""
+    """Re-applies the plain title whenever its window is shown (the native window may be rebuilt on show), and
+    keeps it centred in the room the side panel leaves while the window is resized."""
 
     def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Resize and getattr(obj, "_quill_title_inset", 0):
+            set_title_inset(obj, obj._quill_title_inset)
         if event.type() == QEvent.Type.Show:
             for delay in (0, 250):                                   # again once the system has finished laying the bar out
                 QTimer.singleShot(delay, lambda: plain_title(obj))
@@ -184,12 +187,32 @@ def plain_title(widget) -> bool:
 
 
 def _retitle(label, close, text: str) -> None:
-    """Set the label's text and centre it across the window, level with the close button."""
+    """Set the label's text and centre it across the window (less the side panel's room), level with the close button."""
     label.setStringValue_(text)
     label.sizeToFit()
     size, bounds, button = label.frame().size, close.superview().bounds().size, close.frame()
-    label.setFrameOrigin_(((bounds.width - size.width) / 2,
+    room = bounds.width - getattr(label, "_inset", 0.0)
+    label.setFrameOrigin_(((room - size.width) / 2,
                            button.origin.y + (button.size.height - size.height) / 2))
+
+
+def set_title_inset(widget, points: float, platform: str | None = None) -> bool:
+    """Keep the window's title centred in what is left of the title bar while a side panel *points* wide takes
+    the right-hand end (0 centres it across the whole bar again)."""
+    try:
+        if not _native_platform(platform or sys.platform):
+            return False
+        import objc
+        window = objc.objc_object(c_void_p=int(widget.winId())).window()
+        close = window.standardWindowButton_(0)
+        label = next(v for v in close.superview().subviews() if v.identifier() == _TITLE_ID)
+        widget._quill_title_inset = float(points)
+        label._inset = float(points)
+        label.setAutoresizingMask_(8 if points > 0 else 13)      # a panel: stay put (placed by hand); else centred sideways
+        _retitle(label, close, label.stringValue())
+        return True
+    except Exception:
+        return False
 
 
 def _native_platform(platform: str) -> bool:
@@ -420,24 +443,62 @@ class TitlebarButton:
     swaps the icon with :meth:`set_mini`.
     """
 
-    def __init__(self, button, controller, target, appkit, extras=(), holder=None, base_width=0, divider=None) -> None:
+    def __init__(self, button, controller, target, appkit, extras=(), holder=None, row=None, row_x=0.0, base_width=0,
+                 panel=None, reference=None) -> None:
         self._button, self._controller, self._target, self._appkit = button, controller, target, appkit
         self._extras = list(extras)                # (button, target) pairs kept alive beside the main one
-        self._holder, self._base_width, self._divider = holder, base_width, divider
+        self._holder, self._row, self._row_x, self._base_width = holder, row, row_x, base_width
+        self._panel = panel                        # the side panel's line, title and close button (right side only)
+        self._reference = reference                # the window's close button: icons are centred on it, like the title
+        self._lift = 0.0                           # how far the icons were raised to line up with the title
+        self._inset = 0.0
+
+    def _resize_holder(self) -> None:
+        if self._holder is not None:
+            self._holder.setFrameSize_((self._base_width + self._inset, 24 + self._lift))
+            self._row.setFrameOrigin_((self._row_x, self._lift))
 
     def set_inset(self, points: float) -> None:
-        """Move the icons *points* to the left of the window's right edge (the side panel's room) and draw a thin
-        vertical line, from the top of the title bar, at the panel's edge. 0 puts everything back."""
+        """Move the icons *points* to the left of the window's right edge (the side panel's room); the panel's line,
+        title and close button appear in that room, from the top of the title bar. 0 puts everything back."""
+        self._inset = float(points)
         try:
-            if self._holder is not None:
-                self._holder.setFrameSize_((self._base_width + points, 24))
-            if self._divider is not None:
-                bar = self._divider.superview()
-                size = bar.bounds().size
-                self._divider.setFrame_(((size.width - points, 0), (1, size.height)))
-                self._divider.setHidden_(points <= 0)
+            self._resize_holder()
+            if self._panel is not None:
+                self._panel.place(points, self._reference)
         except Exception:
             pass
+
+    def set_panel_title(self, text: str) -> None:
+        """The side panel's title, drawn in the title bar."""
+        try:
+            if self._panel is not None:
+                self._panel.title.setStringValue_(text)
+                self._panel.title.sizeToFit()
+                self._panel.place(self._inset, self._reference)
+        except Exception:
+            pass
+
+    def align(self) -> float:
+        """Raise the icons until their middle is level with the window's close button (and so the title).
+
+        The system decides where an accessory sits and it varies between macOS versions, so this measures and
+        corrects (call it a few times, a moment apart, until it returns about 0).
+
+        Returns:
+            How far off they were, in points.
+        """
+        try:
+            ref = self._reference
+            bar = ref.superview()
+            rect = self._row.convertRect_toView_(self._row.bounds(), bar)
+            delta = (ref.frame().origin.y + ref.frame().size.height / 2) - (rect.origin.y + rect.size.height / 2)
+            if abs(delta) > 0.5:
+                self._lift = max(0.0, min(40.0, self._lift + delta))
+                self._resize_holder()
+            return delta
+        except Exception:
+            return 0.0
 
     def set_extra_active(self, index: int, active: bool) -> None:
         """Keep the *index*-th extra icon filled (as while hovered) to show its panel is open."""
@@ -500,7 +561,8 @@ _RIGHT_NUDGE = 24
 def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False,
                         platform: str | None = None, appkit=None,
                         extra: list[tuple] | None = None, symbol: str | None = None, tip: str = "",
-                        hover: tuple | None = None, side: str = "right") -> TitlebarButton | None:
+                        hover: tuple | None = None, side: str = "right",
+                        on_panel_close: Callable[[], None] | None = None) -> TitlebarButton | None:
     """Add the resize icon (and optionally more icons to its left) at the right of the native title bar (macOS).
 
     Args:
@@ -513,6 +575,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         symbol, tip: Give the main icon its own symbol and tooltip instead of the resize icon's.
         hover: ``(hover_in, hover_out)`` for the main icon; its native tooltip is then left off.
         side: ``"right"`` (default) or ``"left"`` (beside the window's close / zoom buttons).
+        on_panel_close: Called when the side panel's close button (drawn in the title bar) is pressed.
 
     Returns:
         The button, or None where this is not possible (other platforms, headless
@@ -576,20 +639,19 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
             row.setSpacing_(_ICON_GAP)
             width = _ICON_WIDTH * len(extras) + _LAST_ICON_WIDTH + _ICON_GAP * len(extras)
             row.setFrame_(((0, 0), (width, 24)))    # an accessory view needs a size of its own
-            if side == "left":
-                controller.setView_(row)
-            else:
-                holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, 24)))
-                row.setFrameOrigin_((_RIGHT_NUDGE, 0))   # macOS keeps a gap at the right of the title bar: the row sits past it
-                holder.addSubview_(row)
-                controller.setView_(holder)
+            holder = appkit.NSView.alloc().initWithFrame_(((0, 0), (width, 24)))
+            row_x = _RIGHT_NUDGE if side != "left" else 0.0     # macOS keeps a gap at the right of the title bar: the row sits past it
+            row.setFrameOrigin_((row_x, 0))
+            holder.addSubview_(row)
+            controller.setView_(holder)
         else:
             controller.setView_(button)
         controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)
         window.addTitlebarAccessoryViewController_(controller)
-        divider = _divider_view(appkit, window) if side == "right" and appkit_real else None
-        result = TitlebarButton(button, controller, target, appkit, extras, holder if (extras and side != "left") else None,
-                                width if extras else 0, divider)
+        panel = _PanelChrome(appkit, window, on_panel_close, make_button) if side == "right" and appkit_real else None
+        reference = window.standardWindowButton_(0) if appkit_real else None
+        result = TitlebarButton(button, controller, target, appkit, extras, holder if extras else None,
+                                row if extras else None, row_x if extras else 0.0, width if extras else 0, panel, reference)
         if not symbol:
             result.set_mini(mini)
         return result
@@ -602,23 +664,51 @@ _BUTTON_CLASS = None
 _DIVIDER_ID = "quillPanelDivider"
 
 
-def _divider_view(appkit, window):
-    """A one-point-wide muted vertical line in the title bar (hidden until the side panel opens), so the panel's
-    edge runs unbroken from the top of the window to the bottom."""
-    try:
+class _PanelChrome:
+    """What the title bar draws for the side panel: its edge line, its title and its close button.
+
+    All three live in the title bar's own view, hidden until the panel opens, and are placed from the window's right
+    edge (the panel's width) so they follow the panel as it slides.
+    """
+
+    def __init__(self, appkit, window, on_close, make_button) -> None:
+        self._appkit = appkit
         bar = window.standardWindowButton_(0).superview()
-        line = next((v for v in bar.subviews() if v.identifier() == _DIVIDER_ID), None)
-        if line is None:
-            line = appkit.NSView.alloc().initWithFrame_(((0, 0), (1, bar.bounds().size.height)))
-            line.setIdentifier_(_DIVIDER_ID)
-            line.setWantsLayer_(True)
-            line.layer().setBackgroundColor_(appkit.NSColor.separatorColor().CGColor())
-            line.setAutoresizingMask_(1 | 16)            # keeps its distance from the right edge, follows the height
-            line.setHidden_(True)
-            bar.addSubview_(line)
-        return line
-    except Exception:
-        return None
+        self.bar = bar
+        height = bar.bounds().size.height
+        self.line = appkit.NSView.alloc().initWithFrame_(((0, 0), (1, height)))
+        self.line.setIdentifier_(_DIVIDER_ID)
+        self.line.setWantsLayer_(True)
+        self.title = appkit.NSTextField.labelWithString_("")
+        self.title.setFont_(appkit.NSFont.systemFontOfSize_weight_(13, 0.0))      # regular, not bold
+        self.title.setTextColor_(appkit.NSColor.labelColor())
+        self.close, self._target = make_button(on_close or (lambda: None), 30)
+        image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_("xmark", "Close")
+        if image is not None:
+            self.close.setImage_(image)
+        self.close.setToolTip_("Close")
+        for view in (self.line, self.title, self.close):
+            view.setAutoresizingMask_(1)                # keeps its distance from the right edge
+            view.setHidden_(True)
+            bar.addSubview_(view)
+        self.line.setAutoresizingMask_(1 | 16)          # (the line also follows the bar's height)
+
+    def place(self, points: float, reference) -> None:
+        """Put the three pieces at a panel of width *points* (0 hides them)."""
+        shown = points > 0
+        for view in (self.line, self.title, self.close):
+            view.setHidden_(not shown)
+        if not shown:
+            return
+        width, height = self.bar.bounds().size.width, self.bar.bounds().size.height
+        dark = "Dark" in str(self.bar.effectiveAppearance().name())
+        shade = self._appkit.NSColor.colorWithWhite_alpha_(1.0 if dark else 0.0, 0.14)
+        self.line.layer().setBackgroundColor_(shade.CGColor())
+        self.line.setFrame_(((width - points, 0), (1, height)))
+        middle = reference.frame().origin.y + reference.frame().size.height / 2 if reference is not None else height / 2
+        size = self.title.frame().size
+        self.title.setFrameOrigin_((width - points + 14, middle - size.height / 2))
+        self.close.setFrameOrigin_((width - 38, middle - 12))
 
 
 def _button_class(appkit, objc):

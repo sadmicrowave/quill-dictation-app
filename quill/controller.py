@@ -13,7 +13,7 @@ import datetime as dt
 import logging
 from typing import Callable
 
-from quill.bridge.base import BridgeError, WorkbookBridge
+from quill.bridge.base import BridgeError, BridgeLockedError, WorkbookBridge
 from quill.config.settings import Settings
 from quill.history import History
 from quill.parser.commands import Action, CommandMatcher
@@ -91,6 +91,7 @@ class Controller:
         if hasattr(self.bridge, "set_vertical"):
             self.bridge.set_vertical(bool(self.settings.preferences["vertical_layout"]))
             self.bridge.set_start_row(int(self.settings.preferences["start_row"]))
+            self.bridge.set_headings_row(int(self.settings.preferences["headings_row"]))
         self.bridge.connect(workbook)
         self.reload_vocab()
         self.connected = True
@@ -242,6 +243,23 @@ class Controller:
         if hasattr(self.bridge, "set_start_row"):
             self.bridge.set_start_row(number)
         self._on_event(Event("ignored", detail=f"Turns start at row {number}" if number else "Turns start at the first empty row"))
+
+    def set_headings_row(self, number: int) -> None:
+        """The row (column, for Rows Down) that holds the headings; 0 finds it by itself."""
+        number = max(0, int(number))
+        if number == int(self.settings.preferences["headings_row"]):
+            return
+        self.settings.preferences["headings_row"] = number
+        self.settings.save()
+        self._append_target = None
+        try:
+            self.bridge.set_headings_row(number)
+            if self.connected:
+                self.reload_vocab()
+        except BridgeError as exc:
+            self._on_event(Event("error", detail=f"Could not use that headings row: {exc}"))
+            return
+        self._on_event(Event("ignored", detail=f"Headings are in row {number}" if number else "Headings are found automatically"))
 
     def start_new_row(self) -> None:
         """Stop adding to the current row: the next turn starts a fresh one."""
@@ -496,6 +514,12 @@ class Controller:
                 row = self.bridge.append_row(sheet, event.record)
                 event.detail = self._record_name(row)
             self.session.tag_origin(event.terms or [], sheet, row)
+        except BridgeLockedError as exc:                    # another program holds the file: the row is kept and saved when it is free
+            row = exc.row if exc.row is not None else 0
+            event.detail = f"{self._record_name(row)} (waiting: the file is in use)"
+            self.session.tag_origin(event.terms or [], sheet, row)
+            self._append_target = (sheet, row) if self.turn_mode == "append" else None
+            self._on_event(Event("locked", detail=f"{exc}. Quill is holding the rows and saves them the moment it is free."))
         except BridgeError as exc:
             self.session.restore(event.record)             # nothing the user said is lost: the row stays as it was
             hint = " Open the sheet you are filling in, then say next row again." if "has no " in str(exc) else ""

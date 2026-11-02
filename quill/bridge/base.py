@@ -63,8 +63,24 @@ class WorkbookBridge(ABC):
         The default ignores it; the grid-based bridges honour it.
         """
 
+    def set_headings_row(self, number: int) -> None:
+        """The row (column, when the headings run down) that holds the headings; 0 = find it."""
+
     def set_start_row(self, number: int) -> None:
         """The first row (first column when the headings run down) a new record may use; 0 = the first empty one."""
+
+    @property
+    def dirty(self) -> bool:
+        """True while changes are held in memory because the file could not be saved."""
+        return False
+
+    def flush(self) -> bool:
+        """Try again to save held changes. True when nothing is waiting any more."""
+        return True
+
+    def save_copy(self) -> str:
+        """Save the held changes to a new file next to the original; returns its path ('' if impossible)."""
+        return ""
 
     def open_workbooks(self) -> list[str]:
         """Names of every workbook that can be targeted (for a picker).
@@ -207,3 +223,13 @@ class WorkbookBridge(ABC):
 
 class BridgeError(Exception):
     """Raised when the bridge cannot connect or perform an operation."""
+
+
+class BridgeLockedError(BridgeError):
+    """The change is made in memory but the file could not be saved (another program holds it).
+
+    ``row`` is the record that was written, when the failing call was writing one. The bridge keeps the change
+    and saves it with :meth:`WorkbookBridge.flush` as soon as the file is free.
+    """
+
+    row: int | None = None
