@@ -2,7 +2,7 @@
 
 A **turn** is one round of you speaking and Quill answering: the words you say, Quill's match to your columns, the Term Helper if a word needs sorting, and the writing of those matches. **Next** (the button, or saying "next row") ends the turn and starts the next.
 
-Press the **turn** icon (two speech bubbles) in the title bar. The **side panel** eases in with the turn settings; press the icon again to ease it away. The folder icon opens the same panel on its file page. The panel is titled **Turn Options** here; its **Keywords** link opens the keyword settings.
+Press the **turn** icon (two speech bubbles) in the title bar. The **side panel** eases in with the turn settings; press the icon again to ease it away. The folder icon opens the same panel on its file page. The panel is titled **Turn Options** here; a link opens **Settings > Keywords**, where each turn setting can be given a spoken phrase.
 
 ![The side panel's turn page](images/side-panel-turn.png)
 

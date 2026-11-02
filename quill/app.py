@@ -60,6 +60,7 @@ from quill.ui.chrome import (
     SYMBOL_UNDO,
     add_titlebar_button,
     apply_chrome,
+    FileDialogWarmer,
     bring_app_forward,
     set_title_inset,
     set_dock_icon_visible,
@@ -122,6 +123,8 @@ FLUSH_EVERY_MS = 5000
 FLUSH_COPY_AFTER = 3
 #: How often (ms) the side panel looks again for spreadsheets other programs have open, while it is showing.
 OPEN_FILES_EVERY_MS = 30000
+#: How long after start-up (ms) the system's file window is warmed up (see FileDialogWarmer).
+FILE_DIALOG_WARM_MS = 2500
 
 
 #: The speech quality choices and their names in the window.
@@ -176,6 +179,7 @@ class QuillApp:
     ) -> None:
         self.qapp = qapp
         self._file_chooser = file_chooser or self._ask_for_file
+        self._file_dialog_warmer = FileDialogWarmer()
         self._live_bridge_factory = live_bridge_factory
         self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
@@ -329,6 +333,7 @@ class QuillApp:
         self._use_best_installed()
         self._start_listener()
         self._watcher.start()
+        QTimer.singleShot(FILE_DIALOG_WARM_MS, self._warm_file_dialog)
         self._flush_timer.start()
         QTimer.singleShot(0, self._warm_up_sounds)           # after the window is up: load every sound, make spoken clips
 
@@ -848,9 +853,25 @@ class QuillApp:
     # Working on a file instead of live Excel                              #
     # ------------------------------------------------------------------ #
 
+    def _warm_file_dialog(self) -> None:
+        """Get the system's file window ready (see :class:`FileDialogWarmer`), once Quill is the program in front, so
+        the first Open File is not slow to appear. Not while the user is in another program (it would pull Quill forward)."""
+        if os.environ.get("QUILL_NO_HOSTS") or self._file_dialog_warmer.done:
+            return
+        if self.qapp.applicationState() != Qt.ApplicationState.ApplicationActive:
+            self.qapp.applicationStateChanged.connect(self._warm_when_active)
+            return
+        self._file_dialog_warmer.start()
+
+    def _warm_when_active(self, state) -> None:
+        if state == Qt.ApplicationState.ApplicationActive:
+            self.qapp.applicationStateChanged.disconnect(self._warm_when_active)
+            QTimer.singleShot(FILE_DIALOG_WARM_MS, self._warm_file_dialog)
+
     def _ask_for_file(self) -> str | None:
         """Show the standard file picker for a spreadsheet file (.xlsx, .csv, .tsv); None if the user cancels."""
         from PySide6.QtWidgets import QFileDialog
+        self._file_dialog_warmer.cancel()
         remembered = self.controller.bridge.workbook_path if self.connected else ""   # where the active file is
         remembered = remembered or str(self.settings.preferences["workbook_file"])
         start = str(pathlib.Path(remembered).parent) if remembered else str(pathlib.Path.home() / "Documents")
@@ -904,6 +925,7 @@ class QuillApp:
     def _wire_panel(self) -> None:
         """Connect the side panel's choices to the application, and fill in what it shows."""
         panel = self.window.panel
+        panel.settings.apply_density(str(self.settings.preferences["spacing"]))
         panel.open_file_requested.connect(self.choose_spreadsheet_file)
         panel.file_chosen.connect(self._panel_pick)
         panel.refresh_requested.connect(self.refresh_open_files)
@@ -1385,6 +1407,9 @@ class QuillApp:
             self.help.restyle(prefs, self.qapp)
         self.tray.set_dark(dark)
         self.tray.set_badge(self.tray.badge, colors["accent"])
+        panel = getattr(self.window, "panel", None)                 # (not built yet while the application is starting)
+        if panel is not None:
+            panel.settings.apply_density(str(prefs["spacing"]))
 
     def apply_settings(self, quiet: bool = False) -> None:
         """Push changed settings into the running app (*quiet*: a live preview, nothing logged)."""

@@ -163,6 +163,9 @@ def backdrop_alpha(opacity: int, blur: int) -> float:
     return round(max(0.08, min(100, max(0, int(opacity))) / 100), 3)
 
 
+#: The lowest alpha a control's fill thins to (a fully clear text box would be hard to find and read).
+CONTROL_FLOOR = 0.12
+
 #: The look of spoken words and phrases wherever they appear: a deep violet pill with white text.
 PILL_BG, PILL_FG = "#5E4A99", "#FFFFFF"
 
@@ -175,6 +178,24 @@ FLASH_STYLES = {
 }
 
 ROOT_NAMES = ("mainRoot", "sidePanel", "settingsRoot", "sortingRoot", "helpRoot")
+
+
+def native_layers(widget: QWidget) -> int:
+    """How many native layers paint the background behind *widget*: 1, or 2 when a native child widget sits between it and
+    its window (macOS gives such a child a layer of its own, and the two see-through backgrounds add up)."""
+    parent = widget.parentWidget()
+    while parent is not None and not parent.isWindow():
+        if parent.windowHandle() is not None:
+            return 2
+        parent = parent.parentWidget()
+    return 1
+
+
+def layered_alpha(alpha: float, layers: int) -> float:
+    """The alpha to paint in each of *layers* stacked layers so that together they are *alpha* thick (1 - (1 - a)^(1/n))."""
+    if layers <= 1 or alpha >= 1.0:
+        return alpha
+    return 1.0 - (1.0 - alpha) ** (1.0 / layers)
 
 
 class _BackdropPainter(QObject):
@@ -193,7 +214,8 @@ class _BackdropPainter(QObject):
                 alpha = app.property("quillBackdrop")
                 solid = obj.property("quillSolid")                  # a window that opts out of the opacity setting
                 floor = float(obj.property("quillMinAlpha") or 0.0)   # a window that never thins below this (Settings)
-                color.setAlphaF(1.0 if alpha is None or solid else max(float(alpha), floor))
+                shown = 1.0 if alpha is None or solid else max(float(alpha), floor)
+                color.setAlphaF(layered_alpha(shown, native_layers(obj)))
                 painter = QPainter(obj)
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
                 painter.fillRect(obj.rect(), color)
@@ -216,20 +238,25 @@ def set_backdrop(app: QApplication, alpha: float) -> None:
     for widget in app.allWidgets():
         if widget.objectName() in ROOT_NAMES:
             widget.update()
+    if app.property("quillThemeKey") is not None:
+        _restyle(app)                                    # (the controls' fills follow the same alpha)
 
 
 def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFAULT_SPACING,
-                   font_size: int = DEFAULT_FONT_SIZE) -> str:
+                   font_size: int = DEFAULT_FONT_SIZE, backdrop: float = 1.0) -> str:
     """The style sheet: rounded controls, hairline borders, an accent for the main action.
 
     A window's own background is not painted by the style sheet but by :class:`_BackdropPainter` (so its
-    transparency can change without re-styling the whole application).
+    transparency can change without re-styling the whole application). The fills of text boxes, drop-downs, buttons and
+    cards take the same *backdrop* alpha (down to :data:`CONTROL_FLOOR`), so the opacity and blur settings show through
+    them too; their text and borders stay solid.
     """
     t = colors_for(dark, accent)
     d = DENSITIES.get(spacing, DENSITIES[DEFAULT_SPACING])
     icon = _chevrons(t)
-    win = t["bg"]                                        # all colours are solid: see-through is applied to the
-    surf = t["surface"]                                  # whole window (and, for blur, to its background only)
+    glass = max(CONTROL_FLOOR, min(1.0, float(backdrop)))
+    win = t["bg"] if glass >= 1 else rgba(t["bg"], glass)                    # control fills thin with the window's background
+    surf = t["surface"] if glass >= 1 else rgba(t["surface"], glass)
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QWidget {{ font-size: {font_size}pt; }}
@@ -305,7 +332,7 @@ QMenu::item:disabled {{ color: {t['disabled']}; }}
 QMenu::separator {{ height: 1px; background: {t['border']}; margin: 5px 8px; }}
 
 QLabel[heading="true"] {{ color: {t['muted']}; }}
-QLabel[chip="warn"], QLabel[chip="status"] {{ background: {rgba(t['accent'], 0.16)}; color: {t['text']};
+QLabel[chip="warn"] {{ background: {rgba(t['accent'], 0.16)}; color: {t['text']};
               border: 1px solid {rgba(t['accent'], 0.6)}; border-radius: 11px; padding: 2px 11px; font-weight: 500; }}
 QFrame[listenPill="true"] {{ background: transparent; border: 1px solid {t['accent']}; border-radius: 12px; }}
 QPushButton[accent="true"] QFrame[listenPill="true"] {{ border: 1px solid {rgba(t['on_accent'], 0.7)}; }}
@@ -367,7 +394,7 @@ QComboBox[flat="true"]:disabled, QSpinBox[flat="true"]:disabled {{ background: t
 QWidget#segmented {{ background: {rgba(t['text'], 0.06)}; border-radius: 10px; }}
 QToolButton[segment="true"] {{ border: none; border-radius: 8px; padding: 6px 10px; background: transparent; }}
 QToolButton[segment="true"]:hover {{ background: {rgba(t['text'], 0.06)}; }}
-QToolButton[segment="true"]:checked {{ background: {t['surface']}; border: 1px solid {t['border']}; }}
+QToolButton[segment="true"]:checked {{ background: {surf}; border: 1px solid {t['border']}; }}
 QCheckBox {{ spacing: 10px; }}
 QRadioButton {{ spacing: 8px; font-weight: 600; }}
 QRadioButton::indicator {{ width: 14px; height: 14px; border-radius: 8px; border: 1px solid {t['muted']}; background: transparent; }}
@@ -385,10 +412,11 @@ QComboBox[flat="true"][rowSelected="true"] {{ color: {t['on_accent']}; }}
 QLabel[panelTitle="true"] {{ font-weight: 400; }}
 QLabel[panelHeading="true"] {{ font-weight: 600; color: {t['text']}; }}
 QLabel[panelValue="true"] {{ font-weight: 400; font-style: normal; color: {t['text']}; }}
-QFrame#fileSettings {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 10px; }}
+QFrame#fileSettings {{ background: {surf}; border: 1px solid {t['border']}; border-radius: 10px; }}
 QLabel[panelNote="true"] {{ font-weight: 400; font-style: normal; color: {t['muted']}; }}
 QToolButton[chromeIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[chromeIcon="true"]:hover {{ background: {rgba(t['text'], 0.10)}; }}
+QToolButton[chromeIcon="true"]:pressed {{ background: {rgba(t['text'], 0.22)}; }}
 QLabel[panelName="true"] {{ font-weight: 600; }}
 QLabel[panelName="true"][muted="true"] {{ font-weight: 400; font-style: italic; color: {t['muted']}; }}
 QListWidget#panelList {{ background: transparent; border: none; outline: none; padding: 0; }}
@@ -417,7 +445,9 @@ def _restyle(app: QApplication) -> None:
     accent = str(app.property("quillAccent") or DEFAULT_ACCENT)
     spacing = str(app.property("quillSpacing") or DEFAULT_SPACING)
     size = int(app.property("quillFontSize") or DEFAULT_FONT_SIZE)
-    key = f"{dark}/{accent}/{spacing}/{size}"
+    alpha = app.property("quillBackdrop")
+    glass = 1.0 if alpha is None else round(float(alpha) * 20) / 20           # (steps of 5 %, so dragging a slider re-styles seldom)
+    key = f"{dark}/{accent}/{spacing}/{size}/{glass}"
     if app.property("quillThemeKey") == key:
         return                      # unchanged: re-polishing every widget is slow
     app.setProperty("quillThemeKey", key)
@@ -425,7 +455,7 @@ def _restyle(app: QApplication) -> None:
     font.setPointSize(size)
     app.setFont(font)
     app.setPalette(palette_for(dark, accent))
-    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size))
+    app.setStyleSheet(stylesheet_for(dark, accent, spacing, size, glass))
 
 
 class _TooltipRounder(QObject):
@@ -472,8 +502,8 @@ def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
     app.setProperty("quillAccent", accent if accent in ACCENTS else DEFAULT_ACCENT)
     app.setProperty("quillSpacing", spacing if spacing in DENSITIES else DEFAULT_SPACING)
     app.setProperty("quillFontSize", max(6, min(40, int(font_size))))
-    _restyle(app)
     set_backdrop(app, backdrop)
+    _restyle(app)
     if not app.property("quillTooltips"):
         rounder = _TooltipRounder(app)             # parented to the app, which keeps it alive
         app.installEventFilter(rounder)

@@ -464,7 +464,7 @@ class TestVoiceStream(unittest.TestCase):
 
     def test_the_box_is_there_with_no_title_above_it(self):
         self.assertFalse(hasattr(self.w, "row_heading"))
-        self.assertEqual(self.w.stream.hint.text(), "Words you say appear here as they are heard")
+        self.assertEqual(self.w.stream.hint.text(), "Words you say appear here as they are heard.")
         self.assertTrue(self.w.stream.isReadOnly())
         self.assertTrue(self.w.stream.font().italic())
 

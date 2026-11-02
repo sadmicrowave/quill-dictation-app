@@ -304,7 +304,7 @@ class ResizeGrip(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.SizeVerCursor)
-        self.setToolTip("Drag up or down to resize")
+        self.setToolTip("Drag up or down to resize.")
         self.setFixedHeight(8)
         self._last: int | None = None
         self._ink = QColor("#888")
@@ -354,6 +354,8 @@ TOOLTIP_PADDING = 2 * TOOLTIP_PAD_X + 2
 TOOLTIP_DROP = 18
 #: Seconds a tool tip stays up when the pointer does not move away.
 TOOLTIP_SECONDS = 8
+#: The widest a tip's text may be (pt); longer lines are wrapped at word breaks, so a tip never stretches across the desktop.
+TOOLTIP_MAX_TEXT = 300
 
 
 class TipWindow(QWidget):
@@ -373,8 +375,9 @@ class TipWindow(QWidget):
 
     def set_text(self, text: str) -> QSize:
         """Show *text* (lines separated by newlines) and return the size the tip needs."""
-        self._text = text
         metrics = QFontMetrics(QToolTip.font())
+        text = fit_tip(text, metrics)
+        self._text = text
         lines = text.split("\n")
         size = QSize(max(metrics.horizontalAdvance(line) for line in lines) + TOOLTIP_PADDING,
                      metrics.lineSpacing() * len(lines) + 2 * TOOLTIP_PAD_Y + 2)
@@ -393,6 +396,23 @@ class TipWindow(QWidget):
         painter.drawText(self.rect().adjusted(TOOLTIP_PAD_X + 1, TOOLTIP_PAD_Y + 1, -TOOLTIP_PAD_X, -TOOLTIP_PAD_Y),
                          int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), self._text)
         painter.end()
+
+
+def fit_tip(text: str, metrics: QFontMetrics | None = None, limit: int = TOOLTIP_MAX_TEXT) -> str:
+    """*text* with every line wrapped at word breaks so none is wider than *limit* (an unbroken word stays whole)."""
+    metrics = metrics or QFontMetrics(QToolTip.font())
+    wrapped: list[str] = []
+    for line in text.split("\n"):
+        current = ""
+        for word in line.split(" "):
+            trial = f"{current} {word}" if current else word
+            if current and metrics.horizontalAdvance(trial) > limit:
+                wrapped.append(current)
+                current = word
+            else:
+                current = trial
+        wrapped.append(current)
+    return "\n".join(wrapped)
 
 
 class CenteredToolTips(QObject):
@@ -438,7 +458,7 @@ class CenteredToolTips(QObject):
     def position(pointer: QPoint, text: str) -> QPoint:
         """Where the tip's top-left goes so it is centred on *pointer* (just below it)."""
         metrics = QFontMetrics(QToolTip.font())
-        width = max((metrics.horizontalAdvance(line) for line in text.split("\n")), default=0) + TOOLTIP_PADDING
+        width = max((metrics.horizontalAdvance(line) for line in fit_tip(text, metrics).split("\n")), default=0) + TOOLTIP_PADDING
         return QPoint(pointer.x() - width // 2, pointer.y() + TOOLTIP_DROP)
 
     def show_tip(self, pointer: QPoint, text: str) -> None:

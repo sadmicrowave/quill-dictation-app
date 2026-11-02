@@ -140,7 +140,7 @@ class TestSettingsChoice(unittest.TestCase):
 
     def test_choosing_better_shows_its_state_and_downloads_that_one(self):
         standard, better = self.d.model_rows["standard"], self.d.model_rows["better"]
-        self.assertFalse(standard.installed_pill.isHidden())
+        self.assertFalse(standard.uninstall_button.isHidden())
         self.assertTrue(standard.download_button.isHidden())
         better.radio.setChecked(True)
         self.assertFalse(better.download_button.isHidden())

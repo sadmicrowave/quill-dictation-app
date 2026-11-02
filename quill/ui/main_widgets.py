@@ -61,7 +61,7 @@ class StreamBox(QTextEdit):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         # The hint is a label, exactly like the row grid's, so both are drawn by the same code and match.
-        self.hint = QLabel("Words you say appear here as they are heard", self.viewport())
+        self.hint = QLabel("Words you say appear here as they are heard.", self.viewport())
         self.hint.setProperty("placeholder", True)
         self.hint.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -128,7 +128,7 @@ class RowTable(QTableWidget):
     DELETE_SIZE = 16          # px, the round delete button
     DELETE_MARGIN = 9         # px from the right edge (the button sits in the right-most cell)
     DELETE_HOT_FILL = "#E5484D"   # the button turns red while the pointer is over it: it removes something
-    DELETE_TIP = "Remove this line from the row\nQuill will not write it"
+    DELETE_TIP = "Remove this line from the row.\nQuill will not write it."
 
     def __init__(self, rows: int, columns: int) -> None:
         super().__init__(rows, columns)

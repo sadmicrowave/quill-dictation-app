@@ -90,18 +90,16 @@ SPEECH_MODELS = (
     ("standard", "Quick", "40 MB",
      "A small, fast model that shows your words as you say them. Good for clear speech and everyday words; it can "
      "mishear unusual words, names and numbers.",
-     "Uses about 165 MB of memory. Keeps up with your speech."),
+     "Uses ~165 MB of memory. Displays heard words in real-time as you speak."),
     ("better", "Broad", "130 MB",
      "A larger model with a much bigger vocabulary. It still shows words as you speak, but unusual words, names and "
      "numbers are heard correctly far more often.",
-     "Uses about 415 MB of memory (about 250 MB more than Quick). It decodes about as fast as you speak, so words "
-     "can trail by around a second."),
+     "Uses ~415 MB of memory (~250 MB more than Quick). Decodes at ~real-time speed, so words can trail by ~1s."),
     ("best", "Careful", "145 MB",
      "Adds a second listen: after each pause, the whole phrase is re-read by a model that uses the words around "
      "each one to decide what it was, which fixes most of the mistakes that are left. The corrected words replace the "
      "live ones a moment after you pause. It builds on the Quick model.",
-     "Uses about 700 MB of memory (about 535 MB more than Quick). Each phrase is corrected about half a second after "
-     "you pause."),
+     "Uses ~700 MB of memory (~535 MB more than Quick). Each phrase is corrected ~.5s after you pause."),
 )
 
 #: The programs a chosen spreadsheet can be opened in: (preference value, label).
@@ -491,7 +489,7 @@ class SettingsDialog:
             for title in titles:
                 item = QListWidgetItem(title)
                 item.setData(Qt.ItemDataRole.UserRole, title)
-                item.setToolTip(f"Show the {title} settings")
+                item.setToolTip(f"Show the {title} settings.")
                 self.nav.addItem(item)
                 self._nav_items[title] = item
             self._captions = getattr(self, "_captions", []) + [head]
@@ -592,11 +590,18 @@ class SettingsDialog:
         self._live()
 
     def _uninstall_tip(self, key: str) -> str:
-        """What Uninstall does for the model *key*, including which model takes over if it is the one in use."""
+        """What Uninstall does for the model *key* (which model takes over if it is in use), or why it is greyed out."""
         names = {k: name for k, name, *_ in SPEECH_MODELS}
+        if not self._model_removable(key):
+            if key == "standard" and self._model_installed("best"):
+                return f"{names['best']} builds on {names['standard']}, so {names['standard']} stays while {names['best']} is installed."
+            if key == "standard":
+                return f"{names['standard']} ships with Quill, so it cannot be uninstalled."
+            return f"{names[key]} cannot be uninstalled."
         successor = fallback_choice(key, lambda other: other != key and bool(self._model_installed(other)))
-        return (f"Removes the {names[key]} model from this computer and frees its disk space. If it is the one in use, "
-                f"Quill switches to the {names[successor]} model. You can install it again at any time.")
+        return (f"Removes the {names[key]} model from this computer and frees its disk space.\n"
+                f"If it is the one in use, Quill switches to the {names[successor]} model.\n"
+                f"You can install it again at any time.")
 
     def set_model_state(self, note: str, busy: bool) -> None:
         """Show, for each model, whether it is installed (a pill) or can be downloaded (a button), and how a download is
@@ -653,7 +658,7 @@ class SettingsDialog:
         self.auto_stop_spin.setValue(int(prefs["auto_stop_seconds"]))
         self.auto_stop_spin.setSuffix(" seconds")
         self.auto_stop_spin.setEnabled(self.auto_stop_check.isChecked())
-        self.auto_stop_spin.setToolTip("How long it can be quiet before Quill stops listening")
+        self.auto_stop_spin.setToolTip("How long it can be quiet before Quill stops listening.")
         self._add("General", page, "Quiet Time Before Stopping",
                   "Seconds of silence after which listening stops (3 to 3600).", self.auto_stop_spin,
                   "auto off timer idle silence shut off timeout seconds")
@@ -661,11 +666,11 @@ class SettingsDialog:
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
         self.history_spin.setValue(int(prefs["history_limit"]))
         self.history_spin.setSuffix(" actions")
-        self.history_spin.setToolTip("How many sorting answers Undo can step back through")
+        self.history_spin.setToolTip("How many sorting answers Undo can step back through.")
         self._add("General", page, "Undo Remembers",
                   "How many of your latest sorting answers can be taken back.", self.history_spin, "history")
         logs = QPushButton("Open Log Folder")
-        logs.setToolTip("Quill writes what it does, and any error, to a log file here")
+        logs.setToolTip("Quill writes what it does, and any error, to a log file here.")
         logs.clicked.connect(lambda: self._on_open_logs())
         self.open_with_combo = FlatCombo()
         usable = [(k, l) for k, l in OPEN_WITH_CHOICES if self._program_available(k)]
@@ -675,7 +680,7 @@ class SettingsDialog:
         for row in range(len(usable), len(usable) + len(missing)):
             item = self.open_with_combo.model().item(row)
             item.setEnabled(False)
-            item.setToolTip("Not installed on this computer")
+            item.setToolTip("Not installed on this computer.")
         self.open_with_combo.setCurrentIndex(max(0, self.open_with_combo.findData(prefs["open_with"]) if self._program_available(prefs["open_with"]) else 0))
         self._add("General", page, "Open Files With",
                   "The program Quill opens a spreadsheet in when you pick one that is not open yet. Quill shows each row in "
@@ -736,13 +741,13 @@ class SettingsDialog:
         self._add("Appearance", page, "Text Size", "The size of text throughout Quill (default 14).",
                   self.font_spin, "font")
         self.opacity_slider, self.opacity_label, box = _slider(
-            *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included")
+            *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included.")
         self._add("Appearance", page, "Window Opacity",
                   "How solid the window's background is. 100% is completely solid; lower lets what is behind the window "
                   "show through, while text and controls stay crisp. The lowest is 10%.", box,
                   "transparent transparency")
         self.blur_slider, self.blur_label, box = _slider(
-            *BLUR_RANGE, int(prefs["blur"]), "How strongly the desktop behind the window is blurred")
+            *BLUR_RANGE, int(prefs["blur"]), "How strongly the desktop behind the window is blurred.")
         self._add("Appearance", page, "Window Blur",
                   "How much what you see through the window is blurred. Only visible when opacity is below 100%, since "
                   "a solid window hides it. 0% is off, so what is behind stays sharp.", box,
@@ -842,7 +847,7 @@ class SettingsDialog:
                   "sign in email login")
         self.sign_in_button = QPushButton("Sign Out" if standing.signed_in else "Sign In…")
         self.sign_in_button.setEnabled(service.configured)
-        self.sign_in_button.setToolTip("" if service.configured else "Accounts are not available yet")
+        self.sign_in_button.setToolTip("" if service.configured else "Accounts are not available yet.")
         self._add("Account", page, "Sign In", "Opens the sign-in form.", self.sign_in_button, "log in out")
         self.plan_label = QLabel(" · ".join(p for p in (standing.plan_label, standing.status_text) if p))
         self._add("Account", page, "Plan", "What you have and when it renews.", self.plan_label,
@@ -895,7 +900,7 @@ class SettingsDialog:
         self.table.setCellWidget(row, 0, pill)
         combo = FlatCombo()                 # the drop-down every other page uses
         combo.setMinimumHeight(34)          # tall enough that the text is not clipped top and bottom
-        combo.setToolTip("What saying this phrase does")
+        combo.setToolTip("What saying this phrase does.")
         for candidate in BINDABLE_ACTIONS:
             combo.addItem(action_label(candidate), candidate)
         combo.setCurrentIndex(BINDABLE_ACTIONS.index(action if isinstance(action, Action) else Action.NEXT_ROW))

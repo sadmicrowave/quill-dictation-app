@@ -135,7 +135,7 @@ class TestMacChrome(unittest.TestCase):
         window = FakeWindow()
         self.assertTrue(chrome.mac_chrome(5, True, COLORS, appkit=FakeAppKit(window), blur=0))
         self.assertEqual(window.calls, [("transparent", True), ("opaque", True),
-                                        ("bg", (0.98, 0.98, 0.96, 1.0)),
+                                        ("bg", (0.96, 0.96, 0.95, 1.0)),                       # (a dark bar is given a little less light)
                                         ("appearance", "NSAppearanceNameDarkAqua"), ("shadow",)])
 
     def test_light_appearance(self):
@@ -160,7 +160,7 @@ class TestMacChrome(unittest.TestCase):
         self.assertIn(("bg", (0.98, 0.98, 0.96, 0.0)), window.calls)  # on a clear backing
         self.assertEqual(view.props["alpha"], 1.0)                    # always the whole blur
         tint, where, _ = kit.holder.added[1]
-        self.assertEqual(tint.props["colour"][3], 0.7)                # the title bar thins with the window
+        self.assertAlmostEqual(tint.props["colour"][3], 0.7 + chrome.BAR_TINT_EXTRA * 0.3 ** 2, places=2)   # the bar thins with the window
         self.assertEqual(tint.props["frame"], ((0, 80), (100, 20)))   # over the title bar only
 
     def test_a_solid_window_gets_no_blur_at_any_setting(self):

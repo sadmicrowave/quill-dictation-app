@@ -106,14 +106,14 @@ class TermRow(QFrame):
         self.prompt.setObjectName("termPrompt")      # larger than body text (see theme)
         self.prompt.setWordWrap(True)
         self.edit = QLineEdit(display_name(term))          # words are capitalised as they are placed here
-        self.edit.setToolTip("Correct the words if Quill heard too much")
+        self.edit.setToolTip("Correct the words if Quill heard too much.")
         self.hint = QLabel()                          # what to say, while the voice stream is answering this row
         self.hint.setProperty("note", True)
         self.hint.setWordWrap(True)
         self.hint.setTextFormat(Qt.TextFormat.RichText)
         self.hint.setVisible(False)
         self.combo = FlatCombo()                      # the same controls the Settings pages use
-        self.combo.setToolTip("Choose the column this term belongs to")
+        self.combo.setToolTip("Choose the column this term belongs to.")
         self.combo.addItem(PLACEHOLDER, None)
         # Columns with an unfilled slot are not known here; list them in sheet order.
         for name in vocab.columns_for(term):                  # only columns the term could belong to ("teal" is no date)
@@ -121,14 +121,14 @@ class TermRow(QFrame):
         if column and self.combo.findData(column) >= 0:
             self.combo.setCurrentIndex(self.combo.findData(column))
         self.add_button = QPushButton("Add")
-        self.add_button.setToolTip("Add this as a new value in the chosen column")
+        self.add_button.setToolTip("Add this as a new value in the chosen column.")
         self.same_button = QPushButton("Same As…")
-        self.same_button.setToolTip("It is another name for a value that is already in the list")
+        self.same_button.setToolTip("It is another name for a value that is already in the list.")
         self.same_menu = QMenu(self.same_button)
         self.same_menu.aboutToShow.connect(self._fill_same_menu)
         self.same_button.setMenu(self.same_menu)
         self.ignore_button = QPushButton("Ignore")
-        self.ignore_button.setToolTip("Forget this term; it will not be asked about again")
+        self.ignore_button.setToolTip("Forget this term; it will not be asked about again.")
         self.match_button = QPushButton()                      # the likely answer: outlined like the rest, "Same As" plain, the code bold
         self.match_button.setProperty("keepMargins", True)
         inside = QHBoxLayout(self.match_button)
@@ -139,7 +139,7 @@ class TermRow(QFrame):
         inside.addWidget(self.match_label)
         self.match_button.setMinimumWidth(self.match_label.sizeHint().width() + 30)
         self.match_button.setVisible(bool(self.short_code))
-        self.match_button.setToolTip("Another name for the short code Quill thinks this is")
+        self.match_button.setToolTip("Another name for the short code Quill thinks this is.")
 
         for control in (self.edit, self.combo, self.match_button, self.add_button, self.same_button, self.ignore_button):
             control.setMinimumHeight(CONTROL_HEIGHT)
@@ -397,10 +397,10 @@ class SortingWindow:
 
         footer = QHBoxLayout()
         self.add_all_button = QPushButton("Add All With a Column")
-        self.add_all_button.setToolTip("Add every term that already has a column chosen")
+        self.add_all_button.setToolTip("Add every term that already has a column chosen.")
         self.add_all_button.clicked.connect(self.add_all)
         self.ignore_all_button = QPushButton("Ignore All")
-        self.ignore_all_button.setToolTip("Forget every term in the list")
+        self.ignore_all_button.setToolTip("Forget every term in the list.")
         self.ignore_all_button.clicked.connect(self.ignore_all)
         footer.addWidget(self.add_all_button)
         self.undo_button = QPushButton("↶ Undo")

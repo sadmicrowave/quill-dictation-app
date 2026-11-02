@@ -360,10 +360,14 @@ def mac_chrome(view_id: int, dark: bool, colors: dict[str, str], appkit=None, op
     # The window's own backdrop (Qt paints it, with the opacity as its alpha: theme.backdrop_alpha) is what thins. The
     # system backing is clear so the desktop shows through it, and the window server blurs that desktop by the
     # slider's radius (set_background_blur). Controls and text stay solid.
-    window.setBackgroundColor_(appkit.NSColor.colorWithDeviceRed_green_blue_alpha_(r, g, b, 0.0 if see_through else 1.0))
+    srgb = getattr(appkit.NSColor, "colorWithSRGBRed_green_blue_alpha_", appkit.NSColor.colorWithDeviceRed_green_blue_alpha_)
+    lift = BAR_DARK_LIFT / 255 if dark else 0.0                    # (the dark title bar is drawn a little lighter by the system)
+    r, g, b = (max(0.0, c - lift) for c in (r, g, b))
+    window.setBackgroundColor_(srgb(r, g, b, 0.0 if see_through else 1.0))      # (sRGB: the space Qt paints the body in)
     name = "NSAppearanceNameDarkAqua" if dark else "NSAppearanceNameAqua"
     window.setAppearance_(appkit.NSAppearance.appearanceNamed_(name))
-    tint = (r, g, b, max(0.08, opacity / 100)) if opacity < 100 else (r, g, b, 1.0)
+    thick = max(0.08, opacity / 100)
+    tint = (r, g, b, min(1.0, thick + BAR_TINT_EXTRA * (1.0 - thick) ** 2)) if opacity < 100 else (r, g, b, 1.0)
     radius = blur_radius(blur) if see_through else 0
     blurred = set_background_blur(window, radius) if appkit_is_real(appkit) else False
     # Where the window server cannot blur, a vibrancy view (fixed blur, always whole) stands in for it.
@@ -379,6 +383,13 @@ MAX_BLUR_RADIUS = 60
 #: How much larger the close / minimise / zoom buttons are drawn than the system's own, and the gap each next one is moved
 #: along (pt), so the bigger circles keep their space.
 TRAFFIC_SCALE, TRAFFIC_SHIFT = 1.3, 4.0
+#: 1 when the scaled circle grows upward from its frame (so it needs moving down by half the growth); 0 for none.
+TRAFFIC_DROP = 1.0
+#: How much lighter (out of 255) the system draws a dark title bar than the colour it is given; the bar is given that much less.
+BAR_DARK_LIFT = 4
+#: The title bar's tint is a little thicker than the opacity setting says (by this much times (1 - opacity) squared): measured on a
+#: real screen, that is what makes the bar as see-through as the window's body beside it.
+BAR_TINT_EXTRA = 0.1
 
 
 def larger_traffic_lights(window) -> bool:
@@ -391,7 +402,14 @@ def larger_traffic_lights(window) -> bool:
         for index in (0, 1, 2):
             button = window.standardWindowButton_(index)
             button.setWantsLayer_(True)
-            button.layer().setAffineTransform_((TRAFFIC_SCALE, 0.0, 0.0, TRAFFIC_SCALE, TRAFFIC_SHIFT * index, 0.0))
+            # (the layer grows from its lower edge, so it is also moved down by half of what it grew: the circles then stay
+            # centred where the system put them, level with the title and the icons)
+            try:
+                height = float(button.frame().size.height)
+            except Exception:
+                height = 0.0
+            drop = (TRAFFIC_SCALE - 1.0) * height / 2 * TRAFFIC_DROP
+            button.layer().setAffineTransform_((TRAFFIC_SCALE, 0.0, 0.0, TRAFFIC_SCALE, TRAFFIC_SHIFT * index, -drop))
         return True
     except Exception:
         return False
@@ -501,7 +519,8 @@ def _set_blur(view, appkit, strength: float, window=None, tint=None) -> None:
         holder.addSubview_positioned_relativeTo_(strip, _NS_WINDOW_BELOW, view)
     strip.setFrame_(((0, holder.bounds().size.height - height), (holder.bounds().size.width, height)))
     r, g, b, a = tint
-    strip.layer().setBackgroundColor_(appkit.NSColor.colorWithDeviceRed_green_blue_alpha_(r, g, b, a).CGColor())
+    make = getattr(appkit.NSColor, "colorWithSRGBRed_green_blue_alpha_", appkit.NSColor.colorWithDeviceRed_green_blue_alpha_)
+    strip.layer().setBackgroundColor_(make(r, g, b, a).CGColor())             # (sRGB, the colour space Qt paints the body in)
 
 
 # --------------------------------------------------------------------------- #
@@ -974,6 +993,49 @@ def _target_class(appkit, objc):
 
         _TARGET_CLASS = QuillTitlebarTarget
     return _TARGET_CLASS
+
+
+class FileDialogWarmer:
+    """Makes the system's file window appear at once the first time it is asked for.
+
+    macOS starts the helper that draws that window only when the first one is shown, which takes about 1.5 seconds; later
+    ones take under half a second. So one is shown invisibly (clear, in the temporary folder, no mouse) shortly after
+    start-up and closed again, and the user's first Open File is as quick as the second. Nothing is shown or kept.
+    """
+
+    HOLD_MS = 1800
+
+    def __init__(self) -> None:
+        self._panel = None
+        self.done = False
+
+    def start(self, platform: str | None = None) -> bool:
+        """Warm the system's file window (once). Returns True if it was started (False elsewhere, or on any failure)."""
+        from PySide6.QtGui import QGuiApplication
+        if self.done or (platform or sys.platform) != "darwin" or QGuiApplication.platformName() != "cocoa":
+            return False                                           # (not macOS, or no real window system: headless runs)
+        try:
+            import AppKit
+            panel = AppKit.NSOpenPanel.openPanel()
+            panel.setDirectoryURL_(AppKit.NSURL.fileURLWithPath_(AppKit.NSTemporaryDirectory()))
+            panel.setAlphaValue_(0.0)
+            panel.setIgnoresMouseEvents_(True)
+            panel.beginWithCompletionHandler_(lambda result: None)
+            self._panel = panel
+            self.done = True
+            QTimer.singleShot(self.HOLD_MS, self.cancel)
+            return True
+        except Exception:
+            return False
+
+    def cancel(self) -> None:
+        """Close the invisible window (also called before a real one is shown, so the two never meet)."""
+        panel, self._panel = self._panel, None
+        if panel is not None:
+            try:
+                panel.cancel_(None)
+            except Exception:
+                pass
 
 
 def bring_app_forward(widget, platform: str | None = None, appkit=None) -> None:

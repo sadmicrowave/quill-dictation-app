@@ -8,7 +8,7 @@ from unittest import mock
 import openpyxl
 from openpyxl.worksheet.datavalidation import DataValidation
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from quill.app import QuillApp
 from quill.bridge.base import BridgeError
@@ -994,7 +994,7 @@ class TestFilePanelDetails(Dir):
     def test_the_turn_page_starts_with_the_description_and_a_keywords_link_then_a_rule(self):
         from PySide6.QtWidgets import QFrame
         intro = self.panel.turn_intro
-        self.assertIn("Settings to control how each speak-write iteration (turn) is handled", intro.text())
+        self.assertIn("Settings to control how each speak-match-write iteration (known as a 'Turn') is handled.", intro.text())
         self.assertIn('href="keywords"', intro.text())
         asked = []
         self.panel.keywords_requested.connect(lambda: asked.append(1))
@@ -1010,10 +1010,10 @@ class TestFilePanelDetails(Dir):
 
     def test_the_turn_page_describes_its_two_choices_and_has_a_next_button(self):
         notes = [l.text() for l in self.panel.findChildren(QLabel) if l.property("panelNote")]
-        self.assertIn("Turn words are written to new rows", notes)
-        self.assertIn("Turn words are added to the same row", notes)
+        self.assertIn("Turn words are written to new rows.", notes)
+        self.assertIn("Turn words are added to the same row.", notes)
         self.assertEqual(self.panel.new_row_button.text(), "Next")
-        self.assertEqual(self.panel.new_row_button.toolTip(), "Move cursor to the next row")
+        self.assertEqual(self.panel.new_row_button.toolTip(), "Move cursor to the next row.")
         self.assertTrue(self.panel.new_row_button.property("outline"))
 
     def test_start_row_layout_and_headings_are_in_the_settings_overlay_not_on_either_page(self):
@@ -1215,7 +1215,7 @@ class TestAvailableFilesRefresh(PanelApp):
     def test_the_refresh_icon_looks_again_at_once(self):
         button = self.app.window.panel.refresh_button
         self.assertFalse(button.icon().isNull())
-        self.assertIn("30 seconds", button.toolTip())
+        self.assertIn("every 30 seconds", button.toolTip())
         self.app._open_files_busy = False
         with mock.patch.object(self.app, "run_in_background") as run:
             button.click()
@@ -1312,10 +1312,10 @@ class TestEveryTextFollowsTheLayout(unittest.TestCase):
         down = snapshot()
         for before, after in zip(across, down):
             self.assertNotEqual(before, after, before)
-        self.assertEqual(across[:5], ("Next Row", "Turn words are written to new rows", "Turn words are added to the same row",
-                                      "Move cursor to the next row", "Starting Row"))
-        self.assertEqual(down[:5], ("Next Column", "Turn words are written to new columns", "Turn words are added to the same column",
-                                    "Move cursor to the next column", "Starting Column"))
+        self.assertEqual(across[:5], ("Next Row", "Turn words are written to new rows.", "Turn words are added to the same row.",
+                                      "Move cursor to the next row.", "Starting Row"))
+        self.assertEqual(down[:5], ("Next Column", "Turn words are written to new columns.", "Turn words are added to the same column.",
+                                    "Move cursor to the next column.", "Starting Column"))
 
     def test_the_wording_the_user_gave_is_exact(self):
         s = self.panel.settings
@@ -1330,7 +1330,7 @@ class TestEveryTextFollowsTheLayout(unittest.TestCase):
         self.panel.set_options(NEXT_ROW, False, 0, 0)
         self.panel.settings.down_radio.setChecked(True)
         self.assertEqual(self.panel.next_row_radio.text(), "Next Column")
-        self.assertEqual(self.panel.new_row_button.toolTip(), "Move cursor to the next column")
+        self.assertEqual(self.panel.new_row_button.toolTip(), "Move cursor to the next column.")
         self.panel.settings.across_radio.setChecked(True)
         self.assertEqual(self.panel.next_row_radio.text(), "Next Row")
 
@@ -1619,7 +1619,7 @@ class TestEverythingClickableHasHoverText(unittest.TestCase):
         self.assertTrue(w.panel.available.item(0).toolTip())
         self.assertEqual(w.panel.turn_intro.toolTip(), "")                      # (it appears only while a link is hovered)
         w.panel.turn_intro.linkHovered.emit("keywords")
-        self.assertEqual(w.panel.turn_intro.toolTip(), "Open the Keywords settings")
+        self.assertEqual(w.panel.turn_intro.toolTip(), "Open the Keywords settings.")
         w.panel.turn_intro.linkHovered.emit("")
         self.assertEqual(w.panel.turn_intro.toolTip(), "")
         from quill.ui.settings_dialog import SettingsDialog
@@ -1724,13 +1724,12 @@ class TestOverlayOrderAndWording(unittest.TestCase):
         headings = [x.text() for x in order if isinstance(x, QLabel) and x.property("panelHeading")]
         self.assertEqual(headings, ["Headings Row", "Starting Row", "Sheet Layout"])
 
-    def test_the_turn_description_is_two_sentences_on_two_lines_without_parentheses_around_the_last(self):
+    def test_the_turn_description_is_two_sentences_with_a_blank_line_between_and_a_link_to_settings_keywords(self):
         w = MainWindow()
         w.setup()
         text = w.panel.turn_intro.text()
-        self.assertIn("handled.<br>Voice activated with", text)
-        self.assertNotIn("(Voice", text)
-        self.assertTrue(text.endswith("Keywords</a>."))
+        self.assertIn("is handled.<br><br>These settings can be voice controlled within", text)
+        self.assertTrue(text.endswith('<a href="keywords">Settings &gt; Keywords</a>.'))
 
     def test_only_the_link_is_a_pointer_not_the_whole_description(self):
         w = MainWindow()
@@ -2115,6 +2114,7 @@ class TestBlurIsReallyBlur(unittest.TestCase):
         class Button:
             def __init__(self, i): self.i = i
             def setWantsLayer_(self, v): pass
+            def frame(self): return type("F", (), {"size": type("S", (), {"height": 16.0})()})()
             def layer(self): return type("L", (), {"setAffineTransform_": lambda s, t: applied.append((self.i, t))})()
 
         window = type("W", (), {"standardWindowButton_": lambda s, i: Button(i)})()
@@ -2123,6 +2123,7 @@ class TestBlurIsReallyBlur(unittest.TestCase):
         for i, t in applied:
             self.assertEqual((t[0], t[3]), (chrome.TRAFFIC_SCALE, chrome.TRAFFIC_SCALE))
             self.assertEqual(t[4], chrome.TRAFFIC_SHIFT * i)
+            self.assertAlmostEqual(t[5], -(chrome.TRAFFIC_SCALE - 1.0) * 16.0 / 2)      # moved down by half of what it grew: level with the icons
         self.assertGreaterEqual(chrome.TRAFFIC_SCALE, 1.25)
         self.assertFalse(chrome.larger_traffic_lights(object()))                                  # no window buttons: quiet
 
@@ -2581,8 +2582,19 @@ class TestSettingsRound5(unittest.TestCase):
     def test_each_model_says_what_it_costs_in_memory_and_time(self):
         for key, words in (("standard", "165 MB"), ("better", "415 MB"), ("best", "700 MB")):
             self.assertIn(words, self.d.model_rows[key].cost_label.text())
-        self.assertIn("second", self.d.model_rows["better"].cost_label.text())
-        self.assertIn("second", self.d.model_rows["best"].cost_label.text())
+        self.assertIn("~1s", self.d.model_rows["better"].cost_label.text())
+        self.assertIn("~.5s", self.d.model_rows["best"].cost_label.text())
+        self.assertIn("Displays heard words in real-time as you speak.", self.d.model_rows["standard"].cost_label.text())
+        for row in self.d.model_rows.values():
+            text = row.cost_label.text() + row.description_label.text()
+            self.assertNotIn("about", text)
+            self.assertNotIn("around ", row.cost_label.text())
+            self.assertNotIn("second ", row.cost_label.text())                  # (numbers: ~1s, ~.5s)
+
+    def test_the_memory_line_is_muted_and_the_description_is_not(self):
+        for row in self.d.model_rows.values():
+            self.assertTrue(row.cost_label.property("modelCost"))
+            self.assertFalse(row.description_label.property("muted"))
 
     def test_the_pane_says_a_model_is_installed_once_and_no_button_repeats_it(self):
         intro = self.d.pages.widget(self.d._page_index["Speech Model"]).findChildren(QLabel)
@@ -2599,7 +2611,9 @@ class TestSettingsRound5(unittest.TestCase):
         d = SettingsDialog(Settings.defaults(), model_installed=lambda q: self.installed[q], model_removable=lambda q: removable[q])
         d.build()
         rows = d.model_rows
-        self.assertTrue(rows["standard"].uninstall_button.isHidden())      # installed but bundled
+        self.assertFalse(rows["standard"].uninstall_button.isHidden())     # installed but bundled: shown, greyed out
+        self.assertFalse(rows["standard"].uninstall_button.isEnabled())
+        self.assertIn("ships with Quill", rows["standard"].uninstall_button.toolTip())
         self.assertFalse(rows["better"].uninstall_button.isHidden())
         self.assertTrue(rows["best"].uninstall_button.isHidden())          # not installed
         tip = rows["better"].uninstall_button.toolTip()
@@ -2627,24 +2641,21 @@ class TestSettingsRound5(unittest.TestCase):
             self.assertNotIn("not installed", words)
             self.assertNotIn("installed.", words)
 
-    def test_an_installed_model_wears_the_same_pill_as_file_not_connected_and_the_others_have_an_install_button(self):
+    def test_an_installed_model_has_an_uninstall_button_and_the_others_an_install_button_and_no_pill_exists(self):
         standard, better = self.d.model_rows["standard"], self.d.model_rows["better"]
-        self.assertFalse(standard.installed_pill.isHidden())
-        self.assertEqual(standard.installed_pill.text(), "Installed")
-        self.assertEqual(standard.installed_pill.property("chip"), "status")
+        self.assertFalse(hasattr(standard, "installed_pill"))
+        self.assertFalse(standard.uninstall_button.isHidden())
         self.assertTrue(standard.download_button.isHidden())
-        self.assertTrue(better.installed_pill.isHidden())
+        self.assertFalse(standard.uninstall_button.isEnabled())               # (nothing says it may be removed here)
+        self.assertTrue(better.uninstall_button.isHidden())
         self.assertFalse(better.download_button.isHidden())
         self.assertEqual(better.download_button.text(), "Install")
-        from quill.ui.theme import stylesheet_for
-        for dark in (False, True):
-            sheet = stylesheet_for(dark)
-            self.assertIn('QLabel[chip="warn"], QLabel[chip="status"]', sheet)    # one rule draws both pills
+        self.assertEqual(standard.uninstall_button.text(), "Uninstall")
 
-    def test_installing_a_model_swaps_its_button_for_the_pill(self):
+    def test_installing_a_model_swaps_its_install_button_for_uninstall(self):
         self.installed["better"] = True
         self.d.set_model_state("", False)
-        self.assertFalse(self.d.model_rows["better"].installed_pill.isHidden())
+        self.assertFalse(self.d.model_rows["better"].uninstall_button.isHidden())
         self.assertTrue(self.d.model_rows["better"].download_button.isHidden())
 
     def test_the_selected_rows_drop_down_text_is_the_on_accent_colour_and_clears_when_deselected(self):
@@ -2850,3 +2861,176 @@ class TestModelNames(unittest.TestCase):
         for _, _, _, description, cost in SPEECH_MODELS:
             for old in ("Standard", "Better", "Best", "Whisper"):
                 self.assertNotIn(old, description + cost)
+
+
+class TestTipsWrapToAMaxWidth(unittest.TestCase):
+    def test_a_long_line_is_wrapped_at_word_breaks_and_no_line_is_wider_than_the_limit(self):
+        from PySide6.QtGui import QFontMetrics
+        from PySide6.QtWidgets import QToolTip
+        from quill.ui.widgets import TOOLTIP_MAX_TEXT, CenteredToolTips, TipWindow, fit_tip
+        text = ("Removes the Broad model from this computer and frees its disk space. If it is the one in use, Quill "
+                "switches to the Quick model. You can install it again at any time.")
+        metrics = QFontMetrics(QToolTip.font())
+        out = fit_tip(text)
+        self.assertGreater(len(out.split("\n")), 1)
+        self.assertEqual(out.replace("\n", " "), text)                                 # only breaks at spaces, nothing lost
+        for line in out.split("\n"):
+            self.assertLessEqual(metrics.horizontalAdvance(line), TOOLTIP_MAX_TEXT)
+        tip = TipWindow()
+        size = tip.set_text(text)
+        self.assertLessEqual(size.width(), TOOLTIP_MAX_TEXT + 40)
+        self.assertEqual(CenteredToolTips.position(__import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(500, 300), text).x(),
+                         500 - size.width() // 2)
+
+    def test_a_short_tip_and_a_tip_with_its_own_breaks_are_left_alone(self):
+        from quill.ui.widgets import fit_tip
+        self.assertEqual(fit_tip("Start listening"), "Start listening")
+        self.assertEqual(fit_tip("Not connected\nNo file."), "Not connected\nNo file.")
+
+
+class TestSentencesAreFinished(unittest.TestCase):
+    def test_every_log_line_is_a_finished_sentence(self):
+        from quill.ui.main_window import sentence
+        self.assertEqual(sentence("Left ‘x’ for later"), "Left ‘x’ for later.")
+        self.assertEqual(sentence("Added ‘teal’"), "Added ‘teal’.")
+        self.assertEqual(sentence("Done."), "Done.")
+        self.assertEqual(sentence("Which column?"), "Which column?")
+        w = MainWindow()
+        w.setup()
+        w.append_log("Workbook re-read")
+        self.assertIn("Workbook re-read.", w.log.toPlainText())
+
+    def test_the_turn_option_descriptions_are_sentences(self):
+        w = MainWindow()
+        w.setup()
+        for text in (w.panel.next_row_note.text(), w.panel.append_note.text()):
+            self.assertTrue(text.endswith("."), text)
+        self.assertTrue(w.panel.next_row_radio.toolTip().endswith("."))
+        self.assertTrue(w.panel.new_row_button.toolTip().endswith("."))
+
+    def test_every_tip_and_description_that_is_a_sentence_ends_with_a_full_stop(self):
+        """Walks the built windows: a tool tip or a muted description with several words in sentence case must end in
+        punctuation (titles and labels in Title Case are names, not sentences)."""
+        import re
+        w = MainWindow()
+        w.setup()
+        from quill.ui.settings_dialog import SettingsDialog
+        d = SettingsDialog(Settings.defaults())
+        d.build()
+        bad = []
+        for root in (w.widget, w.panel, d._dialog):
+            for widget in root.findChildren(QWidget):
+                texts = [widget.toolTip()]
+                if isinstance(widget, QLabel) and widget.property("muted"):
+                    texts.append(widget.text())
+                for text in texts:
+                    plain = re.sub(r"<[^>]+>", "", text or "").strip()
+                    words = plain.split()
+                    if len(words) >= 4 and plain[0].isupper() and not all(x[:1].isupper() or not x[:1].isalpha() or x.lower() in ("a", "an", "the", "to", "of", "and", "or", "in", "for", "from", "with", "on", "at") for x in words):
+                        if plain[-1] not in ".!?…:)”":
+                            bad.append(plain[:70])
+        self.assertEqual(sorted(set(bad)), [])
+
+
+class TestFileWindowIsWarmedUp(PanelApp):
+    def test_nothing_is_started_where_the_system_cannot_be_asked(self):
+        from quill.ui.chrome import FileDialogWarmer
+        warmer = FileDialogWarmer()
+        self.assertFalse(warmer.start())                                    # (offscreen: no real window system)
+        self.assertFalse(warmer.start("win32"))
+        warmer.cancel()                                                     # (nothing to cancel is fine)
+
+    def test_a_real_file_window_first_closes_the_invisible_one(self):
+        calls = []
+        self.app._file_dialog_warmer = type("W", (), {"cancel": lambda s: calls.append("cancel"), "done": False,
+                                                      "start": lambda s: calls.append("start")})()
+        from unittest import mock
+        with mock.patch("PySide6.QtWidgets.QFileDialog.getOpenFileName", return_value=("", "")):
+            self.app._ask_for_file()
+        self.assertEqual(calls, ["cancel"])
+
+    def test_the_warm_up_waits_for_quill_to_be_in_front_and_never_runs_twice(self):
+        started = []
+        self.app._file_dialog_warmer = type("W", (), {"cancel": lambda s: None, "done": False,
+                                                      "start": lambda s: started.append(1)})()
+        from unittest import mock
+        with mock.patch.dict("os.environ", {}, clear=False):
+            __import__("os").environ.pop("QUILL_NO_HOSTS", None)
+            with mock.patch.object(self.app.qapp, "applicationState", return_value=Qt.ApplicationState.ApplicationInactive):
+                self.app._warm_file_dialog()
+                self.assertEqual(started, [])                               # not in front: waits
+            with mock.patch.object(self.app.qapp, "applicationState", return_value=Qt.ApplicationState.ApplicationActive):
+                self.app._warm_file_dialog()
+        self.assertEqual(started, [1])
+
+
+class TestRefreshFeedbackAndDensity(unittest.TestCase):
+    def setUp(self):
+        self.w = MainWindow()
+        self.w.setup()
+        self.w.widget.show()
+        self.panel = self.w.panel
+        self.panel.REFRESH_BLINK_MS = 30
+        self.panel._search_timer.setInterval(10)
+
+    def wait(self, ms):
+        import time
+        end = time.time() + ms / 1000
+        while time.time() < end:
+            _app.processEvents()
+            time.sleep(0.005)
+
+    def test_a_refresh_hides_the_nothing_found_message_for_a_moment_then_brings_it_back(self):
+        self.w.open_panel(FILE_PAGE)
+        self.panel.set_available([])
+        self.assertFalse(self.panel.empty_label.isHidden())
+        asked = []
+        self.panel.refresh_requested.connect(lambda: asked.append(1))
+        self.panel.refresh_button.click()
+        self.assertEqual(asked, [1])
+        self.assertTrue(self.panel.empty_label.isHidden())                  # gone while it looks again ...
+        self.panel.set_available([])                                        # ... even if the answer comes at once
+        self.assertTrue(self.panel.empty_label.isHidden())
+        self.wait(120)
+        self.assertFalse(self.panel.empty_label.isHidden())                 # ... and back, because nothing was found
+
+    def test_found_files_are_not_hidden_by_the_blink(self):
+        self.w.open_panel(FILE_PAGE)
+        self.panel.refresh_button.click()
+        self.panel.set_available([("a.xlsx", "tip", object())])
+        self.wait(120)
+        self.assertTrue(self.panel.empty_label.isHidden())
+        self.assertEqual(self.panel.available_names(), ["a.xlsx"])
+
+    def test_three_letters_in_search_look_again_after_a_pause_and_two_do_not(self):
+        asked = []
+        self.panel.refresh_requested.connect(lambda: asked.append(1))
+        self.panel.search.setText("ab")
+        self.wait(60)
+        self.assertEqual(asked, [])
+        self.panel.search.setText("abc")
+        self.panel.search.setText("abcd")                                   # typing on: one look, after the pause
+        self.wait(80)
+        self.assertEqual(asked, [1])
+
+    def test_the_automatic_poll_does_not_blink_the_message(self):
+        self.w.open_panel(FILE_PAGE)
+        self.panel.set_available([])
+        self.assertFalse(self.panel.empty_label.isHidden())
+
+    def test_a_pressed_icon_looks_different_from_a_hovered_one(self):
+        from quill.ui.theme import stylesheet_for
+        sheet = stylesheet_for(False)
+        hover = sheet[sheet.index('QToolButton[chromeIcon="true"]:hover'): sheet.index("}", sheet.index('QToolButton[chromeIcon="true"]:hover'))]
+        pressed = sheet[sheet.index('QToolButton[chromeIcon="true"]:pressed'): sheet.index("}", sheet.index('QToolButton[chromeIcon="true"]:pressed'))]
+        self.assertNotEqual(hover.split("{")[1], pressed.split("{")[1])
+
+    def test_the_file_overlay_is_roomier_in_comfortable_spacing(self):
+        overlay = self.panel.settings
+        overlay.apply_density("compact")
+        compact = (overlay.layout().spacing(), overlay.layout().contentsMargins().left(), overlay.height())
+        overlay.apply_density("comfortable")
+        comfy = (overlay.layout().spacing(), overlay.layout().contentsMargins().left(), overlay.height())
+        self.assertGreater(comfy[0], compact[0])
+        self.assertGreater(comfy[1], compact[1])
+        self.assertGreater(comfy[2], compact[2])

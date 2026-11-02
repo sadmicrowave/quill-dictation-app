@@ -337,13 +337,15 @@ class TestOpacityAndBlur(unittest.TestCase):
         self.assertAlmostEqual(root.grab().toImage().pixelColor(5, 5).alpha() / 255, 0.7, delta=0.01)
         theme.set_backdrop(_app, 1.0)
 
-    def test_a_windows_background_is_painted_with_the_backdrop_alpha_and_changing_it_does_not_restyle(self):
-        theme.apply_theme(_app, "light", "violet", "compact", backdrop=1.0)
+    def test_a_windows_background_is_painted_with_the_backdrop_alpha_and_controls_are_restyled_only_in_steps(self):
+        theme.apply_theme(_app, "light", "violet", "compact", backdrop=0.61)
         key = _app.property("quillThemeKey")
         sheet = _app.styleSheet()
-        theme.set_backdrop(_app, 0.4)
-        self.assertEqual(_app.styleSheet(), sheet)                         # no re-styling of the whole application
+        theme.set_backdrop(_app, 0.62)                                     # inside the same 5 % step: no re-styling
+        self.assertEqual(_app.styleSheet(), sheet)
         self.assertEqual(_app.property("quillThemeKey"), key)
+        theme.set_backdrop(_app, 0.4)                                      # a new step: the controls' fills follow
+        self.assertNotEqual(_app.styleSheet(), sheet)
         self.assertEqual(_app.property("quillBackdrop"), 0.4)
         root = QWidget()
         root.setObjectName("mainRoot")
@@ -506,3 +508,31 @@ class TestSystemSchemeFollowing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestControlsFollowTheOpacity(unittest.TestCase):
+    def test_text_boxes_drop_downs_and_buttons_fill_with_the_backdrop_alpha_and_keep_solid_text(self):
+        solid = theme.stylesheet_for(False, backdrop=1.0)
+        glass = theme.stylesheet_for(False, backdrop=0.5)
+        t = theme.colors_for(False, "violet")
+        for selector in ("QPushButton {", "QLineEdit, QSpinBox, QComboBox {", "QPlainTextEdit, QTextEdit, QTableWidget {",
+                         "QFrame#termRow {", "QFrame#fileSettings {"):
+            rule = glass[glass.index(selector): glass.index("}", glass.index(selector))]
+            self.assertIn(theme.rgba(t["surface"], 0.5), rule, selector)
+            self.assertNotIn(f"background: {t['surface']}", rule, selector)
+            solid_rule = solid[solid.index(selector): solid.index("}", solid.index(selector))]
+            self.assertIn(f"background: {t['surface']}", solid_rule)          # and at 100 the fill is the plain colour
+        popup = glass[glass.index("QComboBox QAbstractItemView {"): glass.index("}", glass.index("QComboBox QAbstractItemView {"))]
+        self.assertIn(t["surface"], popup)                                    # a pop-up list stays solid: nothing is behind it to read against
+
+    def test_a_fill_never_goes_clearer_than_the_floor(self):
+        sheet = theme.stylesheet_for(False, backdrop=0.0)
+        t = theme.colors_for(False, "violet")
+        self.assertIn(theme.rgba(t["surface"], theme.CONTROL_FLOOR), sheet)
+
+    def test_two_native_layers_are_painted_thinner_so_together_they_are_as_thick_as_the_setting(self):
+        for alpha in (0.2, 0.5, 0.8):
+            each = theme.layered_alpha(alpha, 2)
+            self.assertAlmostEqual(1 - (1 - each) ** 2, alpha, places=6)
+        self.assertEqual(theme.layered_alpha(0.5, 1), 0.5)
+        self.assertEqual(theme.layered_alpha(1.0, 2), 1.0)

@@ -125,7 +125,7 @@ class HelpWindow:
         for topic in self.topics:
             item = QTreeWidgetItem([topic.title])
             item.setData(0, Qt.ItemDataRole.UserRole, (topic.slug, None))
-            item.setToolTip(0, f"Open the {plain(topic.title)} page")
+            item.setToolTip(0, f"Open the {plain(topic.title)} page.")
             self.nav.addTopLevelItem(item)
             self._items[topic.slug] = item
             for section in topic.sections:

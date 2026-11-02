@@ -58,11 +58,11 @@ class TestMainWindow(unittest.TestCase):
 
     def test_log_is_timestamped_and_bounded(self):
         self.w.append_log("hello")
-        self.assertRegex(self.w.log.toPlainText(), r"^\d\d:\d\d:\d\d\thello$")
+        self.assertRegex(self.w.log.toPlainText(), r"^\d\d:\d\d:\d\d\thello\.$")
         for i in range(600):
             self.w.append_log(f"line {i}")
         self.assertEqual(self.w.log.document().blockCount(), 500)
-        self.assertTrue(self.w.log.toPlainText().endswith("line 599"))
+        self.assertTrue(self.w.log.toPlainText().endswith("line 599."))
         self.assertNotIn("line 99\n", self.w.log.toPlainText())
 
     def test_workbook_picker(self):

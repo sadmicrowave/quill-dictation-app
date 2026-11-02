@@ -103,6 +103,19 @@ MIN_CONTENT_WIDTH = 330     # the content (everything but the side panel) is nev
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500
+
+
+def sentence(text: str) -> str:
+    """*text* as a finished sentence: a full stop is added unless it already ends in one (or in other closing punctuation;
+    a closing quote counts as the end when what is inside it is already punctuated)."""
+    text = text.rstrip()
+    if not text:
+        return text
+    core = text.rstrip("’”\"')")
+    last = core[-1] if core else text[-1]
+    return text if last in ".!?…:;" else text + "."
+
+
 LOG_TIME_GAP = 12           # px between the time and the message in the log
 
 #: How each kind of log message is shown: a label after the time (none for plain information) and a colour.
@@ -276,7 +289,7 @@ class MainWindow:
         self.error_button.setProperty("errorMark", True)
         self.error_button.setText("!")
         self.error_button.setAccessibleName("Show the Error")
-        self.error_button.setToolTip("Something went wrong: back to the full window to read it")
+        self.error_button.setToolTip("Something went wrong: back to the full window to read it.")
         self.error_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.error_button.setVisible(False)
         self.error_button.clicked.connect(lambda: self.set_mini(False, notify=True))
@@ -353,7 +366,7 @@ class MainWindow:
         self.row_table.setMinimumHeight(ROW_EMPTY_HEIGHT)           # starts small; grows with the fields heard
         self._row_target = ROW_EMPTY_HEIGHT
         # a hint shown while no fields have been heard yet
-        self.row_placeholder = QLabel("Words you say that match to columns in the selected file appear here as they are heard", self.row_table.viewport())
+        self.row_placeholder = QLabel("Words you say that match to columns in the selected file appear here as they are heard.", self.row_table.viewport())
         self.row_placeholder.setProperty("placeholder", True)        # same look as the Voice Stream box's placeholder
         self.row_placeholder.setWordWrap(True)
         self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -396,7 +409,7 @@ class MainWindow:
 
         # --- log (last). The Current Row box takes extra height when the window grows (and shares it with
         # the log while that is open), so no gaps open between sections and "Log" stays at the bottom.
-        self.log_toggle = self._section_toggle("Show or hide the log")
+        self.log_toggle = self._section_toggle("Show or hide the log.")
         footer_row = QHBoxLayout()                          # "Log" on the left, the last saved row on the right
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         footer_row.addWidget(self.last_label, 1)
@@ -987,7 +1000,7 @@ class MainWindow:
         self._layout.setStretchFactor(self.row_table, 1)       # extra height always goes to the Current Row box;
         self._layout.setStretchFactor(self.log, 0)             # the log keeps its own height
         self._keep_minimum()
-        self.sorting_button.setToolTip("Term Helper: terms that were heard but not placed yet")
+        self.sorting_button.setToolTip("Term Helper: terms that were heard but not placed yet.")
 
     def _section_toggle(self, tip: str) -> HeadingToggle:
         button = HeadingToggle()
@@ -1400,6 +1413,7 @@ class MainWindow:
         False: the user is already being shown the way out, by the interface itself).
         """
         label, color = LOG_LEVELS.get(level, LOG_LEVELS["info"])
+        text = sentence(text)
         logging.getLogger("quill").log({"error": logging.ERROR, "warning": logging.WARNING}.get(level, logging.INFO), text)
         stamp = f"{dt.datetime.now():%H:%M:%S}"
         line = f"{stamp}\t{label + '  ' if label else ''}{text}"
@@ -1428,7 +1442,7 @@ class MainWindow:
         self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
         if level == "error":
             self._mini_error = text                                 # the mini view shows a red "!" until it is seen
-            self.error_button.setToolTip(f"{text}\nClick to go back to the full window and the Log")
+            self.error_button.setToolTip(f"{text}\nClick to go back to the full window and the Log.")
             self._refresh_visibility()
             if self._log_collapsed and reveal:
                 self._set_collapsed("log", False)

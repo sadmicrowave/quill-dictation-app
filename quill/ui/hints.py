@@ -14,17 +14,16 @@ from PySide6.QtWidgets import QAbstractButton, QComboBox, QLabel, QLineEdit, QTo
 
 #: Plain words on a button -> what pressing it does.
 KNOWN_TIPS = {
-    "OK": "Save the changes and close",
-    "Cancel": "Close without saving the changes",
+    "OK": "Save the changes and close.",
+    "Cancel": "Close without saving the changes.",
     "Add": "Add this",
-    "Remove": "Remove the selected line",
-    "Ignore": "Forget this term; it will not be asked about again",
-    "Restore Defaults": "Put back the keywords Quill came with",
+    "Remove": "Remove the selected line.",
+    "Ignore": "Forget this term; it will not be asked about again.",
+    "Restore Defaults": "Put back the keywords Quill came with.",
     "Download": "Download this speech model (one time)",
-    "Installed": "This speech model is already on this computer",
-    "Open Log Folder": "Open the folder that holds Quill's log files",
+    "Open Log Folder": "Open the folder that holds Quill's log files.",
     "Add All With a Column": "Add every term that already has a column chosen",
-    "Ignore All": "Forget every term in the list",
+    "Ignore All": "Forget every term in the list.",
     "Undo": "Take back the last answer (you can keep stepping back)",
 }
 
@@ -60,7 +59,7 @@ def describe(widget: QWidget) -> str:
     if widget.accessibleName():
         return widget.accessibleName()
     if isinstance(widget, QComboBox):
-        return "Choose from the list"
+        return "Choose from the list."
     if isinstance(widget, QToolButton) and not plain:
         return widget.toolTip()
     return plain

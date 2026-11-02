@@ -16,6 +16,7 @@ What each pair must give (dark theme; the checks are printed as OK / FAIL):
 * opacity 50, blur 60 and 100 .... see-through and BLURRED: std a small fraction of the sharp one, mean moved
 * opacity 20 vs 80 at blur 60 ... the lower the opacity the further the mean moves
 * blur 8 vs 100 at opacity 40 .... wide bands still show at a small radius and are smoothed at a large one
+* the title bar matches the window's background; a text box thins and blurs like it
 """
 from __future__ import annotations
 
@@ -73,10 +74,16 @@ def measure(opacity: int, blur: int, band: int = 2) -> dict:
         path = tmp / "shot.png"
         subprocess.run(["screencapture", "-x", "-R", f"{g.x()},{g.y()},{g.width()},{g.height()}", str(path)], check=False)
         image = QImage(str(path))
-        values = [QColor(image.pixel(x, y)).lightness() for x in range(4, 14) for y in range(300, 700, 2)]
-        mean = sum(values) / len(values)
-        std = (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
-        result.update(mean=round(mean, 1), std=round(std, 1))
+        def patch(xs, ys):
+            values = [QColor(image.pixel(x, y)).lightness() for x in xs for y in ys]
+            mean = sum(values) / len(values)
+            return round(mean, 1), round((sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5, 1)
+
+        w, h = image.width(), image.height()
+        mean, std = patch(range(4, 14), range(300, 700, 2))                        # the window's own background (a margin)
+        bar_mean, bar_std = patch(range(int(w * 0.38), int(w * 0.43)), range(30, 70, 2))         # an empty part of the title bar
+        ctl_mean, ctl_std = patch(range(int(w * 0.55), int(w * 0.85), 3), range(int(h * 0.45), int(h * 0.60), 2))   # inside a text box
+        result.update(mean=mean, std=std, bar_mean=bar_mean, bar_std=bar_std, ctl_mean=ctl_mean, ctl_std=ctl_std)
         print("RESULT " + json.dumps({"opacity": opacity, "blur": blur, "band": band, **result}))
         app.quit()
 
@@ -101,7 +108,8 @@ def main() -> int:
             return 1
         data = json.loads(line[7:])
         got[(opacity, blur)] = data
-        print(f"opacity {opacity:3d} blur {blur:3d} band {band:2d}: mean {data['mean']:6.1f} std {data['std']:6.1f}")
+        print(f"opacity {opacity:3d} blur {blur:3d} band {band:2d}: mean {data['mean']:6.1f} std {data['std']:6.1f}"
+              f" | bar mean {data['bar_mean']:6.1f} std {data['bar_std']:6.1f} | controls mean {data['ctl_mean']:6.1f} std {data['ctl_std']:6.1f}")
     solid = got[(100, 0)]["mean"]
     sharp = got[(50, 0)]["std"]
     checks = [
@@ -113,6 +121,21 @@ def main() -> int:
         ("opacity 50 with blur is still see-through", abs(got[(50, 60)]["mean"] - solid) > 8),
         ("lower opacity moves the background further", abs(got[(20, 60)]["mean"] - solid) > abs(got[(80, 60)]["mean"] - solid)),
         ("more blur fades wide bands further (blur 8 leaves them, 100 smooths them)", got[(40, 8)]["std"] > 4 * max(got[(40, 100)]["std"], 0.5)),
+    ]
+    checks += [
+        ("the title bar matches the window's background (mean and blur) at opacity 50, blur 60",
+         abs(got[(50, 60)]["bar_mean"] - got[(50, 60)]["mean"]) < 6 and abs(got[(50, 60)]["bar_std"] - got[(50, 60)]["std"]) < 3),
+        ("the title bar matches the window's background at opacity 50, blur 0 (sharp)",
+         abs(got[(50, 0)]["bar_mean"] - got[(50, 0)]["mean"]) < 6 and abs(got[(50, 0)]["bar_std"] - got[(50, 0)]["std"]) < 8),
+        ("the title bar matches the window's background at opacity 20 and 80, blur 60",
+         abs(got[(20, 60)]["bar_mean"] - got[(20, 60)]["mean"]) < 8 and abs(got[(80, 60)]["bar_mean"] - got[(80, 60)]["mean"]) < 6),
+        ("the title bar matches the window's background when solid", abs(got[(100, 0)]["bar_mean"] - got[(100, 0)]["mean"]) < 3),
+        ("a text box is solid at opacity 100", got[(100, 0)]["ctl_std"] < 3),
+        ("a text box lets the desktop show through at opacity 50 without blur (thinner than solid, still thicker than the margin)",
+         got[(50, 0)]["ctl_std"] > 3 and got[(50, 0)]["ctl_std"] < got[(50, 0)]["std"]),
+        ("a text box is blurred like the window at opacity 50, blur 60", got[(50, 60)]["ctl_std"] < 0.35 * got[(50, 0)]["ctl_std"]
+         and abs(got[(50, 60)]["ctl_mean"] - got[(100, 0)]["ctl_mean"]) > 5),
+        ("a lower opacity makes a text box thinner", got[(20, 60)]["ctl_mean"] > got[(80, 60)]["ctl_mean"] + 5),
     ]
     failed = 0
     for name, ok in checks:

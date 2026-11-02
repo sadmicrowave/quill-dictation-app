@@ -41,7 +41,7 @@ class TestLogColumns(unittest.TestCase):
 
     def test_the_message_text_is_after_a_tab(self):
         self.w.append_log("hello")
-        self.assertRegex(self.w.log.toPlainText(), r"^\d\d:\d\d:\d\d\thello$")
+        self.assertRegex(self.w.log.toPlainText(), r"^\d\d:\d\d:\d\d\thello\.$")
 
 
 class TestStartButton(unittest.TestCase):
@@ -156,7 +156,7 @@ class TestSettingsPieces(unittest.TestCase):
         self.assertFalse(row.download_button.isEnabled())
         self.installed = True
         self.d.set_model_state("", False)
-        self.assertFalse(row.installed_pill.isHidden())                      # the pill, not the words "Installed" in the text
+        self.assertFalse(row.uninstall_button.isHidden())                    # installed: Uninstall shows, no pill
         self.assertNotIn("Installed", row.description_label.text())
         self.assertTrue(row.download_button.isHidden())
 

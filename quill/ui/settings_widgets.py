@@ -89,7 +89,7 @@ class NavDelegate(QStyledItemDelegate):
 class ModelRow(SettingRow):
     """One speech model on the Speech Model page: a radio button (only one can be chosen), the model's name in bold with
     its download size (italic, muted) beside it, what it does for the quality, what it costs in memory and time, and on the
-    right an "Installed" status pill with an Uninstall button, or an Install button.
+    right an Install button (model not installed) or an Uninstall button (installed; greyed out when it cannot be removed).
     """
 
     chosen = Signal(str)                       # the model's key, when its radio button is checked
@@ -98,9 +98,6 @@ class ModelRow(SettingRow):
 
     def __init__(self, key: str, name: str, size: str, description: str, cost: str = "") -> None:
         self.key = key
-        self.installed_pill = QLabel("Installed")
-        self.installed_pill.setProperty("chip", "status")               # the same pill as "File not connected"
-        self.installed_pill.setToolTip(f"The {name} model is installed on this computer")
         self.download_button = QPushButton("Install")
         self.download_button.setToolTip(f"Install the {name} model ({size})")
         self.download_button.clicked.connect(lambda: self.download_requested.emit(self.key))
@@ -111,7 +108,6 @@ class ModelRow(SettingRow):
         side = QHBoxLayout(holder)
         side.setContentsMargins(0, 0, 0, 0)
         side.setSpacing(8)
-        side.addWidget(self.installed_pill)
         side.addWidget(self.uninstall_button)
         side.addWidget(self.download_button)
         super().__init__(name, description, holder, f"{name} {size} speech model download install uninstall quality memory")
@@ -119,6 +115,7 @@ class ModelRow(SettingRow):
         self.size_label = QLabel(size)
         self.size_label.setProperty("modelSize", True)                  # italic and muted, by the theme
         self.title_label.setProperty("modelName", True)                 # bold, by the theme
+        self.description_label.setProperty("muted", False)              # the description is the main text; the cost line is the muted one
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(10)
@@ -134,17 +131,17 @@ class ModelRow(SettingRow):
         text.addWidget(self.cost_label)
         self.radio = QRadioButton()
         self.radio.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.radio.setToolTip(f"Use the {name} model")
+        self.radio.setToolTip(f"Use the {name} model.")
         self.radio.toggled.connect(lambda on: self.chosen.emit(self.key) if on else None)
         self.line.insertWidget(0, self.radio, 0, Qt.AlignmentFlag.AlignTop)
         self.title_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.title_label.mousePressEvent = lambda event: self.radio.click()       # the name is a label for the radio
 
     def set_installed(self, installed: bool, busy: bool = False, removable: bool = False, uninstall_tip: str = "") -> None:
-        """Show the Installed pill (and, if it may be removed, Uninstall) for a model that is on this computer, the Install
-        button for one that is not."""
-        self.installed_pill.setVisible(installed and not busy)
-        self.uninstall_button.setVisible(installed and removable and not busy)
+        """An installed model shows Uninstall (greyed out, with the reason as its hover text, when it cannot be removed); one
+        that is not installed shows Install. Nothing else says which is which."""
+        self.uninstall_button.setVisible(installed)
+        self.uninstall_button.setEnabled(removable and not busy)
         self.uninstall_button.setToolTip(uninstall_tip)
         self.download_button.setVisible(not installed)
         self.download_button.setEnabled(not busy)
@@ -280,7 +277,7 @@ class PillField(QWidget):
         self.field = QLineEdit(text)
         self.field.setProperty("pillField", True)
         self.field.setPlaceholderText("phrase")
-        self.field.setToolTip("The words you say. Click to change them")
+        self.field.setToolTip("The words you say. Click to change them.")
         self.field.textChanged.connect(self._fit)
         self.field.installEventFilter(self)
         row.addWidget(self.field, 0, Qt.AlignmentFlag.AlignVCenter)

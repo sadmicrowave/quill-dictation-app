@@ -49,7 +49,7 @@ If Excel has the file you chose, Quill works through Excel itself (no file to fi
 
 ### Spreadsheets that are already open
 
-Under a muted line, the **Available Files** section lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. Type in the **Search** box to narrow the list. With nothing open it says *No open spreadsheet files detected.* The list refreshes by itself every 30 seconds while the panel is open, and the **refresh** icon beside the heading looks again at once. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
+Under a muted line, the **Available Files** section lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. Type in the **Search** box to narrow the list. With nothing open it says *No open spreadsheet files detected.* The list refreshes by itself every 30 seconds while the panel is open, and the **refresh** icon beside the heading looks again at once (it shows a pressed look, and *No open spreadsheet files detected.* disappears for a moment and returns if nothing is found, so you can see it looked). Typing 3 or more letters in **Search** looks again too. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
 
 **File > Use the Open Workbook** goes back to the workbook open in your spreadsheet program.
 

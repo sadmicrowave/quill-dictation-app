@@ -279,6 +279,23 @@ class FileSettings(QFrame):
             number.setVisible(not self._vertical)
             letter.setVisible(self._vertical)
 
+    #: Gaps (pt) between the overlay's pieces per spacing: (between rows, around the rules, margin top and bottom, margin sides).
+    DENSITY = {"compact": (6, 2, 12, 14), "comfortable": (14, 8, 18, 20)}
+
+    def apply_density(self, spacing: str) -> None:
+        """Space the overlay's setting rows for *spacing* (it is a window of its own, so the main window's spacing pass
+        does not reach it)."""
+        rows, rules, top, side = self.DENSITY.get(spacing, self.DENSITY["compact"])
+        layout = self.layout()
+        layout.setSpacing(rows)
+        layout.setContentsMargins(side, top, side, top + 2)
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item.spacerItem() is not None:
+                item.spacerItem().changeSize(0, rules)
+        layout.invalidate()
+        self.adjustSize()
+
     def set_options(self, vertical: bool, start: int, headings: int) -> None:
         """Show the saved options (without reporting them back as changes)."""
         self._syncing = True
@@ -304,7 +321,7 @@ class PanelGrip(QWidget):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.SplitHCursor)
-        self.setToolTip("Drag left or right to resize the panel")
+        self.setToolTip("Drag left or right to resize the panel.")
         self.setFixedWidth(7)
         self._last: int | None = None
 
@@ -366,6 +383,11 @@ class SidePanel(QFrame):
     def __init__(self) -> None:
         super().__init__()
         self._syncing = False                   # set while the pages are being filled in, so no change is reported
+        self._refreshing = False                # the "nothing found" message is hidden for a moment (see start_refresh)
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(self.SEARCH_REFRESH_MS)
+        self._search_timer.timeout.connect(lambda: self.start_refresh(True))
         self._vertical = False
         self._has_file = False
         self._colors = ("#1F1E1D", "#7A55C2")
@@ -468,7 +490,7 @@ class SidePanel(QFrame):
         title_row = QHBoxLayout()                               # "Active File" and, at the right, the gear that opens its settings
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.addWidget(_heading("Active File"), 1)
-        self.settings_button = self._chrome_button("File settings: where the data starts and which way the headings run",
+        self.settings_button = self._chrome_button("File settings: where the data starts and which way the headings run.",
                                                    "File Settings")
         self.settings_button.clicked.connect(self.settings_requested)
         title_row.addWidget(self.settings_button)
@@ -501,9 +523,9 @@ class SidePanel(QFrame):
         heading_line = QHBoxLayout()
         heading_line.setContentsMargins(0, 0, 0, 0)
         heading_line.addWidget(_heading("Available Files"), 1)
-        self.refresh_button = self._chrome_button("Look for open spreadsheets now (the list also refreshes every 30 seconds)",
+        self.refresh_button = self._chrome_button("Look for open spreadsheets now. The list also refreshes every 30 seconds.",
                                                   "Refresh the List")
-        self.refresh_button.clicked.connect(self.refresh_requested)
+        self.refresh_button.clicked.connect(lambda: self.start_refresh(True))
         heading_line.addWidget(self.refresh_button, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(heading_line)
         layout.addWidget(_note("Spreadsheet files currently open on your computer."))
@@ -511,6 +533,7 @@ class SidePanel(QFrame):
         self.search.setPlaceholderText("Search")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._filter)
+        self.search.textChanged.connect(self._searched)
         layout.addWidget(self.search)
         self.empty_label = _note(NO_OTHERS_TEXT)
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -529,15 +552,15 @@ class SidePanel(QFrame):
     def _build_turn_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
-        self.turn_intro = QLabel("Settings to control how each speak-write iteration (turn) is handled.<br>"
-                                 "Voice activated with <a href=\"keywords\">Keywords</a>.")
+        self.turn_intro = QLabel("Settings to control how each speak-match-write iteration (known as a 'Turn') is handled.<br><br>"
+                                 "These settings can be voice controlled within <a href=\"keywords\">Settings &gt; Keywords</a>.")
         self.turn_intro.setProperty("panelNote", True)
         self.turn_intro.setTextFormat(Qt.TextFormat.RichText)
         self.turn_intro.setWordWrap(True)
         self.turn_intro.setOpenExternalLinks(False)
         self.turn_intro.setProperty("hoverLinkTips", True)          # only the link has hover text, while it is hovered
         self.turn_intro.linkActivated.connect(lambda _: self.keywords_requested.emit())
-        self.turn_intro.linkHovered.connect(lambda link: self.turn_intro.setToolTip("Open the Keywords settings" if link else ""))
+        self.turn_intro.linkHovered.connect(lambda link: self.turn_intro.setToolTip("Open the Keywords settings." if link else ""))
         layout.addWidget(self.turn_intro)
         layout.addSpacing(4)
         layout.addWidget(_rule())
@@ -609,8 +632,8 @@ class SidePanel(QFrame):
         """Show the active file: its name on the button (the full *path* on hover) and a table of quiet facts about it
         (sheet, path on one line, *kind* of program or format, size, dates as MM/DD/YY)."""
         self._has_file = bool(name)
-        self.file_button.text_label.setFullText(name or NO_FILE_TEXT, path or name or "Choose a spreadsheet file")
-        self.file_button.setToolTip((path or name) + "\nClick to choose another file" if name else "Choose a spreadsheet file")
+        self.file_button.text_label.setFullText(name or NO_FILE_TEXT, path or name or "Choose a spreadsheet file.")
+        self.file_button.setToolTip((path or name) + "\nClick to choose another file" if name else "Choose a spreadsheet file.")
         self._draw_file_icon()
         facts: dict[str, tuple[str, str]] = {}
         if name:
@@ -644,6 +667,29 @@ class SidePanel(QFrame):
             self.available.addItem(item)
         self._filter(self.search.text())
 
+    #: How long (ms) "No open spreadsheet files detected." stays hidden after a refresh starts, so a refresh that finds
+    #: nothing still visibly happened; and how long typing pauses before a search of 3 or more letters looks again.
+    REFRESH_BLINK_MS = 450
+    SEARCH_REFRESH_MS = 300
+
+    def start_refresh(self, ask: bool = False) -> None:
+        """Hide the "nothing found" message for a moment (it comes back if nothing is found), and with *ask* have the list
+        looked for again (``refresh_requested``)."""
+        self._refreshing = True
+        self.empty_label.setVisible(False)
+        QTimer.singleShot(self.REFRESH_BLINK_MS, self._refresh_blinked)
+        if ask:
+            self.refresh_requested.emit()
+
+    def _refresh_blinked(self) -> None:
+        self._refreshing = False
+        self._filter(self.search.text())
+
+    def _searched(self, text: str) -> None:
+        """Typing 3 or more letters in Search looks for open files again (after a short pause in the typing)."""
+        if len(text.strip()) >= 3:
+            self._search_timer.start()
+
     def available_names(self) -> list[str]:
         """The names in the list, top to bottom."""
         return [self.available.item(i).text() for i in range(self.available.count())]
@@ -660,7 +706,7 @@ class SidePanel(QFrame):
         total = self.available.count()
         self.available.setVisible(shown > 0)
         self.empty_label.setText(NO_MATCH_TEXT if total and not shown else NO_OTHERS_TEXT)
-        self.empty_label.setVisible(shown == 0)
+        self.empty_label.setVisible(shown == 0 and not self._refreshing)
 
     def _mode_toggled(self, mode: str) -> None:
         """A radio button was checked: Next is only usable (and only looks usable) while Append To is chosen."""
@@ -677,9 +723,9 @@ class SidePanel(QFrame):
         """Word the turn page for the layout: rows when headings run across the top, columns when they run down."""
         unit = "column" if self._vertical else "row"
         self.next_row_radio.setText(f"Next {unit.title()}")
-        self.next_row_note.setText(f"Turn words are written to new {unit}s")
-        self.append_note.setText(f"Turn words are added to the same {unit}")
-        self.new_row_button.setToolTip(f"Move cursor to the next {unit}")
+        self.next_row_note.setText(f"Turn words are written to new {unit}s.")
+        self.append_note.setText(f"Turn words are added to the same {unit}.")
+        self.new_row_button.setToolTip(f"Move cursor to the next {unit}.")
         self.next_row_radio.setToolTip(self.next_row_note.text())
         self.append_radio.setToolTip(self.append_note.text())
 
