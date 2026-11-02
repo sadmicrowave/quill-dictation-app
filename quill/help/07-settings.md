@@ -39,7 +39,7 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 
 ## 🧠 Speech model
 
-A small English model ships inside Quill (about 41 MB). It runs **on your computer**: nothing is sent online. If it's ever missing, **Settings > General > Speech Model** says so and has a **Download** button (it shows the progress there too).
+A small English model ships inside Quill (about 41 MB). It runs **on your computer**: nothing is sent online. **Settings > General > Speech Model** lets you choose **Standard** (the one that ships) or **Better** (about 130 MB, downloaded once from the Vosk project and checked against a fingerprint before it is unpacked). Better mishears fewer words and uses more memory. If the one you chose isn't downloaded yet, the row says so and has a **Download** button with progress; until then Quill keeps using Standard. Switching takes effect straight away.
 
 ## 🖥️ Dock and menu bar
 

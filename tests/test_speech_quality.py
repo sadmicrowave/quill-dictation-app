@@ -1,0 +1,159 @@
+"""The Better speech model: catalog, finding it, choosing it in Settings, and listening with it."""
+import pathlib
+import tempfile
+import unittest
+
+from PySide6.QtWidgets import QApplication
+
+from quill.app import QuillApp
+from quill.bridge.xlsx_bridge import XlsxBridge
+from quill.config.settings import Settings
+from quill.listener import model as M
+from quill.ui.settings_dialog import SettingsDialog
+from tests.test_app import FakeListener, FakeSpeaker, make_workbook
+
+_app = QApplication.instance() or QApplication([])
+
+
+def fake_model(base: pathlib.Path, name: str) -> pathlib.Path:
+    folder = base / name
+    (folder / "am").mkdir(parents=True)
+    (folder / "conf").mkdir()
+    return folder
+
+
+class TestCatalog(unittest.TestCase):
+    def test_the_two_models_and_their_checks(self):
+        self.assertEqual(set(M.SPECS), {"standard", "better"})
+        for spec in M.SPECS.values():
+            self.assertTrue(spec.url.startswith("https://"))
+            self.assertEqual(len(spec.sha256), 64)
+        self.assertEqual(M.STANDARD.sha256, M.MODEL_SHA256)
+
+    def test_find_picks_the_named_model_not_just_the_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            small = fake_model(base, M.STANDARD.name)
+            better = fake_model(base, M.BETTER.name)
+            self.assertEqual(M.find_spec_model(M.BETTER, [base]), better)
+            self.assertEqual(M.find_spec_model(M.STANDARD, [base]), small)
+
+    def test_missing_model_is_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(M.find_spec_model(M.BETTER, [pathlib.Path(tmp)]))
+
+    def test_download_spec_uses_the_models_own_address_and_checksum(self):
+        seen = {}
+        real = M.download_model
+        M.download_model = lambda dest, url, progress, sha: seen.update(url=url, sha=sha) or fake_model(dest, M.BETTER.name)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = M.download_spec(pathlib.Path(tmp), None, M.BETTER)
+                self.assertEqual(path.name, M.BETTER.name)
+        finally:
+            M.download_model = real
+        self.assertEqual(seen, {"url": M.BETTER.url, "sha": M.BETTER.sha256})
+
+    def test_the_default_downloader_is_callable_with_a_folder_and_a_progress_callback(self):
+        # (it used to be the raw download function, which took the progress callback as the address)
+        import inspect
+        params = list(inspect.signature(M.download_spec).parameters)
+        self.assertEqual(params[:2], ["dest_dir", "progress"])
+
+
+class TestChoosingTheModel(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = pathlib.Path(self._tmp.name)
+        self.standard = self.dir / "standard"
+        self.better = self.dir / "better"
+        self.better_present = False
+        self.used = []
+        self.settings = Settings.load(self.dir / "cfg")
+        self.app = QuillApp(
+            _app, self.settings, XlsxBridge(make_workbook(self.dir / "w.xlsx")),
+            listener_factory=lambda model, t, e: self.used.append(model) or FakeListener(model, t, e),
+            model_finder=lambda c: self.standard, speaker=FakeSpeaker(),
+            better_finder=lambda: self.better if self.better_present else None)
+
+    def test_standard_is_the_default(self):
+        self.app.start()
+        self.assertEqual(self.used, [self.standard])
+        self.assertEqual(self.settings.preferences["speech_quality"], "standard")
+
+    def test_better_is_used_when_chosen_and_installed(self):
+        self.settings.preferences["speech_quality"] = "better"
+        self.better_present = True
+        self.app.start()
+        self.assertEqual(self.used, [self.better])
+
+    def test_better_chosen_but_missing_falls_back_and_says_so(self):
+        self.settings.preferences["speech_quality"] = "better"
+        self.app.start()
+        self.assertEqual(self.used, [self.standard])
+        self.assertIn("Better speech model is not downloaded", self.app.window.log.toPlainText())
+
+    def test_switching_in_settings_restarts_the_listener_with_the_other_model(self):
+        self.better_present = True
+        self.app.start()
+        self.settings.preferences["speech_quality"] = "better"
+        self.app.apply_settings(quiet=True)
+        self.assertEqual(self.used, [self.standard, self.better])
+        self.app.apply_settings(quiet=True)                         # nothing changed: no second restart
+        self.assertEqual(len(self.used), 2)
+
+    def test_a_finished_download_of_the_chosen_model_starts_listening_with_it(self):
+        self.app.start()
+        self.settings.preferences["speech_quality"] = "better"
+        self.app._downloading = "better"
+        self.better_present = True
+        self.app._on_model_ready(self.better)
+        self.assertEqual(self.used[-1], self.better)
+
+    def test_the_better_download_is_asked_for_by_spec(self):
+        calls = []
+        self.app._model_downloader = lambda dest, progress, spec=None: calls.append(spec) or self.better
+        import threading
+        done = threading.Event()
+        self.app.relay.model_ready.connect(lambda p: done.set())
+        self.app.start()
+        self.app.download_model("better")
+        for _ in range(100):
+            _app.processEvents()
+            if done.is_set():
+                break
+            threading.Event().wait(0.02)
+        self.assertEqual(calls, [M.BETTER])
+
+
+class TestSettingsChoice(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.settings = Settings.load(pathlib.Path(self._tmp.name))
+        self.installed = {"standard": True, "better": False}
+        self.asked = []
+        self.d = SettingsDialog(self.settings, on_download_model=self.asked.append,
+                                model_installed=lambda quality: self.installed[quality])
+        self.d.build()
+
+    def test_choosing_better_shows_its_state_and_downloads_that_one(self):
+        self.assertEqual(self.d.model_button.text(), "Installed")
+        self.d.quality_combo.setCurrentIndex(self.d.quality_combo.findData("better"))
+        self.assertEqual(self.d.model_button.text(), "Download")
+        self.assertIn("130 MB", self.d.model_row.description_label.text())
+        self.d.model_button.click()
+        self.assertEqual(self.asked, ["better"])
+
+    def test_the_choice_is_stored_live(self):
+        self.d.quality_combo.setCurrentIndex(self.d.quality_combo.findData("better"))
+        self.assertEqual(self.settings.preferences["speech_quality"], "better")
+
+    def test_a_bad_stored_value_goes_back_to_standard(self):
+        (pathlib.Path(self._tmp.name) / Settings.KEYWORDS_FILE).write_text('[preferences]\nspeech_quality = "huge"\n')
+        self.assertEqual(Settings.load(pathlib.Path(self._tmp.name)).preferences["speech_quality"], "standard")
+
+
+if __name__ == "__main__":
+    unittest.main()

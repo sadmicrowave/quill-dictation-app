@@ -75,6 +75,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "auto_stop_seconds": 10,  # ... for this many seconds of quiet
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
+    "speech_quality": "standard",   # "standard" | "better": which speech model listens (Better is a larger download)
     "sorting_sounds": True,   # Term Helper answers (added, ignored, a problem) play their confirmation sound
     "sorting_follows_opacity": False,   # the Term Helper fades like the main window (off: it stays solid and easy to read)
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
@@ -217,7 +218,7 @@ class Settings:
                     settings.aliases[column] = {
                         str(k).lower(): str(v) for k, v in mapping.items() if isinstance(v, str)
                     }
-        for key, allowed in (("feedback", MODES), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS),
+        for key, allowed in (("feedback", MODES), ("speech_quality", ("standard", "better")), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS),
                              ("accent", ACCENTS), ("spacing", SPACINGS)):
             if settings.preferences[key] not in allowed:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]

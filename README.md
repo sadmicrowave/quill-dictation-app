@@ -490,3 +490,9 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - `sorting_sounds` preference (default on) silences the confirmation sound for Term Helper answers (`feedback.SORTING_KINDS`); Settings > Sounds.
 - `PopupClickThrough` (one per application): a click on a `ListenButton` while a drop-down is open closes it and presses the button.
 - The Term Helper's `ListenButton` can shrink to the room it has (no minimum width), so it never passes the margin.
+
+### Phase 55 notes (speech quality)
+- `quill/listener/model.py` now has a catalog (`ModelSpec`, `STANDARD`, `BETTER` = vosk-model-en-us-0.22-lgraph, about 130 MB, 214 MB unpacked) with `find_spec_model` and `download_spec`. The preference `speech_quality` ("standard" | "better") picks the model; `QuillApp._find_model` uses Better when it is installed, else falls back to Standard with a log warning; changing it in Settings reloads the listener (`_reload_listener`).
+- The Better archive's SHA-256 was computed from the official download on 1 Nov 2026 (there is no published checksum to compare with); the downloader still insists on https and checks it.
+- Found while doing this: the app's default downloader was the raw `download_model`, whose second argument is the URL, so the Download button passed it the progress callback. It is now `download_spec`.
+- Quick check with a synthetic phrase: Standard heard "ninety nineties", Better "nineteen nineties". A fair comparison needs recorded real phrases.

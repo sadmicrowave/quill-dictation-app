@@ -31,7 +31,7 @@ from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.feedback import spoken_words, Feedback
 from quill.listener.listener import Listener
-from quill.listener.model import download_model, ensure_model, user_model_dir
+from quill.listener.model import BETTER, SPECS, download_spec, ensure_model, find_spec_model, user_model_dir
 from quill.session import Decision, Event, TermKey
 from quill.speaker.clips import SpokenClips
 from quill.speaker.speaker import Speaker
@@ -107,7 +107,8 @@ class QuillApp:
         listener_factory: ``(model_path, on_transcript, on_error) -> listener``;
             tests inject a fake so no microphone is needed.
         model_finder: ``(configured_path) -> Path | None``.
-        model_downloader: ``(dest_dir, progress) -> Path``; tests inject a fake.
+        model_downloader: ``(dest_dir, progress[, spec]) -> Path``; tests inject a fake.
+        better_finder: ``() -> Path | None``, the larger speech model if it is installed; tests inject a fake.
         speaker: Speaker to use (default: platform TTS honouring settings).
         poll_interval_ms: How often to look for workbooks being opened/closed.
     """
@@ -125,7 +126,8 @@ class QuillApp:
         bridge: WorkbookBridge,
         listener_factory: Callable | None = None,
         model_finder: Callable[[str], pathlib.Path | None] = ensure_model,
-        model_downloader: Callable = download_model,
+        model_downloader: Callable = download_spec,
+        better_finder: Callable[[], pathlib.Path | None] = lambda: find_spec_model(BETTER),
         speaker: Speaker | None = None,
         poll_interval_ms: int = POLL_INTERVAL_MS,
         sound_player: Callable | None = None,
@@ -192,6 +194,9 @@ class QuillApp:
         self._listener_factory = listener_factory or self._default_listener
         self._model_finder = model_finder
         self._model_downloader = model_downloader
+        self._better_finder = better_finder
+        self._loaded_quality = ""                       # which speech model the running listener uses
+        self._downloading = "standard"
         self._mic_open = False
         self._seen_mtime: int | None = None      # last known state of the workbook file
         self._titlebar = None                    # the resize icon in the title bar, where supported
@@ -464,8 +469,35 @@ class QuillApp:
         except BridgeError as exc:
             self.window.append_log(str(exc), "error")
 
+    def _find_model(self) -> pathlib.Path | None:
+        """The speech model to listen with: the larger one if chosen and installed, else the standard one."""
+        if self.settings.preferences["speech_quality"] == "better":
+            better = self._better_finder()
+            if better is not None:
+                self._loaded_quality = "better"
+                return better
+            self.window.append_log("The Better speech model is not downloaded yet: using the Standard one. "
+                                   "Download it in Settings, under General.", "warning")
+        self._loaded_quality = "standard"
+        return self._model_finder(str(self.settings.preferences["model_path"]))
+
+    def quality_installed(self, quality: str) -> bool:
+        """Whether the speech model for *quality* ("standard" or "better") can be found."""
+        if quality == "better":
+            return self._better_finder() is not None
+        return self._model_finder(str(self.settings.preferences["model_path"])) is not None
+
+    def _reload_listener(self) -> None:
+        """Listen with the model now chosen: close the microphone and the old listener, then start the new one."""
+        if self.listener is not None:
+            if self._mic_open:
+                self.listener.stop()
+                self._mic_open = False
+            self.listener = None
+        self._start_listener()
+
     def _start_listener(self) -> None:
-        model = self._model_finder(str(self.settings.preferences["model_path"]))
+        model = self._find_model()
         if model is None:
             self.window.append_log("No speech model found. Download one (about 40 MB) in Settings, under General, "
                                    "to start dictating.", "warning")
@@ -675,7 +707,7 @@ class QuillApp:
         self._settings_dialog = SettingsDialog(
             self.settings, self.window.widget, on_preview=self.preview_feedback,
             on_change=lambda: self.apply_settings(quiet=True),
-            on_download_model=self.download_model, model_installed=self.model_installed)
+            on_download_model=self.download_model, model_installed=self.quality_installed)
         self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
 
@@ -883,6 +915,10 @@ class QuillApp:
         self.controller.apply_settings()
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
         self._apply_dock()
+        quality = str(self.settings.preferences["speech_quality"])
+        if quality != self._loaded_quality and self.listener is not None and self.quality_installed(quality):
+            self._reload_listener()                          # the user chose the other speech model
+            self.window.append_log(f"Now listening with the {SPECS[quality].label} speech model")
         self._sync_mic()
         self._restart_quiet_timer()
         self.controller.lead_in_s = self.feedback.lead_in_s()
@@ -1107,16 +1143,19 @@ class QuillApp:
             if self.controller.session.listening:
                 self.controller.set_listening(False)
 
-    def download_model(self) -> None:
-        """Download the speech model on a background thread."""
+    def download_model(self, quality: str = "standard") -> None:
+        """Download the speech model for *quality* on a background thread."""
+        spec = SPECS.get(quality, SPECS["standard"])
+        self._downloading = spec.key
         self._model_busy = True
         self._model_note = "Downloading…"
         self._show_model_state()
-        self.window.append_log("Downloading the speech model")
+        self.window.append_log(f"Downloading the {spec.label} speech model (about {spec.size_mb} MB)")
 
         def work() -> None:
             try:
-                path = self._model_downloader(user_model_dir(), self.relay.progress.emit)
+                path = (self._model_downloader(user_model_dir(), self.relay.progress.emit) if spec.key == "standard"
+                        else self._model_downloader(user_model_dir(), self.relay.progress.emit, spec))
             except Exception as exc:   # network, disk, bad archive
                 self.relay.error.emit(f"Model download failed: {exc}")
                 self.relay.model_ready.emit(None)
@@ -1139,12 +1178,13 @@ class QuillApp:
             return
         self._model_note = ""
         self._show_model_state()
-        self.window.append_log("Speech model installed")
-        self._start_listener()
+        self.window.append_log(f"{SPECS[self._downloading].label} speech model installed")
+        if self.listener is None or self._downloading == str(self.settings.preferences["speech_quality"]):
+            self._reload_listener()                           # listen with what was just downloaded (if it is the one chosen)
 
     def model_installed(self) -> bool:
         """Whether a speech model can be found (for the Settings page)."""
-        return self._model_finder(str(self.settings.preferences["model_path"])) is not None
+        return self.quality_installed("standard")
 
     def _show_model_state(self) -> None:
         """Tell the open Settings window how the speech model download is going (nothing to do when it is closed)."""

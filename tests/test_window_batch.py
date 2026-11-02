@@ -138,15 +138,15 @@ class TestSettingsPieces(unittest.TestCase):
         self.settings = Settings.load(pathlib.Path(self._tmp.name))
         self.downloads = []
         self.installed = False
-        self.d = SettingsDialog(self.settings, on_download_model=lambda: self.downloads.append(1),
-                                model_installed=lambda: self.installed)
+        self.d = SettingsDialog(self.settings, on_download_model=lambda quality: self.downloads.append(quality),
+                                model_installed=lambda quality: self.installed)
         self.d.build()
 
     def test_the_speech_model_can_be_downloaded_from_settings(self):
         self.assertEqual(self.d.model_button.text(), "Download")
         self.assertTrue(self.d.model_button.isEnabled())
         self.d.model_button.click()
-        self.assertEqual(self.downloads, [1])
+        self.assertEqual(self.downloads, ["standard"])
 
     def test_progress_and_the_installed_state_show_on_the_row(self):
         self.d.set_model_state("Downloading… 40%", True)

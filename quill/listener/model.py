@@ -14,6 +14,7 @@ import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from typing import Callable
 
 MODEL_NAME = "vosk-model-small-en-us-0.15"
@@ -22,6 +23,30 @@ MODEL_URL = f"https://alphacephei.com/vosk/models/{MODEL_NAME}.zip"
 #: SHA-256 of the official model archive. A download that does not match is rejected, so a tampered
 #: or truncated file (or a hijacked connection) is never unpacked.
 MODEL_SHA256 = "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498"
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """One speech model Quill can use: where it comes from and how to tell it is the right file."""
+
+    key: str
+    name: str            # the folder the archive unpacks to
+    url: str
+    sha256: str
+    label: str
+    size_mb: int
+
+
+STANDARD = ModelSpec("standard", MODEL_NAME, MODEL_URL, MODEL_SHA256, "Standard", 40)
+
+#: A larger English model (about 130 MB to download, 214 MB unpacked): the same streaming recogniser with a
+#: richer graph, so it mishears less. Its checksum is that of the official archive as downloaded on 1 Nov 2026.
+BETTER = ModelSpec(
+    "better", "vosk-model-en-us-0.22-lgraph",
+    "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip",
+    "d9838b4aaa82a75c4a17f5aca300eaca129aaab2a7cbf951bafbb500eb9c4334", "Better", 130)
+
+SPECS = {spec.key: spec for spec in (STANDARD, BETTER)}
 
 #: Safety limits when unpacking an archive (a "zip bomb" could otherwise fill the disk).
 MAX_UNPACKED_BYTES = 600 * 1024 * 1024
@@ -93,6 +118,25 @@ def user_model_dir() -> pathlib.Path:
         return pathlib.Path(user_data_dir("Quill", appauthor=False)) / "model"
     except ImportError:
         return pathlib.Path.home() / ".quill" / "model"
+
+
+def find_spec_model(spec: ModelSpec, search_dirs: list[pathlib.Path] | None = None) -> pathlib.Path | None:
+    """The unpacked folder of *spec*'s model, if it is installed in one of the search folders."""
+    for base in search_dirs if search_dirs is not None else default_search_dirs():
+        for candidate in (base / spec.name, base):
+            if candidate.name == spec.name and is_model_dir(candidate):
+                return candidate
+    return None
+
+
+def download_spec(dest_dir: pathlib.Path, progress: ProgressCallback | None = None,
+                  spec: ModelSpec = STANDARD) -> pathlib.Path:
+    """Download *spec*'s model into *dest_dir* (https only, checksum checked) and return its folder."""
+    download_model(dest_dir, spec.url, progress, spec.sha256)
+    found = find_spec_model(spec, [dest_dir])
+    if found is None:
+        raise RuntimeError("The downloaded archive did not contain the expected speech model.")
+    return found
 
 
 def default_search_dirs() -> list[pathlib.Path]:

@@ -122,7 +122,7 @@ def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel,
 #: The preferences the controls edit (Cancel puts back just these).
 EDITED_PREFERENCES = (
     "theme", "speak_sort_prompts", "auto_voice_sort", "mic_always_on", "auto_stop", "auto_stop_seconds",
-    "mini_on_top", "hide_dock_icon", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity", "sorting_sounds",
+    "mini_on_top", "hide_dock_icon", "speech_quality", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity", "sorting_sounds",
     "blur", "history_limit", "feedback", "sound_pack", "echo_style",
 )
 
@@ -148,8 +148,8 @@ class SettingsDialog:
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
                  on_open_logs=None, on_help=None, on_download_model=None, model_installed=None) -> None:
-        self._on_download_model = on_download_model or (lambda: None)
-        self._model_installed = model_installed or (lambda: True)
+        self._on_download_model = on_download_model or (lambda quality: None)
+        self._model_installed = model_installed or (lambda quality: True)
         self._on_help = on_help
         self._on_done = None                      # called when the non-modal window closes (see open)
         self._on_open_logs = on_open_logs or self._open_log_folder
@@ -188,6 +188,7 @@ class SettingsDialog:
         self.sorting_opacity_check: ToggleSwitch | None = None
         self.sorting_sounds_check: ToggleSwitch | None = None
         self.model_button: QPushButton | None = None
+        self.quality_combo: QComboBox | None = None
         self.model_row: SettingRow | None = None
 
     # ------------------------------------------------------------------ #
@@ -363,7 +364,7 @@ class SettingsDialog:
                         self.dock_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check):
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
-        for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
+        for control in (self.quality_combo, self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
                         self.pack_combo, self.echo_combo):
             control.currentIndexChanged.connect(self._live)
         for control in (self.font_spin, self.history_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin):
@@ -401,6 +402,7 @@ class SettingsDialog:
         prefs["opacity"] = self.opacity_slider.value()
         prefs["sorting_follows_opacity"] = self.sorting_opacity_check.isChecked()
         prefs["sorting_sounds"] = self.sorting_sounds_check.isChecked()
+        prefs["speech_quality"] = self.quality_combo.currentData()
         prefs["blur"] = self.blur_slider.value()
         prefs["history_limit"] = self.history_spin.value()
         prefs["feedback"] = self.feedback_combo.currentData()
@@ -530,16 +532,20 @@ class SettingsDialog:
         """Show whether the speech model is installed, or how its download is going (*note*, while *busy*)."""
         if self.model_row is None:
             return
-        installed = bool(self._model_installed())
+        quality = self.quality_combo.currentData()
+        installed = bool(self._model_installed(quality))
+        size = "about 130 MB" if quality == "better" else "about 40 MB"
         if note:
             text = note
         elif installed:
-            text = "Installed. Quill listens on this computer; nothing you say is sent anywhere."
+            text = ("Installed. Quill listens on this computer; nothing you say is sent anywhere. "
+                    + ("Better hears more words correctly, but uses more memory." if quality == "better" else ""))
         else:
-            text = ("Not installed. Quill needs it to hear you. It is about 40 MB, downloaded once, and "
-                    "then works without internet.")
-        self.model_row.description_label.setText(text)
+            text = (f"Not installed. It is {size}, downloaded once, and then works without internet. "
+                    + ("Better mishears fewer words than Standard." if quality == "better" else "Quill needs it to hear you."))
+        self.model_row.description_label.setText(text.strip())
         self.model_row.description_label.setVisible(True)
+        self.quality_combo.setEnabled(not busy)
         self.model_button.setEnabled(not busy and not installed)
         self.model_button.setText("Installed" if installed and not busy else "Download")
 
@@ -594,11 +600,23 @@ class SettingsDialog:
         logs.clicked.connect(lambda: self._on_open_logs())
         self._add("General", page, "Troubleshooting",
                   "If something goes wrong, the log file shows what happened.", logs, "log file errors diagnostics")
+        self.quality_combo = FlatCombo()
+        for key, label in (("standard", "Standard"), ("better", "Better")):
+            self.quality_combo.addItem(label, key)
+        self.quality_combo.setCurrentIndex(self.quality_combo.findData(prefs["speech_quality"]))
         self.model_button = QPushButton("Download")
         self.model_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.model_button.clicked.connect(lambda: self._on_download_model())
-        self.model_row = self._add("General", page, "Speech Model", "", self.model_button,
-                                   "download vosk offline recognition voice model install")
+        self.model_button.clicked.connect(lambda: self._on_download_model(self.quality_combo.currentData()))
+        holder = QWidget()
+        holder.setProperty("keepMargins", True)
+        side = QHBoxLayout(holder)
+        side.setContentsMargins(0, 0, 0, 0)
+        side.setSpacing(8)
+        side.addWidget(self.quality_combo)
+        side.addWidget(self.model_button)
+        self.model_row = self._add("General", page, "Speech Model", "", holder,
+                                   "download vosk offline recognition voice model install quality better accuracy mishear")
+        self.quality_combo.currentIndexChanged.connect(lambda _=0: self.set_model_state("", False))
         self.set_model_state("", False)
         self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
