@@ -265,7 +265,7 @@ class TestListenButtonLayout(unittest.TestCase):
         _app.processEvents()
         self.assertFalse(self.b.pill.isAncestorOf(self.b.countdown_label))
         self.assertGreater(self.b.countdown_label.x(), self.b.pill.x() + self.b.pill.width() - 1)
-        self.assertEqual(self.b.countdown_label.text(), "Stops in 7s")
+        self.assertEqual(self.b.countdown_label.text(), "7s")
 
     def test_the_notice_chip_replaces_the_pill_at_the_left(self):
         from PySide6.QtWidgets import QLabel

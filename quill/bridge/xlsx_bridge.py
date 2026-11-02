@@ -52,7 +52,7 @@ class XlsxBridge(GridBridge):
         self._path = path
         self._name = path.name
         self._grid = OpenpyxlGrid(self._wb)
-        self._discovery = discover(self._wb)
+        self._discovery = discover(self._wb, self._vertical)
 
     def disconnect(self) -> None:
         super().disconnect()

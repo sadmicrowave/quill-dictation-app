@@ -57,6 +57,7 @@ def shoot(app: QApplication, theme: str) -> None:
         window.set_native_settings_button(True)
         window.set_native_mini_button(True)
         window.set_native_file_button(True)
+        window.set_native_turn_button(True)
         return window
 
     main_window = as_native(MainWindow())
@@ -87,6 +88,24 @@ def shoot(app: QApplication, theme: str) -> None:
     waiting.widget.resize(380, 200)
     waiting.widget.show()
 
+    panels = {}
+    MainWindow.animation_ms = 0                                   # the panel is drawn open, not mid-slide
+    for page in ("file", "turn"):
+        side = as_native(MainWindow())
+        side.setup()
+        side.update_workbooks(["Apparel Inventory.xlsx"], "Apparel Inventory.xlsx")
+        side.set_workbook_path("/Users/you/Documents/Apparel Inventory.xlsx")
+        side.set_active_sheet("Inventory")
+        side.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
+        side.panel.set_available([("Orders 2026.xlsx", "Open in Numbers", None), ("Birds.csv", "Open in Numbers", None),
+                                  ("Budget.xlsx", "Open in Excel", None), ("Notes.xlsx", "Open in LibreOffice Calc", None)])
+        side.panel.set_turn("append", False)
+        side.widget.resize(453, 430)
+        side.widget.show()
+        side.open_panel(page)
+        panels[page] = side
+    MainWindow.animation_ms = 240
+
     vocab = Vocabulary()
     vocab.load({"Era": ["1980s"], "Color": ["Black"], "Type": ["T-Shirt"]}, [])
     helper = SortingWindow(vocab, lambda *a: None)
@@ -111,9 +130,11 @@ def shoot(app: QApplication, theme: str) -> None:
     save(mini.widget, "mini-view.png", 24, theme)
     save(waiting.widget, "not-connected.png", 24, theme)
     save(helper.widget, "term-helper.png", 0, theme)
+    for page, side in panels.items():
+        save(side.widget, f"side-panel-{page}.png", 24, theme)
     for shown, (dialog, widget) in dialogs.items():
         save(widget, f"settings-{shown.lower()}.png", 0, theme)
-    for window in (main_window.widget, mini.widget, waiting.widget, helper.widget, *(w for _, w in dialogs.values())):
+    for window in (main_window.widget, mini.widget, waiting.widget, helper.widget, *(p.widget for p in panels.values()), *(w for _, w in dialogs.values())):
         window.close()
 
 

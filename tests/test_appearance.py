@@ -141,7 +141,7 @@ class TestInTheApp(DemoCase):
         self.app.start()
 
     def margins(self):
-        return self.app.window.widget.centralWidget().layout().contentsMargins().left()
+        return self.app.window.root.layout().contentsMargins().left()
 
     def test_changing_accent_and_spacing_restyles_the_running_app(self):
         compact = self.margins()

@@ -79,6 +79,49 @@ class Grid(ABC):
         return ""
 
 
+class TransposedGrid(Grid):
+    """A view of another grid with rows and columns swapped.
+
+    A sheet laid out the other way round (headings down the first column, one record per column) reads
+    through this view exactly like the usual layout (headings across the first row, one record per row), so
+    everything built on :class:`Grid` works for both without knowing which it has.
+    """
+
+    def __init__(self, base: Grid) -> None:
+        self._base = base
+
+    def sheet_names(self) -> list[str]:
+        return self._base.sheet_names()
+
+    def active_sheet(self) -> str:
+        return self._base.active_sheet()
+
+    def last_row(self, sheet: str) -> int:
+        return self._base.last_col(sheet)
+
+    def last_col(self, sheet: str) -> int:
+        return self._base.last_row(sheet)
+
+    def read(self, sheet: str, top: int, left: int, rows: int, cols: int) -> list[list[object]]:
+        if rows <= 0 or cols <= 0:
+            return []
+        block = self._base.read(sheet, left, top, cols, rows)
+        return [[block[c][r] for c in range(cols)] for r in range(rows)]
+
+    def write(self, sheet: str, row: int, col: int, value: object) -> None:
+        self._base.write(sheet, col, row, value)
+
+    def get_cursor(self, sheet: str) -> tuple[int, int] | None:
+        cursor = self._base.get_cursor(sheet)
+        return (cursor[1], cursor[0]) if cursor else None
+
+    def set_cursor(self, sheet: str, row: int, col: int) -> None:
+        self._base.set_cursor(sheet, col, row)
+
+    def path(self) -> str:
+        return self._base.path()
+
+
 def is_blank(value: object) -> bool:
     """True for None, empty/whitespace text, and formulas (computed cells)."""
     if value is None:

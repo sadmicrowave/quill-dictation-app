@@ -412,9 +412,9 @@ def excel_sheet(x: float, y: float, w: float, h: float, r: float) -> str:
     """A sheet drawn like a spreadsheet app's icon: two columns whose fills step lighter to the right, three
     row bands that deepen downward within each column, and a solid dark total row at the bottom. No cell borders:
     the grid is read from the changes of fill."""
-    left = ("#B49AE8", "#9F83DD", "#8A6CCD")
-    right = ("#CDB9F3", "#B9A0EA", "#A387DC")
-    total = "#5B3DA6"
+    left = ("#A06CF0", "#8A52E0", "#7640CC")
+    right = ("#BC8CFA", "#A774F0", "#925DE2")
+    total = "#4A2894"
     band = (h - 23) / 3
     split = x + w * 0.5
     parts = []

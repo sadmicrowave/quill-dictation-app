@@ -17,10 +17,18 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 
 No spreadsheet app open? Quill can fill a file by itself.
 
-1. Press the **folder** icon in the title bar, left of the Settings icon (or **File > Open Spreadsheet File…**). It is grey and closed while no file is open, and solid and open once one is; hover it to see the file's name and the open sheet. It opens where you last picked a file.
+1. Press the **folder** icon in the title bar, left of the turn and Settings icons. The **side panel** eases in on the right (press the folder again to ease it away). The icon is grey and closed while no file is open, and solid and open once one is; hover it to see the file's name and the open sheet.
+2. In the panel's **Active File** section, hover the file's name to see its **full path**; the sheet is shown under it. Press **Open File…** for the standard file window (it opens where you last picked a file, or use **File > Open Spreadsheet File…**), and pick an `.xlsx` or a `.csv` file.
    Pressing **Start** with no file open opens this window for you.
-2. Pick an `.xlsx` or a `.csv` file.
 3. Dictate. Quill remembers the file next time.
+
+A file you pick this way that no program has open yet is **started in its own program** as well (in the background, so Quill stays in front).
+
+![The side panel's file page](images/side-panel-file.png)
+
+### Spreadsheets that are already open
+
+Under a muted line, **Available Spreadsheets** lists, in a scrolling list, the other spreadsheets open in programs on this computer (Excel, Numbers, LibreOffice Calc ...). Click one and it moves up into the **Active File** section; its name leaves the list. The list refreshes by itself while the panel is open. The first time, macOS may ask whether Quill may control Excel: that is only so Quill can see which workbooks are open.
 
 **File > Use the Open Workbook** goes back to the workbook open in your spreadsheet program.
 

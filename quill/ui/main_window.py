@@ -56,6 +56,7 @@ from quill.ui.main_widgets import (
     StreamBox,
 )
 from quill.ui.theme import install_backdrop, apply_spacing
+from quill.ui.side_panel import FILE_PAGE, PANEL_WIDTH, SidePanel, TURN_PAGE
 from quill.ui.widgets import (
     ElidedLabel,
     HeadingToggle,
@@ -163,7 +164,14 @@ class MainWindow:
         self._not_connected = False
         self._native_settings_button = False
         self._native_file_button = False
+        self._native_turn_button = False
+        self._panel_open = False             # the side panel is open (or sliding open)
+        self._panel_page = FILE_PAGE
+        self._panel_animation: QVariantAnimation | None = None
+        self._pending_panel = ""             # a page to open once the full window is back (the panel is not in the mini view)
+        self._on_panel_toggled: Callable[[str], None] = lambda page: None   # told the open page, or "" when it closes
         self._workbook_name = ""
+        self._workbook_path = ""
         self._sheet_name = ""
         self._native_undo_button = False
         self._text_color = "#1F1E1D"
@@ -217,6 +225,17 @@ class MainWindow:
         # must not force the window's minimum size (it is set once an animation has finished).
         layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         central.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        # The content and the side panel sit side by side; the panel is closed (zero width) until a title bar icon opens it.
+        self._shell = QWidget()
+        shell = QHBoxLayout(self._shell)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+        self._shell.setProperty("keepMargins", True)
+        shell.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self._shell.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.panel = SidePanel()
+        shell.addWidget(central, 1)
+        shell.addWidget(self.panel)
 
         # --- status row
         # One button is the whole control (see ListenButton). Pressing it starts or stops listening; it fills with
@@ -263,6 +282,7 @@ class MainWindow:
         self.help_button.clicked.connect(lambda: self._on_help(HELP_TOPIC))
         self.next_button = QPushButton()                 # small next arrow beside Start: save this row and start the next
         self.next_button.setProperty("iconOnly", True)
+        self.next_button.setProperty("outline", True)             # purple border, like the Start button
         self.next_button.setToolTip("Next Row")
         self.next_button.setAccessibleName("Next Row")
         self.next_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -288,8 +308,15 @@ class MainWindow:
         self.open_file_button.setProperty("iconOnly", True)
         self.open_file_button.setAccessibleName("Open Spreadsheet File")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.open_file_button.clicked.connect(lambda: self._on_open_file())
+        self.open_file_button.clicked.connect(lambda: self.toggle_panel(FILE_PAGE))
         status_row.insertWidget(status_row.indexOf(self.settings_button), self.open_file_button)
+        self.turn_button = QPushButton()                        # the turn icon: opens the side panel's turn page
+        self.turn_button.setProperty("iconOnly", True)
+        self.turn_button.setToolTip("Turn Settings")
+        self.turn_button.setAccessibleName("Turn Settings")
+        self.turn_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.turn_button.clicked.connect(lambda: self.toggle_panel(TURN_PAGE))
+        status_row.insertWidget(status_row.indexOf(self.settings_button), self.turn_button)
 
         # --- current row
         # (Not collapsible: the row being built is the point of every spoken turn, so it is always in view.)
@@ -362,7 +389,7 @@ class MainWindow:
         self.open_file_action.setShortcut("Ctrl+O")
         self.use_excel_action = file_menu.addAction("Use the Open Workbook", lambda: self._on_use_excel())
         self.use_excel_action.setEnabled(False)
-        window.setCentralWidget(central)
+        window.setCentralWidget(self._shell)
         self._window = window
         self.refresh_icons()
         self._set_collapsed("log", self._log_collapsed)
@@ -436,7 +463,9 @@ class MainWindow:
         showing = self._view_mini
         if mini != showing:
             if mini and window.isVisible():
-                self._full_size = QSize(window.width(), window.height())     # to come back to
+                self._full_size = QSize(window.width() - self._panel_extra(), window.height())   # to come back to
+            if mini:
+                self._collapse_panel()                                      # the panel is not part of the mini view
             self._apply_stay_on_top()
             animate = window.isVisible() and self.animation_ms > 0
             if not animate:
@@ -458,6 +487,16 @@ class MainWindow:
             self._apply_view(mini)
         if notify:
             self._on_mini_toggled(mini)
+
+    def _collapse_panel(self) -> None:
+        """Close the panel at once, without moving the window (entering the mini view, which sets its own size)."""
+        if self._panel_animation is not None:
+            self._panel_animation.stop()
+        if self._panel_open:
+            self._panel_open = False
+            self._on_panel_toggled("")
+        self.panel.setFixedWidth(0)
+        self.panel.setVisible(False)
 
     def _mini_detail_need(self) -> int:
         """The mini view's height from which there is room for the stream and the row."""
@@ -518,6 +557,9 @@ class MainWindow:
         self._set_margins(mini)
         self._refresh_visibility()
         self.refresh_icons(self._text_color, self._on_accent, self._accent)
+        if not mini and self._pending_panel:                # the icon was pressed in the mini view: now open the panel
+            page, self._pending_panel = self._pending_panel, ""
+            QTimer.singleShot(0, lambda: self.open_panel(page))
 
     def set_not_connected(self, not_connected: bool, hint: str | None = None) -> None:
         """Show the "File stream not connected." chip (instead of the sheet name) while there is no spreadsheet."""
@@ -530,6 +572,98 @@ class MainWindow:
         """The title bar now has its own folder icon, so the one inside the window is hidden."""
         self._native_file_button = native
         self._refresh_visibility()
+
+    def set_native_turn_button(self, native: bool) -> None:
+        """The title bar now has its own turn icon, so the one inside the window is hidden."""
+        self._native_turn_button = native
+        self._refresh_visibility()
+
+    # -- the side panel -----------------------------------------------------
+
+    @property
+    def panel_open(self) -> bool:
+        """True while the side panel is open (or sliding open)."""
+        return self._panel_open
+
+    @property
+    def panel_page(self) -> str:
+        """The page the open panel shows (``"file"`` or ``"turn"``); "" while it is closed."""
+        return self._panel_page if self._panel_open else ""
+
+    def set_panel_listener(self, callback: Callable[[str], None]) -> None:
+        """Call *callback* with the page that opened, or "" when the panel closed."""
+        self._on_panel_toggled = callback
+
+    def toggle_panel(self, page: str) -> None:
+        """The folder / turn icon: open the panel on *page*, switch to it, or close the panel if it already shows it."""
+        if self._panel_open and self._panel_page == page:
+            self.close_panel()
+        else:
+            self.open_panel(page)
+
+    def open_panel(self, page: str) -> None:
+        """Ease the panel open on *page* (the window grows by the panel's width). In the mini view the full window comes back first."""
+        if self._window is None:
+            return
+        if self._mini or self._view_mini:
+            self._pending_panel = page
+            if self._mini:
+                self.set_mini(False, notify=True)
+            return
+        self._panel_page = page
+        self.panel.show_page(page)
+        self._on_panel_toggled(page)
+        if not self._panel_open:
+            self._panel_open = True
+            self._slide_panel(PANEL_WIDTH)
+
+    def close_panel(self) -> None:
+        """Ease the panel shut (the window gives its width back)."""
+        if self._window is None or not self._panel_open:
+            return
+        self._panel_open = False
+        self._on_panel_toggled("")
+        self._slide_panel(0)
+
+    def _panel_extra(self) -> int:
+        """Width the panel currently adds to the window."""
+        return self.panel.width() if self.panel.isVisibleTo(self._window) else 0
+
+    def _slide_panel(self, width: int) -> None:
+        """Move the panel to *width* and the window with it, both easing together, so the content never gets squeezed."""
+        window, panel = self._window, self.panel
+        if self._panel_animation is not None:
+            self._panel_animation.stop()
+        start = panel.width()
+        panel.setVisible(True)
+        target = window.width() + (width - start)
+        if width:
+            screen = window.screen()
+            if screen is not None:
+                target = min(target, max(screen.availableGeometry().width(), window.width()))
+        else:
+            target = max(target, MIN_WINDOW[0])
+        animate = window.isVisible() and self.animation_ms > 0
+
+        def done() -> None:
+            panel.setFixedWidth(width)
+            panel.setVisible(width > 0)
+            self._keep_minimum()
+
+        if not animate:
+            panel.setFixedWidth(width)
+            self._resize_to(target, window.height(), then=done)
+            return
+        animation = QVariantAnimation(window)
+        animation.setDuration(self.animation_ms)
+        animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        animation.setStartValue(start)
+        animation.setEndValue(width)
+        animation.valueChanged.connect(lambda value: panel.setFixedWidth(int(value)))
+        self._panel_animation = animation
+        window.setMinimumSize(0, 0)
+        animation.start()
+        self._resize_to(target, window.height(), then=done)
 
     def set_native_settings_button(self, native: bool) -> None:
         """The title bar now has its own Settings icon, so the one inside the window is hidden."""
@@ -626,7 +760,7 @@ class MainWindow:
 
     def _fit_height(self) -> int:
         """The height the window needs right now (the layout is recomputed first, as Qt only does that lazily)."""
-        layout = self._window.centralWidget().layout()
+        layout = self._layout
         layout.invalidate()
         layout.activate()
         return layout.sizeHint().height()
@@ -641,7 +775,7 @@ class MainWindow:
         if (self._window is None or not self._window.isVisible() or self._log_busy
                 or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
             return
-        layout = self._window.centralWidget().layout()
+        layout = self._layout
         layout.invalidate()
         layout.activate()
         self._settle_minimum()
@@ -651,10 +785,10 @@ class MainWindow:
         if self._log_busy:                             # the log is still sliding; its final size is not known yet
             return
         if self._view_mini and self._mini_base:        # the mini view may shrink back to its compact size
-            self._window.setMinimumSize(self._window.centralWidget().layout().minimumSize().width(), self._mini_base)
+            self._window.setMinimumSize(self._layout.minimumSize().width(), self._mini_base)
             return
-        content = self._window.centralWidget().layout().minimumSize()
-        self._window.setMinimumSize(max(content.width(), MIN_WINDOW[0]), max(content.height(), MIN_WINDOW[1]))
+        content = self._layout.minimumSize()
+        self._window.setMinimumSize(max(content.width() + self._panel_extra(), MIN_WINDOW[0]), max(content.height(), MIN_WINDOW[1]))
 
     def set_mini_on_top(self, on_top: bool) -> None:
         """Choose whether the mini view floats above other windows."""
@@ -684,10 +818,13 @@ class MainWindow:
         self.connection_chip.setVisible(self._not_connected)
         self.toggle_button.set_notice(self._not_connected, self.connection_chip.toolTip())
         self.open_file_button.setVisible(full and not self._native_file_button)
+        self.turn_button.setVisible(full and not self._native_turn_button)
         self.next_button.setVisible(self._listening)                          # only while a turn is going on
         self.error_button.setVisible(self._view_mini and bool(self._mini_error))
         tall = self.sorting_button.fontMetrics().height() * 2 + 4
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
+        beside = max(tall if full else 0, self.toggle_button.sizeHint().height())
+        self.next_button.setFixedSize(beside + 14, beside)                    # as tall as the Start button
         self.toggle_button.set_compact(self._view_mini)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
@@ -752,8 +889,9 @@ class MainWindow:
             self._mini_size = QSize(window.width(), window.height())
             self._on_mini_resized(window.width(), window.height())
             return
-        self._full_size = QSize(window.width(), window.height())
-        self._on_resized(window.width(), window.height())
+        width = window.width() - self._panel_extra()          # the panel is not part of the size to remember
+        self._full_size = QSize(width, window.height())
+        self._on_resized(width, window.height())
 
     def _log_opening(self) -> bool:
         return self._log_animation is not None and self._log_animation.property("opening") is True \
@@ -791,7 +929,7 @@ class MainWindow:
         elif not shown:                                     # not on screen: just fit the window to the content
             self._refresh_visibility()
             self._set_margins(False)
-            window.centralWidget().layout().activate()
+            self._layout.activate()
             self._resize_to(window.width(), self._fit_height())
         elif collapsed:
             self._close_log(window)
@@ -821,7 +959,7 @@ class MainWindow:
         animation.start()
 
     def _open_log(self, window) -> None:
-        layout = window.centralWidget().layout()
+        layout = self._layout
         spacing = max(layout.spacing(), 0)
         self._log_busy = True
         slack = max(self.row_table.height() - self.row_table.minimumHeight(), 0)    # what the box can give up
@@ -910,6 +1048,12 @@ class MainWindow:
         self._workbook_name = current
         if not current:
             self._sheet_name = ""
+            self._workbook_path = ""
+        self._show_file_state()
+
+    def set_workbook_path(self, path: str) -> None:
+        """Note the full path of the file in use (the side panel shows it when the name is hovered)."""
+        self._workbook_path = path
         self._show_file_state()
 
     def _show_file_state(self) -> None:
@@ -927,6 +1071,7 @@ class MainWindow:
             muted.setAlpha(110)
             color = muted.name(QColor.NameFormat.HexArgb)
         self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", color, 18))
+        self.panel.set_active(self._workbook_name, self._sheet_name, self._workbook_path)
         self._on_file_state(has, self._workbook_name, self._sheet_name)
 
     def _row_table_height(self) -> int:
@@ -1189,7 +1334,8 @@ class MainWindow:
         self.update_current_row(self._row_fields)         # the grid's first column takes its colour from the theme
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.help_button.setIcon(make_icon("question", text_color, 18))
-        self.next_button.setIcon(make_icon("next", text_color, 18))
+        self.turn_button.setIcon(make_icon("turn", text_color, 18))
+        self.next_button.setIcon(make_icon("next", accent, 18))
         self.settings_button.setIcon(make_icon("settings", text_color, 18))
         self._show_file_state()
         self.toggle_button.set_colors(text_color, on_accent, accent)

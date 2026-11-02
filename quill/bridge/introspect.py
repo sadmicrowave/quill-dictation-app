@@ -224,11 +224,13 @@ def _column_header(ws, header_row: int, col: int, first_row: int) -> str:
 # Discovery                                                            #
 # ------------------------------------------------------------------ #
 
-def discover(wb) -> Discovery:
+def discover(wb, vertical: bool = False) -> Discovery:
     """Introspect an openpyxl workbook for list sources and header rows.
 
     Args:
         wb: An openpyxl workbook (loaded with formulas, not cached values).
+        vertical: The headings run down the first column (one record per column), so a list's drop-down covers
+            a *row* range and its heading is in that row's first cell. The header rows are then not used.
 
     Returns:
         A :class:`Discovery`. When the same header has lists on several sheets
@@ -236,16 +238,22 @@ def discover(wb) -> Discovery:
     """
     result = Discovery()
     for ws in wb.worksheets:
-        result.header_rows[ws.title] = _sheet_header_row(ws)
+        if not vertical:
+            result.header_rows[ws.title] = _sheet_header_row(ws)
 
     for ws in wb.worksheets:
-        header_row = result.header_rows[ws.title]
+        header_row = result.header_rows.get(ws.title, 1)
         for dv in ws.data_validations.dataValidation:
             if dv.type != "list" or not dv.formula1:
                 continue
             for cell_range in dv.sqref.ranges:
-                for col in range(cell_range.min_col, cell_range.max_col + 1):
-                    header = _column_header(ws, header_row, col, cell_range.min_row)
+                if vertical:
+                    headers = [_header_text(ws.cell(row=row, column=1).value)
+                               for row in range(cell_range.min_row, cell_range.max_row + 1)]
+                else:
+                    headers = [_column_header(ws, header_row, col, cell_range.min_row)
+                               for col in range(cell_range.min_col, cell_range.max_col + 1)]
+                for header in headers:
                     if not header or header in result.sources:
                         continue
                     source = resolve_source(wb, ws.title, header, dv.formula1)
@@ -260,7 +268,7 @@ def discover(wb) -> Discovery:
 
 def _discover_config_lists(ws, result: Discovery) -> None:
     """Add ``<name>_list`` columns of a config sheet to *result*."""
-    header_row = result.header_rows[ws.title]
+    header_row = result.header_rows.get(ws.title) or _sheet_header_row(ws)      # (a config sheet's lists are columns either way)
     for col in range(1, ws.max_column + 1):
         raw = _header_text(ws.cell(row=header_row, column=col).value)
         if not raw.lower().endswith(LIST_SUFFIX):

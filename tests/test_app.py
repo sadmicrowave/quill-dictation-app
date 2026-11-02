@@ -393,22 +393,22 @@ class TestQuietCountdownLabel(unittest.TestCase):
         self.assertFalse(self.label.isVisibleTo(self.app.window.widget))
         self.app.controller.handle_transcript("start listening")
         self.assertTrue(self.label.isVisibleTo(self.app.window.widget))
-        self.assertEqual(self.label.text(), "Stops in 10s")
+        self.assertEqual(self.label.text(), "10s")
 
     def test_it_follows_the_timer_and_restarts_when_something_is_heard(self):
         self.app.controller.handle_transcript("start listening")
         self.app._quiet_timer.start(4200)
         self.app._show_countdown()
-        self.assertEqual(self.label.text(), "Stops in 5s")                  # rounded up
+        self.assertEqual(self.label.text(), "5s")                  # rounded up
         self.app._on_partial_heard("black")
-        self.assertEqual(self.label.text(), "Stops in 10s")                 # back to the full setting
+        self.assertEqual(self.label.text(), "10s")                 # back to the full setting
 
     def test_it_uses_the_users_seconds_with_the_word_in_both_views(self):
         self.settings.preferences["auto_stop_seconds"] = 25
         self.app.controller.handle_transcript("start listening")
-        self.assertEqual(self.label.text(), "Stops in 25s")
+        self.assertEqual(self.label.text(), "25s")
         self.app.window.set_mini(True)
-        self.assertEqual(self.label.text(), "Stops in 25s")
+        self.assertEqual(self.label.text(), "25s")
 
     def test_it_disappears_when_listening_stops_or_the_setting_is_off(self):
         self.app.controller.handle_transcript("start listening")

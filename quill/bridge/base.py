@@ -52,6 +52,17 @@ class WorkbookBridge(ABC):
     def activate(self) -> None:
         """Bring the connected workbook to the front. Default: do nothing."""
 
+    @property
+    def vertical(self) -> bool:
+        """True when the sheet is read with its headings down the first column (one record per column)."""
+        return False
+
+    def set_vertical(self, vertical: bool) -> None:
+        """Choose the sheet layout: headings across the first row (the default) or down the first column.
+
+        The default ignores it; the grid-based bridges honour it.
+        """
+
     def open_workbooks(self) -> list[str]:
         """Names of every workbook that can be targeted (for a picker).
 
@@ -106,6 +117,18 @@ class WorkbookBridge(ABC):
         Raises:
             BridgeError: if the sheet does not exist or the write fails.
         """
+
+    def append_to_row(self, sheet_name: str, row: int | None, values: dict[str, object]) -> int:
+        """Add *values* to one record instead of starting a new one: each cell that already holds something gets
+        the new value after a comma. With *row* None the record is the next free one.
+
+        Returns:
+            The record (row, or column when the sheet runs the other way) that was written.
+
+        Raises:
+            BridgeError: if this bridge cannot, the sheet does not exist or the write fails.
+        """
+        raise BridgeError("This bridge cannot add to an existing row.")
 
     @abstractmethod
     def add_to_list(self, column_name: str, value: str) -> None:

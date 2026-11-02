@@ -24,7 +24,7 @@ from PySide6.QtWidgets import QApplication
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
-from quill.bridge.hosts import HostApp, SpreadsheetHosts
+from quill.bridge.hosts import HostApp, OpenFile, SpreadsheetHosts
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
@@ -51,9 +51,11 @@ from quill.ui.chrome import (
     SYMBOL_FOLDER,
     SYMBOL_HELP,
     SYMBOL_SETTINGS,
+    SYMBOL_TURN,
     SYMBOL_UNDO,
     add_titlebar_button,
     apply_chrome,
+    bring_app_forward,
     set_dock_icon_visible,
     watch_native_window,
 )
@@ -61,6 +63,7 @@ from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import MainWindow
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog
+from quill.ui.side_panel import FILE_PAGE, TURN_PAGE
 from quill.ui.sorting_window import SortingWindow
 from quill.ui.theme import (
     apply_opacity,
@@ -106,6 +109,8 @@ log = logging.getLogger("quill.app")
 #: watcher ticks pass between looks for a file open in another spreadsheet program.
 HOST_RELOAD_MS = 1500
 HOST_PROBE_EVERY = 3
+#: How often (ms) the side panel looks again for spreadsheets other programs have open, while it is showing.
+OPEN_FILES_EVERY_MS = 4000
 
 
 #: The speech quality choices and their names in the window.
@@ -166,6 +171,8 @@ class QuillApp:
         self._model_busy, self._model_note = False, ""          # the speech model download, shown in Settings
         self._quitting = False
         self._host_probe_running = False             # a look for files in other programs is under way
+        self._open_files: list[OpenFile] = []        # spreadsheets other programs have open (the side panel's list)
+        self._open_files_busy = False
         self._host_noted = False
         self._host_reload = QTimer()
         self._host_reload.setSingleShot(True)
@@ -264,6 +271,7 @@ class QuillApp:
             self.qapp._quill_click_through = PopupClickThrough(self.qapp)   # one click on Start / Stop works with a drop-down open
             self.qapp.installEventFilter(self.qapp._quill_click_through)
         self.sorting.on_done = self.window.sorting_finished
+        self._wire_panel()
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
@@ -309,6 +317,8 @@ class QuillApp:
             return
         self.connected = True
         self.window.update_workbooks(names, bridge.workbook_name)
+        self.window.set_workbook_path(bridge.workbook_path)
+        self._show_open_files()
         count = sum(len(v) for v in bridge.get_lists().values())
         self.window.append_log(
             f"Connected to {bridge.workbook_name}: {len(bridge.get_lists())} lists, {count} values"
@@ -685,8 +695,8 @@ class QuillApp:
     def choose_spreadsheet_file(self) -> None:
         """File > Open Spreadsheet File…: pick an .xlsx or .csv and work on it directly (no Excel needed)."""
         path = self._file_chooser()
-        if path:
-            self.open_workbook_file(path)
+        if path and self.open_workbook_file(path):
+            self._launch_unless_open(path)
 
     def open_workbook_file(self, path: str | pathlib.Path, remember: bool = True) -> bool:
         """Switch to working on the .xlsx or .csv at *path* through the file bridge.
@@ -720,6 +730,95 @@ class QuillApp:
         self.window.set_file_mode(True)
         self.window.append_log(f"Working directly on the file {path.name} (no spreadsheet program needed)")
         return True
+
+    # ------------------------------------------------------------------ #
+    # The side panel                                                       #
+    # ------------------------------------------------------------------ #
+
+    def _wire_panel(self) -> None:
+        """Connect the side panel's choices to the application, and fill in what it shows."""
+        panel = self.window.panel
+        panel.open_file_requested.connect(self.choose_spreadsheet_file)
+        panel.file_chosen.connect(self._panel_pick)
+        panel.mode_changed.connect(self.controller.set_turn_mode)
+        panel.layout_changed.connect(self.controller.set_vertical)
+        panel.new_row_requested.connect(self.controller.start_new_row)
+        panel.set_turn(self.controller.turn_mode, self.controller.vertical)
+        self.window.set_panel_listener(self._panel_toggled)
+        self._panel_timer = QTimer()                 # while the panel is open, keep its list of open spreadsheets current
+        self._panel_timer.setInterval(OPEN_FILES_EVERY_MS)
+        self._panel_timer.timeout.connect(self.refresh_open_files)
+
+    def _panel_toggled(self, page: str) -> None:
+        """The panel opened on *page* or closed (""): look for open spreadsheets only while the file page shows."""
+        if page == FILE_PAGE:
+            self.refresh_open_files()
+            self._panel_timer.start()
+        else:
+            self._panel_timer.stop()
+        if page == TURN_PAGE:
+            self.window.panel.set_turn(self.controller.turn_mode, self.controller.vertical)
+
+    def _scan_open_files(self) -> list[OpenFile]:
+        """Ask the running spreadsheet programs what they have open (runs off the GUI thread)."""
+        bridge = self.controller.bridge
+
+        def excel_files() -> list[tuple[str, str]]:
+            live = bridge if hasattr(bridge, "open_workbook_files") else self._live_bridge_factory()
+            return live.open_workbook_files()
+
+        return self.hosts.open_files(excel_files)
+
+    def refresh_open_files(self) -> None:
+        """Look again for spreadsheets open in other programs (never two looks at once)."""
+        if self._open_files_busy:
+            return
+        self._open_files_busy = True
+        self.run_in_background(self._scan_open_files, self._open_files_found)
+
+    def _open_files_found(self, found: list[OpenFile] | None) -> None:
+        self._open_files_busy = False
+        if found is not None:
+            self._open_files = found
+        self._show_open_files()
+
+    def _is_active(self, entry: OpenFile) -> bool:
+        """Is *entry* the file Quill is working on now?"""
+        bridge = self.controller.bridge
+        if not self.connected:
+            return False
+        if entry.path and bridge.workbook_path:
+            return os.path.realpath(entry.path) == os.path.realpath(bridge.workbook_path)
+        return entry.live and not isinstance(bridge, XlsxBridge) and entry.name == bridge.workbook_name
+
+    def _show_open_files(self) -> None:
+        """List the open spreadsheets in the panel, without the active one (that is shown at the top)."""
+        entries = [(f.name, f"{f.path or f.name}\nOpen in {f.app}", f) for f in self._open_files if not self._is_active(f)]
+        self.window.panel.set_available(entries)
+
+    def _panel_pick(self, entry: OpenFile) -> None:
+        """A spreadsheet was picked in the panel's list: work on it (it moves up to the active section)."""
+        if entry.live:
+            if isinstance(self.controller.bridge, XlsxBridge):
+                self.use_live_excel()
+            self.connect_workbook(entry.name)
+        else:
+            self.open_workbook_file(entry.path)
+        self._show_open_files()
+
+    def _launch_unless_open(self, path: str | pathlib.Path) -> None:
+        """A file was chosen with the file window: start it in its own program too, if no program has it open yet,
+        and keep Quill in front."""
+        def check() -> bool:
+            wanted = os.path.realpath(path)
+            return not any(f.path and os.path.realpath(f.path) == wanted for f in self._scan_open_files())
+
+        def launch(missing: object) -> None:
+            if missing and self.hosts.launch(path):
+                for delay in (400, 1500):                          # a program that starts slowly may still take the focus
+                    QTimer.singleShot(delay, lambda: bring_app_forward(self.window.widget))
+
+        self.run_in_background(check, launch)
 
     def use_live_excel(self) -> None:
         """Go back to whichever workbook is open in Excel."""
@@ -799,7 +898,8 @@ class QuillApp:
             return
         self._titlebar = add_titlebar_button(
             self.window.widget, lambda: self.window.set_mini(not self.window.mini, notify=True),
-            mini=self.window.mini, extra=[(SYMBOL_FOLDER, "Open Spreadsheet File", self.choose_spreadsheet_file),
+            mini=self.window.mini, extra=[(SYMBOL_FOLDER, "Open Spreadsheet File", lambda: self.window.toggle_panel(FILE_PAGE)),
+                                          (SYMBOL_TURN, "Turn Settings", lambda: self.window.toggle_panel(TURN_PAGE)),
                                           (SYMBOL_SETTINGS, "Settings", self.open_settings)])
         native = self._titlebar is not None
         # Help, then Undo, sit right beside the window's close / minimise / zoom buttons.
@@ -813,6 +913,7 @@ class QuillApp:
         self.window.set_native_mini_button(native)
         self.window.set_native_settings_button(native)        # Settings and resize both live in the title bar
         self.window.set_native_file_button(native)
+        self.window.set_native_turn_button(native)
         self._sync_titlebar_file(bool(self.window.workbook_name), self.window.workbook_name, self.window.sheet_name)
 
     def _sync_titlebar_file(self, has_file: bool, name: str, sheet: str = "") -> None:

@@ -72,6 +72,8 @@ class Controller:
         """Seconds the spoken sorting question waits so a cue can play first (set by the app)."""
         self.history = History(int(settings.preferences["history_limit"]))
         """The most recent sorting decisions, newest last, for :meth:`undo`."""
+        self._append_target: tuple[str, int] | None = None
+        """``(sheet, record)`` that "append to" turns keep adding to (None: the next turn starts a new record)."""
 
     # ------------------------------------------------------------------ #
     # Workbook connection                                                  #
@@ -85,6 +87,9 @@ class Controller:
         """
         self.connected = False
         self.history.clear()   # undo steps belong to the workbook they were made in
+        self._append_target = None
+        if hasattr(self.bridge, "set_vertical"):
+            self.bridge.set_vertical(bool(self.settings.preferences["vertical_layout"]))
         self.bridge.connect(workbook)
         self.reload_vocab()
         self.connected = True
@@ -175,6 +180,54 @@ class Controller:
         for event in self.session.apply(Action.NEXT_ROW):
             self._carry_out(event)
             self._on_event(event)
+
+    # ------------------------------------------------------------------ #
+    # How a turn is written                                                #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def turn_mode(self) -> str:
+        """``"next_row"`` (every turn is a new row) or ``"append"`` (every turn adds to the same row)."""
+        return str(self.settings.preferences["turn_mode"])
+
+    @property
+    def vertical(self) -> bool:
+        """True while the sheet is read with its headings down the first column."""
+        return bool(self.settings.preferences["vertical_layout"])
+
+    def set_turn_mode(self, mode: str) -> None:
+        """Choose how a turn is written; the next turn starts a fresh row either way."""
+        if mode not in ("next_row", "append") or mode == self.turn_mode:
+            return
+        self.settings.preferences["turn_mode"] = mode
+        self.settings.save()
+        self._append_target = None
+        say = "Each turn adds to the same row" if mode == "append" else "Each turn is written to a new row"
+        self._on_event(Event("ignored", detail=say))
+
+    def set_vertical(self, vertical: bool) -> None:
+        """Read the sheet with its headings across the first row (False) or down the first column (True)."""
+        vertical = bool(vertical)
+        if vertical == self.vertical:
+            return
+        self.settings.preferences["vertical_layout"] = vertical
+        self.settings.save()
+        self._append_target = None
+        self.history.clear()                   # row numbers mean something else now
+        say = "Headings are read down the first column" if vertical else "Headings are read across the first row"
+        try:
+            self.bridge.set_vertical(vertical)
+            if self.connected:
+                self.reload_vocab()
+        except BridgeError as exc:
+            self._on_event(Event("error", detail=f"Could not change the layout: {exc}"))
+            return
+        self._on_event(Event("ignored", detail=say))
+
+    def start_new_row(self) -> None:
+        """Stop adding to the current row: the next turn starts a fresh one."""
+        self._append_target = None
+        self._on_event(Event("ignored", detail="The next turn starts a new row"))
 
     def remove_field(self, column: str) -> bool:
         """The user disagrees with one understood value of the row being built: drop it.
@@ -412,14 +465,27 @@ class Controller:
     def _write_row(self, event: Event) -> None:
         try:
             sheet = self.bridge.active_sheet_name()          # always the sheet that is open: Quill never picks another
-            row = self.bridge.append_row(sheet, event.record)
-            event.detail = f"Row {row}"
+            if self.turn_mode == "append":
+                same = self._append_target[1] if self._append_target and self._append_target[0] == sheet else None
+                row = self.bridge.append_to_row(sheet, same, event.record)
+                self._append_target = (sheet, row)
+                event.detail = f"{self._record_name(row)} (added to)"
+            else:
+                row = self.bridge.append_row(sheet, event.record)
+                event.detail = self._record_name(row)
             self.session.tag_origin(event.terms or [], sheet, row)
         except BridgeError as exc:
             self.session.restore(event.record)             # nothing the user said is lost: the row stays as it was
-            hint = " Open the sheet you are filling in, then say next row again." if "has no column" in str(exc) else ""
+            hint = " Open the sheet you are filling in, then say next row again." if "has no " in str(exc) else ""
             event.kind, event.detail = "error", f"Could not save the row: {exc}.{hint}"   # and it is reported as a failure,
             event.record = event.terms = None                                       # not as a saved row
+
+    def _record_name(self, number: int) -> str:
+        """"Row 6", or "Column F" when the records run across the sheet."""
+        if getattr(self.bridge, "vertical", False):
+            from openpyxl.utils import get_column_letter
+            return f"Column {get_column_letter(number)}"
+        return f"Row {number}"
 
     def _write_values(self, event: Event) -> None:
         """Add taught values to the workbook's lists, then back-fill the saved row."""

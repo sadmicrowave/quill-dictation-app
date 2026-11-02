@@ -164,7 +164,7 @@ class ListenButton(QPushButton):
     """The Start / Stop Listening button, the same in the main window and in the Term Helper.
 
     From the left: an outlined pill holding the play / stop icon and "Start Listening" (or "Stop Listening"),
-    or, instead of it while there is no spreadsheet, a notice chip; then the "Stops in 7s" countdown, outside the
+    or, instead of it while there is no spreadsheet, a notice chip; then the "7s" countdown, outside the
     pill; and the sound lines at the right edge. The button is outlined in the accent colour while idle and filled
     with it while listening.
     """
@@ -191,7 +191,7 @@ class ListenButton(QPushButton):
         inside.setSpacing(6)
         inside.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
         inside.addWidget(self.text_pill, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.countdown_label = QLabel()                    # "Stops in 7s": the quiet timer counting down
+        self.countdown_label = QLabel()                    # "7s": the quiet timer counting down
         self.countdown_label.setProperty("countdown", True)
         self.countdown_label.setVisible(False)
         self.wave = WaveMeter()
@@ -240,10 +240,10 @@ class ListenButton(QPushButton):
         self._draw_icon()
 
     def set_countdown(self, seconds: int | None) -> None:
-        """Show "Stops in Ns" (None hides it)."""
+        """Show the seconds left, "7s" (None hides it)."""
         self.countdown_label.setVisible(seconds is not None)
         if seconds is not None:
-            self.countdown_label.setText(f"Stops in {seconds}s")
+            self.countdown_label.setText(f"{seconds}s")
 
     def set_compact(self, compact: bool) -> None:
         """The mini view keeps just the icon of the pill (no words, no outline)."""

@@ -78,6 +78,8 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "speech_quality": "standard",   # "standard" | "better" | "best": which speech model listens (Better and Best are downloads)
     "sorting_sounds": True,   # Term Helper answers (added, ignored, a problem) play their confirmation sound
     "sorting_follows_opacity": False,   # the Term Helper fades like the main window (off: it stays solid and easy to read)
+    "turn_mode": "next_row",  # "next_row": each turn is a new row | "append": each turn adds to the same row
+    "vertical_layout": False,  # headings run down the first column (one record per column) instead of across the first row
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
 }
 
@@ -218,7 +220,7 @@ class Settings:
                     settings.aliases[column] = {
                         str(k).lower(): str(v) for k, v in mapping.items() if isinstance(v, str)
                     }
-        for key, allowed in (("feedback", MODES), ("speech_quality", ("standard", "better", "best")), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS),
+        for key, allowed in (("feedback", MODES), ("turn_mode", ("next_row", "append")), ("speech_quality", ("standard", "better", "best")), ("sound_pack", PACKS), ("echo_style", ECHO_WORDS),
                              ("accent", ACCENTS), ("spacing", SPACINGS)):
             if settings.preferences[key] not in allowed:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]

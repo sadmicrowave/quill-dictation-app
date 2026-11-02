@@ -409,6 +409,7 @@ SYMBOL_SETTINGS = "slider.horizontal.3"
 SYMBOL_UNDO = "arrow.uturn.backward"
 SYMBOL_HELP = "questionmark.circle"
 SYMBOL_FOLDER = "folder"
+SYMBOL_TURN = "bubble.left.and.bubble.right"
 _NS_LAYOUT_LEFT, _NS_LAYOUT_RIGHT = 1, 2
 
 
@@ -620,6 +621,20 @@ def _target_class(appkit, objc):
 
         _TARGET_CLASS = QuillTitlebarTarget
     return _TARGET_CLASS
+
+
+def bring_app_forward(widget, platform: str | None = None, appkit=None) -> None:
+    """Make Quill the frontmost application with *widget* in front (after another program was started and took the focus)."""
+    try:
+        widget.raise_()
+        widget.activateWindow()
+        platform = platform or sys.platform
+        if platform == "darwin" and _native_platform(platform):
+            if appkit is None:
+                import AppKit as appkit                  # noqa: F811 (PyObjC, optional)
+            appkit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------- #

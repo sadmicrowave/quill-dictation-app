@@ -162,7 +162,7 @@ def backdrop_alpha(opacity: int, blur: int) -> float:
     return round(max(0.08, min(100, max(0, int(opacity))) / 100), 3)
 
 
-ROOT_NAMES = ("mainRoot", "settingsRoot", "sortingRoot", "helpRoot")
+ROOT_NAMES = ("mainRoot", "sidePanel", "settingsRoot", "sortingRoot", "helpRoot")
 
 
 class _BackdropPainter(QObject):
@@ -220,15 +220,15 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
-QWidget#mainRoot, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
+QWidget#mainRoot, QFrame#sidePanel, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.10)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.45)};
            border-radius: 8px; padding: 5px 9px; }}
 
-QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['border']};
+QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['accent']};
               border-radius: 8px; padding: {d['button']}; }}
 QPushButton:hover {{ background: {t['hover']}; }}
 QPushButton:pressed {{ background: {t['pressed']}; }}
-QPushButton:disabled {{ color: {t['disabled']}; background: {win}; }}
+QPushButton:disabled {{ color: {t['disabled']}; background: {win}; border-color: {t['border']}; }}
 QPushButton:checked, QPushButton[accent="true"] {{ background: {t['accent']}; color: {t['on_accent']};
               border-color: {t['accent']}; font-weight: 600; }}
 QPushButton:checked:hover, QPushButton[accent="true"]:hover {{ background: {t['accent_hover']}; }}
@@ -304,7 +304,8 @@ QLabel[note="true"] {{ font-style: italic; color: {t['muted']}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
 QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.78)}; font-style: italic; font-weight: 400; }}
 QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
-QPushButton[iconOnly="true"] {{ padding: 6px 9px; }}
+QPushButton[iconOnly="true"] {{ padding: 6px 9px; border-color: {t['border']}; }}
+QPushButton[outline="true"][iconOnly="true"] {{ border-color: {t['accent']}; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
 QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}
 QSlider::handle:horizontal {{ width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;
@@ -354,6 +355,17 @@ QToolButton[segment="true"] {{ border: none; border-radius: 8px; padding: 6px 10
 QToolButton[segment="true"]:hover {{ background: {rgba(t['text'], 0.06)}; }}
 QToolButton[segment="true"]:checked {{ background: {t['surface']}; border: 1px solid {t['border']}; }}
 QCheckBox {{ spacing: 10px; }}
+QRadioButton {{ spacing: 8px; font-weight: 600; }}
+QRadioButton::indicator {{ width: 14px; height: 14px; border-radius: 8px; border: 1px solid {t['muted']}; background: transparent; }}
+QRadioButton::indicator:checked {{ background: {t['accent']}; border: 1px solid {t['accent']}; }}
+QFrame#sidePanel {{ background: transparent; border: none; border-left: 1px solid {rgba(t['border'], 0.7)}; }}
+QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
+QLabel[panelName="true"] {{ font-weight: 600; }}
+QLabel[panelName="true"][muted="true"] {{ font-weight: 400; font-style: italic; color: {t['muted']}; }}
+QListWidget#panelList {{ background: transparent; border: none; outline: none; padding: 0; }}
+QListWidget#panelList::item {{ padding: 7px 8px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}
+QListWidget#panelList::item:hover {{ background: {rgba(t['accent'], 0.14)}; }}
+QListWidget#panelList::item:selected {{ background: {rgba(t['accent'], 0.14)}; color: {t['text']}; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid {t['muted']};
               background: {surf}; }}
 QCheckBox::indicator:hover {{ border-color: {t['accent']}; }}

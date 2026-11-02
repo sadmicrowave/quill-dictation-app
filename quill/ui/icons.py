@@ -34,8 +34,13 @@ SHAPES = {
                 '<circle cx="12" cy="17.2" r="1.1" fill="COLOR"/>',
     "undo": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
             '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></g>',
-    "next": '<g fill="none" stroke="COLOR" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">'
-            '<path d="M5 12h13M13 6l6 6-6 6"/></g>',
+    # a media player's "skip to next": a triangle with a bar after it
+    "next": '<path d="M5.5 5.5 15 12l-9.5 6.5Z" fill="COLOR" stroke="COLOR" stroke-width="1.5" stroke-linejoin="round"/>'
+            '<rect x="17" y="5.5" width="2.6" height="13" rx="1.2" fill="COLOR"/>',
+    # two speech bubbles: one turn of the conversation (what is said, and what Quill makes of it)
+    "turn": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M4 5.5h10.5a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H8.5L5.5 16v-2.5H4A1.5 1.5 0 0 1 2.5 12V7A1.5 1.5 0 0 1 4 5.5Z"/>'
+            '<path d="M19 10.5h1a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5h-1V21l-3-2.5h-5a1.5 1.5 0 0 1-1.5-1.5v-.5"/></g>',
     "search": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round">'
               '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g>',
     # Three sliders: the usual "settings" glyph, simple enough to stay crisp when small.

@@ -14,13 +14,17 @@ import re
 
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.filters import ColumnFilter
-from quill.bridge.grid import Grid, cell_text, is_blank
+from quill.bridge.grid import Grid, TransposedGrid, cell_text, is_blank
 from quill.bridge.introspect import (
     HEADER_SCAN_ROWS,
     Discovery,
     ListSource,
     guess_header_row,
 )
+
+
+#: Said when a search is asked for on a sheet whose headings run down the side (a filter works on rows).
+VERTICAL_SEARCH_MESSAGE = "searching needs the headings across the first row, and this sheet is set to Rows Down."
 
 
 def normalize_header(text: object) -> str:
@@ -41,11 +45,21 @@ def _looks_like_formula(text: str) -> bool:
     return False
 
 
+def _list_text(value: object) -> str:
+    """*value* as one more item of a comma-separated cell (several values in one turn are separated by commas too)."""
+    if isinstance(value, (dt.date, dt.datetime)):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return ", ".join(part.strip() for part in str(value).split("\n") if part.strip())
+
+
 class GridBridge(WorkbookBridge):
     """A WorkbookBridge implemented over a :class:`Grid` and a :class:`Discovery`."""
 
     def __init__(self) -> None:
         self._grid: Grid | None = None
+        self._vertical = False                  # headings down the first column, one record per column
         self._discovery = Discovery()
         self._name = ""
         # Where the user was before the first search of a run: (sheet, row, col)
@@ -81,16 +95,34 @@ class GridBridge(WorkbookBridge):
         self._name = ""
 
     def _require(self) -> Grid:
+        """The grid as the records are read and written: swapped when the sheet runs the other way."""
+        return TransposedGrid(self._raw()) if self._vertical else self._raw()
+
+    def _raw(self) -> Grid:
+        """The grid as it is on the sheet (where a list's cells are, whichever way the records run)."""
         if self._grid is None:
             raise BridgeError("Not connected to a workbook")
         return self._grid
+
+    @property
+    def vertical(self) -> bool:
+        return self._vertical
+
+    def set_vertical(self, vertical: bool) -> None:
+        vertical = bool(vertical)
+        if vertical == self._vertical:
+            return
+        self._vertical = vertical
+        self._saved_cursor = None
+        if self._grid is not None:
+            self.refresh()                       # the drop-down lists are found differently for the other layout
 
     # ------------------------------------------------------------------ #
     # Introspection                                                        #
     # ------------------------------------------------------------------ #
 
     def get_lists(self) -> dict[str, list[str]]:
-        grid = self._require()
+        grid = self._raw()
         return {col: self._read_values(grid, src) for col, src in self._discovery.sources.items()}
 
     def active_sheet_name(self) -> str:
@@ -134,8 +166,8 @@ class GridBridge(WorkbookBridge):
     # Writing                                                              #
     # ------------------------------------------------------------------ #
 
-    def append_row(self, sheet_name: str, values: dict[str, object]) -> int:
-        grid = self._require()
+    def _column_map(self, grid: Grid, sheet_name: str, values: dict[str, object]) -> tuple[int, dict[str, int]]:
+        """``(header row, {normalised header: column})`` of *sheet_name*; every name in *values* must be a heading."""
         if sheet_name not in grid.sheet_names():
             raise BridgeError(f"No sheet named '{sheet_name}'")
         header_row = self._header_row(grid, sheet_name)
@@ -148,16 +180,41 @@ class GridBridge(WorkbookBridge):
 
         missing = [name for name in values if normalize_header(name) not in columns]
         if missing:
+            where = "first column" if self._vertical else "first row"
             raise BridgeError(
-                f"Sheet '{sheet_name}' has no column named {', '.join(repr(m) for m in missing)}"
+                f"Sheet '{sheet_name}' has no {'heading' if self._vertical else 'column'} named "
+                f"{', '.join(repr(m) for m in missing)} (the headings are read from the {where})"
             )
+        return header_row, columns
 
+    def append_row(self, sheet_name: str, values: dict[str, object]) -> int:
+        grid = self._require()
+        header_row, columns = self._column_map(grid, sheet_name, values)
         row = self._next_free_row(grid, sheet_name, header_row, sorted(columns.values()))
         for name, value in values.items():
             if value is not None:
                 grid.write(sheet_name, row, columns[normalize_header(name)], value)
         self._after_write()
         return row
+
+    def append_to_row(self, sheet_name: str, row: int | None, values: dict[str, object]) -> int:
+        grid = self._require()
+        header_row, columns = self._column_map(grid, sheet_name, values)
+        target = row if row is not None else self._next_free_row(grid, sheet_name, header_row, sorted(columns.values()))
+        for name, value in values.items():
+            if value is None:
+                continue
+            column = columns[normalize_header(name)]
+            existing = grid.read(sheet_name, target, column, 1, 1)[0][0]
+            if isinstance(existing, str) and existing.strip().startswith("="):
+                continue                                           # a computed cell is left alone
+            text = _list_text(value)
+            if is_blank(existing):
+                grid.write(sheet_name, target, column, value if not isinstance(value, str) else text)
+            else:
+                grid.write(sheet_name, target, column, f"{cell_text(existing)}, {text}")
+        self._after_write()
+        return target
 
     def set_value(self, sheet_name: str, row: int, column: str, value: object) -> bool:
         grid = self._require()
@@ -278,6 +335,8 @@ class GridBridge(WorkbookBridge):
         return found
 
     def apply_filters(self, sheet_name: str, filters: list[ColumnFilter]) -> int | None:
+        if self._vertical:
+            raise BridgeError(VERTICAL_SEARCH_MESSAGE)
         grid = self._require()
         if sheet_name not in grid.sheet_names():
             raise BridgeError(f"No sheet named '{sheet_name}'")
@@ -306,6 +365,8 @@ class GridBridge(WorkbookBridge):
         return count
 
     def clear_filters(self, sheet_name: str) -> bool:
+        if self._vertical:
+            raise BridgeError(VERTICAL_SEARCH_MESSAGE)
         grid = self._require()
         saved, self._saved_cursor = self._saved_cursor, None
         if saved is None:
@@ -317,7 +378,7 @@ class GridBridge(WorkbookBridge):
         return True
 
     def add_to_list(self, column_name: str, value: str) -> None:
-        grid = self._require()
+        grid = self._raw()
         source = self._find_source(column_name)
         text = value.strip()
         if not text:
@@ -349,7 +410,7 @@ class GridBridge(WorkbookBridge):
         self._after_write()
 
     def remove_from_list(self, column_name: str, value: str) -> bool:
-        grid = self._require()
+        grid = self._raw()
         source = self._find_source(column_name)
         if source.is_inline:
             return False

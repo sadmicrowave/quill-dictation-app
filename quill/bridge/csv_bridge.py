@@ -219,7 +219,7 @@ class CsvBridge(XlsxBridge):
 
     def _learn_date_formats(self) -> dict[int, str]:
         """For each column, the date layout its entries use (so a new date is written the same way)."""
-        grid = self._grid
+        grid = self._require()                       # (the records' view: a date layout is learned per column, or per row when vertical)
         width, last = grid.last_col(self._sheet), grid.last_row(self._sheet)
         formats: dict[int, str] = {}
         for index in range(1, width + 1):
@@ -245,15 +245,15 @@ class CsvBridge(XlsxBridge):
         return str(value)
 
     def _after_write(self) -> None:
-        grid = self._require()
+        grid = self._raw()
         sheet = self._wb[self._sheet]
         last, width = grid.last_row(self._sheet), grid.last_col(self._sheet)
         tmp = self._path.with_name(self._path.name + ".quill-tmp")
         try:
             with open(tmp, "w", encoding="utf-8-sig" if self._bom else "utf-8", newline="") as handle:
                 writer = csv.writer(handle, delimiter=self._delimiter, lineterminator=self._newline)
-                for row in sheet.iter_rows(min_row=1, max_row=last, max_col=width, values_only=True):
-                    writer.writerow([self._text(v, c) for c, v in enumerate(row, start=1)])
+                for r, row in enumerate(sheet.iter_rows(min_row=1, max_row=last, max_col=width, values_only=True), start=1):
+                    writer.writerow([self._text(v, r if self._vertical else c) for c, v in enumerate(row, start=1)])
             os.replace(tmp, self._path)
         except OSError as exc:
             raise BridgeError(f"Could not save {self._path.name}: {exc}") from exc

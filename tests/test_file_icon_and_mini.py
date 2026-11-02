@@ -47,7 +47,7 @@ class TestFolderIconInTheWindow(unittest.TestCase):
     def test_the_folder_sits_left_of_the_settings_icon(self):
         row = self.w._status_row
         order = [row.itemAt(i).widget() for i in range(row.count())]
-        self.assertEqual(order.index(self.w.open_file_button) + 1, order.index(self.w.settings_button))
+        self.assertEqual(order.index(self.w.open_file_button) + 2, order.index(self.w.settings_button))      # the turn icon sits between
 
     def test_the_window_icon_hides_once_the_title_bar_has_its_own(self):
         self.w.set_native_file_button(True)

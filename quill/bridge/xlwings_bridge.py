@@ -62,6 +62,14 @@ class XlwingsBridge(GridBridge):
     def open_workbooks(self) -> list[str]:
         return [book.name for book in self._books()]
 
+    def open_workbook_files(self) -> list[tuple[str, str]]:
+        """``(name, full path)`` of every open workbook ('' for the path of one that has not been saved)."""
+        files = []
+        for book in self._books():
+            full = str(getattr(book, "fullname", "") or "")
+            files.append((book.name, full if ("/" in full or "\\" in full) else ""))
+        return files
+
     def connect(self, workbook: str | None = None) -> None:
         books = self._books()
         if not books:
@@ -119,6 +127,6 @@ class XlwingsBridge(GridBridge):
             return
         try:
             wb = openpyxl.load_workbook(path, keep_vba=path.suffix.lower() == ".xlsm")
-            self._discovery = discover(wb)
+            self._discovery = discover(wb, self._vertical)
         except Exception as exc:
             self.discovery_warning = f"Could not read lists from {path.name}: {exc}"

@@ -11,7 +11,7 @@ Speak naturally. Quill picks out the words it knows.
 | **"Next row"** | saves the row, starts a new one. Ending with just **"next"**, **"next item"** or **"stop"** does the same |
 | **"Stop listening"** | stops |
 
-> 💡 Prefer buttons? While listening, a small **next arrow** beside the Start button does what saying **"next row"** does: it saves what was understood, clears the heard words and the grid, and is ready for the next row. Say **"open term helper"** (or **"term helper"**) to open that window by voice. You can also press the wide **Start / Stop** button, or use the menu bar icon. It shows a **Start Listening** (or **Stop Listening**) pill, and its sound lines are grey and still when Quill is not listening, and turn green and move while it is.
+> 💡 Prefer buttons? While listening, the **next** button (a skip-forward icon, the height of the Start button) beside it does what saying **"next row"** does: it saves what was understood, clears the heard words and the grid, and is ready for the next row. Say **"open term helper"** (or **"term helper"**) to open that window by voice. You can also press the wide **Start / Stop** button, or use the menu bar icon. It shows a **Start Listening** (or **Stop Listening**) pill, and its sound lines are grey and still when Quill is not listening, and turn green and move while it is.
 
 ## ✍️ Describing an item
 
@@ -75,3 +75,5 @@ Understands *under, over, at least, at most, exactly* and *"black **or** navy"*.
 You can change every phrase in [Settings](help:settings).
 
 > 💡 Two values for one column ("jeans and other stuff" when both fit **Category**)? Both are kept: the second goes under the first in the same cell, one per line (in the grid and in the spreadsheet). Say the column name ("category other") to *replace* the value instead.
+
+> How each turn is written (to a new row, or added to one row) and which way your sheet runs is chosen with the **turn** icon: see [Turns](help:turns).

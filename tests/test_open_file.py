@@ -178,7 +178,7 @@ class TestWhereItIsOffered(FileCase):
     def test_a_visible_open_file_button_in_the_status_row(self):
         self.assertTrue(self.app.window.open_file_button.isVisibleTo(self.app.window.widget))
         self.chosen[0] = str(self.plants)
-        self.app.window.open_file_button.click()
+        self.app.window.panel.open_button.click()           # the folder opens the side panel, whose button opens the file window
         self.assertTrue(self.app.connected)
 
     def test_the_button_is_hidden_in_the_mini_view_with_the_rest_of_the_full_view(self):

@@ -30,6 +30,22 @@ Runner = Callable[[list[str]], str]
 
 XLSX = ".xlsx"
 
+#: File types Quill can work on directly.
+SUPPORTED_SUFFIXES = (".xlsx", ".csv", ".tsv")
+
+
+@dataclass(frozen=True)
+class OpenFile:
+    """A spreadsheet that some program has open right now (the side panel lists these)."""
+
+    name: str
+    path: str
+    """Full path ('' for an Excel workbook that has not been saved)."""
+    app: str
+    """The program showing it, for the hover text."""
+    live: bool = False
+    """Open in Excel, which Quill can drive live (it is connected to by name, not by file)."""
+
 
 @dataclass(frozen=True)
 class HostApp:
@@ -118,6 +134,56 @@ class SpreadsheetHosts:
                     found.append((app, path))
         return found
 
+    def open_files(self, excel_files: Callable[[], list[tuple[str, str]]] | None = None) -> list[OpenFile]:
+        """Every spreadsheet the running programs have open: Excel's workbooks (as ``(name, path)`` pairs from
+        *excel_files*, asked only while Excel is running) and the files of the other programs. Best effort, may be empty.
+
+        Where it runs commands that can stall (they are given a time limit), call it off the GUI thread.
+        """
+        found: list[OpenFile] = []
+        seen: set[str] = set()
+        running = self.running()
+        if excel_files is not None and any(a.live for a in running):
+            try:
+                pairs = excel_files()
+            except Exception:                                # a helper must never take the app down
+                log.debug("could not list Excel's workbooks", exc_info=True)
+                pairs = []
+            for name, path in pairs:
+                key = os.path.realpath(path) if path else name
+                if key not in seen:
+                    seen.add(key)
+                    found.append(OpenFile(name, path, EXCEL.name, live=True))
+        for app in running:
+            if app.live:
+                continue
+            for path in self._documents(app):
+                if path.suffix.lower() in SUPPORTED_SUFFIXES and path.is_file() and os.path.realpath(path) not in seen:
+                    seen.add(os.path.realpath(path))
+                    found.append(OpenFile(path.name, str(path), app.name))
+        return found
+
+    def launch(self, path: str | pathlib.Path) -> bool:
+        """Open *path* in the system's program for it, without bringing that program to the front (macOS) .
+
+        Returns:
+            True if the request was made.
+        """
+        if os.environ.get("QUILL_NO_HOSTS"):
+            return False
+        try:
+            if self._platform == "darwin":
+                return subprocess.run(["open", "-g", str(path)], capture_output=True, timeout=COMMAND_TIMEOUT_S,   # noqa: S603, S607
+                                      check=False).returncode == 0
+            if self._platform == "win32":
+                os.startfile(str(path))                       # type: ignore[attr-defined]  # noqa: S606
+                return True
+            subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   # noqa: S603, S607
+            return True
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.debug("could not launch %s: %s", path, exc)
+            return False
+
     def reload(self, app: HostApp, path: str | pathlib.Path) -> bool:
         """Ask *app* to load *path* again after Quill saved it. False when that is not possible."""
         if not app.reloads or self._platform != "darwin":
@@ -142,7 +208,7 @@ class SpreadsheetHosts:
         else:
             out = self._run(["ps", "-axo", "command="])
             out = "\n".join(line for line in out.splitlines() if app.mac_process.lower() in line.lower())
-        return [pathlib.Path(m.strip('" ')) for m in re.findall(r'[^"\n]+\.xlsx', out)
+        return [pathlib.Path(m.strip('" ')) for m in re.findall(r'[^"\n]+\.(?:xlsx|csv|tsv)', out)
                 if m.strip('" ').startswith(("/", "~")) or re.match(r'[A-Za-z]:\\', m.strip('" '))]
 
 

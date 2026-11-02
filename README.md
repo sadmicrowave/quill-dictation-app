@@ -504,3 +504,11 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Title bar**: the left icons no longer go through the nudge holder (they were dropped low); the folder icon is drawn with finer lines (`titlebar_png`).
 - **App icon**: `sheet_excel_body` / `excel_sheet`: two columns of stepped fills, three row bands and a solid total row (no cell borders), behind the sound-lines box.
 - The macOS Automation prompt text no longer says Excel.
+
+## Phase 57: side panel, turns, vertical sheets
+
+- A right-hand **side panel** eases in beside the window (the window grows by its width and gives it back). The title bar's folder icon opens its **file** page (the active file with the full path on hover and the sheet, an Open File… button, and a scrolling list of spreadsheets open in other programs; picking one makes it active), the new turn icon opens its **turn** page. The panel is not part of the mini view.
+- Files picked with the file window are started in their own program too when none has them open (`open -g` on macOS, so Quill keeps the focus).
+- **Turn settings**: *Next Row* or *Append To* (cells join with commas; `Controller.append_to_row`), and *Columns Across* or *Rows Down* (`TransposedGrid` lets the same bridge code read sheets whose headings run down the first column).
+- The countdown shows just the seconds; the Next button is a media-style skip icon the height of Start; every plain button now has an accent border.
+- App icon cells are more saturated purple.
