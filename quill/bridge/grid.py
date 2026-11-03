@@ -29,6 +29,10 @@ class Grid(ABC):
     def active_sheet(self) -> str:
         """Name of the sheet currently active."""
 
+    def set_active(self, sheet: str) -> bool:
+        """Make *sheet* the active one (False where that is not possible: a live program already says which is open)."""
+        return False
+
     @abstractmethod
     def last_row(self, sheet: str) -> int:
         """Last used row (1-based); 0 for an empty sheet."""
@@ -164,6 +168,13 @@ class OpenpyxlGrid(Grid):
 
     def active_sheet(self) -> str:
         return self._wb.active.title
+
+    def set_active(self, sheet: str) -> bool:
+        """Make *sheet* the one Quill writes to (the workbook's active sheet). False if there is no such sheet."""
+        if sheet not in self._wb.sheetnames:
+            return False
+        self._wb.active = self._wb[sheet]
+        return True
 
     def last_row(self, sheet: str) -> int:
         ws = self._ws(sheet)

@@ -440,6 +440,12 @@ class Controller:
         for event in self.session.expire_prompt():
             self._on_event(event)
 
+    def follow_sheet(self) -> bool:
+        """Look at which sheet is open now and, if it is another, load its field words. True if it changed."""
+        before = self._sheet
+        self._follow_active_sheet()
+        return self._sheet != before
+
     def _follow_active_sheet(self) -> None:
         """Reload field words if the user switched sheets in Excel."""
         try:

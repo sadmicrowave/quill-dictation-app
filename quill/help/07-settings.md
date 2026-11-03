@@ -37,6 +37,10 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 - **Off** until you press Start, and off again when you stop.
 - Want to say **"start listening"**? Turn on **Keep the Microphone Open When Not Listening**. Your Mac's orange mic dot will show.
 
+### Check for Sheet Changes
+
+**Settings > General > Check for Sheet Changes** is how often (0 to 600 seconds, 30 by default, *Off* at 0) Quill asks the spreadsheet program which sheet is open, so rows go to the sheet you are on. It is one small question each time (Excel is read live, Numbers and LibreOffice are asked once). The refresh icon beside **Sheet** in the Files panel asks at once.
+
 ### Open Files With
 
 **Settings > General > Open Files With** chooses the program Quill opens a spreadsheet in when you pick one that is not open yet: *Automatic* (what your computer opens that kind of file with), Numbers, LibreOffice or Excel. Every program is listed; the ones not installed on this computer are grey and last. Text Size defaults to 14. Numbers and LibreOffice show each row as Quill writes it; Excel is updated in place.

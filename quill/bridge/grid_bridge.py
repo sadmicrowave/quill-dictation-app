@@ -149,6 +149,10 @@ class GridBridge(WorkbookBridge):
     def active_sheet_name(self) -> str:
         return self._require().active_sheet()
 
+    def set_active_sheet(self, name: str) -> bool:
+        grid = self._require()
+        return grid.active_sheet() == name or grid.set_active(name)
+
     def get_headers(self, sheet_name: str | None = None) -> list[str]:
         grid = self._require()
         sheet = sheet_name or grid.active_sheet()

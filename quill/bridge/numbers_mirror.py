@@ -143,6 +143,24 @@ end run
 '''
 
 
+#: Takes the document's file name as argument 1; answers ``sheet:<name of the sheet that is open now>`` (it changes nothing).
+ACTIVE_SHEET = r'''
+on run argv
+  if application "Numbers" is not running then return "notrunning"
+  set docName to item 1 of argv
+  tell application "Numbers"
+    repeat with oneDoc in documents
+      try
+        set docTitle to name of oneDoc
+        if docTitle is docName or docTitle starts with (docName & ".") then return "sheet:" & (name of active sheet of oneDoc)
+      end try
+    end repeat
+  end tell
+  return "nodoc"
+end run
+'''
+
+
 @dataclass(frozen=True)
 class MirrorResult:
     """How an attempt to show cells in Numbers went."""
@@ -208,6 +226,15 @@ class NumbersMirror:
             return False
         code, out, _ = self._run(["osascript", "-e", PROBE, self.document_name(path)])
         return code == 0 and out.strip() == "ok"
+
+    def active_sheet(self, path: str | os.PathLike) -> str | None:
+        """The name of the sheet open now in the Numbers document for *path* (one small call; None if there is no such
+        document, Numbers is not running, or it would not say)."""
+        if os.environ.get("QUILL_NO_HOSTS"):
+            return None
+        code, out, _ = self._run(["osascript", "-e", ACTIVE_SHEET, self.document_name(path)])
+        text = out.strip()
+        return text[len("sheet:"):] if code == 0 and text.startswith("sheet:") and len(text) > 6 else None
 
     def push(self, path: str | os.PathLike, changes: list[tuple[str, int, int, object]]) -> MirrorResult:
         """Show *changes* (``(sheet, row, column, value)`` in sheet coordinates) in the Numbers document for *path*."""

@@ -78,6 +78,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "mini_on_top": True,      # the mini view floats above other windows
     "auto_stop": True,        # stop listening by itself when nothing has been said for a while
     "auto_stop_seconds": 10,  # ... for this many seconds of quiet
+    "sheet_check_seconds": 30,  # how often Quill asks the spreadsheet program which sheet is open (0: never)
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
     "speech_quality": "standard",   # "standard" | "better" | "best": which speech model listens (Broad and Careful are installs)
@@ -104,6 +105,8 @@ FONT_SIZE_RANGE = (9, 20)
 
 #: Allowed range for ``auto_stop_seconds``.
 AUTO_STOP_RANGE = (3, 3600)
+#: Allowed range for ``sheet_check_seconds`` (0 turns the checking off).
+SHEET_CHECK_RANGE = (0, 600)
 
 #: Allowed range for ``history_limit``.
 HISTORY_LIMIT_RANGE = (5, 500)
@@ -242,6 +245,7 @@ class Settings:
                 settings.preferences[key] = DEFAULT_PREFERENCES[key]
         low, high = AUTO_STOP_RANGE
         settings.preferences["auto_stop_seconds"] = max(low, min(high, int(settings.preferences["auto_stop_seconds"])))
+        settings.preferences["sheet_check_seconds"] = max(SHEET_CHECK_RANGE[0], min(SHEET_CHECK_RANGE[1], int(settings.preferences["sheet_check_seconds"])))
         low, high = HISTORY_LIMIT_RANGE
         settings.preferences["history_limit"] = max(low, min(high, int(settings.preferences["history_limit"])))
         low, high = OPACITY_RANGE

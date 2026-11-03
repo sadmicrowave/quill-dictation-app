@@ -369,6 +369,7 @@ class SidePanel(QFrame):
     open_file_requested = Signal()
     speech_models_requested = Signal()          # the link under the Speech Model drop-down
     speech_model_chosen = Signal(str)           # the key of the model picked in the Turn Options drop-down
+    sheet_refresh_requested = Signal()          # the refresh icon beside Sheet
     refresh_requested = Signal()                # the refresh icon beside Available Files
     file_chosen = Signal(object)                # the data of the picked list entry
     mode_changed = Signal(str)                  # NEXT_ROW or APPEND_TO
@@ -515,6 +516,12 @@ class SidePanel(QFrame):
             value.setMinimumWidth(10)
             table.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop)
             table.addWidget(value, row, 1)
+            if name == "Sheet":                                  # the refresh icon, at the right end of the Sheet row
+                self.sheet_refresh_button = self._chrome_button(
+                    "Look at which sheet is open in the spreadsheet program now.", "Refresh the Sheet")
+                self.sheet_refresh_button.clicked.connect(self.sheet_refresh_requested)
+                self.sheet_refresh_button.setVisible(False)
+                table.addWidget(self.sheet_refresh_button, row, 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.fact_rows[name] = (label, value)
             label.setVisible(False)
             value.setVisible(False)
@@ -635,6 +642,7 @@ class SidePanel(QFrame):
         self.close_button.setIcon(make_icon("close", text, 16))
         self.settings_button.setIcon(make_icon("gear", text, 16))
         self.refresh_button.setIcon(make_icon("refresh", text, 16))
+        self.sheet_refresh_button.setIcon(make_icon("refresh", text, 14))
         if not self.search.actions():
             self.search.addAction(make_icon("search", text, 15), QLineEdit.ActionPosition.LeadingPosition)
         else:
@@ -670,6 +678,7 @@ class SidePanel(QFrame):
             value_label.setFullText(text, tip)
             name_label.setVisible(bool(text))
             value_label.setVisible(bool(text))
+        self.sheet_refresh_button.setVisible("Sheet" in facts)
         self._draw_file_icon()
 
     def fact(self, label: str) -> str:

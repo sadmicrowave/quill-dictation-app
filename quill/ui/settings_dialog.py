@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
 
 from quill.config.settings import (
     AUTO_STOP_RANGE,
+    SHEET_CHECK_RANGE,
     BLUR_RANGE,
     FONT_SIZE_RANGE,
     HISTORY_LIMIT_RANGE,
@@ -148,7 +149,7 @@ def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel,
 #: The preferences the controls edit (Cancel puts back just these).
 EDITED_PREFERENCES = (
     "theme", "speak_sort_prompts", "auto_voice_sort", "mic_always_on", "auto_stop", "auto_stop_seconds",
-    "mini_on_top", "hide_dock_icon", "speech_quality", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity", "sorting_sounds",
+    "sheet_check_seconds", "mini_on_top", "hide_dock_icon", "speech_quality", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity", "sorting_sounds",
     "blur", "history_limit", "feedback", "sound_pack", "echo_style",
 )
 
@@ -209,6 +210,7 @@ class SettingsDialog:
         self.pack_combo: QComboBox | None = None
         self.echo_combo: QComboBox | None = None
         self.history_spin: QSpinBox | None = None
+        self.sheet_spin: QSpinBox | None = None
         self.speak_check: ToggleSwitch | None = None
         self.auto_sort_check: ToggleSwitch | None = None
         self.mic_check: ToggleSwitch | None = None
@@ -404,7 +406,7 @@ class SettingsDialog:
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
                         self.pack_combo, self.echo_combo, self.open_with_combo):
             control.currentIndexChanged.connect(self._live)
-        for control in (self.font_spin, self.history_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin):
+        for control in (self.font_spin, self.history_spin, self.sheet_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin):
             control.valueChanged.connect(self._live)
         dialog.rejected.connect(self.revert)
 
@@ -442,6 +444,7 @@ class SettingsDialog:
         prefs["speech_quality"] = self.selected_quality
         prefs["blur"] = self.blur_slider.value()
         prefs["history_limit"] = self.history_spin.value()
+        prefs["sheet_check_seconds"] = self.sheet_spin.value()
         prefs["feedback"] = self.feedback_combo.currentData()
         prefs["sound_pack"] = self.pack_combo.currentData()
         prefs["echo_style"] = self.echo_combo.currentData()
@@ -669,6 +672,16 @@ class SettingsDialog:
         self._add("General", page, "Quiet Time Before Stopping",
                   "Seconds of silence after which listening stops (3 to 3600).", self.auto_stop_spin,
                   "auto off timer idle silence shut off timeout seconds")
+        self.sheet_spin = GuardedSpinBox()
+        self.sheet_spin.setRange(*SHEET_CHECK_RANGE)
+        self.sheet_spin.setValue(int(prefs["sheet_check_seconds"]))
+        self.sheet_spin.setSuffix(" seconds")
+        self.sheet_spin.setSpecialValueText("Off")
+        self.sheet_spin.setToolTip("How often Quill asks the spreadsheet program which sheet is open.")
+        self._add("General", page, "Check for Sheet Changes",
+                  "How often Quill looks at which sheet is open in your spreadsheet program, so rows go to the sheet you are on "
+                  "(0 to 600; Off stops the checking). The refresh icon beside Sheet in the Files panel checks at once.",
+                  self.sheet_spin, "sheet tab active poll refresh interval seconds")
         self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
         self.history_spin.setValue(int(prefs["history_limit"]))

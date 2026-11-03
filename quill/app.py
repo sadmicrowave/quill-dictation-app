@@ -197,6 +197,9 @@ class QuillApp:
         self._ready_note_pending = False             # the model is ready but a warning is showing: the note waits for a connection
         self._open_files: list[OpenFile] = []        # spreadsheets other programs have open (the side panel's list)
         self._open_files_busy = False
+        self._sheet_timer = QTimer()                    # asks which sheet is open in the spreadsheet program (see refresh_active_sheet)
+        self._sheet_timer.timeout.connect(self._sheet_tick)
+        self._sheet_busy = False
         self._launched_at: dict[str, float] = {}        # when a program was last asked to open each file (see _launch)
         self._start_wanted = False                      # Start was pressed while the file was not yet open in a program
         self._waiting_viewer = False
@@ -339,6 +342,7 @@ class QuillApp:
         self._use_best_installed()
         self._start_listener()
         self._watcher.start()
+        self._restart_sheet_timer()
         QTimer.singleShot(FILE_DIALOG_WARM_MS, self._warm_file_dialog)
         self._flush_timer.start()
         QTimer.singleShot(0, self._warm_up_sounds)           # after the window is up: load every sound, make spoken clips
@@ -382,6 +386,7 @@ class QuillApp:
         self.settings.preferences["last_workbook"] = bridge.workbook_name
         self.settings.save()
         self._remember_mtime()
+        QTimer.singleShot(600, lambda: self.refresh_active_sheet(quiet=True))        # which sheet is the program on right now?
 
     def poll_workbooks(self) -> None:
         """Watcher tick: attach when a workbook appears, detach when it closes.
@@ -573,6 +578,77 @@ class QuillApp:
             return
         self.window.wave.set_level(level)
         self.sorting.voice_wave.set_level(level)
+
+    # ------------------------------------------------------------------ #
+    # Which sheet is open                                                  #
+    # ------------------------------------------------------------------ #
+
+    def _restart_sheet_timer(self) -> None:
+        """Check for a changed sheet every ``sheet_check_seconds`` (30 by default; 0 turns it off) and say so on the refresh icon."""
+        seconds = int(self.settings.preferences["sheet_check_seconds"])
+        if seconds > 0:
+            self._sheet_timer.start(seconds * 1000)
+        else:
+            self._sheet_timer.stop()
+        panel = getattr(self.window, "panel", None)
+        if panel is not None:
+            panel.sheet_refresh_button.setToolTip(
+                "Look at which sheet is open in the spreadsheet program now. "
+                + (f"Quill also checks every {seconds} seconds." if seconds > 0 else "Quill does not check by itself (see Settings)."))
+
+    def _sheet_tick(self) -> None:
+        if self.connected and not self._sheet_busy:
+            self.refresh_active_sheet(quiet=True)
+
+    def _program_holding(self, path: str) -> str:
+        """``"numbers"``, ``"libreoffice"`` or ``""``: which program the last look at what is open found *path* in."""
+        known = next((f.app for f in self._open_files if f.path and os.path.realpath(f.path) == os.path.realpath(path)), "").lower()
+        return "libreoffice" if "libre" in known else "numbers" if "numbers" in known else ""
+
+    def refresh_active_sheet(self, quiet: bool = False) -> None:
+        """Ask the spreadsheet program which sheet is open and, if it is another sheet, go to it: its field words are loaded
+        and the next rows are written there. One small question, off the GUI thread (Excel is read live, so it is only
+        compared). *quiet*: for the timer, nothing is logged unless the sheet changed."""
+        bridge = self.controller.bridge
+        if not self.connected or self._sheet_busy:
+            return
+        path = bridge.workbook_path if isinstance(bridge, XlsxBridge) and not isinstance(bridge, CsvBridge) else ""
+        known = self._program_holding(path) if path else ""
+        self._sheet_busy = True
+
+        def ask() -> str | None:
+            if not path:
+                return None
+            order = {"libreoffice": [self.lo_mirror], "numbers": [self.mirror]}.get(known, [self.mirror, self.lo_mirror])
+            for mirror in order:
+                sheet = mirror.active_sheet(path)
+                if sheet:
+                    return sheet
+            return None
+
+        def done(sheet: object) -> None:
+            self._sheet_busy = False
+            self._apply_sheet(sheet if isinstance(sheet, str) else None, quiet)
+
+        self.run_in_background(ask, done)
+
+    def _apply_sheet(self, sheet: str | None, quiet: bool) -> None:
+        bridge = self.controller.bridge
+        if not self.connected:
+            return
+        changed = False
+        try:
+            if sheet and sheet != bridge.active_sheet_name():
+                if bridge.set_active_sheet(sheet):
+                    changed = self.controller.follow_sheet()
+            else:
+                changed = self.controller.follow_sheet()                # (a live program: it says which sheet is open)
+        except BridgeError as exc:
+            self.window.append_log(f"Could not check the sheet: {exc}", "warning")
+            return
+        self._show_active_sheet()
+        if not quiet and not changed:
+            self.window.append_log(f"Checked: sheet '{bridge.active_sheet_name()}' is the one open.")
 
     def _show_active_sheet(self) -> None:
         """Tell the window which sheet is open (the folder icon's hover text names it)."""
@@ -937,6 +1013,7 @@ class QuillApp:
         panel.file_chosen.connect(self._panel_pick)
         panel.refresh_requested.connect(self.refresh_open_files)
         panel.speech_model_chosen.connect(self.choose_speech_model)
+        panel.sheet_refresh_requested.connect(lambda: self.refresh_active_sheet(quiet=False))
         panel.speech_models_requested.connect(lambda: self.open_settings("Speech Model"))
         panel.mode_changed.connect(self.controller.set_turn_mode)
         panel.layout_changed.connect(self.controller.set_vertical)
@@ -1475,6 +1552,7 @@ class QuillApp:
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
         self._apply_dock()
         self.sync_model_panel()
+        self._restart_sheet_timer()
         quality = str(self.settings.preferences["speech_quality"])
         if quality != self._loaded_quality and self.listener is not None and self.quality_installed(quality):
             self._reload_listener()                          # the user chose the other speech model

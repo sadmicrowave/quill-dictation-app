@@ -199,6 +199,9 @@ class FakeMirror:
     def has_document(self, path):
         return False
 
+    def active_sheet(self, path):
+        return None
+
     def push(self, path, changes):
         self.pushed.append((path, list(changes)))
         return self.result
@@ -454,3 +457,50 @@ class TestAskingWhetherAProgramHasTheFile(unittest.TestCase):
         self.assertTrue(hosts.installed("auto"))
         self.assertFalse(hosts.installed("nonsense"))
         self.assertIsInstance(hosts.installed("numbers"), bool)
+
+
+class TestAskingWhichSheetIsOpen(unittest.TestCase):
+    def setUp(self):
+        patch = unittest.mock.patch.dict("os.environ", {}, clear=False)
+        patch.start()
+        self.addCleanup(patch.stop)
+        os.environ.pop("QUILL_NO_HOSTS", None)
+
+    def test_numbers_answers_with_the_name_of_the_sheet_and_nothing_is_changed(self):
+        mirror, run = mirror_with(0, "sheet:2024")
+        self.assertEqual(mirror.active_sheet("/x/Apparel Inventory SAMPLE.xlsx"), "2024")
+        self.assertEqual(run.calls[0][-1], "Apparel Inventory SAMPLE")
+        self.assertIn("active sheet", run.calls[0][2])
+        self.assertNotIn("set value", run.calls[0][2])
+        for answer in ("nodoc", "notrunning", "", "sheet:"):
+            self.assertIsNone(mirror_with(0, answer)[0].active_sheet("/x/a.xlsx"))
+        self.assertIsNone(mirror_with(1, "sheet:2024")[0].active_sheet("/x/a.xlsx"))
+
+    def test_libreoffice_answers_through_its_script(self):
+        import json
+        from quill.bridge.libreoffice_mirror import LibreOfficeMirror
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        (tmp / "LibreOffice" / "4" / "user").mkdir(parents=True)
+        seen = {}
+
+        def runner(args):
+            seen["job"] = json.loads((tmp / "mirror" / "in.json").read_text())
+            (tmp / "mirror" / "out.json").write_text("sheet:Plants")
+            return 0
+
+        mirror = LibreOfficeMirror(runner=runner, scripts_dir=tmp / "LibreOffice/4/user/Scripts/python", base=tmp / "mirror",
+                                   running=lambda: True, soffice="/x/soffice", wait_s=1)
+        self.assertEqual(mirror.active_sheet("/x/a.xlsx"), "Plants")
+        self.assertTrue(seen["job"]["sheet"])
+        self.assertEqual(seen["job"]["changes"], [])
+        self.assertIn("getActiveSheet", mirror.script_text())
+
+    def test_a_workbook_gets_a_new_active_sheet_and_rows_go_there(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        bridge = XlsxBridge(make_workbook(tmp / "p.xlsx"))
+        bridge.connect()
+        self.assertEqual(bridge.active_sheet_name(), "Inventory")
+        self.assertTrue(bridge.set_active_sheet("Config"))
+        self.assertEqual(bridge.active_sheet_name(), "Config")
+        self.assertFalse(bridge.set_active_sheet("Nope"))
+        self.assertEqual(bridge.active_sheet_name(), "Config")

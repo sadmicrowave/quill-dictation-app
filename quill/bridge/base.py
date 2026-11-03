@@ -115,6 +115,11 @@ class WorkbookBridge(ABC):
     def active_sheet_name(self) -> str:
         """Name of the sheet that is currently visible / active."""
 
+    def set_active_sheet(self, name: str) -> bool:
+        """Make *name* the sheet Quill works on, for a file Quill reads itself (a live program says which sheet is open:
+        this does nothing there). True if the active sheet is now *name*."""
+        return False
+
     @abstractmethod
     def get_headers(self, sheet_name: str | None = None) -> list[str]:
         """Return the column headers of *sheet_name* (default: active sheet).

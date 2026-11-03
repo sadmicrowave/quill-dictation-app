@@ -304,11 +304,14 @@ class NoMirror:
 
     installed_note = False
 
-    def __init__(self, has=False):
-        self.has, self.pushed = has, []
+    def __init__(self, has=False, sheet=None):
+        self.has, self.pushed, self.sheet = has, [], sheet
 
     def has_document(self, path):
         return self.has
+
+    def active_sheet(self, path):
+        return self.sheet
 
     def push(self, path, changes):
         from quill.bridge.numbers_mirror import MirrorResult
@@ -3147,3 +3150,79 @@ class TestStartWaitsForTheFileThenListens(PanelApp):
         self.app.toggle_listening(True)
         self.wait(60)
         self.assertEqual(self.hosts.launched, opened)
+
+
+class TestWhichSheetIsOpen(PanelApp):
+    """The refresh icon beside Sheet, and the 30-second look, find out which sheet the spreadsheet program is on."""
+
+    def setUp(self):
+        super().setUp()
+        self.app._open_files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.app.mirror = NoMirror(has=True, sheet="Config")
+
+    def test_a_sheet_the_program_is_on_becomes_the_sheet_quill_writes_to(self):
+        bridge = self.app.controller.bridge
+        self.assertEqual(bridge.active_sheet_name(), "Inventory")
+        self.app.refresh_active_sheet(quiet=True)
+        self.assertEqual(bridge.active_sheet_name(), "Config")
+        self.assertEqual(self.app.controller._sheet, "Config")                 # its field words were loaded
+        self.assertEqual(self.app.window.sheet_name, "Config")
+
+    def test_an_unknown_sheet_name_changes_nothing(self):
+        self.app.mirror = NoMirror(has=True, sheet="No Such Sheet")
+        self.app.refresh_active_sheet(quiet=True)
+        self.assertEqual(self.app.controller.bridge.active_sheet_name(), "Inventory")
+
+    def test_the_icon_checks_at_once_and_says_what_it_found(self):
+        self.app.window.panel.sheet_refresh_button.click()
+        self.assertEqual(self.app.controller.bridge.active_sheet_name(), "Config")
+        self.app.window.panel.sheet_refresh_button.click()                    # nothing new: it still says so
+        self.assertIn("sheet 'Config' is the one open", self.app.window.log.toPlainText())
+
+    def test_the_timer_is_quiet_when_nothing_changed(self):
+        self.app.refresh_active_sheet(quiet=True)
+        before = self.app.window.log.toPlainText()
+        self.app.refresh_active_sheet(quiet=True)
+        self.assertEqual(self.app.window.log.toPlainText(), before)
+
+    def test_it_looks_every_30_seconds_by_default_and_the_setting_changes_or_stops_it(self):
+        self.assertEqual(self.app._sheet_timer.interval(), 30_000)
+        self.assertTrue(self.app._sheet_timer.isActive())
+        self.assertIn("every 30 seconds", self.app.window.panel.sheet_refresh_button.toolTip())
+        self.settings.preferences["sheet_check_seconds"] = 90
+        self.app.apply_settings(quiet=True)
+        self.assertEqual(self.app._sheet_timer.interval(), 90_000)
+        self.settings.preferences["sheet_check_seconds"] = 0
+        self.app.apply_settings(quiet=True)
+        self.assertFalse(self.app._sheet_timer.isActive())
+        self.assertIn("does not check by itself", self.app.window.panel.sheet_refresh_button.toolTip())
+
+    def test_the_icon_is_on_the_sheet_row_at_the_right_and_only_with_a_file(self):
+        panel = self.app.window.panel
+        self.assertFalse(panel.sheet_refresh_button.isHidden())
+        self.assertFalse(panel.sheet_refresh_button.icon().isNull())
+        panel.set_active("")
+        self.assertTrue(panel.sheet_refresh_button.isHidden())
+        panel.set_active("plants.xlsx", "Inventory", str(self.plants))
+        self.assertFalse(panel.sheet_refresh_button.isHidden())
+        self.assertEqual(panel.sheet_refresh_button.property("chromeIcon"), True)
+
+    def test_a_csv_file_has_no_sheets_to_ask_about(self):
+        csv_path = self.dir / "b.csv"
+        csv_path.write_text("Bird\nWren\n")
+        self.chosen[0] = str(csv_path)
+        self.app.choose_spreadsheet_file()
+        asked = []
+        self.app.mirror = type("M", (), {"active_sheet": lambda s, p: asked.append(p)})()
+        self.app.refresh_active_sheet(quiet=True)
+        self.assertEqual(asked, [])
+
+    def test_the_settings_row_is_a_number_with_off_at_zero(self):
+        from quill.ui.settings_dialog import SettingsDialog
+        d = SettingsDialog(self.settings)
+        d.build()
+        self.assertEqual(d.sheet_spin.value(), 30)
+        d.sheet_spin.setValue(0)
+        self.assertEqual(d.sheet_spin.text(), "Off")
+        d._store_preferences()
+        self.assertEqual(self.settings.preferences["sheet_check_seconds"], 0)
