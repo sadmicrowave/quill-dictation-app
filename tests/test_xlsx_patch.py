@@ -220,7 +220,7 @@ class TestSafety(PatchCase):
         from quill.bridge.base import BridgeLockedError
         original = self.path.read_bytes()
         self.bridge._grid.write("Inventory", 4, 1, "Fern")
-        with mock.patch("quill.bridge.xlsx_patch.os.replace", side_effect=PermissionError(13, "in use")):
+        with mock.patch("quill.bridge.xlsx_patch._overwrite", side_effect=PermissionError(13, "in use")):
             with self.assertRaises(BridgeLockedError):
                 self.bridge._after_write()
         self.assertEqual(self.path.read_bytes(), original)
@@ -228,6 +228,25 @@ class TestSafety(PatchCase):
         self.assertTrue(self.bridge.dirty)
         self.assertTrue(self.bridge.flush())
         self.assertEqual(openpyxl.load_workbook(self.path)["Inventory"]["A4"].value, "Fern")
+
+    def test_the_file_stays_the_same_file(self):
+        before = self.path.stat()
+        self.bridge._grid.write("Inventory", 4, 1, "Fern")
+        self.bridge._after_write()
+        after = self.path.stat()
+        self.assertEqual((after.st_ino, after.st_dev), (before.st_ino, before.st_dev))
+        self.assertEqual(openpyxl.load_workbook(self.path)["Inventory"]["A4"].value, "Fern")
+
+    def test_a_write_that_fails_part_way_puts_the_original_back(self):
+        from unittest import mock
+        from quill.bridge.base import BridgeLockedError
+        original = self.path.read_bytes()
+        self.bridge._grid.write("Inventory", 4, 1, "Fern")
+        with mock.patch("quill.bridge.xlsx_patch.os.fsync", side_effect=OSError(28, "No space left")):
+            with self.assertRaises(BridgeLockedError):             # (any failed write is kept and retried)
+                self.bridge._after_write()
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertTrue(self.bridge.dirty)
 
     def test_a_copy_has_the_changes_and_the_original_does_not(self):
         self.bridge._grid.write("Inventory", 4, 1, "Fern")

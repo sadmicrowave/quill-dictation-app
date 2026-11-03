@@ -1204,7 +1204,7 @@ class TestLockedFiles(Dir):
         self.events = []
         self.controller = Controller(XlsxBridge(self.path), Settings.load(self.dir / "cfg"), on_event=self.events.append)
         self.controller.connect()
-        self.locked = mock.patch("quill.bridge.xlsx_patch.os.replace", side_effect=PermissionError(13, "Permission denied"))   # (where a held file refuses)
+        self.locked = mock.patch("quill.bridge.xlsx_patch._overwrite", side_effect=PermissionError(13, "Permission denied"))   # (where a held file refuses)
 
     def test_a_held_file_keeps_the_row_in_memory_and_says_so(self):
         self.controller.handle_transcript("start listening")
@@ -1260,14 +1260,10 @@ class TestLockedFilesInTheApp(PanelApp):
         c = self.app.controller
         c.handle_transcript("start listening")
         c.handle_transcript("fern")
-        original = os.replace
+        def held(target, data):                           # only the file itself is held; a copy beside it is a new file
+            raise PermissionError(13, "denied")
 
-        def held(temp, target):                           # only the file itself is held; a copy beside it can be written
-            if str(target) == str(self.plants):
-                raise PermissionError(13, "denied")
-            return original(temp, target)
-
-        with mock.patch("quill.bridge.xlsx_patch.os.replace", held):
+        with mock.patch("quill.bridge.xlsx_patch._overwrite", held):
             c.handle_transcript("next row")
             for _ in range(3):
                 self.app._flush_waiting()

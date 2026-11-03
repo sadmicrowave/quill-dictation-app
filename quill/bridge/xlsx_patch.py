@@ -416,10 +416,40 @@ def _rebuilt(package: zipfile.ZipFile, changed: dict[str, bytes]) -> bytes:
 
 
 def _replace(target: Path, data: bytes, like: Path) -> None:
-    """Write *data* to a temporary file beside *target*, then put it in place in one step (never half a file)."""
+    """Put *data* at *target*: over the same file when it is the one patched, else as a new file."""
+    if target.exists() and like.exists() and os.path.samefile(target, like):
+        _overwrite(target, data)
+    else:
+        _create(target, data, like)
+
+
+def _overwrite(target: Path, data: bytes) -> None:
+    """Write *data* into the existing file itself, so it stays the same file (Finder tags, owner, links and sharing).
+
+    The package is already complete in memory, so the file is held for as short a time as possible; if the write
+    fails part-way the original bytes are written back before the error goes on.
+    """
+    with open(target, "r+b") as out:                                  # a file another program holds refuses here
+        original = out.read()
+        try:
+            out.seek(0)
+            out.write(data)
+            out.truncate()
+            out.flush()
+            os.fsync(out.fileno())
+        except BaseException:
+            out.seek(0)
+            out.write(original)
+            out.truncate()
+            out.flush()
+            raise
+
+
+def _create(target: Path, data: bytes, like: Path) -> None:
+    """Write a new file: to a hidden temporary file beside it first, then put it in place in one step."""
     try:
         handle, name = tempfile.mkstemp(prefix=".quill-", suffix=".tmp", dir=target.parent)
-    except PermissionError as exc:                                    # a read-only folder: the file may still be writable
+    except PermissionError as exc:                                    # a read-only folder
         raise Unsupported(f"no room for a temporary file: {exc}") from exc
     temp = Path(name)
     try:
