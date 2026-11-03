@@ -247,6 +247,10 @@ class SpreadsheetHosts:
         known = self._found_by_name.get(stem)
         if known is not None and known.is_file():
             return known
+        beside = self._beside(stem, prefer)
+        if beside is not None:
+            self._found_by_name[stem] = beside
+            return beside
         if self._platform != "darwin" or not stem:
             return None
         safe = stem.replace("\\", "\\\\").replace("'", "\\'")
@@ -258,10 +262,22 @@ class SpreadsheetHosts:
                         and not any(part in line for part in self._NOT_FROM)):
                     matches.append(candidate)
         if not matches:
+            log.info("%s is open in a program, but no file with that name was found", stem)
             return None
         newest = max(matches, key=lambda m: m.stat().st_mtime)
         self._found_by_name[stem] = newest
         return newest
+
+    #: Folders (besides the active file's own) where a document reported by name only is looked for first, by name.
+    _USUAL_FOLDERS = ("Desktop", "Documents", "Downloads")
+
+    def _beside(self, stem: str, prefer: tuple[str, ...]) -> pathlib.Path | None:
+        """A file called *stem* (with a spreadsheet suffix) in the folder of a *prefer* path or in a usual folder: a plain
+        look at those paths, which needs no Spotlight (it may not be allowed to search a cloud folder). Newest wins."""
+        folders = [pathlib.Path(p).parent for p in prefer] + [pathlib.Path.home() / name for name in self._USUAL_FOLDERS]
+        found = [folder / f"{stem}{suffix}" for folder in folders for suffix in SUPPORTED_SUFFIXES
+                 if (folder / f"{stem}{suffix}").is_file()]
+        return max(found, key=lambda f: f.stat().st_mtime) if found else None
 
     def _documents(self, app: HostApp, prefer: tuple[str, ...] = ()) -> list[pathlib.Path]:
         """Paths of the documents *app* has open."""

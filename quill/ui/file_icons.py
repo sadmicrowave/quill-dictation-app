@@ -14,8 +14,9 @@ from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
-BARS = '<g fill="#FFFFFF"><rect x="6" y="11" width="3" height="5" rx="1"/><rect x="10.5" y="6" width="3" height="10" rx="1"/>' \
-       '<rect x="15" y="9" width="3" height="7" rx="1"/><rect x="6" y="17.5" width="12" height="3" rx="1.2"/></g>'
+#: The Numbers look, flat: a green rounded tile with three white bars standing on a white base line.
+BARS = ('<g fill="#FFFFFF"><rect x="6.4" y="12.4" width="3.4" height="4.8" rx="1.3"/><rect x="10.4" y="5" width="3.6" height="12.2" rx="1.3"/>'
+        '<rect x="14.6" y="8.6" width="3.4" height="8.6" rx="1.3"/><rect x="6.4" y="18.4" width="11.6" height="1.6" rx="0.8"/></g>')
 #: The Excel picture: a sheet of tiles in two columns and four rows (darker towards the bottom) behind a box with an X.
 EXCEL = ('<rect x="6.8" y="2.6" width="7.6" height="4.3" fill="#31925B"/><rect x="14.4" y="2.6" width="7.6" height="4.3" fill="#72C98F"/>'
          '<rect x="6.8" y="6.9" width="7.6" height="4.8" fill="#2F8A57"/><rect x="14.4" y="6.9" width="7.6" height="4.8" fill="#56A877"/>'
@@ -26,10 +27,11 @@ EXCEL = ('<rect x="6.8" y="2.6" width="7.6" height="4.3" fill="#31925B"/><rect x
 #: A white page with a folded corner; the pictures below go in its middle.
 PAGE = ('<path d="M5 3h9l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#FFFFFF" stroke="#B8B8B8" stroke-width="1"/>'
         '<path d="M14 3v5h5" fill="#E4E4E4" stroke="#B8B8B8" stroke-width="1"/>')
-LETTER_L = ('<path d="M13.6 7.6C11.6 6.9 10.3 8.6 11.1 11 12 13.6 12.3 16.1 10.4 16.9 9.2 17.3 8.9 16 10 15.6 11.8 15 14 16.7 16.2 15.2" '
-            'stroke="#1E9AA8" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
-TILES = {"numbers": ("#2FA84F", BARS)}                         # a coloured tile behind a picture
-PAGES = {"libreoffice": LETTER_L, "csv": "CSV"}                # a page with a picture or a word in the middle
+TEXT = "#555555"                                               # the colour of the words and letters on a page
+LETTER_L = ('<path d="M12.5 6.2 12.4 13.4C12.3 16 10.6 17.3 8.8 16.8 7.2 16.3 7.6 14.2 9.6 14.6 11.4 15 13.4 16.4 16.6 15.6" '
+            f'stroke="{TEXT}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
+TILES = {"numbers": ("#3E8E2F", BARS)}                         # a coloured tile behind a picture
+PAGES = {"libreoffice": LETTER_L}                              # a page with a picture in the middle
 EXTENSIONS = {".xlsx": "excel", ".xlsm": "excel", ".xls": "excel", ".numbers": "numbers", ".ods": "libreoffice",
               ".csv": "csv", ".tsv": "csv"}
 
@@ -54,11 +56,10 @@ def svg_for(name: str, program: str = "") -> str:
         body = f'<rect x="2" y="2" width="20" height="20" rx="5" fill="{colour}"/>{art}'
     else:
         middle = PAGES.get(kind, "")
-        if middle == "CSV" or not middle:
-            word = "CSV" if middle else os.path.splitext(name)[1].lstrip(".").upper()[:4]
-            y, size = (14.6, 5.2) if middle else (16.5, 6)
-            middle = (f'<text x="12" y="{y}" font-size="{size}" font-weight="700" text-anchor="middle" fill="#555555" '
-                      f'font-family="Helvetica,Arial,sans-serif">{escape(word)}</text>' if word else "")
+        word = "CSV" if kind == "csv" else os.path.splitext(name)[1].lstrip(".").upper()[:4]       # (all words are the same size)
+        if not middle and word:
+            middle = (f'<text x="12" y="16.5" font-size="6" font-weight="700" text-anchor="middle" fill="{TEXT}" '
+                      f'font-family="Helvetica,Arial,sans-serif">{escape(word)}</text>')
         body = PAGE + middle
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>'
 

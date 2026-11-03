@@ -25,6 +25,11 @@ class TestFileIcons(unittest.TestCase):
         self.assertIn("#FFFFFF", svg)
         self.assertEqual(kind_for("notes.wxyz"), "")
 
+    def test_csv_text_is_the_same_size_as_the_fallback_text(self):
+        import re
+        size = lambda svg: re.search(r'font-size="([\d.]+)"', svg).group(1)
+        self.assertEqual(size(svg_for("a.csv")), size(svg_for("a.txt")))
+
     def test_csv_is_a_page_with_csv_in_the_middle_and_libreoffice_a_page_with_an_l(self):
         self.assertIn(">CSV<", svg_for("a.csv"))
         self.assertIn("<path", svg_for("a.ods"))
@@ -32,8 +37,8 @@ class TestFileIcons(unittest.TestCase):
 
     def test_numbers_is_a_tile_with_bars_and_a_line_under_them(self):
         svg = svg_for("a.numbers")
-        self.assertIn("#2FA84F", svg)
-        self.assertIn('height="3"', svg)
+        self.assertIn("#3E8E2F", svg)
+        self.assertNotIn("gradient", svg.lower())
 
     def test_excel_has_no_word_in_it(self):
         self.assertNotIn("<text", svg_for("a.xlsx"))

@@ -94,6 +94,14 @@ class TestNumbersDocumentsReportedByNameOnly(unittest.TestCase):
         self.assertEqual([(f.name, f.path, f.app) for f in files], [("Apparel Inventory.xlsx", str(path), "Numbers")])
         self.assertFalse(any("mdfind" in " ".join(c) for c in runner.calls))
 
+    def test_a_second_document_is_found_beside_the_active_file_without_spotlight(self):
+        active = make_file(self.dir.name, "Apparel Inventory SAMPLE.xlsx")
+        other = make_file(self.dir.name, "Apparel Inventory.xlsx")
+        h, runner = self.hosts("Apparel Inventory SAMPLE\t\nApparel Inventory\t\n")
+        files = h.open_files(prefer=(str(active),))
+        self.assertEqual([f.path for f in files], [str(active), str(other)])
+        self.assertFalse(any("mdfind" in " ".join(c) for c in runner.calls))
+
     def test_another_file_is_found_with_spotlight_and_the_newest_copy_wins(self):
         old = make_file(self.dir.name, "stock.xlsx")
         new_dir = pathlib.Path(self.dir.name) / "newer"
