@@ -496,7 +496,13 @@ class SidePanel(QFrame):
         scroll = self.stack.currentWidget()
         if not isinstance(scroll, QScrollArea) or scroll.widget() is None:
             return 0
-        return self.height() - scroll.viewport().height() + scroll.widget().minimumSizeHint().height()
+        page = scroll.widget()
+        wanted = page.minimumSizeHint().height()
+        layout = page.layout()
+        if layout is not None and layout.hasHeightForWidth():             # (wrapped text needs more height when it is narrow)
+            margins = layout.contentsMargins()
+            wanted = max(wanted, layout.minimumHeightForWidth(scroll.viewport().width()) + margins.top() + margins.bottom())
+        return self.height() - scroll.viewport().height() + wanted
 
     def set_native_header(self, native: bool) -> None:
         """The title bar draws the panel's title, "…" and X, so the ones inside the panel are hidden."""

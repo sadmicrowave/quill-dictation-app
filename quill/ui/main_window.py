@@ -748,6 +748,7 @@ class MainWindow:
             panel.setVisible(width > 0)
             self._on_panel_width(width)
             self._keep_minimum()
+            QTimer.singleShot(60, self._window, self._keep_minimum)             # (again once the panel has been laid out: its page decides the height)
 
         if not animate:
             panel.setFixedWidth(width)
