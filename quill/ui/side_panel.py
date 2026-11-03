@@ -533,7 +533,7 @@ class SidePanel(QFrame):
             value = ElidedLabel("")                              # the value is plain text, on one line
             value.setProperty("panelValue", True)
             value.setMinimumWidth(10)
-            middle = Qt.AlignmentFlag.AlignVCenter if name == "Sheet" else Qt.AlignmentFlag.AlignTop      # (the Sheet row is as tall as its icon)
+            middle = Qt.AlignmentFlag.AlignVCenter if name in ("Sheet", "Type") else Qt.AlignmentFlag.AlignTop      # (these rows are as tall as their icon)
             table.addWidget(label, row, 0, middle)
             if name == "Type":                                   # the file type's mini icon sits before its text
                 self.type_icon = QLabel()
