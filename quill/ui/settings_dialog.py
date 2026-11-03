@@ -677,12 +677,12 @@ class SettingsDialog:
         self.sheet_spin.setRange(*SHEET_CHECK_RANGE)
         self.sheet_spin.setValue(int(prefs["sheet_check_seconds"]))
         self.sheet_spin.setSuffix(" seconds")
-        self.sheet_spin.setSpecialValueText("Off")
-        self.sheet_spin.setToolTip("How often Quill asks the spreadsheet program which sheet is open.")
-        self._add("General", page, "Check for Sheet Changes",
-                  "How often Quill looks at which sheet is open in your spreadsheet program, so rows go to the sheet you are on "
-                  "(0 to 600; Off stops the checking). The refresh icon beside Sheet in the Files panel checks at once.",
-                  self.sheet_spin, "sheet tab active poll refresh interval seconds")
+        self.sheet_spin.setToolTip("How often Quill looks at your spreadsheet programs.")
+        self._add("General", page, "Check for Changes",
+                  "How often Quill looks at your spreadsheet programs, all in one check: which files are open, whether the file "
+                  "it is working on was closed, and which sheet is open, so rows go to the sheet you are on (5 to 600 seconds). "
+                  "The refresh icons in the Files panel check at once.",
+                  self.sheet_spin, "check changes sheet tab active file closed poll refresh interval seconds")
         self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)
         self.history_spin.setValue(int(prefs["history_limit"]))

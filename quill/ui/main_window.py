@@ -1276,7 +1276,7 @@ class MainWindow:
         has = bool(self._workbook_name)
         sheet = f"\nSheet: {self._sheet_name}" if has and self._sheet_name else ""
         tip = (f"{self._workbook_name}{sheet}" if has
-               else "Open File\nWork on an .xlsx or .csv file directly (no spreadsheet program needed)")
+               else "Open File\nChoose an .xlsx or .csv file for Quill to fill in.")
         self.open_file_button.setToolTip(tip)
         color = self._text_color
         if not has:

@@ -291,7 +291,7 @@ class FakeHosts(SpreadsheetHosts):
         super().__init__("darwin", lambda args: "")
         self.files, self.launched = list(files), []
 
-    def open_files(self, excel_files=None, prefer=()):
+    def open_files(self, excel_files=None, prefer=(), running=None):
         return list(self.files)
 
     def launch(self, path, program="auto"):
@@ -341,9 +341,9 @@ class TestPanelInTheApp(PanelApp):
         self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Numbers")]
         self.app.window.toggle_panel(FILE_PAGE)
         self.assertEqual(self.app.window.panel.available_names(), ["plants.xlsx", "other.xlsx"])      # (the active one first)
-        self.assertTrue(self.app._panel_timer.isActive())
+        self.assertTrue(self.app._watcher.isActive())                      # (the one check loop keeps the list current)
         self.app.window.toggle_panel(FILE_PAGE)
-        self.assertFalse(self.app._panel_timer.isActive())
+        self.assertTrue(self.app._watcher.isActive())
 
     def test_the_active_file_is_in_the_list_first_and_marked_active_and_clicking_it_changes_nothing(self):
         self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Numbers"), OpenFile("plants.xlsx", str(self.plants), "Numbers")]
@@ -398,6 +398,8 @@ class TestPanelInTheApp(PanelApp):
             self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]   # opened again in the program
             self.app.refresh_open_files()
             self.app.poll_workbooks()
+            self.assertFalse(self.app.connected)                                       # it waits for the user to choose
+            self.assertTrue(self.app.open_workbook_file(self.plants))                  # ... who picks it again
             self.assertTrue(self.app.connected)
 
     def test_a_file_that_is_no_longer_open_anywhere_is_not_listed(self):
@@ -410,14 +412,24 @@ class TestPanelInTheApp(PanelApp):
             self.app.refresh_open_files(manual=True)
             self.assertEqual(self.app.window.panel.available_names(), [])
 
-    def test_the_timer_waits_for_a_second_missed_look_before_calling_the_window_closed(self):
+    def test_a_file_that_was_never_seen_open_is_kept_for_start_to_open(self):
         with mock.patch.dict("os.environ"):
             os.environ.pop("QUILL_NO_HOSTS", None)
             self.hosts.files = []
+            self.app.refresh_open_files(manual=True)
+            self.assertTrue(self.app.connected)                         # (remembered from the last run, not open yet)
+
+    def test_a_look_that_could_not_ask_says_nothing_about_a_closed_file(self):
+        with mock.patch.dict("os.environ"):
+            os.environ.pop("QUILL_NO_HOSTS", None)
+            self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
             self.app.refresh_open_files()
+            self.hosts.files, self.hosts.last_look_complete = [], False        # a time-out: nothing was heard
+            self.app.refresh_open_files(manual=True)
             self.assertTrue(self.app.connected)
+            self.hosts.last_look_complete = True                               # now it answered, and the file is not open
             self.app.refresh_open_files()
-            self.assertFalse(self.app.connected)
+            self.assertFalse(self.app.connected)                               # one clean look is enough, timer or not
 
     def test_the_active_file_is_listed_even_when_no_program_reported_it(self):
         self.hosts.files = []
@@ -1294,15 +1306,16 @@ class TestLockedFilesInTheApp(PanelApp):
 
 
 class TestAvailableFilesRefresh(PanelApp):
-    def test_the_list_polls_every_30_seconds_while_the_file_page_shows(self):
-        from quill.app import OPEN_FILES_EVERY_MS
-        self.assertEqual(OPEN_FILES_EVERY_MS, 30_000)
-        self.assertEqual(self.app._panel_timer.interval(), 30_000)
+    def test_the_list_is_kept_current_by_the_one_check_loop_every_10_seconds(self):
+        self.assertEqual(self.app._watcher.interval(), 10_000)
+        self.assertTrue(self.app._watcher.isActive())
+        self.assertFalse(hasattr(self.app, "_panel_timer"))                 # (no second loop for the list)
+        self.assertFalse(hasattr(self.app, "_sheet_timer"))
 
     def test_the_refresh_icon_looks_again_at_once(self):
         button = self.app.window.panel.refresh_button
         self.assertFalse(button.icon().isNull())
-        self.assertIn("every 30 seconds", button.toolTip())
+        self.assertIn("every 10 seconds", button.toolTip())
         self.app._open_files_busy = False
         with mock.patch.object(self.app, "run_in_background") as run:
             button.click()
@@ -2421,8 +2434,8 @@ class TestFileMustBeOpenToBeSeen(PanelApp):
         self.assertEqual(self.hosts.launched, [str(self.plants.resolve())])
 
     def test_start_works_once_the_file_is_listed_as_open(self):
-        self.app._open_files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
-        self.app.toggle_listening(True)
+        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.app.toggle_listening(True)                                      # (a fresh look first, then it starts)
         self.assertTrue(self.app.controller.session.listening)
 
     def test_a_running_program_does_not_count_unless_it_has_this_file(self):
@@ -2430,12 +2443,16 @@ class TestFileMustBeOpenToBeSeen(PanelApp):
         self.assertFalse(self.app._viewer_open())                           # (some other program is running: not enough)
 
     def test_a_program_that_reports_its_documents_by_name_only_counts_when_it_has_the_file(self):
+        from quill.bridge.hosts import NUMBERS
+        self.hosts.running = lambda: [NUMBERS]
         self.app.mirror = NoMirror(has=True)
         self.app.refresh_open_files()
         self.assertTrue(self.app._viewer_open())
         self.assertEqual([(f.name, f.app) for f in self.app._open_files], [("plants.xlsx", "Numbers")])
 
     def test_libreoffice_is_asked_too(self):
+        from quill.bridge.hosts import LIBREOFFICE
+        self.hosts.running = lambda: [LIBREOFFICE]
         self.app.lo_mirror = NoMirror(has=True)
         self.app.refresh_open_files()
         self.assertEqual([f.app for f in self.app._open_files], ["LibreOffice"])
@@ -3266,11 +3283,11 @@ class TestStartWaitsForTheFileThenListens(PanelApp):
 
 
 class TestWhichSheetIsOpen(PanelApp):
-    """The refresh icon beside Sheet, and the 30-second look, find out which sheet the spreadsheet program is on."""
+    """The refresh icon beside Sheet, and the check loop, find out which sheet the spreadsheet program is on."""
 
     def setUp(self):
         super().setUp()
-        self.app._open_files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]       # (what the look finds open)
         self.app.mirror = NoMirror(has=True, sheet="Config")
 
     def test_a_sheet_the_program_is_on_becomes_the_sheet_quill_writes_to(self):
@@ -3298,17 +3315,15 @@ class TestWhichSheetIsOpen(PanelApp):
         self.app.refresh_active_sheet(quiet=True)
         self.assertEqual(self.app.window.log.toPlainText(), before)
 
-    def test_it_looks_every_30_seconds_by_default_and_the_setting_changes_or_stops_it(self):
-        self.assertEqual(self.app._sheet_timer.interval(), 30_000)
-        self.assertTrue(self.app._sheet_timer.isActive())
-        self.assertIn("every 30 seconds", self.app.window.panel.sheet_refresh_button.toolTip())
+    def test_it_looks_every_10_seconds_by_default_and_the_setting_changes_the_one_loop(self):
+        self.assertEqual(self.app._watcher.interval(), 10_000)
+        self.assertTrue(self.app._watcher.isActive())
+        self.assertIn("every 10 seconds", self.app.window.panel.sheet_refresh_button.toolTip())
+        self.assertIn("every 10 seconds", self.app.window.panel.refresh_button.toolTip())
         self.settings.preferences["sheet_check_seconds"] = 90
         self.app.apply_settings(quiet=True)
-        self.assertEqual(self.app._sheet_timer.interval(), 90_000)
-        self.settings.preferences["sheet_check_seconds"] = 0
-        self.app.apply_settings(quiet=True)
-        self.assertFalse(self.app._sheet_timer.isActive())
-        self.assertIn("does not check by itself", self.app.window.panel.sheet_refresh_button.toolTip())
+        self.assertEqual(self.app._watcher.interval(), 90_000)
+        self.assertTrue(self.app._watcher.isActive())                       # (it cannot be switched off)
 
     def test_the_icon_is_on_the_sheet_row_at_the_right_and_only_with_a_file(self):
         panel = self.app.window.panel
@@ -3330,15 +3345,16 @@ class TestWhichSheetIsOpen(PanelApp):
         self.app.refresh_active_sheet(quiet=True)
         self.assertEqual(asked, [])
 
-    def test_the_settings_row_is_a_number_with_off_at_zero(self):
+    def test_the_settings_row_is_a_number_from_5_to_600_and_cannot_be_off(self):
         from quill.ui.settings_dialog import SettingsDialog
         d = SettingsDialog(self.settings)
         d.build()
-        self.assertEqual(d.sheet_spin.value(), 30)
+        self.assertEqual(d.sheet_spin.value(), 10)
+        self.assertEqual((d.sheet_spin.minimum(), d.sheet_spin.maximum()), (5, 600))
         d.sheet_spin.setValue(0)
-        self.assertEqual(d.sheet_spin.text(), "Off")
+        self.assertEqual(d.sheet_spin.value(), 5)
         d._store_preferences()
-        self.assertEqual(self.settings.preferences["sheet_check_seconds"], 0)
+        self.assertEqual(self.settings.preferences["sheet_check_seconds"], 5)
 
 
 class TestSheetRowLinesUp(unittest.TestCase):

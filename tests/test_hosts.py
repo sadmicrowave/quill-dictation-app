@@ -174,7 +174,8 @@ class TestReload(unittest.TestCase):
     def test_numbers_is_asked_to_reload_the_saved_file(self):
         runner = FakeRunner({"osascript": "ok\n"})
         self.assertTrue(SpreadsheetHosts("darwin", runner).reload(NUMBERS, '/a/"b".xlsx'))
-        self.assertIn('/a/\\"b\\".xlsx', runner.calls[0][-1])
+        self.assertEqual(runner.calls[0][-1], '/a/"b".xlsx')                   # the path is an argument, never part of the script
+        self.assertNotIn('"b"', runner.calls[0][2])
 
     def test_a_failed_script_reports_false(self):
         self.assertFalse(SpreadsheetHosts("darwin", FakeRunner({"osascript": "no"})).reload(NUMBERS, "/a.xlsx"))

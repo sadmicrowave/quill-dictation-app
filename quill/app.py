@@ -12,6 +12,7 @@ delivers on the GUI thread, so no widget is touched off-thread.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 import os
 import pathlib
 import threading
@@ -25,7 +26,7 @@ from PySide6.QtWidgets import QApplication
 from quill.assets import app_icon
 from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
-from quill.bridge.hosts import HostApp, OpenFile, SpreadsheetHosts
+from quill.bridge.hosts import APPS as HOST_APPS, HostApp, OpenFile, SpreadsheetHosts
 from quill.bridge.libreoffice_mirror import LibreOfficeMirror
 from quill.bridge.numbers_mirror import MirrorResult, NumbersMirror
 from quill.bridge.csv_bridge import CsvBridge
@@ -117,14 +118,22 @@ log = logging.getLogger("quill.app")
 #: How long after the last write the program showing the file is asked to reload it, and how many
 #: watcher ticks pass between looks for a file open in another spreadsheet program.
 HOST_RELOAD_MS = 1500
-HOST_PROBE_EVERY = 3
+@dataclass
+class Look:
+    """What one look at the spreadsheet programs found (made off the GUI thread, applied on it)."""
+
+    files: list[OpenFile]
+    sheet: str | None            # the sheet open now in the active file, when a program said so
+    complete: bool               # every question was answered (an empty answer then really means "nothing open")
+    bridge: object               # the bridge it looked for: a result for a bridge that was swapped meanwhile is dropped
+    names: list[str] | None      # the workbooks the bridge reports open (Excel's, or the file's own); None: it could not say
+
+
 #: Logged once the speech model is loaded and a spreadsheet is connected.
 READY_NOTE = "Speech model ready. The microphone is off until you press Start."
 #: How often (ms) held changes (the file was in use by another program) are tried again; after this many failed tries a copy is saved.
 FLUSH_EVERY_MS = 5000
 FLUSH_COPY_AFTER = 3
-#: How often (ms) the side panel looks again for spreadsheets other programs have open, while it is showing.
-OPEN_FILES_EVERY_MS = 30000
 #: How long after start-up (ms) the system's file window is warmed up (see FileDialogWarmer).
 FILE_DIALOG_WARM_MS = 2500
 
@@ -146,14 +155,11 @@ class QuillApp:
         model_downloader: ``(dest_dir, progress[, spec]) -> Path``; tests inject a fake.
         better_finder: ``() -> Path | None``, the larger speech model if it is installed; tests inject a fake.
         speaker: Speaker to use (default: platform TTS honouring settings).
-        poll_interval_ms: How often to look for workbooks being opened/closed.
+        poll_interval_ms: How often the one check loop runs (None: the ``sheet_check_seconds`` setting).
     """
 
     #: How long after asking to quit the event loop is forced to end if something still holds it (0 = never; tests).
     quit_failsafe_ms = 1500
-
-    #: Default polling period of the workbook watcher.
-    POLL_INTERVAL_MS = 3000
 
     def __init__(
         self,
@@ -169,7 +175,7 @@ class QuillApp:
         whisper_engine: Callable[[], bool] = engine_available,
         refiner_factory: Callable = WhisperRefiner,
         speaker: Speaker | None = None,
-        poll_interval_ms: int = POLL_INTERVAL_MS,
+        poll_interval_ms: int | None = None,
         sound_player: Callable | None = None,
         echo_speaker=None,
         clips: SpokenClips | None = None,
@@ -189,21 +195,18 @@ class QuillApp:
         self.lo_mirror = lo_mirror or LibreOfficeMirror()      # ... and in an open LibreOffice Calc document
         self._mirror_warned = False
         self._lo_noted = False
-        self._probe_ticks = 0
         self._settings_dialog: SettingsDialog | None = None    # the open Settings window, if any
         self._model_busy, self._model_note = False, ""          # the speech model download, shown in Settings
         self._quitting = False
-        self._host_probe_running = False             # a look for files in other programs is under way
         self._ready_note_pending = False             # the model is ready but a warning is showing: the note waits for a connection
         self._open_files: list[OpenFile] = []        # spreadsheets other programs have open (the side panel's list)
-        self._open_files_busy = False
-        self._sheet_timer = QTimer()                    # asks which sheet is open in the spreadsheet program (see refresh_active_sheet)
-        self._sheet_timer.timeout.connect(self._sheet_tick)
-        self._sheet_busy = False
+        self._open_files_busy = False                # the check loop's look is under way (never two at once)
+        self._attach_paused = False                  # Quill let go of a closed file: it picks no other file by itself until one is chosen
+        self._seen_open = ""                           # the connected file's real path once a look found it open (see _check_link)
+        self._look_again: tuple[bool, bool, list] | None = None   # a look asked for meanwhile: (manual, announce, callbacks)
         self._launched_at: dict[str, float] = {}        # when a program was last asked to open each file (see _launch)
         self._start_wanted = False                      # Start was pressed while the file was not yet open in a program
         self._waiting_viewer = False
-        self._link_misses = 0                            # looks in a row that did not find the file open (see _check_link)
         self._viewer_looks = 0
         self._viewer_running = False
         self._host_noted = False
@@ -281,8 +284,9 @@ class QuillApp:
         self._flush_timer.setInterval(FLUSH_EVERY_MS)
         self._flush_timer.timeout.connect(self._flush_waiting)
         self._flush_failures = 0
-        self._watcher = QTimer()
-        self._watcher.setInterval(poll_interval_ms)
+        self._watcher = QTimer()                      # the ONE check loop: files, a closed file, the open sheet (see poll_workbooks)
+        self._watcher.setInterval(poll_interval_ms if poll_interval_ms is not None
+                                  else int(self.settings.preferences["sheet_check_seconds"]) * 1000)
         self._watcher.timeout.connect(self.poll_workbooks)
 
         self.relay.transcript.connect(self._on_phrase_heard)        # first: show the words before they are acted on
@@ -343,7 +347,7 @@ class QuillApp:
         self._use_best_installed()
         self._start_listener()
         self._watcher.start()
-        self._restart_sheet_timer()
+        self._restart_check_timer()
         QTimer.singleShot(FILE_DIALOG_WARM_MS, self._warm_file_dialog)
         self._flush_timer.start()
         QTimer.singleShot(0, self._warm_up_sounds)           # after the window is up: load every sound, make spoken clips
@@ -368,6 +372,7 @@ class QuillApp:
             self.window.set_not_connected(True)
             return
         self.connected = True
+        self._attach_paused = False
         self.window.update_workbooks(names, bridge.workbook_name)
         self.window.set_workbook_path(bridge.workbook_path, self._active_kind())
         self._show_open_files()
@@ -387,19 +392,22 @@ class QuillApp:
         self.settings.preferences["last_workbook"] = bridge.workbook_name
         self.settings.save()
         self._remember_mtime()
-        QTimer.singleShot(600, lambda: self.refresh_active_sheet(quiet=True))        # which sheet is the program on right now?
+        QTimer.singleShot(600, self.refresh_open_files)        # which sheet is the program on right now? (one look)
 
     def poll_workbooks(self) -> None:
-        """Watcher tick: attach when a workbook appears, detach when it closes.
+        """The tick of the one check loop (every ``sheet_check_seconds``): attach when a workbook appears, detach when it
+        closes, and take ONE look at the spreadsheet programs (:meth:`refresh_open_files`) that serves the Available Files
+        list, a closed file and the open sheet together.
 
-        This is what makes "just open a spreadsheet and start talking" work:
-        Quill need not be told which workbook; it notices.
+        This is what makes "just open a spreadsheet and start talking" work: Quill need not be told which workbook; it
+        notices.
         """
+        self.refresh_open_files()
+
+    def _poll_local(self, names: list[str]) -> None:
+        """Apply the workbook names the look found: attach a workbook that appeared, detach one that closed, and re-read a
+        file that changed on disk. (The names are asked off the GUI thread, with the look.)"""
         bridge = self.controller.bridge
-        try:
-            names = bridge.open_workbooks()
-        except BridgeError:
-            names = []   # Excel not running
         if self.connected:
             if bridge.workbook_name in names:
                 self._check_workbook_changes()
@@ -413,10 +421,6 @@ class QuillApp:
             self.window.update_workbooks([])
             self.window.append_log(f"'{closed}' was closed.")
             self.window.set_not_connected(True)
-        if not names and not self.connected:
-            self._attach_host_file()
-            if self.connected:
-                return
         if names and not self.connected and self._released_file(bridge):
             names = []                  # (the file's window was closed: it is not attached again just because the file exists)
         if names and not self.connected:
@@ -446,33 +450,6 @@ class QuillApp:
             self.relay.background_done.emit(done, result)
 
         threading.Thread(target=target, name="quill-background", daemon=True).start()
-
-    def _attach_host_file(self) -> None:
-        """No Excel workbook is open: if another spreadsheet program has an Excel file open, work on that file.
-
-        Looks every few ticks only, never while a previous look is still running, and never when the user
-        chose a program in the settings or is already working on a file.
-        """
-        if isinstance(self.controller.bridge, XlsxBridge) or self._host_probe_running or \
-                str(self.settings.preferences["spreadsheet_app"]) not in ("auto", ""):
-            return
-        self._probe_ticks += 1
-        if self._probe_ticks % HOST_PROBE_EVERY != 1:
-            return
-        self._host_probe_running = True
-        self.run_in_background(self.hosts.open_excel_files, self._open_host_file)
-
-    def _open_host_file(self, found) -> None:
-        """A look for files open in other spreadsheet programs finished: work on the first one found."""
-        self._host_probe_running = False
-        if not found or self.connected or isinstance(self.controller.bridge, XlsxBridge):
-            return
-        for host_app, path in found:
-            if self.open_workbook_file(path, remember=False):
-                self._host = host_app
-                log.info("working on %s, open in %s", path.name, host_app.name)
-                self.window.append_log(f"Found {path.name} open in {host_app.name}: working on it directly.")
-                return
 
     def _mirror_everywhere(self, path: str, changes: list) -> MirrorResult:
         """Show the written cells in the program that has the file open, as each turn ends.
@@ -591,22 +568,18 @@ class QuillApp:
     # Which sheet is open                                                  #
     # ------------------------------------------------------------------ #
 
-    def _restart_sheet_timer(self) -> None:
-        """Check for a changed sheet every ``sheet_check_seconds`` (30 by default; 0 turns it off) and say so on the refresh icon."""
+    def _restart_check_timer(self) -> None:
+        """Run the one check loop every ``sheet_check_seconds`` (the timer is only touched when the interval changed, so
+        tweaking other settings never postpones a check) and say so on the refresh icons."""
         seconds = int(self.settings.preferences["sheet_check_seconds"])
-        if seconds > 0:
-            self._sheet_timer.start(seconds * 1000)
-        else:
-            self._sheet_timer.stop()
+        if int(self._watcher.interval()) != seconds * 1000 or not self._watcher.isActive():
+            self._watcher.start(seconds * 1000)
         panel = getattr(self.window, "panel", None)
         if panel is not None:
             panel.sheet_refresh_button.setToolTip(
-                "Look at which sheet is open in the spreadsheet program now. "
-                + (f"Quill also checks every {seconds} seconds." if seconds > 0 else "Quill does not check by itself (see Settings)."))
-
-    def _sheet_tick(self) -> None:
-        if self.connected and not self._sheet_busy:
-            self.refresh_active_sheet(quiet=True)
+                f"Look at which sheet is open in the spreadsheet program now. Quill also checks every {seconds} seconds.")
+            panel.refresh_button.setToolTip(
+                f"Look for open spreadsheets now. The list also refreshes every {seconds} seconds.")
 
     def _program_holding(self, path: str) -> str:
         """``"numbers"``, ``"libreoffice"`` or ``""``: which program the last look at what is open found *path* in."""
@@ -614,35 +587,9 @@ class QuillApp:
         return "libreoffice" if "libre" in known else "numbers" if "numbers" in known else ""
 
     def refresh_active_sheet(self, quiet: bool = False) -> None:
-        """Ask the spreadsheet program which sheet is open and, if it is another sheet, go to it: its field words are loaded
-        and the next rows are written there. One small question, off the GUI thread (Excel is read live, so it is only
-        compared). *quiet*: for the timer, nothing is logged unless the sheet changed."""
-        bridge = self.controller.bridge
-        if not self.connected or self._sheet_busy:
-            return
-        path = bridge.workbook_path if isinstance(bridge, XlsxBridge) and not isinstance(bridge, CsvBridge) else ""
-        known = self._program_holding(path) if path else ""
-        self._sheet_busy = True
-
-        def ask() -> str | None:
-            if not path:
-                return None
-            order = {"libreoffice": [self.lo_mirror], "numbers": [self.mirror]}.get(known, [self.mirror, self.lo_mirror])
-            for mirror in order:
-                sheet = mirror.active_sheet(path)
-                if sheet:
-                    return sheet
-            return None
-
-        def done(sheet: object) -> None:
-            self._sheet_busy = False
-            if path and not isinstance(sheet, str):                     # no answer: has the window been closed?
-                self.refresh_open_files(manual=not quiet)
-                if not quiet:
-                    return
-            self._apply_sheet(sheet if isinstance(sheet, str) else None, quiet)
-
-        self.run_in_background(ask, done)
+        """The refresh icon beside Sheet: take the check loop's look now and say which sheet is open (*quiet*: say nothing
+        unless the sheet changed). There is no separate sheet timer: the sheet is part of the same look."""
+        self.refresh_open_files(manual=not quiet, announce=not quiet)
 
     def _apply_sheet(self, sheet: str | None, quiet: bool) -> None:
         bridge = self.controller.bridge
@@ -867,9 +814,23 @@ class QuillApp:
     # User actions                                                         #
     # ------------------------------------------------------------------ #
 
-    def toggle_listening(self, active: bool) -> None:
-        """Open or close the listening gate (button, tray, or menu)."""
-        if active and not self.connected:
+    def _needs_fresh_look(self) -> bool:
+        """Is the connected file one whose window could have been closed since the last look (so it must be checked before
+        the microphone opens)?"""
+        bridge = self.controller.bridge
+        return (self.connected and isinstance(bridge, XlsxBridge) and bool(bridge.workbook_path)
+                and not os.environ.get("QUILL_NO_HOSTS"))
+
+    def toggle_listening(self, active: bool, _checked: bool = False) -> None:
+        """Open or close the listening gate (button, tray, or menu).
+
+        Starting first takes a fresh look at the spreadsheet programs (a fraction of a second): if the file's window was
+        closed since the last look, Quill lets go of it instead of recording rows into a file nobody is looking at.
+        """
+        if active and not _checked and self._needs_fresh_look():
+            self.refresh_open_files(manual=True, then=lambda: self.toggle_listening(True, _checked=True))
+            return
+        if active and not self.connected and not self._released_file(self.controller.bridge):
             self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None,
                                   quiet=True)
             if not self.connected:                  # nothing to fill in yet: the Files panel opens, to pick or choose a file
@@ -1009,7 +970,7 @@ class QuillApp:
             self.settings.preferences["workbook_file"] = str(path)
             self.settings.save()
         self.window.set_file_mode(True)
-        self.window.append_log(f"Working directly on the file {path.name} (no spreadsheet program needed)")
+        self.window.append_log(f"Working on the file {path.name}")
         return True
 
     # ------------------------------------------------------------------ #
@@ -1035,9 +996,6 @@ class QuillApp:
         panel.keywords_requested.connect(lambda: self.open_settings("Keywords"))
         self._sync_turn_panel()
         self.window.set_panel_listener(self._panel_toggled, self._panel_width)
-        self._panel_timer = QTimer()                 # while the panel is open, keep its list of open spreadsheets current
-        self._panel_timer.setInterval(OPEN_FILES_EVERY_MS)
-        self._panel_timer.timeout.connect(self.refresh_open_files)
 
     def _flush_waiting(self) -> None:
         self._flush_held()
@@ -1122,35 +1080,78 @@ class QuillApp:
         self._panel_toggled_pages(page)
 
     def _panel_toggled_pages(self, page: str) -> None:
-        """The panel opened on *page* or closed (""): look for open spreadsheets only while the file page shows."""
+        """The panel opened on *page* or closed (""): the file page takes a fresh look at what is open."""
         if page == FILE_PAGE:
-            self.refresh_open_files()
-            self._panel_timer.start()
-        else:
-            self._panel_timer.stop()
+            self.refresh_open_files()                                  # (the list is kept current by the one check loop)
         if page == TURN_PAGE:
             self._sync_turn_panel()
 
     def _scan_open_files(self) -> list[OpenFile]:
         """Ask the running spreadsheet programs what they have open (runs off the GUI thread)."""
+        return self._scan().files
+
+    def _scan(self) -> Look:
+        """The one look at the spreadsheet programs, off the GUI thread (see :class:`Look`).
+
+        Cost: one ``ps`` always; one ``osascript`` when Numbers runs (it names its documents, their files and their open
+        sheets in one answer); one LibreOffice job when LibreOffice holds the file; Excel's own list when Excel runs. Nothing
+        is started: a program that is not running is never asked.
+        """
         bridge = self.controller.bridge
+        active = getattr(bridge, "workbook_path", "") if isinstance(bridge, XlsxBridge) else ""
+        has_sheets = bool(active) and not isinstance(bridge, CsvBridge)
 
         def excel_files() -> list[tuple[str, str]]:
             live = bridge if hasattr(bridge, "open_workbook_files") else self._live_bridge_factory()
             return live.open_workbook_files()
 
-        self._viewer_running = bool(self.hosts.running())                 # (any spreadsheet program is running at all)
-        active = getattr(bridge, "workbook_path", "") if isinstance(bridge, XlsxBridge) else ""
-        found = self.hosts.open_files(excel_files, prefer=(active,) if active else ())
-        if active and not any(f.path and os.path.realpath(f.path) == os.path.realpath(active) for f in found):
-            for name, mirror in (("Numbers", self.mirror), ("LibreOffice", self.lo_mirror)):          # these report imported documents
-                try:                                                                                  # by name only, so ask each
-                    if mirror.has_document(active):
-                        found.append(OpenFile(pathlib.Path(active).name, active, name))
+        running = self.hosts.running()
+        self._viewer_running = bool(running)                              # (any spreadsheet program is running at all)
+        found = self.hosts.open_files(excel_files, prefer=(active,) if active else (), running=running)
+        complete = bool(getattr(self.hosts, "last_look_complete", True))
+        sheet: str | None = None
+        if active:
+            wanted = os.path.realpath(active)
+            here = next((f for f in found if f.path and os.path.realpath(f.path) == wanted), None)
+            keys = {a.key for a in running}
+            if here is not None and here.sheet:
+                sheet = here.sheet
+            elif here is not None and has_sheets and ("libre" in here.app.lower() or "numbers" in here.app.lower()):
+                sheet = self._ask_mirror(self.lo_mirror if "libre" in here.app.lower() else self.mirror, active)
+            elif here is None:                                            # a program that did not list it may still hold it
+                for key, name, mirror in (("numbers", "Numbers", self.mirror), ("libreoffice", "LibreOffice", self.lo_mirror)):
+                    if key not in keys:
+                        continue
+                    if self._mirror_has(mirror, active):                       # (rare: only when no program listed it)
+                        answer = self._ask_mirror(mirror, active) if has_sheets else None
+                        found.append(OpenFile(pathlib.Path(active).name, active, name, sheet=answer or ""))
+                        sheet = answer
                         break
-                except Exception:                                                                     # (a helper never stops a scan)
-                    log.debug("could not ask %s", name, exc_info=True)
-        return found
+        try:
+            names: list[str] | None = bridge.open_workbooks()                # Excel's workbooks, or the file's own name
+        except BridgeError:
+            names = []                                                       # Excel not running
+        except Exception:                                                    # (a helper never stops a look)
+            log.debug("could not list the workbooks", exc_info=True)
+            names, complete = None, False
+        return Look(found, sheet, complete, bridge, names)
+
+    @staticmethod
+    def _ask_mirror(mirror, path: str) -> str | None:
+        """The sheet *mirror*'s program has open for *path* (None: not open there or no answer)."""
+        try:
+            return mirror.active_sheet(path)
+        except Exception:                                                  # (a helper never stops a look)
+            log.debug("could not ask a program for the open sheet", exc_info=True)
+            return None
+
+    @staticmethod
+    def _mirror_has(mirror, path: str) -> bool:
+        try:
+            return bool(mirror.has_document(path))
+        except Exception:
+            log.debug("could not ask a program for a document", exc_info=True)
+            return False
 
     def _viewer_open(self) -> bool:
         """Is the connected file open in a spreadsheet program the user can see?
@@ -1180,7 +1181,9 @@ class QuillApp:
         """Ask a program to open *path* (only if that was not just done), and keep Quill in front. True if it was asked."""
         if self._just_launched(path):
             return False
-        self._launched_at[os.path.realpath(path)] = time.monotonic()
+        now = time.monotonic()
+        self._launched_at = {k: t for k, t in self._launched_at.items() if now - t < self.JUST_LAUNCHED_S}   # (forget old ones)
+        self._launched_at[os.path.realpath(path)] = now
         ok = self.hosts.launch(path, str(self.settings.preferences["open_with"]))
         if ok:
             for delay in (400, 1500):                           # a program that starts slowly may still take the focus
@@ -1234,47 +1237,104 @@ class QuillApp:
             return
         QTimer.singleShot(self.VIEWER_LOOK_MS, self._viewer_look)
 
-    def refresh_open_files(self, manual: bool = False) -> None:
-        """Look again for spreadsheets open in other programs (never two looks at once). *manual*: a refresh icon was pressed,
-        so a closed spreadsheet is acted on at once instead of after a second look."""
+    def _window_alive(self) -> bool:
+        """Is the main window still there (it is gone while Quill quits, and a late timer or look must not touch it)?"""
+        widget = self.window.widget
+        return widget is not None and shiboken6.isValid(widget)
+
+    def refresh_open_files(self, manual: bool = False, announce: bool = False, then=None) -> None:
+        """Take the one look at the spreadsheet programs (never two at once; one asked for meanwhile runs right after).
+
+        It refreshes the Available Files list, lets go of the file if its window was closed, notices the program's open sheet
+        and, with no file, picks up a file another program has open. *manual*: a refresh icon or Start asked, so a closed
+        spreadsheet is acted on at once (a timer's look is trusted only when every question was answered anyway).
+        *announce*: say which sheet is open. *then*: called when the look is done (Start waits for it).
+        """
+        if self._quitting or not self._window_alive():
+            return                                                     # (a late timer after the window is gone)
         if self._open_files_busy:
+            queued = self._look_again or (False, False, [])
+            self._look_again = (queued[0] or manual, queued[1] or announce, queued[2] + ([then] if then else []))
             return
         self._open_files_busy = True
-        self.run_in_background(self._scan_open_files, lambda found: self._open_files_found(found, manual))
+        self.run_in_background(self._scan, lambda result: self._looked(result, manual, announce, [then] if then else []))
 
-    def _open_files_found(self, found: list[OpenFile] | None, manual: bool = False) -> None:
+    def _looked(self, result, manual: bool, announce: bool, thens: list) -> None:
+        """The look finished (on the GUI thread): apply what it found."""
         self._open_files_busy = False
-        if found is not None:
-            self._open_files = found
-            self._check_link(manual)
+        if self._quitting or not self._window_alive():
+            return
+        if isinstance(result, Look) and result.bridge is self.controller.bridge:     # (not for a bridge swapped meanwhile)
+            self._open_files = result.files
+            if result.names is not None:
+                self._poll_local(result.names)                                 # attach / detach / re-read a changed file
+            self._check_link(manual, result.complete)
+            if self.connected:
+                self._apply_sheet(result.sheet, quiet=not announce)
+            if not self.connected:
+                self._attach_found_file()
         self._attach_live_if_open_in_excel()
         self._show_open_files()
+        for callback in thens:
+            callback()
+        if self._look_again is not None:
+            queued, self._look_again = self._look_again, None
+            self.refresh_open_files(queued[0], queued[1], self._chain(queued[2]))
 
-    def _check_link(self, manual: bool = False) -> None:
+    @staticmethod
+    def _chain(callbacks: list):
+        """One callback that calls all of *callbacks* (None when there are none)."""
+        if not callbacks:
+            return None
+        return lambda: [callback() for callback in callbacks]
+
+    def _attach_found_file(self) -> None:
+        """With no file, work on the first ``.xlsx`` another spreadsheet program has open (unless a program was chosen in
+        the settings, or Quill already holds a file it let go of)."""
+        if (self._attach_paused or isinstance(self.controller.bridge, XlsxBridge)
+                or str(self.settings.preferences["spreadsheet_app"]) not in ("auto", "")):
+            return
+        for entry in self._open_files:
+            host_app = next((a for a in HOST_APPS if a.name == entry.app and not a.live), None)
+            if host_app is None or entry.live or not entry.path.lower().endswith(".xlsx") or not pathlib.Path(entry.path).is_file():
+                continue
+            if self.open_workbook_file(pathlib.Path(entry.path), remember=False):
+                self._host = host_app
+                log.info("working on %s, open in %s", entry.name, host_app.name)
+                self.window.append_log(f"Found {entry.name} open in {host_app.name}: working on it directly.")
+                return
+
+    def _check_link(self, manual: bool = False, complete: bool = True) -> None:
         """Notice that the connected file's spreadsheet window was closed (the link is dead) and let go of the file.
 
         Quill only writes to a file while it is open in a program, so a closed window means Quill goes back to how it
         starts: no active file (the Open File button), not listening, and the file back among the other files if it is
-        still open somewhere. A single look that misses it is not trusted unless a refresh icon asked (a program that is
-        busy may just be slow to answer).
+        still open somewhere. Only a file that was seen open is let go (a file remembered from the last run that no program has
+        open yet stays connected until Start opens it). The look must have been *complete* (every question answered): a program that is busy or slow
+        to answer gives an incomplete look, which says nothing about the file.
         """
         bridge = self.controller.bridge
         if not self.connected or self._waiting_viewer or not isinstance(bridge, XlsxBridge) or not bridge.workbook_path:
-            self._link_misses = 0
             return
-        if self._viewer_open() or self._just_launched(bridge.workbook_path):
-            self._link_misses = 0
+        wanted = os.path.realpath(bridge.workbook_path)
+        if self._viewer_open():
+            self._seen_open = wanted                                    # (it is open: a later look that misses it means it closed)
             return
-        self._link_misses += 1
-        if not manual and self._link_misses < 2:
-            return
-        self._link_misses = 0
+        if self._seen_open != wanted or not complete or self._just_launched(bridge.workbook_path):
+            return                                                      # (never seen open, e.g. just after start-up: Start opens it)
+        self._seen_open = ""
+        self._attach_paused = True                                      # (it waits for the user to choose, however many files are open)
         closed = bridge.workbook_name
         self.settings.preferences["workbook_file"] = ""             # (a restart starts with no file, like the first time)
         self.settings.save()
         self.controller.detach()
         self.connected = False
         self._set_listening(False)
+        try:
+            self.controller.bridge = self._live_bridge_factory()        # back to how Quill starts: no file, nothing to reattach
+            self.window.set_file_mode(False)
+        except NotImplementedError:
+            pass                                                        # (no live program here: _released_file keeps it let go)
         self.tray.set_workbook("", "")
         self.window.update_workbooks([])
         self.window.set_not_connected(True)
@@ -1612,7 +1672,7 @@ class QuillApp:
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
         self._apply_dock()
         self.sync_model_panel()
-        self._restart_sheet_timer()
+        self._restart_check_timer()
         quality = str(self.settings.preferences["speech_quality"])
         if quality != self._loaded_quality and self.listener is not None and self.quality_installed(quality):
             self._reload_listener()                          # the user chose the other speech model

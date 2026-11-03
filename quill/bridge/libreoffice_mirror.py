@@ -23,12 +23,15 @@ import logging
 import os
 import pathlib
 import subprocess
+import threading
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from quill.bridge.numbers_mirror import MirrorResult
+
+from quill.bridge.processes import running_executables
 
 log = logging.getLogger("quill.libreoffice")
 
@@ -170,6 +173,9 @@ def _system(args: list[str]) -> int:
 def _is_running(platform: str | None = None) -> bool:
     """Is LibreOffice running? (asked with ``ps`` / ``tasklist``, which need no permission)."""
     platform = platform or sys.platform
+    native = running_executables() if platform == sys.platform else None
+    if native is not None:                                          # the system's own list: no process is started
+        return bool(native & {"soffice", "soffice.bin"})
     try:
         if platform == "win32":
             out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=6, check=False).stdout.lower()  # noqa: S603, S607
@@ -200,6 +206,8 @@ class LibreOfficeMirror:
     wait_s: float = ANSWER_TIMEOUT_S
     installed_note: bool = False
     """True once Quill has put its script into the profile in this run (the app says so once)."""
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    """One job at a time: the job and answer files are shared, so a look and a write must not overlap."""
 
     # ------------------------------------------------------------------ #
 
@@ -261,16 +269,22 @@ class LibreOfficeMirror:
             return MirrorResult(False, "notrunning")                              # never start LibreOffice for this
         if not self.install():
             return MirrorResult(False, "noprofile")
+        with self._lock:                                                          # (a look and a write never share the files)
+            return self._job(soffice, path, changes, probe, want_sheet)
+
+    def _job(self, soffice: str, path: str | os.PathLike, job_changes: list, probe: bool, want_sheet: bool) -> MirrorResult:
         folder = self._dir()
+        temp = folder / "in.json.tmp"
         try:
             folder.mkdir(parents=True, exist_ok=True)
             answer = folder / "out.json"
             answer.unlink(missing_ok=True)
-            job = {"urls": file_addresses(path), "changes": [change_fields(*c) for c in changes], "probe": probe, "sheet": want_sheet}
-            temp = folder / "in.json.tmp"
+            job = {"urls": file_addresses(path), "changes": [change_fields(*c) for c in job_changes],
+                   "probe": probe, "sheet": want_sheet}
             temp.write_text(json.dumps(job), encoding="utf-8")
             os.replace(temp, folder / "in.json")
         except OSError as exc:
+            temp.unlink(missing_ok=True)
             return MirrorResult(False, "error", str(exc))
         try:
             return self._run_job(soffice, folder, answer)

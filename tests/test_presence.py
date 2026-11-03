@@ -100,6 +100,7 @@ class AppPresenceCase(PresenceCase):
                          listener_factory=lambda m, t, e: mock.Mock(),
                          model_finder=lambda c: self.dir, speaker=self.speaker)
         quill.tray.notify = mock.Mock()
+        quill.run_in_background = lambda work, done: done(work())            # a tick's look runs at once here (no helper thread)
         quill.start()
         return quill
 

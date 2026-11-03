@@ -578,7 +578,7 @@ class SidePanel(QFrame):
         heading_line = QHBoxLayout()
         heading_line.setContentsMargins(0, 0, 0, 0)
         heading_line.addWidget(_heading("Available Files"), 1)
-        self.refresh_button = self._chrome_button("Look for open spreadsheets now. The list also refreshes every 30 seconds.",
+        self.refresh_button = self._chrome_button("Look for open spreadsheets now. The list also refreshes by itself.",
                                                   "Refresh the List")
         self.refresh_button.clicked.connect(lambda: self.start_refresh(True))
         heading_line.addWidget(self.refresh_button, 0, Qt.AlignmentFlag.AlignVCenter)

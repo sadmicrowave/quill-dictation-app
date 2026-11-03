@@ -6,6 +6,7 @@ do not use it on a workbook that is open and unsaved in Excel.
 """
 
 from __future__ import annotations
+import logging
 import os
 import pathlib
 import subprocess
@@ -17,6 +18,10 @@ from quill.bridge.base import BridgeError, BridgeLockedError
 from quill.bridge.grid import OpenpyxlGrid
 from quill.bridge.grid_bridge import GridBridge
 from quill.bridge.introspect import ListSource, discover
+
+log = logging.getLogger("quill.xlsx")
+#: Seconds the system's ``open`` may take to hand a file over (it only asks; it never waits for the program).
+OPEN_TIMEOUT_S = 6
 
 #: Excel's limit for an inline validation list, in characters.
 INLINE_LIST_LIMIT = 255
@@ -70,8 +75,11 @@ class XlsxBridge(GridBridge):
         if sys.platform == "win32":
             os.startfile(str(self._path))   # type: ignore[attr-defined]
         else:
-            subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(self._path)],
-                           check=False)
+            try:
+                subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(self._path)],    # noqa: S603, S607
+                               check=False, timeout=OPEN_TIMEOUT_S, capture_output=True)
+            except (OSError, subprocess.SubprocessError) as exc:      # (it never hangs or raises: it only asks)
+                log.debug("could not open %s: %s", self._path, exc)
 
     def open_workbooks(self) -> list[str]:
         return [self._path.name] if self._path and self._path.exists() else []

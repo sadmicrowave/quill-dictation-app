@@ -23,6 +23,8 @@ log = logging.getLogger("quill.numbers")
 
 #: Seconds the AppleScript may take (Numbers can be busy opening a big file).
 TIMEOUT_S = 15
+#: Seconds a look (is the document open? which sheet?) may take: it repeats every few seconds, so it gives up sooner.
+QUERY_TIMEOUT_S = 5
 #: Separates the fields of one cell in an argument (never appears in cell text).
 FIELD = "\x1f"
 
@@ -172,10 +174,10 @@ class MirrorResult:
     detail: str = ""
 
 
-def _system(args: list[str]) -> tuple[int, str, str]:
-    """Run *args* (never through a shell) with a time limit."""
+def _system(args: list[str], timeout: float = TIMEOUT_S) -> tuple[int, str, str]:
+    """Run *args* (never through a shell) with a time limit (the child is killed and reaped when it runs out)."""
     try:
-        done = subprocess.run(args, capture_output=True, text=True, timeout=TIMEOUT_S, check=False)   # noqa: S603
+        done = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)   # noqa: S603
         return done.returncode, done.stdout, done.stderr
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
@@ -212,6 +214,7 @@ class NumbersMirror:
 
     def __init__(self, runner: Runner | None = None) -> None:
         self._run = runner or _system
+        self._ask = runner or (lambda args: _system(args, QUERY_TIMEOUT_S))      # the repeated looks
 
     @staticmethod
     def document_name(path: str | os.PathLike) -> str:
@@ -224,7 +227,7 @@ class NumbersMirror:
         """Does a running Numbers have a document for *path* open? (Asked without changing anything.)"""
         if os.environ.get("QUILL_NO_HOSTS"):
             return False
-        code, out, _ = self._run(["osascript", "-e", PROBE, self.document_name(path)])
+        code, out, _ = self._ask(["osascript", "-e", PROBE, self.document_name(path)])
         return code == 0 and out.strip() == "ok"
 
     def active_sheet(self, path: str | os.PathLike) -> str | None:
@@ -232,7 +235,7 @@ class NumbersMirror:
         document, Numbers is not running, or it would not say)."""
         if os.environ.get("QUILL_NO_HOSTS"):
             return None
-        code, out, _ = self._run(["osascript", "-e", ACTIVE_SHEET, self.document_name(path)])
+        code, out, _ = self._ask(["osascript", "-e", ACTIVE_SHEET, self.document_name(path)])
         text = out.strip()
         return text[len("sheet:"):] if code == 0 and text.startswith("sheet:") and len(text) > 6 else None
 

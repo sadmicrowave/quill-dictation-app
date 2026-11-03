@@ -339,6 +339,7 @@ class RefreshCase(unittest.TestCase):
         self.settings = Settings.load(self.dir / "cfg")
         self.app = QuillApp(_app, self.settings, XlsxBridge(self.path), listener_factory=lambda *a: FakeListener(*a),
                             model_finder=lambda c: self.dir, speaker=FakeSpeaker(), sound_player=lambda p: None)
+        self.app.run_in_background = lambda work, done: done(work())      # a tick's look runs at once here (no helper thread)
         self.app.start()
         self.log = self.app.window.log
 

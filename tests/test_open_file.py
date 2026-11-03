@@ -41,6 +41,7 @@ class FileCase(unittest.TestCase):
         self.app = QuillApp(_app, self.settings, self.live, listener_factory=lambda *a: FakeListener(*a),
                             model_finder=lambda c: self.dir, speaker=FakeSpeaker(), sound_player=lambda p: None,
                             file_chooser=lambda: self.chosen[0], live_bridge_factory=lambda: DeadExcel())
+        self.app.run_in_background = lambda work, done: done(work())          # a tick's look runs at once here (no helper thread)
         self.app.start()
         self.log = self.app.window.log
 
@@ -65,7 +66,7 @@ class TestOpeningAFile(FileCase):
         self.assertTrue(self.app.connected)
         self.assertIsInstance(self.app.controller.bridge, XlsxBridge)
         self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
-        self.assertIn("Working directly on the file plants.xlsx", self.log.toPlainText())
+        self.assertIn("Working on the file plants.xlsx", self.log.toPlainText())
 
     def test_its_lists_are_learned(self):
         self.chosen[0] = str(self.plants)
@@ -280,8 +281,14 @@ class FakeHosts:
     def __init__(self, app, path):
         self.app, self.path, self.reloaded = app, path, []
 
-    def open_excel_files(self):
-        return [(self.app, self.path)]
+    last_look_complete = True
+
+    def running(self):
+        return [self.app]
+
+    def open_files(self, excel_files=None, prefer=(), running=None):
+        from quill.bridge.hosts import OpenFile
+        return [OpenFile(self.path.name, str(self.path), self.app.name)]
 
     def reload(self, app, path):
         self.reloaded.append((app.key, str(path)))
