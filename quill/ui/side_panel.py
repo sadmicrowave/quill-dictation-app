@@ -22,8 +22,8 @@ import os
 import string
 
 import shiboken6
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QIntValidator
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIntValidator, QPainter, QPen
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QStackedWidget,
+    QStyledItemDelegate,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -66,8 +67,22 @@ ACTIVE_ROLE = Qt.ItemDataRole.UserRole + 2        # True on the list entry that 
 LIST_ROLE = Qt.ItemDataRole.UserRole
 
 
+class ActiveBorder(QStyledItemDelegate):
+    """Draws the active file's row with a 1px green (success) border."""
+
+    def paint(self, painter, option, index) -> None:
+        super().paint(painter, option, index)
+        if index.data(ACTIVE_ROLE):
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(QColor(FLASH_STYLES["accepted"][0]), 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(QRectF(option.rect).adjusted(0.5, 1.5, -0.5, -1.5), 8, 8)
+            painter.restore()
+
+
 def file_facts(path: str) -> list[tuple[str, str]]:
-    """``(label, value)`` facts about a file on disk: size, date modified, date created as MM/DD/YY ([] when unreadable)."""
+    """``(label, value)`` facts about a file on disk: size, date modified, date created as MM/DD/YYYY ([] when unreadable)."""
     try:
         info = os.stat(path)
     except OSError:
@@ -75,7 +90,7 @@ def file_facts(path: str) -> list[tuple[str, str]]:
     created = getattr(info, "st_birthtime", info.st_ctime)
 
     def when(stamp: float) -> str:
-        return dt.datetime.fromtimestamp(stamp).strftime("%m/%d/%y")
+        return dt.datetime.fromtimestamp(stamp).strftime("%m/%d/%Y")
 
     return [("Size", human_size(info.st_size)), ("Modified", when(info.st_mtime)), ("Created", when(created))]
 
@@ -555,7 +570,10 @@ class SidePanel(QFrame):
         self.available.setCursor(Qt.CursorShape.PointingHandCursor)
         self.available.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.available.setMinimumHeight(150)
-        self.available.itemClicked.connect(lambda item: self.file_chosen.emit(item.data(LIST_ROLE)))
+        self.available.setIconSize(QSize(18, 18))
+        self.available.setItemDelegate(ActiveBorder(self.available))
+        self.available.itemClicked.connect(
+            lambda item: None if item.data(ACTIVE_ROLE) else self.file_chosen.emit(item.data(LIST_ROLE)))
         layout.addWidget(self.available, 1)
         layout.addStretch(0)                    # takes the room (and keeps the message at the top) while the list is hidden
         return page
@@ -660,7 +678,7 @@ class SidePanel(QFrame):
 
     def set_active(self, name: str, sheet: str = "", path: str = "", kind: str = "") -> None:
         """Show the active file: its name on the button (the full *path* on hover) and a table of quiet facts about it
-        (sheet, path on one line, *kind* of program or format, size, dates as MM/DD/YY)."""
+        (sheet, path on one line, *kind* of program or format, size, dates as MM/DD/YYYY)."""
         self._has_file = bool(name)
         self.file_button.text_label.setFullText(name or NO_FILE_TEXT, path or name or "Choose a spreadsheet file.")
         self.file_button.setToolTip((path or name) + "\nClick to choose another file" if name else "Choose a spreadsheet file.")
@@ -690,27 +708,25 @@ class SidePanel(QFrame):
 
     def set_available(self, entries: list[tuple]) -> None:
         """List the open spreadsheets as ``(name, hover text, data)`` or ``(name, hover text, data, active)`` (the data comes
-        back with ``file_chosen``). The active one is marked: its name is bold in the accent colour, with "· active" after it."""
-        from PySide6.QtGui import QBrush, QColor, QFont
+        back with ``file_chosen``). Each has a mini icon of its program or file type. The active one sits at the top with a
+        thin green border (see :class:`ActiveBorder`) and cannot be picked."""
+        from quill.ui.file_icons import file_icon
         self.available.clear()
-        for entry in entries:
+        for entry in sorted(entries, key=lambda e: not (len(e) > 3 and e[3])):     # (sorted() keeps the others in order)
             name, tip, data = entry[:3]
             active = len(entry) > 3 and bool(entry[3])
-            item = QListWidgetItem(f"{name}  ·  active" if active else name)
+            item = QListWidgetItem(file_icon(name, getattr(data, "app", "")), name)
             item.setToolTip(tip)
             item.setData(LIST_ROLE, data)
             item.setData(ACTIVE_ROLE, active)
             if active:
-                font = QFont(item.font())
-                font.setBold(True)
-                item.setFont(font)
-                item.setForeground(QBrush(QColor(self._colors[1])))
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.available.addItem(item)
         self._filter(self.search.text())
 
     def active_names(self) -> list[str]:
         """The names in the list that are marked as the active file."""
-        return [self.available.item(i).text().split("  ·  ")[0] for i in range(self.available.count())
+        return [self.available.item(i).text() for i in range(self.available.count())
                 if self.available.item(i).data(ACTIVE_ROLE)]
 
     #: How long (ms) "No open spreadsheet files detected." stays hidden after a refresh starts, so a refresh that finds
@@ -737,8 +753,8 @@ class SidePanel(QFrame):
             self._search_timer.start()
 
     def available_names(self) -> list[str]:
-        """The names in the list, top to bottom (without the "active" mark)."""
-        return [self.available.item(i).text().split("  ·  ")[0] for i in range(self.available.count())]
+        """The names in the list, top to bottom."""
+        return [self.available.item(i).text() for i in range(self.available.count())]
 
     def _filter(self, text: str) -> None:
         """Show only the files whose name holds *text*."""
@@ -746,7 +762,7 @@ class SidePanel(QFrame):
         shown = 0
         for i in range(self.available.count()):
             item = self.available.item(i)
-            hide = bool(wanted) and wanted not in item.text().split("  ·  ")[0].lower()
+            hide = bool(wanted) and wanted not in item.text().lower()
             item.setHidden(hide)
             shown += not hide
         total = self.available.count()

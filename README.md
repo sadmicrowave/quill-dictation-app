@@ -522,7 +522,7 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 
 ## Phase 59: file settings overlay, layout-aware wording, tool tips
 
-- The Files page keeps the file button and a borderless facts table (dates MM/DD/YY); starting row, sheet layout (By Columns / By Rows) and headings row moved to an overlay opened by the panel's "…" button. By Rows swaps the number fields for A to Z drop-downs and rewords every text.
+- The Files page keeps the file button and a borderless facts table (dates MM/DD/YYYY); starting row, sheet layout (By Columns / By Rows) and headings row moved to an overlay opened by the panel's "…" button. By Rows swaps the number fields for A to Z drop-downs and rewords every text.
 - Title bar: the icons are fixed 30 x 24 boxes (no stack view), the title is centred in the room left of the panel (measured on the real window with `tools`-style screenshots), the "…" and X sit in the panel's part of the title bar.
 - Next in Append To keeps the spreadsheet cursor on the same row; the panel's Next moves it on. Tool tips are centred on the pointer with half the padding.
 - Tests now walk every panel text in both layouts (`TestEveryTextFollowsTheLayout`) and check controller messages, cursor moves and tool tip placement.
@@ -599,3 +599,7 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 
 - The Files panel has a refresh icon at the right end of the **Sheet** row, and `QuillApp` asks the program which sheet is open every `sheet_check_seconds` (30 by default, 0 = off, Settings > General): `refresh_active_sheet` makes one small, off-thread call (`NumbersMirror.active_sheet`, `LibreOfficeMirror.active_sheet`, or the live Excel bridge's own answer) and, if the program is on another sheet, `bridge.set_active_sheet` + `controller.follow_sheet` load that sheet's field words so the next rows go there. Also asked once when a file connects. Verified against the real Numbers and LibreOffice.
 - Available Files lists the active file too (first, bold, "· active"; clicking it does nothing), and Numbers documents imported from an `.xlsx`, which Numbers reports by name only, are resolved to their files (`SpreadsheetHosts.find_by_name`: the active file first, then one `mdfind` per name, newest match outside the Trash and programs' own folders, remembered).
+
+## Phase 70: Available Files polish, closed windows, narrow windows
+
+- Modified and Created show four-digit years. Available Files: no bold or "active" text; each row has a mini icon from `quill/ui/file_icons.py` (our own tile designs per program or type, a white page with the extension as the fallback); the active file stays on top with a 1px green border (`ActiveBorder` delegate) and is not selectable. A closed spreadsheet window is noticed (`QuillApp._check_link`: one missed look when a refresh icon asked, two for the timer): listening stops, and a refresh icon opens the file again. When the window narrows with the side panel open, the panel gives up width (`MainWindow.fit_panel`) so the content keeps `MIN_CONTENT_WIDTH`; the panel's chosen width is kept and returns as the window widens.

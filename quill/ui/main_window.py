@@ -941,7 +941,21 @@ class MainWindow:
             self._window.setMinimumSize(self._layout.minimumSize().width(), self._mini_base)
             return
         content = self._layout.minimumSize()
-        self._window.setMinimumSize(max(content.width() + self._panel_extra(), MIN_WINDOW[0]), max(content.height(), MIN_WINDOW[1]))
+        panel_least = PANEL_MIN_WIDTH if self._panel_extra() else 0     # the panel gives way first; the content keeps its own minimum
+        self._window.setMinimumSize(max(max(content.width(), MIN_CONTENT_WIDTH) + panel_least, MIN_WINDOW[0]),
+                                    max(content.height(), MIN_WINDOW[1]))
+
+    def fit_panel(self) -> None:
+        """Keep the content (everything but the side panel) at least :data:`MIN_CONTENT_WIDTH` wide as the window narrows: the
+        panel gives up width instead, and takes it back (up to the width the user chose) as the window widens."""
+        if (self._window is None or not self._panel_open or self._panel_animation_running() or self._log_busy
+                or not self.panel.isVisibleTo(self._window)):
+            return
+        content = max(self._layout.minimumSize().width(), MIN_CONTENT_WIDTH)
+        width = max(PANEL_MIN_WIDTH, min(self._panel_width, self._window.width() - content))
+        if width != self.panel.width():
+            self.panel.setFixedWidth(width)
+            self._on_panel_width(width)
 
     def set_mini_on_top(self, on_top: bool) -> None:
         """Choose whether the mini view floats above other windows."""
@@ -1604,6 +1618,8 @@ class _SizeKeeper(QObject):
                 self._owner.remember_for_reshow()
             elif event.type() == QEvent.Type.Show and not event.spontaneous():
                 self._owner.restore_after_reshow()
+            elif event.type() == QEvent.Type.Resize:
+                self._owner.fit_panel()
         return False
 
 

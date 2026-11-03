@@ -1,5 +1,6 @@
 """The side panel (file and turn pages), spreadsheets open in other programs, and the turn settings:
 Next Row or Append To, and headings across the top or down the side."""
+import os
 import pathlib
 import tempfile
 import unittest
@@ -350,14 +351,52 @@ class TestPanelInTheApp(PanelApp):
         panel = self.app.window.panel
         self.assertEqual(panel.available_names(), ["plants.xlsx", "other.xlsx"])
         self.assertEqual(panel.active_names(), ["plants.xlsx"])
-        self.assertIn("active", panel.available.item(0).text())
-        self.assertNotIn("active", panel.available.item(1).text())
-        self.assertTrue(panel.available.item(0).font().bold())
+        self.assertEqual(panel.available.item(0).text(), "plants.xlsx")             # no "active" text, not bold
+        self.assertFalse(panel.available.item(0).font().bold())
+        self.assertFalse(panel.available.item(0).flags() & Qt.ItemFlag.ItemIsSelectable)
+        self.assertTrue(panel.available.item(1).flags() & Qt.ItemFlag.ItemIsSelectable)
+        self.assertFalse(panel.available.item(0).icon().isNull())
         self.assertIn("The file Quill is working on", panel.available.item(0).toolTip())
         before = self.app.controller.bridge
         panel.available.itemClicked.emit(panel.available.item(0))
         self.assertIs(self.app.controller.bridge, before)                              # nothing reconnected
         self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
+
+    def test_closing_the_spreadsheet_window_stops_listening_and_a_refresh_opens_it_again(self):
+        with mock.patch.dict("os.environ"):
+            os.environ.pop("QUILL_NO_HOSTS", None)
+            self._body_closing_the_spreadsheet_window_stops_listening_and_a_refresh_opens_it_again()
+
+    def _body_closing_the_spreadsheet_window_stops_listening_and_a_refresh_opens_it_again(self):
+        self.app.window.toggle_panel(FILE_PAGE)
+        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.app.refresh_open_files()
+        self.assertFalse(self.app._link_lost)
+        self.app.controller.set_listening(True)
+        self.hosts.files = []                                                       # the window is closed
+        self.app.refresh_open_files(manual=True)
+        self.assertTrue(self.app._link_lost)
+        self.assertFalse(self.app.controller.session.listening)
+        launched = []
+        self.app._launch = lambda path: launched.append(path) or True
+        self.app.refresh_open_files(manual=True)
+        self.assertEqual([os.path.realpath(p) for p in launched], [os.path.realpath(self.plants)])
+        self.assertFalse(self.app.controller.session.listening)                     # (a refresh never starts the microphone)
+        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.app.refresh_open_files()
+        self.assertFalse(self.app._link_lost)
+
+    def test_the_timer_waits_for_a_second_missed_look_before_calling_the_window_closed(self):
+        with mock.patch.dict("os.environ"):
+            os.environ.pop("QUILL_NO_HOSTS", None)
+            self._body_the_timer_waits_for_a_second_missed_look_before_calling_the_window_closed()
+
+    def _body_the_timer_waits_for_a_second_missed_look_before_calling_the_window_closed(self):
+        self.hosts.files = []
+        self.app.refresh_open_files()
+        self.assertFalse(self.app._link_lost)
+        self.app.refresh_open_files()
+        self.assertTrue(self.app._link_lost)
 
     def test_the_active_file_is_listed_even_when_no_program_reported_it(self):
         self.hosts.files = []
@@ -971,7 +1010,7 @@ class TestFilePanelDetails(Dir):
         path = make_workbook(self.dir / "plants.xlsx")
         self.panel.set_active("plants.xlsx", "", str(path), "")
         for label in ("Modified", "Created"):
-            self.assertRegex(self.panel.fact(label), r"^\d\d/\d\d/\d\d$")
+            self.assertRegex(self.panel.fact(label), r"^\d\d/\d\d/\d{4}$")
         self.assertRegex(self.panel.fact("Size"), r"^\d+(\.\d)? (bytes|KB|MB)$")
 
     def test_with_no_file_none_of_it_shows(self):
@@ -2472,6 +2511,23 @@ class TestPanelWidthByDragging(PanelApp):
         _app.processEvents()
         self.assertGreaterEqual(self.w.root.width(), MIN_CONTENT_WIDTH)
         self.assertGreaterEqual(self.w.root.width(), self.w._layout.minimumSize().width())
+
+    def test_narrowing_the_window_makes_the_panel_give_way_so_the_content_keeps_its_minimum(self):
+        from quill.ui.main_window import MIN_CONTENT_WIDTH
+        from quill.ui.side_panel import PANEL_MIN_WIDTH
+        self.w.panel.width_dragged.emit(-5000)
+        self.w.widget.resize(self.w.widget.width() + 200, self.w.widget.height())           # room to make it wide first
+        self.w.panel.width_dragged.emit(-5000)
+        _app.processEvents()
+        wanted = self.w.panel_width
+        self.w.widget.resize(self.w.widget.minimumWidth(), self.w.widget.height())
+        _app.processEvents()
+        self.assertGreaterEqual(self.w.root.width(), MIN_CONTENT_WIDTH)
+        self.assertGreaterEqual(self.w.panel.width(), PANEL_MIN_WIDTH)
+        self.assertEqual(self.w.panel_width, wanted)                                        # (the width the user chose is kept)
+        self.w.widget.resize(self.w.widget.width() + 400, self.w.widget.height())
+        _app.processEvents()
+        self.assertEqual(self.w.panel.width(), wanted)                                      # and comes back as the window widens
 
     def test_the_title_bar_follows_every_step(self):
         widths = []
