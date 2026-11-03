@@ -539,12 +539,13 @@ class SidePanel(QFrame):
                 self.type_icon = QLabel()
                 self.type_icon.setFixedSize(16, 16)
                 holder = QWidget()
+                holder.setProperty("keepMargins", True)          # (the spacing rule leaves this row's own margins alone)
                 line = QHBoxLayout(holder)
                 line.setContentsMargins(0, 0, 0, 0)
                 line.setSpacing(6)
                 line.addWidget(self.type_icon, 0, Qt.AlignmentFlag.AlignVCenter)
                 line.addWidget(value, 1)
-                table.addWidget(holder, row, 1, middle)
+                table.addWidget(holder, row, 1)                  # (no alignment: it fills the column, so the text has room)
             else:
                 table.addWidget(value, row, 1, middle)
             if name == "Sheet":                                  # the refresh icon, at the right end of the Sheet row
