@@ -2533,6 +2533,16 @@ class TestPanelWidthByDragging(PanelApp):
         _app.processEvents()
         self.assertEqual(self.w.panel.width(), wanted)                                      # and comes back as the window widens
 
+    def test_the_window_is_never_too_short_to_show_two_files_in_the_list(self):
+        self.w.panel.set_available([("a.xlsx", "", "a"), ("b.xlsx", "", "b"), ("c.xlsx", "", "c")])
+        self.w.widget.resize(self.w.widget.width(), self.w.widget.minimumHeight())
+        _app.processEvents()
+        self.w._settle_minimum()
+        self.w.widget.resize(self.w.widget.width(), 10)                        # as short as it will go
+        _app.processEvents()
+        self.assertGreaterEqual(self.w.panel.available.height(), 2 * 34)
+        self.assertGreaterEqual(self.w.widget.height(), self.w.panel.needed_height())
+
     def test_the_title_bar_follows_every_step(self):
         widths = []
         self.w.set_panel_listener(lambda page: None, widths.append)

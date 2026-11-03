@@ -491,6 +491,14 @@ class SidePanel(QFrame):
         scroll.setWidget(page)
         return scroll
 
+    def needed_height(self) -> int:
+        """The height the panel needs to show its current page without scrolling (the window never gets shorter than this
+        while the panel is open, so the files in the list are not hidden below the bottom edge)."""
+        scroll = self.stack.currentWidget()
+        if not isinstance(scroll, QScrollArea) or scroll.widget() is None:
+            return 0
+        return self.height() - scroll.viewport().height() + scroll.widget().minimumSizeHint().height()
+
     def set_native_header(self, native: bool) -> None:
         """The title bar draws the panel's title, "…" and X, so the ones inside the panel are hidden."""
         self.header.setVisible(not native)
@@ -585,7 +593,7 @@ class SidePanel(QFrame):
         self.available.setFrameShape(QFrame.Shape.NoFrame)
         self.available.setCursor(Qt.CursorShape.PointingHandCursor)
         self.available.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
-        self.available.setMinimumHeight(150)
+        self.available.setMinimumHeight((ROW_HEIGHT + 4) * 2 + 4)       # two rows at least are always in view
         self.available.setIconSize(QSize(18, 18))
         self.available.setItemDelegate(ActiveBorder(self.available))
         self.available.itemClicked.connect(

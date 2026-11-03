@@ -942,8 +942,11 @@ class MainWindow:
             return
         content = self._layout.minimumSize()
         panel_least = PANEL_MIN_WIDTH if self._panel_extra() else 0     # the panel gives way first; the content keeps its own minimum
+        panel_height = 0
+        if self._panel_extra() and self.panel.height() > 0:             # the panel's page shows whole, never cut off below
+            panel_height = self.panel.needed_height() + self._window.height() - self.panel.height()
         self._window.setMinimumSize(max(max(content.width(), MIN_CONTENT_WIDTH) + panel_least, MIN_WINDOW[0]),
-                                    max(content.height(), MIN_WINDOW[1]))
+                                    max(content.height(), MIN_WINDOW[1], panel_height))
 
     def fit_panel(self) -> None:
         """Keep the content (everything but the side panel) at least :data:`MIN_CONTENT_WIDTH` wide as the window narrows: the
