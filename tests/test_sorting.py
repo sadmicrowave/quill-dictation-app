@@ -345,8 +345,8 @@ class TestSortingWindow(unittest.TestCase):
             first, second = self.win.rows
             self.win.set_items([])                                   # both answered at once
             self.assertTrue(self.win.widget.isVisible())             # not closed yet
-            self.assertIn("#34C759", first.styleSheet())             # both flash green at the same moment
-            self.assertIn("#34C759", second.styleSheet())
+            self.assertIn("#66D983", first.styleSheet())             # both flash green at the same moment
+            self.assertIn("#66D983", second.styleSheet())
             self.assertEqual(self.win._queue, [])                    # nobody waits for a turn
             QTest.qWait(600)
             self.assertFalse(self.win.widget.isVisible())            # closed after the last one left

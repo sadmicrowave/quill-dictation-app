@@ -1062,8 +1062,8 @@ class QuillApp:
         if not isinstance(bridge, XlsxBridge):
             return "Excel (live)"
         if self._host is not None:
-            return f"Excel workbook (.xlsx), open in {self._host.name}"
-        return "Excel workbook (.xlsx)"
+            return f"Excel (.xlsx), open in {self._host.name}"
+        return "Excel (.xlsx)"
 
     def _align_titlebar(self, tries: int = 6) -> None:
         """Centre the title bar icons on the title, a few times a moment apart (the system lays them out after we ask)."""

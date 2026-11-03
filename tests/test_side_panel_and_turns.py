@@ -999,8 +999,8 @@ class TestFilePanelDetails(Dir):
 
     def test_the_active_file_facts_are_a_borderless_table_of_labels_and_plain_values(self):
         path = make_workbook(self.dir / "plants.xlsx")
-        self.panel.set_active("plants.xlsx", "Inventory", str(path), "Excel workbook (.xlsx)")
-        self.assertEqual([self.panel.fact(n) for n in ("Sheet", "Path", "Type")], ["Inventory", str(path), "Excel workbook (.xlsx)"])
+        self.panel.set_active("plants.xlsx", "Inventory", str(path), "Excel (.xlsx)")
+        self.assertEqual([self.panel.fact(n) for n in ("Sheet", "Path", "Type")], ["Inventory", str(path), "Excel (.xlsx)"])
         for name in ("Sheet", "Path", "Type", "Size", "Modified", "Created"):
             label, value = self.panel.fact_rows[name]
             self.assertEqual(label.text(), name)                            # no colon: the table lines them up
@@ -2363,8 +2363,8 @@ class TestStartWithNoFile(PanelApp):
         button = self.app.window.panel.file_button
         self.app.toggle_listening(True)
         self.assertEqual(self.asked, [1])
-        self.assertIn("#34C759", button.styleSheet())                       # green, the Term Helper's own blink
-        self.assertIn("rgba(52, 199, 89", button.styleSheet())
+        self.assertIn("#66D983", button.styleSheet())                       # green, the Term Helper's own blink
+        self.assertIn("rgba(102, 217, 131", button.styleSheet())
         from PySide6.QtTest import QTest
         QTest.qWait(850)
         self.assertEqual(button.styleSheet(), "")                           # ... and it goes out again

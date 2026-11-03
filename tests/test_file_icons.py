@@ -25,6 +25,15 @@ class TestFileIcons(unittest.TestCase):
         self.assertIn("#FFFFFF", svg)
         self.assertEqual(kind_for("notes.wxyz"), "")
 
-    def test_a_known_file_is_a_coloured_tile(self):
-        self.assertIn("<rect", svg_for("a.csv"))
-        self.assertNotIn("<text", svg_for("a.csv"))
+    def test_csv_is_a_page_with_csv_in_the_middle_and_libreoffice_a_page_with_an_l(self):
+        self.assertIn(">CSV<", svg_for("a.csv"))
+        self.assertIn("<path", svg_for("a.ods"))
+        self.assertNotIn("<text", svg_for("a.ods"))
+
+    def test_numbers_is_a_tile_with_bars_and_a_line_under_them(self):
+        svg = svg_for("a.numbers")
+        self.assertIn("#2FA84F", svg)
+        self.assertIn('height="3"', svg)
+
+    def test_excel_has_no_word_in_it(self):
+        self.assertNotIn("<text", svg_for("a.xlsx"))

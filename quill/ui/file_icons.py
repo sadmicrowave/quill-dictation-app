@@ -1,7 +1,8 @@
 """Mini icons for the Available Files list: one per spreadsheet program or file type, drawn here from simple shapes.
 
-They are Quill's own designs (a coloured tile with a grid or chart), not copies of any program's logo, so the app can be
-sold without licensing anyone's artwork. A file with no known program or type gets a white page with its extension.
+They are Quill's own drawings (the Excel one follows the look of the Excel logo, with its word removed and its greens shifted a
+little; the others are a Numbers-style bar tile and white pages with an L or CSV), so the app can be sold without
+licensing anyone's artwork. A file with no known program or type gets a white page with its extension.
 """
 
 from __future__ import annotations
@@ -13,18 +14,22 @@ from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
-#: Program name (as the hosts report it, lower case) -> the tile colour and the picture on it.
-GRID = '<path d="M6 8h12M6 12h12M6 16h12M10 6v12M14 6v12" stroke="#FFFFFF" stroke-width="1.5" fill="none"/>'
-BARS = '<g fill="#FFFFFF"><rect x="6" y="12" width="3" height="6" rx="1"/><rect x="10.5" y="7" width="3" height="11" rx="1"/>' \
-       '<rect x="15" y="10" width="3" height="8" rx="1"/></g>'
-COMMAS = '<g fill="#FFFFFF"><circle cx="8" cy="10" r="1.5"/><circle cx="12" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/>' \
-         '<circle cx="8" cy="15" r="1.5"/><circle cx="12" cy="15" r="1.5"/><circle cx="16" cy="15" r="1.5"/></g>'
-TILES = {
-    "excel": ("#1F7A4D", GRID),
-    "numbers": ("#2FA84F", BARS),
-    "libreoffice": ("#1E9AA8", GRID),
-    "csv": ("#6B7A8C", COMMAS),
-}
+BARS = '<g fill="#FFFFFF"><rect x="6" y="11" width="3" height="5" rx="1"/><rect x="10.5" y="6" width="3" height="10" rx="1"/>' \
+       '<rect x="15" y="9" width="3" height="7" rx="1"/><rect x="6" y="17.5" width="12" height="3" rx="1.2"/></g>'
+#: The Excel picture: a sheet of tiles in two columns and four rows (darker towards the bottom) behind a box with an X.
+EXCEL = ('<rect x="6.8" y="2.6" width="7.6" height="4.3" fill="#31925B"/><rect x="14.4" y="2.6" width="7.6" height="4.3" fill="#72C98F"/>'
+         '<rect x="6.8" y="6.9" width="7.6" height="4.8" fill="#2F8A57"/><rect x="14.4" y="6.9" width="7.6" height="4.8" fill="#56A877"/>'
+         '<rect x="6.8" y="11.7" width="7.6" height="4.5" fill="#297850"/><rect x="14.4" y="11.7" width="7.6" height="4.5" fill="#449563"/>'
+         '<rect x="6.8" y="16.2" width="7.6" height="4.8" fill="#226445"/><rect x="14.4" y="16.2" width="7.6" height="4.8" fill="#2F7249"/>'
+         '<rect x="2.3" y="6.9" width="10.1" height="10.1" rx="1.2" fill="#2E8052"/>'
+         '<path d="M5.1 9.7 9.6 14.2M9.6 9.7 5.1 14.2" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" fill="none"/>')
+#: A white page with a folded corner; the pictures below go in its middle.
+PAGE = ('<path d="M5 3h9l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#FFFFFF" stroke="#B8B8B8" stroke-width="1"/>'
+        '<path d="M14 3v5h5" fill="#E4E4E4" stroke="#B8B8B8" stroke-width="1"/>')
+LETTER_L = ('<path d="M13.6 7.6C11.6 6.9 10.3 8.6 11.1 11 12 13.6 12.3 16.1 10.4 16.9 9.2 17.3 8.9 16 10 15.6 11.8 15 14 16.7 16.2 15.2" '
+            'stroke="#1E9AA8" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
+TILES = {"numbers": ("#2FA84F", BARS)}                         # a coloured tile behind a picture
+PAGES = {"libreoffice": LETTER_L, "csv": "CSV"}                # a page with a picture or a word in the middle
 EXTENSIONS = {".xlsx": "excel", ".xlsm": "excel", ".xls": "excel", ".numbers": "numbers", ".ods": "libreoffice",
               ".csv": "csv", ".tsv": "csv"}
 
@@ -42,15 +47,19 @@ def kind_for(name: str, program: str = "") -> str:
 def svg_for(name: str, program: str = "") -> str:
     """The SVG of the mini icon for the file *name* shown by *program* ("" when unknown)."""
     kind = kind_for(name, program)
-    if kind in TILES:
+    if kind == "excel":
+        body = EXCEL
+    elif kind in TILES:
         colour, art = TILES[kind]
         body = f'<rect x="2" y="2" width="20" height="20" rx="5" fill="{colour}"/>{art}'
     else:
-        ext = os.path.splitext(name)[1].lstrip(".").upper()[:4]
-        label = f'<text x="12" y="16.5" font-size="6" font-weight="700" text-anchor="middle" fill="#555555" ' \
-                f'font-family="Helvetica,Arial,sans-serif">{escape(ext)}</text>' if ext else ""
-        body = ('<path d="M5 3h9l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#FFFFFF" stroke="#B8B8B8" '
-                'stroke-width="1"/><path d="M14 3v5h5" fill="#E4E4E4" stroke="#B8B8B8" stroke-width="1"/>' + label)
+        middle = PAGES.get(kind, "")
+        if middle == "CSV" or not middle:
+            word = "CSV" if middle else os.path.splitext(name)[1].lstrip(".").upper()[:4]
+            y, size = (14.6, 5.2) if middle else (16.5, 6)
+            middle = (f'<text x="12" y="{y}" font-size="{size}" font-weight="700" text-anchor="middle" fill="#555555" '
+                      f'font-family="Helvetica,Arial,sans-serif">{escape(word)}</text>' if word else "")
+        body = PAGE + middle
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>'
 
 

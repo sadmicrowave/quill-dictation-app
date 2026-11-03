@@ -66,6 +66,7 @@ FLASH_MS = 700
 LETTERS = string.ascii_uppercase                  # the columns a custom starting / headings column can be (A to Z)
 ACTIVE_ROLE = Qt.ItemDataRole.UserRole + 2        # True on the list entry that is the active file
 LIST_ROLE = Qt.ItemDataRole.UserRole
+ROW_HEIGHT = 30                                    # the height of a button (the file button) and of a row in the file list
 
 
 class ActiveBorder(QStyledItemDelegate):
@@ -80,7 +81,7 @@ class ActiveBorder(QStyledItemDelegate):
             red, green, blue, alpha = (float(v) for v in re.findall(r"[\d.]+", tint))
             painter.setPen(QPen(QColor(border), 1))
             painter.setBrush(QColor(int(red), int(green), int(blue), int(alpha * 255)))
-            painter.drawRoundedRect(QRectF(option.rect).adjusted(0.5, 1.5, -0.5, -1.5), 8, 8)
+            painter.drawRoundedRect(QRectF(option.rect).adjusted(0.5, 2.5, -0.5, -2.5), 8, 8)
             painter.restore()
 
 
@@ -376,10 +377,10 @@ class FileButton(QPushButton):
         row.addWidget(self.text_label, 1, Qt.AlignmentFlag.AlignVCenter)
         for part in (self.icon_label, self.text_label):
             part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setMinimumHeight(30)
+        self.setMinimumHeight(ROW_HEIGHT)
 
     def sizeHint(self) -> QSize:                                    # noqa: N802 (Qt name)
-        return QSize(100, 30)
+        return QSize(100, ROW_HEIGHT)
 
 
 class SidePanel(QFrame):
@@ -735,6 +736,7 @@ class SidePanel(QFrame):
             name, tip, data = entry[:3]
             active = len(entry) > 3 and bool(entry[3])
             item = QListWidgetItem(file_icon(name, getattr(data, "app", "")), name)
+            item.setSizeHint(QSize(0, ROW_HEIGHT + 4))        # (a button's height, plus 2px of air above and below)
             item.setToolTip(tip)
             item.setData(LIST_ROLE, data)
             item.setData(ACTIVE_ROLE, active)

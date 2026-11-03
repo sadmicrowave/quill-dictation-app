@@ -100,7 +100,7 @@ LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user
 LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
 #: Gap (px) between the "Log" heading and the log box.
 LOG_HEADING_GAP = 1
-MIN_CONTENT_WIDTH = 330     # the content (everything but the side panel) is never dragged narrower than this
+MIN_CONTENT_WIDTH = 405     # the content (everything but the side panel) is never dragged narrower than this
 
 #: Lines kept in the log before the oldest are dropped.
 MAX_LOG_LINES = 500

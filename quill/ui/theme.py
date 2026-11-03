@@ -171,7 +171,7 @@ PILL_BG, PILL_FG = "#5E4A99", "#FFFFFF"
 #: Border and tint of the blink that confirms something: (border colour, tint) per outcome. One blink for the whole app
 #: (a Term Helper row, the Open File button ...).
 FLASH_STYLES = {
-    "accepted": ("#34C759", "rgba(52, 199, 89, 0.14)"),      # green: it worked / it is what was asked for
+    "accepted": ("#66D983", "rgba(102, 217, 131, 0.14)"),      # green: it worked / it is what was asked for
     "ignored": ("#8E8E93", "rgba(142, 142, 147, 0.16)"),     # grey: a deliberate "no", nothing was added
     "error": ("#FF3B30", "rgba(255, 59, 48, 0.14)"),         # red: it could not be carried out
 }
@@ -412,7 +412,7 @@ QToolButton[chromeIcon="true"]:pressed {{ background: {rgba(t['text'], 0.22)}; }
 QLabel[panelName="true"] {{ font-weight: 600; }}
 QLabel[panelName="true"][muted="true"] {{ font-weight: 400; font-style: italic; color: {t['muted']}; }}
 QListWidget#panelList {{ background: transparent; border: none; outline: none; padding: 0; }}
-QListWidget#panelList::item {{ padding: 7px 8px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}
+QListWidget#panelList::item {{ padding: 0 8px; margin: 2px 0; border-radius: 8px; color: {t['text']}; }}
 QListWidget#panelList::item:hover {{ background: {rgba(t['accent'], 0.14)}; }}
 QListWidget#panelList::item:selected {{ background: {rgba(t['accent'], 0.14)}; color: {t['text']}; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid {t['muted']};
