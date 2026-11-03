@@ -58,7 +58,7 @@ from quill.config.settings import (
 )
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.licensing import LicenseService
-from quill.listener.model import fallback_choice
+from quill.listener.model import BETTER, STANDARD, WHISPER_NAME, fallback_choice
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
 from quill.ui.hints import fill_missing_tips
@@ -90,16 +90,17 @@ GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
 SPEECH_MODELS = (
     ("standard", "Quick", "40 MB",
      "A small, fast model that shows your words as you say them. Good for clear speech and everyday words; it can "
-     "mishear unusual words, names and numbers.",
+     "mishear unusual words, names and numbers. Uses the Vosk model " + STANDARD.name + ".",
      "Memory: ~165 MB"),
     ("better", "Broad", "130 MB",
      "A larger model with a much bigger vocabulary. It still shows words as you speak, but unusual words, names and "
-     "numbers are heard correctly far more often.",
+     "numbers are heard correctly far more often. Uses the Vosk model " + BETTER.name + ".",
      "Memory: ~415 MB (+250 MB / +1s)"),
     ("best", "Careful", "145 MB",
      "Adds a second listen: after each pause, the whole phrase is re-read by a model that uses the words around "
      "each one to decide what it was, which fixes most of the mistakes that are left. The corrected words replace the "
-     "live ones a moment after you pause. It builds on the Quick model.",
+     "live ones a moment after you pause. It builds on the Quick model and adds OpenAI's Whisper base.en model, run "
+     "with faster-whisper (Systran/" + WHISPER_NAME + ").",
      "Memory: ~700 MB (+535 MB / Pause + .5s)"),
 )
 

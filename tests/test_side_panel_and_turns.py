@@ -2974,8 +2974,8 @@ class TestModelNames(unittest.TestCase):
         self.assertEqual([name for _, name, *_ in SPEECH_MODELS], ["Quick", "Broad", "Careful"])
         self.assertEqual((STANDARD.label, BETTER.label), ("Quick", "Broad"))
         for _, _, _, description, cost in SPEECH_MODELS:
-            for old in ("Standard", "Better", "Best", "Whisper"):
-                self.assertNotIn(old, description + cost)
+            for old in ("Standard", "Better", "Best"):
+                self.assertNotIn(old, description + cost)               # (the old names; the models underneath are named on purpose)
 
 
 class TestTipsWrapToAMaxWidth(unittest.TestCase):

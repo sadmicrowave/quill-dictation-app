@@ -107,3 +107,13 @@ class TestDownload(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSpeechModelDescriptionsNameTheirModels(unittest.TestCase):
+    def test_each_description_names_the_model_it_uses(self):
+        from quill.ui.settings_dialog import SPEECH_MODELS
+        text = {key: description for key, _, _, description, _ in SPEECH_MODELS}
+        self.assertIn("vosk-model-small-en-us-0.15", text["standard"])
+        self.assertIn("vosk-model-en-us-0.22-lgraph", text["better"])
+        self.assertIn("Whisper base.en", text["best"])
+        self.assertIn("faster-whisper", text["best"])
