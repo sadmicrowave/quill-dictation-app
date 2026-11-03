@@ -73,17 +73,12 @@ class SettingRow(QWidget):
 
 
 class NavDelegate(QStyledItemDelegate):
-    """Draws the settings list as usual, and a one-pixel muted line along the bottom of each group caption, across the whole
-    width of the pane."""
+    """Draws the settings list as usual, with each group caption ("Preferences", "Voice and Commands") in bold."""
 
-    def paint(self, painter, option, index) -> None:
-        super().paint(painter, option, index)
+    def initStyleOption(self, option, index) -> None:           # noqa: N802 (Qt name)
+        super().initStyleOption(option, index)
         if index.data(Qt.ItemDataRole.AccessibleDescriptionRole) == "caption":
-            painter.save()
-            painter.setPen(option.palette.color(QPalette.ColorRole.Mid))
-            y = option.rect.bottom()
-            painter.drawLine(option.rect.left(), y, option.rect.right(), y)
-            painter.restore()
+            option.font.setBold(True)
 
 
 class ModelRow(SettingRow):

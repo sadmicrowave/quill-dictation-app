@@ -362,41 +362,45 @@ class TestPanelInTheApp(PanelApp):
         self.assertIs(self.app.controller.bridge, before)                              # nothing reconnected
         self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
 
-    def test_closing_the_spreadsheet_window_stops_listening_and_a_refresh_opens_it_again(self):
+    def test_closing_the_spreadsheet_window_lets_go_of_the_file_like_a_fresh_start(self):
         with mock.patch.dict("os.environ"):
             os.environ.pop("QUILL_NO_HOSTS", None)
-            self._body_closing_the_spreadsheet_window_stops_listening_and_a_refresh_opens_it_again()
+            self.app.window.toggle_panel(FILE_PAGE)
+            self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers"), OpenFile("other.xlsx", str(self.other), "Numbers")]
+            self.app.refresh_open_files()
+            self.assertTrue(self.app.connected)
+            self.assertEqual(self.app.window.panel.active_names(), ["plants.xlsx"])
+            self.app.controller.set_listening(True)
+            self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Numbers")]          # plants.xlsx is closed
+            launched = []
+            self.app._launch = lambda path: launched.append(path) or True
+            self.app.refresh_open_files(manual=True)
+            self.assertFalse(self.app.connected)
+            self.assertFalse(self.app.controller.session.listening)
+            self.assertEqual(self.app.window.panel.active_names(), [])                        # no green border any more
+            self.assertEqual(self.app.window.panel.available_names(), ["other.xlsx"])
+            self.assertEqual(self.app.window.panel.file_button.text_label.full_text, "Open File")
+            self.app.refresh_open_files(manual=True)
+            self.assertEqual(launched, [])                                                    # a refresh never reopens anything
 
-    def _body_closing_the_spreadsheet_window_stops_listening_and_a_refresh_opens_it_again(self):
-        self.app.window.toggle_panel(FILE_PAGE)
-        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
-        self.app.refresh_open_files()
-        self.assertFalse(self.app._link_lost)
-        self.app.controller.set_listening(True)
-        self.hosts.files = []                                                       # the window is closed
-        self.app.refresh_open_files(manual=True)
-        self.assertTrue(self.app._link_lost)
-        self.assertFalse(self.app.controller.session.listening)
-        launched = []
-        self.app._launch = lambda path: launched.append(path) or True
-        self.app.refresh_open_files(manual=True)
-        self.assertEqual([os.path.realpath(p) for p in launched], [os.path.realpath(self.plants)])
-        self.assertFalse(self.app.controller.session.listening)                     # (a refresh never starts the microphone)
-        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
-        self.app.refresh_open_files()
-        self.assertFalse(self.app._link_lost)
+    def test_a_file_that_is_no_longer_open_anywhere_is_not_listed(self):
+        with mock.patch.dict("os.environ"):
+            os.environ.pop("QUILL_NO_HOSTS", None)
+            self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+            self.app.refresh_open_files()
+            self.assertEqual(self.app.window.panel.available_names(), ["plants.xlsx"])
+            self.hosts.files = []
+            self.app.refresh_open_files(manual=True)
+            self.assertEqual(self.app.window.panel.available_names(), [])
 
     def test_the_timer_waits_for_a_second_missed_look_before_calling_the_window_closed(self):
         with mock.patch.dict("os.environ"):
             os.environ.pop("QUILL_NO_HOSTS", None)
-            self._body_the_timer_waits_for_a_second_missed_look_before_calling_the_window_closed()
-
-    def _body_the_timer_waits_for_a_second_missed_look_before_calling_the_window_closed(self):
-        self.hosts.files = []
-        self.app.refresh_open_files()
-        self.assertFalse(self.app._link_lost)
-        self.app.refresh_open_files()
-        self.assertTrue(self.app._link_lost)
+            self.hosts.files = []
+            self.app.refresh_open_files()
+            self.assertTrue(self.app.connected)
+            self.app.refresh_open_files()
+            self.assertFalse(self.app.connected)
 
     def test_the_active_file_is_listed_even_when_no_program_reported_it(self):
         self.hosts.files = []

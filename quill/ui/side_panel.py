@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 import string
 
 import shiboken6
@@ -68,15 +69,17 @@ LIST_ROLE = Qt.ItemDataRole.UserRole
 
 
 class ActiveBorder(QStyledItemDelegate):
-    """Draws the active file's row with a 1px green (success) border."""
+    """Draws the active file's row with the same green border and faint green tint as an accepted Term Helper row."""
 
     def paint(self, painter, option, index) -> None:
         super().paint(painter, option, index)
         if index.data(ACTIVE_ROLE):
             painter.save()
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(QPen(QColor(FLASH_STYLES["accepted"][0]), 1))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
+            border, tint = FLASH_STYLES["accepted"]
+            red, green, blue, alpha = (float(v) for v in re.findall(r"[\d.]+", tint))
+            painter.setPen(QPen(QColor(border), 1))
+            painter.setBrush(QColor(int(red), int(green), int(blue), int(alpha * 255)))
             painter.drawRoundedRect(QRectF(option.rect).adjusted(0.5, 1.5, -0.5, -1.5), 8, 8)
             painter.restore()
 
@@ -532,7 +535,18 @@ class SidePanel(QFrame):
             value.setMinimumWidth(10)
             middle = Qt.AlignmentFlag.AlignVCenter if name == "Sheet" else Qt.AlignmentFlag.AlignTop      # (the Sheet row is as tall as its icon)
             table.addWidget(label, row, 0, middle)
-            table.addWidget(value, row, 1, middle)
+            if name == "Type":                                   # the file type's mini icon sits before its text
+                self.type_icon = QLabel()
+                self.type_icon.setFixedSize(16, 16)
+                holder = QWidget()
+                line = QHBoxLayout(holder)
+                line.setContentsMargins(0, 0, 0, 0)
+                line.setSpacing(6)
+                line.addWidget(self.type_icon, 0, Qt.AlignmentFlag.AlignVCenter)
+                line.addWidget(value, 1)
+                table.addWidget(holder, row, 1, middle)
+            else:
+                table.addWidget(value, row, 1, middle)
             if name == "Sheet":                                  # the refresh icon, at the right end of the Sheet row
                 self.sheet_refresh_button = self._chrome_button(
                     "Look at which sheet is open in the spreadsheet program now.", "Refresh the Sheet")
@@ -699,6 +713,10 @@ class SidePanel(QFrame):
             name_label.setVisible(bool(text))
             value_label.setVisible(bool(text))
         self.sheet_refresh_button.setVisible("Sheet" in facts)
+        self.type_icon.setVisible("Type" in facts)
+        if "Type" in facts:
+            from quill.ui.file_icons import file_icon
+            self.type_icon.setPixmap(file_icon(path or name, kind, 16).pixmap(16, 16))
         self._draw_file_icon()
 
     def fact(self, label: str) -> str:

@@ -6,10 +6,13 @@ from quill.ui.file_icons import kind_for, svg_for
 
 
 class TestFileIcons(unittest.TestCase):
-    def test_the_program_decides_first(self):
-        self.assertEqual(kind_for("a.xlsx", "Numbers"), "numbers")
-        self.assertEqual(kind_for("a.xlsx", "LibreOffice"), "libreoffice")
-        self.assertEqual(kind_for("a.xlsx", "Excel"), "excel")
+    def test_the_file_type_decides_first_whichever_program_shows_it(self):
+        self.assertEqual(kind_for("a.xlsx", "Numbers"), "excel")
+        self.assertEqual(kind_for("a.xlsx", "LibreOffice"), "excel")
+        self.assertEqual(kind_for("a.numbers", "Excel"), "numbers")
+
+    def test_the_program_is_used_when_the_type_is_unknown(self):
+        self.assertEqual(kind_for("a.wxyz", "LibreOffice"), "libreoffice")
 
     def test_then_the_file_type(self):
         self.assertEqual(kind_for("a.XLSX"), "excel")

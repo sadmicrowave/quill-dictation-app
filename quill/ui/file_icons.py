@@ -30,12 +30,13 @@ EXTENSIONS = {".xlsx": "excel", ".xlsm": "excel", ".xls": "excel", ".numbers": "
 
 
 def kind_for(name: str, program: str = "") -> str:
-    """Which tile a file gets: its program if known (Excel, Numbers, LibreOffice), else its type, else "" (a plain page)."""
+    """Which tile a file gets: by its type (an .xlsx is an Excel workbook whichever program shows it), else by the program
+    showing it, else "" (a plain page with the extension)."""
+    kind = EXTENSIONS.get(os.path.splitext(name)[1].lower(), "")
+    if kind:
+        return kind
     program = program.lower()
-    for key in ("excel", "numbers", "libreoffice"):
-        if key in program:
-            return key
-    return EXTENSIONS.get(os.path.splitext(name)[1].lower(), "")
+    return next((key for key in ("excel", "numbers", "libreoffice") if key in program), "")
 
 
 def svg_for(name: str, program: str = "") -> str:

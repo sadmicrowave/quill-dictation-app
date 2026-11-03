@@ -203,8 +203,7 @@ class QuillApp:
         self._launched_at: dict[str, float] = {}        # when a program was last asked to open each file (see _launch)
         self._start_wanted = False                      # Start was pressed while the file was not yet open in a program
         self._waiting_viewer = False
-        self._link_lost = False                          # the file's spreadsheet window was closed (see _check_link)
-        self._link_misses = 0
+        self._link_misses = 0                            # looks in a row that did not find the file open (see _check_link)
         self._viewer_looks = 0
         self._viewer_running = False
         self._host_noted = False
@@ -630,9 +629,10 @@ class QuillApp:
 
         def done(sheet: object) -> None:
             self._sheet_busy = False
-            if path and not isinstance(sheet, str) and not quiet:       # no answer: has the window been closed?
-                self.refresh_open_files(manual=True)
-                return
+            if path and not isinstance(sheet, str):                     # no answer: has the window been closed?
+                self.refresh_open_files(manual=not quiet)
+                if not quiet:
+                    return
             self._apply_sheet(sheet if isinstance(sheet, str) else None, quiet)
 
         self.run_in_background(ask, done)
@@ -1244,35 +1244,33 @@ class QuillApp:
         self._show_open_files()
 
     def _check_link(self, manual: bool = False) -> None:
-        """Notice that the connected file's spreadsheet window was closed (the link is dead), and what to do about it.
+        """Notice that the connected file's spreadsheet window was closed (the link is dead) and let go of the file.
 
-        Quill only writes to a file while it is open in a program, so a closed window means listening stops and the file
-        shows as not open; pressing a refresh icon (or Start) opens it again. A single look that misses it is not
-        trusted unless a refresh icon asked (a program that is busy may just be slow to answer).
+        Quill only writes to a file while it is open in a program, so a closed window means Quill goes back to how it
+        starts: no active file (the Open File button), not listening, and the file back among the other files if it is
+        still open somewhere. A single look that misses it is not trusted unless a refresh icon asked (a program that is
+        busy may just be slow to answer).
         """
         bridge = self.controller.bridge
         if not self.connected or self._waiting_viewer or not isinstance(bridge, XlsxBridge) or not bridge.workbook_path:
             self._link_misses = 0
             return
-        path = bridge.workbook_path
-        if self._viewer_open():
+        if self._viewer_open() or self._just_launched(bridge.workbook_path):
             self._link_misses = 0
-            self._link_lost = False
             return
-        if self._just_launched(path):
-            return                                                    # (it was only just asked to open)
         self._link_misses += 1
-        if self._link_lost:
-            if manual and self._launch(path):                         # a refresh icon: open it again (listening stays off)
-                self.window.append_log(f"Opening {bridge.workbook_name} again.")
+        if not manual and self._link_misses < 2:
             return
-        if manual or self._link_misses >= 2:
-            self._link_lost = True
-            if self.controller.session.listening:
-                self.controller.set_listening(False)
-                self._set_listening(False)
-            self.window.append_log(f"{bridge.workbook_name} was closed in your spreadsheet program, so Quill stopped listening. "
-                                   "Press a refresh icon or Start to open it again.", "warning")
+        self._link_misses = 0
+        closed = bridge.workbook_name
+        self.controller.detach()
+        self.connected = False
+        self._set_listening(False)
+        self.tray.set_workbook("", "")
+        self.window.update_workbooks([])
+        self.window.set_not_connected(True)
+        self.window.append_log(f"{closed} was closed in your spreadsheet program, so Quill let go of it. "
+                               "Open it again, or pick another file.", "warning")
 
     def _attach_live_if_open_in_excel(self) -> bool:
         """Working on an .xlsx file that Excel now has open: work through Excel itself instead, so there is no file for
@@ -1305,7 +1303,7 @@ class QuillApp:
         shown above, in Active File)."""
         listed = [f for f in self._open_files]
         active = next((f for f in listed if self._is_active(f)), None)
-        if active is None and self.connected:                         # open, but no program reported it (it must be: see _viewer_open)
+        if active is None and self.connected and self._viewer_open():     # counted as open though no program reported it (Excel, or no system lookups)
             bridge = self.controller.bridge
             if getattr(bridge, "workbook_path", ""):
                 active = OpenFile(bridge.workbook_name, bridge.workbook_path, "")
