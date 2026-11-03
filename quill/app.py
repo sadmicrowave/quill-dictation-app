@@ -1301,7 +1301,7 @@ class QuillApp:
             if self.open_workbook_file(pathlib.Path(entry.path), remember=False):
                 self._host = host_app
                 log.info("working on %s, open in %s", entry.name, host_app.name)
-                self.window.append_log(f"Found {entry.name} open in {host_app.name}: working on it directly.")
+                self.window.append_log(f"Found {entry.name} open in {host_app.name}: now working on it.")
                 return
 
     def _check_link(self, manual: bool = False, complete: bool = True) -> None:
