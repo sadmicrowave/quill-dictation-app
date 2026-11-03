@@ -933,6 +933,7 @@ class QuillApp:
         panel.file_chosen.connect(self._panel_pick)
         panel.refresh_requested.connect(self.refresh_open_files)
         panel.speech_model_chosen.connect(self.choose_speech_model)
+        panel.speech_models_requested.connect(lambda: self.open_settings("Speech Model"))
         panel.mode_changed.connect(self.controller.set_turn_mode)
         panel.layout_changed.connect(self.controller.set_vertical)
         panel.new_row_requested.connect(self.controller.start_new_row)

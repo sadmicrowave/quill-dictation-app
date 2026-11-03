@@ -324,3 +324,13 @@ class TestSpeechModelOnTheTurnPanel(unittest.TestCase):
         self.assertTrue(dialog.model_rows["better"].radio.isChecked())
         self.assertEqual(dialog._original["speech_quality"], "better")
         dialog.close_now() if hasattr(dialog, "close_now") else None
+
+    def test_the_note_reads_as_asked_and_its_link_opens_the_models_page(self):
+        note = self.panel.model_note
+        plain = note.text().replace("&gt;", ">")
+        self.assertIn("How Quill turns your voice into words. More advanced models require more processing. View the", plain)
+        self.assertTrue(plain.endswith("Settings > Speech Model</a> pane for model details."))
+        opened = []
+        self.app.open_settings = lambda page=None: opened.append(page)
+        note.linkActivated.emit("models")
+        self.assertEqual(opened, ["Speech Model"])

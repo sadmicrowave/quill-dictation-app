@@ -367,6 +367,7 @@ class SidePanel(QFrame):
     """The panel itself (see the module notes). It starts closed: zero width and hidden."""
 
     open_file_requested = Signal()
+    speech_models_requested = Signal()          # the link under the Speech Model drop-down
     speech_model_chosen = Signal(str)           # the key of the model picked in the Turn Options drop-down
     refresh_requested = Signal()                # the refresh icon beside Available Files
     file_chosen = Signal(object)                # the data of the picked list entry
@@ -590,7 +591,15 @@ class SidePanel(QFrame):
         self.model_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.model_combo.activated.connect(self._model_picked)
         layout.addWidget(self.model_combo)
-        self.model_note = _note("Takes effect straight away. A model that is not installed opens Settings > Speech Model.")
+        self.model_note = QLabel("How Quill turns your voice into words. More advanced models require more processing. "
+                                 "View the <a href=\"models\">Settings &gt; Speech Model</a> pane for model details.")
+        self.model_note.setProperty("panelNote", True)
+        self.model_note.setTextFormat(Qt.TextFormat.RichText)
+        self.model_note.setWordWrap(True)
+        self.model_note.setOpenExternalLinks(False)
+        self.model_note.setProperty("hoverLinkTips", True)
+        self.model_note.linkActivated.connect(lambda _: self.speech_models_requested.emit())
+        self.model_note.linkHovered.connect(lambda link: self.model_note.setToolTip("Open the Speech Model settings." if link else ""))
         layout.addWidget(self.model_note)
         layout.addStretch(1)
         self.next_row_radio.setChecked(True)
