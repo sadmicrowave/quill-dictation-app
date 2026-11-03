@@ -30,10 +30,9 @@ class TestFileIcons(unittest.TestCase):
         size = lambda svg: re.search(r'font-size="([\d.]+)"', svg).group(1)
         self.assertEqual(size(svg_for("a.csv")), size(svg_for("a.txt")))
 
-    def test_csv_is_a_page_with_csv_in_the_middle_and_libreoffice_a_page_with_an_l(self):
+    def test_csv_and_libreoffice_are_pages_with_their_words(self):
         self.assertIn(">CSV<", svg_for("a.csv"))
-        self.assertIn("<path", svg_for("a.ods"))
-        self.assertNotIn("<text", svg_for("a.ods"))
+        self.assertIn(">LIB<", svg_for("a.ods"))
 
     def test_numbers_is_a_tile_with_bars_and_a_line_under_them(self):
         svg = svg_for("a.numbers")

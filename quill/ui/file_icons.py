@@ -27,11 +27,9 @@ EXCEL = ('<rect x="6.8" y="2.6" width="7.6" height="4.3" fill="#31925B"/><rect x
 #: A white page with a folded corner; the pictures below go in its middle.
 PAGE = ('<path d="M5 3h9l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#FFFFFF" stroke="#B8B8B8" stroke-width="1"/>'
         '<path d="M14 3v5h5" fill="#E4E4E4" stroke="#B8B8B8" stroke-width="1"/>')
+WORDS = {"csv": "CSV", "libreoffice": "LIB"}                     # what a page says when the type has its own word
 TEXT = "#555555"                                               # the colour of the words and letters on a page
-LETTER_L = ('<path d="M12.5 6.2 12.4 13.4C12.3 16 10.6 17.3 8.8 16.8 7.2 16.3 7.6 14.2 9.6 14.6 11.4 15 13.4 16.4 16.6 15.6" '
-            f'stroke="{TEXT}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
 TILES = {"numbers": ("#3E8E2F", BARS)}                         # a coloured tile behind a picture
-PAGES = {"libreoffice": LETTER_L}                              # a page with a picture in the middle
 EXTENSIONS = {".xlsx": "excel", ".xlsm": "excel", ".xls": "excel", ".numbers": "numbers", ".ods": "libreoffice",
               ".csv": "csv", ".tsv": "csv"}
 
@@ -55,9 +53,9 @@ def svg_for(name: str, program: str = "") -> str:
         colour, art = TILES[kind]
         body = f'<rect x="2" y="2" width="20" height="20" rx="5" fill="{colour}"/>{art}'
     else:
-        middle = PAGES.get(kind, "")
-        word = "CSV" if kind == "csv" else os.path.splitext(name)[1].lstrip(".").upper()[:4]       # (all words are the same size)
-        if not middle and word:
+        word = WORDS.get(kind) or os.path.splitext(name)[1].lstrip(".").upper()[:4]                 # (all words are the same size)
+        middle = ""
+        if word:
             middle = (f'<text x="12" y="16.5" font-size="6" font-weight="700" text-anchor="middle" fill="{TEXT}" '
                       f'font-family="Helvetica,Arial,sans-serif">{escape(word)}</text>')
         body = PAGE + middle

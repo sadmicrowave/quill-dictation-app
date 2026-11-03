@@ -383,6 +383,23 @@ class TestPanelInTheApp(PanelApp):
             self.app.refresh_open_files(manual=True)
             self.assertEqual(launched, [])                                                    # a refresh never reopens anything
 
+    def test_a_closed_file_is_not_attached_again_by_the_watcher(self):
+        with mock.patch.dict("os.environ"):
+            os.environ.pop("QUILL_NO_HOSTS", None)
+            self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+            self.app.refresh_open_files()
+            self.hosts.files = []
+            self.app.refresh_open_files(manual=True)
+            self.assertFalse(self.app.connected)
+            for _ in range(5):                                                       # the watcher's ticks
+                self.app.poll_workbooks()
+            self.assertFalse(self.app.connected)
+            self.assertEqual(self.settings.preferences["workbook_file"], "")
+            self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]   # opened again in the program
+            self.app.refresh_open_files()
+            self.app.poll_workbooks()
+            self.assertTrue(self.app.connected)
+
     def test_a_file_that_is_no_longer_open_anywhere_is_not_listed(self):
         with mock.patch.dict("os.environ"):
             os.environ.pop("QUILL_NO_HOSTS", None)

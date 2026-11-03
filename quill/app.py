@@ -417,11 +417,18 @@ class QuillApp:
             self._attach_host_file()
             if self.connected:
                 return
+        if names and not self.connected and self._released_file(bridge):
+            names = []                  # (the file's window was closed: it is not attached again just because the file exists)
         if names and not self.connected:
             preferred = str(self.settings.preferences["last_workbook"])
             self.connect_workbook(preferred if preferred in names else None, quiet=True)
             if self.connected:
                 self.window.append_log(f"Attached to {bridge.workbook_name} automatically.")
+
+    def _released_file(self, bridge) -> bool:
+        """Is *bridge* a file whose spreadsheet window was closed and that Quill let go of (see :meth:`_check_link`)?"""
+        return isinstance(bridge, XlsxBridge) and bool(bridge.workbook_path) and not self._viewer_open() \
+            and not self._just_launched(bridge.workbook_path)
 
     def run_in_background(self, work: Callable[[], object], done: Callable[[object], None]) -> None:
         """Run ``work()`` on a helper thread and call ``done(result)`` on the GUI thread afterwards.
@@ -1263,6 +1270,8 @@ class QuillApp:
             return
         self._link_misses = 0
         closed = bridge.workbook_name
+        self.settings.preferences["workbook_file"] = ""             # (a restart starts with no file, like the first time)
+        self.settings.save()
         self.controller.detach()
         self.connected = False
         self._set_listening(False)
