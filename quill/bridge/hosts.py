@@ -104,6 +104,7 @@ class SpreadsheetHosts:
     def __init__(self, platform: str | None = None, runner: Runner | None = None) -> None:
         self._platform = platform or sys.platform
         self._run = runner or _run
+        self._found_by_name: dict[str, pathlib.Path] = {}        # documents a program reported by name only, and their files
 
     # ------------------------------------------------------------------ #
 
@@ -123,20 +124,23 @@ class SpreadsheetHosts:
             return [a for a in APPS if a.win_process and f'"{a.win_process.lower()}"' in lines]
         return []
 
-    def open_excel_files(self) -> list[tuple[HostApp, pathlib.Path]]:
-        """``.xlsx`` files that the running non-Excel programs have open (best effort, may be empty)."""
+    def open_excel_files(self, prefer: tuple[str, ...] = ()) -> list[tuple[HostApp, pathlib.Path]]:
+        """``.xlsx`` files that the running non-Excel programs have open (best effort, may be empty). *prefer*: paths to take
+        first when a program reports a document by name only (see :meth:`find_by_name`)."""
         found: list[tuple[HostApp, pathlib.Path]] = []
         for app in self.running():
             if app.live:
                 continue
-            for path in self._documents(app):
+            for path in self._documents(app, prefer):
                 if path.suffix.lower() == XLSX and path.is_file():
                     found.append((app, path))
         return found
 
-    def open_files(self, excel_files: Callable[[], list[tuple[str, str]]] | None = None) -> list[OpenFile]:
+    def open_files(self, excel_files: Callable[[], list[tuple[str, str]]] | None = None,
+                   prefer: tuple[str, ...] = ()) -> list[OpenFile]:
         """Every spreadsheet the running programs have open: Excel's workbooks (as ``(name, path)`` pairs from
         *excel_files*, asked only while Excel is running) and the files of the other programs. Best effort, may be empty.
+        *prefer*: paths (the active file) to match first when a program reports a document by name only.
 
         Where it runs commands that can stall (they are given a time limit), call it off the GUI thread.
         """
@@ -157,7 +161,7 @@ class SpreadsheetHosts:
         for app in running:
             if app.live:
                 continue
-            for path in self._documents(app):
+            for path in self._documents(app, prefer):
                 if path.suffix.lower() in SUPPORTED_SUFFIXES and path.is_file() and os.path.realpath(path) not in seen:
                     seen.add(os.path.realpath(path))
                     found.append(OpenFile(path.name, str(path), app.name))
@@ -223,11 +227,56 @@ class SpreadsheetHosts:
     def _split(text: str, sep: str) -> list[str]:
         return [part.strip() for part in text.strip().split(sep) if part.strip()]
 
-    def _documents(self, app: HostApp) -> list[pathlib.Path]:
+    #: Where a file found by name is not taken from (the Trash, and programs' own cache, support, container and mail folders;
+    #: cloud drives, which live under ``Library/CloudStorage``, are fine).
+    _NOT_FROM = ("/.Trash/", "/Library/Caches/", "/Library/Application Support/", "/Library/Containers/", "/Library/Mail/",
+                 "/Library/Logs/")
+
+    def find_by_name(self, name: str, prefer: tuple[str, ...] = ()) -> pathlib.Path | None:
+        """The spreadsheet file a program calls *name* when it reports the document by name only.
+
+        Numbers does that for a workbook imported from an ``.xlsx`` (it names the document without the extension and gives
+        no file). The paths in *prefer* are matched first; then Spotlight is asked (one cheap local search; the newest match
+        outside the Trash and programs' own folders wins) and the answer is remembered while the file is still there.
+        """
+        stem = name[:-len(".numbers")] if name.lower().endswith(".numbers") else name
+        for path in prefer:
+            candidate = pathlib.Path(path)
+            if candidate.stem == stem and candidate.suffix.lower() in SUPPORTED_SUFFIXES and candidate.is_file():
+                return candidate
+        known = self._found_by_name.get(stem)
+        if known is not None and known.is_file():
+            return known
+        if self._platform != "darwin" or not stem:
+            return None
+        safe = stem.replace("\\", "\\\\").replace("'", "\\'")
+        matches: list[pathlib.Path] = []
+        for suffix in SUPPORTED_SUFFIXES:
+            for line in self._run(["mdfind", f"kMDItemFSName == '{safe}{suffix}'c"]).splitlines():
+                candidate = pathlib.Path(line.strip())
+                if (line.startswith("/") and candidate.is_file() and candidate.suffix.lower() in SUPPORTED_SUFFIXES
+                        and not any(part in line for part in self._NOT_FROM)):
+                    matches.append(candidate)
+        if not matches:
+            return None
+        newest = max(matches, key=lambda m: m.stat().st_mtime)
+        self._found_by_name[stem] = newest
+        return newest
+
+    def _documents(self, app: HostApp, prefer: tuple[str, ...] = ()) -> list[pathlib.Path]:
         """Paths of the documents *app* has open."""
         if self._platform == "darwin" and app.key == "numbers":
             out = self._run(["osascript", "-e", _LIST_NUMBERS])
-            return [pathlib.Path(p) for p in self._split(out, "\n")]
+            paths: list[pathlib.Path] = []
+            for line in (l.strip("\r\n") for l in out.splitlines() if l.strip()):
+                name, _, path = line.partition("\t") if "\t" in line else ("", "", line)
+                if path.strip():
+                    paths.append(pathlib.Path(path.strip()))
+                elif name.strip():                                      # reported by name only: find the file
+                    found = self.find_by_name(name.strip(), prefer)
+                    if found is not None:
+                        paths.append(found)
+            return paths
         # Other programs: the files named on their command line.
         if self._platform == "win32":
             out = self._run(["wmic", "process", "where", f"name='{app.win_process}'", "get", "commandline"])
@@ -242,9 +291,15 @@ _LIST_NUMBERS = """
 tell application "Numbers"
   set out to ""
   repeat with d in documents
+    set docName to ""
+    set docPath to ""
     try
-      set out to out & POSIX path of (file of d as alias) & linefeed
+      set docName to name of d
     end try
+    try
+      set docPath to POSIX path of (file of d as alias)
+    end try
+    set out to out & docName & tab & docPath & linefeed
   end repeat
   return out
 end tell

@@ -62,6 +62,7 @@ AUTOMATIC = "Automatic"
 #: How long (ms) the Open File button's blink stays on.
 FLASH_MS = 700
 LETTERS = string.ascii_uppercase                  # the columns a custom starting / headings column can be (A to Z)
+ACTIVE_ROLE = Qt.ItemDataRole.UserRole + 2        # True on the list entry that is the active file
 LIST_ROLE = Qt.ItemDataRole.UserRole
 
 
@@ -687,15 +688,30 @@ class SidePanel(QFrame):
         name_label, value = self.fact_rows[label]
         return value.full_text if not name_label.isHidden() else ""
 
-    def set_available(self, entries: list[tuple[str, str, object]]) -> None:
-        """List the other open spreadsheets as ``(name, hover text, data)`` (the data comes back with ``file_chosen``)."""
+    def set_available(self, entries: list[tuple]) -> None:
+        """List the open spreadsheets as ``(name, hover text, data)`` or ``(name, hover text, data, active)`` (the data comes
+        back with ``file_chosen``). The active one is marked: its name is bold in the accent colour, with "· active" after it."""
+        from PySide6.QtGui import QBrush, QColor, QFont
         self.available.clear()
-        for name, tip, data in entries:
-            item = QListWidgetItem(name)
+        for entry in entries:
+            name, tip, data = entry[:3]
+            active = len(entry) > 3 and bool(entry[3])
+            item = QListWidgetItem(f"{name}  ·  active" if active else name)
             item.setToolTip(tip)
             item.setData(LIST_ROLE, data)
+            item.setData(ACTIVE_ROLE, active)
+            if active:
+                font = QFont(item.font())
+                font.setBold(True)
+                item.setFont(font)
+                item.setForeground(QBrush(QColor(self._colors[1])))
             self.available.addItem(item)
         self._filter(self.search.text())
+
+    def active_names(self) -> list[str]:
+        """The names in the list that are marked as the active file."""
+        return [self.available.item(i).text().split("  ·  ")[0] for i in range(self.available.count())
+                if self.available.item(i).data(ACTIVE_ROLE)]
 
     #: How long (ms) "No open spreadsheet files detected." stays hidden after a refresh starts, so a refresh that finds
     #: nothing still visibly happened; and how long typing pauses before a search of 3 or more letters looks again.
@@ -721,8 +737,8 @@ class SidePanel(QFrame):
             self._search_timer.start()
 
     def available_names(self) -> list[str]:
-        """The names in the list, top to bottom."""
-        return [self.available.item(i).text() for i in range(self.available.count())]
+        """The names in the list, top to bottom (without the "active" mark)."""
+        return [self.available.item(i).text().split("  ·  ")[0] for i in range(self.available.count())]
 
     def _filter(self, text: str) -> None:
         """Show only the files whose name holds *text*."""
@@ -730,7 +746,7 @@ class SidePanel(QFrame):
         shown = 0
         for i in range(self.available.count()):
             item = self.available.item(i)
-            hide = bool(wanted) and wanted not in item.text().lower()
+            hide = bool(wanted) and wanted not in item.text().split("  ·  ")[0].lower()
             item.setHidden(hide)
             shown += not hide
         total = self.available.count()

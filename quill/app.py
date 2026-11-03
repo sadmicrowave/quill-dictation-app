@@ -1128,8 +1128,8 @@ class QuillApp:
             return live.open_workbook_files()
 
         self._viewer_running = bool(self.hosts.running())                 # (any spreadsheet program is running at all)
-        found = self.hosts.open_files(excel_files)
         active = getattr(bridge, "workbook_path", "") if isinstance(bridge, XlsxBridge) else ""
+        found = self.hosts.open_files(excel_files, prefer=(active,) if active else ())
         if active and not any(f.path and os.path.realpath(f.path) == os.path.realpath(active) for f in found):
             for name, mirror in (("Numbers", self.mirror), ("LibreOffice", self.lo_mirror)):          # these report imported documents
                 try:                                                                                  # by name only, so ask each
@@ -1263,12 +1263,27 @@ class QuillApp:
         return entry.live and not isinstance(bridge, XlsxBridge) and entry.name == bridge.workbook_name
 
     def _show_open_files(self) -> None:
-        """List the open spreadsheets in the panel, without the active one (that is shown at the top)."""
-        entries = [(f.name, f"{f.path or f.name}\nOpen in {f.app}", f) for f in self._open_files if not self._is_active(f)]
+        """List the open spreadsheets in the panel: the active one first, marked, then the others (the active one is also
+        shown above, in Active File)."""
+        listed = [f for f in self._open_files]
+        active = next((f for f in listed if self._is_active(f)), None)
+        if active is None and self.connected:                         # open, but no program reported it (it must be: see _viewer_open)
+            bridge = self.controller.bridge
+            if getattr(bridge, "workbook_path", ""):
+                active = OpenFile(bridge.workbook_name, bridge.workbook_path, "")
+            else:
+                active = OpenFile(bridge.workbook_name, "", "Excel", live=True)
+        entries = [(f.name, f"{f.path or f.name}\nOpen in {f.app}" if f.app else f"{f.path or f.name}", f, False)
+                   for f in listed if not self._is_active(f)]
+        if active is not None:
+            where = f"\nOpen in {active.app}" if active.app else ""
+            entries.insert(0, (active.name, f"{active.path or active.name}{where}\nThe file Quill is working on.", active, True))
         self.window.panel.set_available(entries)
 
     def _panel_pick(self, entry: OpenFile) -> None:
         """A spreadsheet was picked in the panel's list: work on it (it moves up to the active section)."""
+        if self._is_active(entry):
+            return                                                    # (it is the one Quill is working on already)
         if entry.live:
             if isinstance(self.controller.bridge, XlsxBridge):
                 self.use_live_excel()

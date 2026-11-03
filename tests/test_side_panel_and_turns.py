@@ -290,7 +290,7 @@ class FakeHosts(SpreadsheetHosts):
         super().__init__("darwin", lambda args: "")
         self.files, self.launched = list(files), []
 
-    def open_files(self, excel_files=None):
+    def open_files(self, excel_files=None, prefer=()):
         return list(self.files)
 
     def launch(self, path, program="auto"):
@@ -339,25 +339,49 @@ class TestPanelInTheApp(PanelApp):
     def test_the_folder_toggles_the_panel_and_looks_for_open_files(self):
         self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Numbers")]
         self.app.window.toggle_panel(FILE_PAGE)
-        self.assertEqual(self.app.window.panel.available_names(), ["other.xlsx"])
+        self.assertEqual(self.app.window.panel.available_names(), ["plants.xlsx", "other.xlsx"])      # (the active one first)
         self.assertTrue(self.app._panel_timer.isActive())
         self.app.window.toggle_panel(FILE_PAGE)
         self.assertFalse(self.app._panel_timer.isActive())
 
-    def test_the_active_file_is_not_in_the_available_list(self):
-        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers"), OpenFile("other.xlsx", str(self.other), "Numbers")]
+    def test_the_active_file_is_in_the_list_first_and_marked_active_and_clicking_it_changes_nothing(self):
+        self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Numbers"), OpenFile("plants.xlsx", str(self.plants), "Numbers")]
         self.app.window.toggle_panel(FILE_PAGE)
-        self.assertEqual(self.app.window.panel.available_names(), ["other.xlsx"])
+        panel = self.app.window.panel
+        self.assertEqual(panel.available_names(), ["plants.xlsx", "other.xlsx"])
+        self.assertEqual(panel.active_names(), ["plants.xlsx"])
+        self.assertIn("active", panel.available.item(0).text())
+        self.assertNotIn("active", panel.available.item(1).text())
+        self.assertTrue(panel.available.item(0).font().bold())
+        self.assertIn("The file Quill is working on", panel.available.item(0).toolTip())
+        before = self.app.controller.bridge
+        panel.available.itemClicked.emit(panel.available.item(0))
+        self.assertIs(self.app.controller.bridge, before)                              # nothing reconnected
+        self.assertEqual(self.app.window.workbook_name, "plants.xlsx")
+
+    def test_the_active_file_is_listed_even_when_no_program_reported_it(self):
+        self.hosts.files = []
+        self.app.window.toggle_panel(FILE_PAGE)
+        self.assertEqual(self.app.window.panel.active_names(), ["plants.xlsx"])
+        self.assertEqual(self.app.window.panel.available_names(), ["plants.xlsx"])
+
+    def test_searching_does_not_match_the_word_active(self):
+        self.hosts.files = [OpenFile("other.xlsx", str(self.other), "Numbers")]
+        self.app.window.toggle_panel(FILE_PAGE)
+        panel = self.app.window.panel
+        panel.search.setText("active")
+        self.assertEqual([panel.available.item(i).isHidden() for i in range(panel.available.count())], [True, True])
 
     def test_picking_one_makes_it_active_and_swaps_the_two_names(self):
         self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers"), OpenFile("other.xlsx", str(self.other), "Numbers")]
         self.app.window.toggle_panel(FILE_PAGE)
         panel = self.app.window.panel
-        panel.available.itemClicked.emit(panel.available.item(0))
+        panel.available.itemClicked.emit(panel.available.item(1))
         self.assertEqual(self.app.window.workbook_name, "other.xlsx")
         self.assertEqual(panel.file_button.text_label.full_text, "other.xlsx")
         self.assertEqual(panel.file_button.text_label.toolTip(), str(self.other.resolve()))
-        self.assertEqual(panel.available_names(), ["plants.xlsx"])
+        self.assertEqual(panel.available_names(), ["other.xlsx", "plants.xlsx"])                # the new active file is first
+        self.assertEqual(panel.active_names(), ["other.xlsx"])
 
     def test_picking_a_live_excel_workbook_goes_through_excel(self):
         entry = OpenFile("live.xlsx", "", "Excel", live=True)
