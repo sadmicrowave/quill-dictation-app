@@ -467,7 +467,6 @@ class SidePanel(QFrame):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         return button
 
-    @staticmethod
     def resizeEvent(self, event) -> None:                           # noqa: N802 (Qt name)
         super().resizeEvent(event)
         self._place_grip()

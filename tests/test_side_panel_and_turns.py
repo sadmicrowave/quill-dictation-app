@@ -2492,6 +2492,8 @@ class TestPanelWidthByDragging(PanelApp):
 
     def test_the_edge_has_a_grip_you_can_drag_sideways(self):
         grip = self.w.panel.grip
+        from PySide6.QtTest import QTest
+        QTest.qWait(30)                                       # (the window grew to fit the panel: let the grip follow)
         self.assertEqual(grip.cursor().shape(), Qt.CursorShape.SplitHCursor)
         self.assertEqual((grip.x(), grip.height()), (0, self.w.panel.height()))
         self.assertTrue(grip.toolTip())
