@@ -514,8 +514,9 @@ class SidePanel(QFrame):
             value = ElidedLabel("")                              # the value is plain text, on one line
             value.setProperty("panelValue", True)
             value.setMinimumWidth(10)
-            table.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop)
-            table.addWidget(value, row, 1)
+            middle = Qt.AlignmentFlag.AlignVCenter if name == "Sheet" else Qt.AlignmentFlag.AlignTop      # (the Sheet row is as tall as its icon)
+            table.addWidget(label, row, 0, middle)
+            table.addWidget(value, row, 1, middle)
             if name == "Sheet":                                  # the refresh icon, at the right end of the Sheet row
                 self.sheet_refresh_button = self._chrome_button(
                     "Look at which sheet is open in the spreadsheet program now.", "Refresh the Sheet")

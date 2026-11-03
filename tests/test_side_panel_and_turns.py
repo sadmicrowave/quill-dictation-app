@@ -3226,3 +3226,19 @@ class TestWhichSheetIsOpen(PanelApp):
         self.assertEqual(d.sheet_spin.text(), "Off")
         d._store_preferences()
         self.assertEqual(self.settings.preferences["sheet_check_seconds"], 0)
+
+
+class TestSheetRowLinesUp(unittest.TestCase):
+    def test_the_sheet_label_value_and_icon_share_one_centre_line(self):
+        w = MainWindow()
+        w.setup()
+        w.widget.show()
+        w.open_panel(FILE_PAGE)
+        w.panel.set_active("plants.xlsx", "Inventory", "/x/plants.xlsx")
+        _app.processEvents()
+        label, value = w.panel.fact_rows["Sheet"]
+        centres = [x.mapTo(w.panel, x.rect().center()).y() for x in (label, value, w.panel.sheet_refresh_button)]
+        self.assertLessEqual(max(centres) - min(centres), 1, centres)
+        right = w.panel.sheet_refresh_button.mapTo(w.panel, w.panel.sheet_refresh_button.rect().topRight()).x()
+        refresh = w.panel.refresh_button.mapTo(w.panel, w.panel.refresh_button.rect().topRight()).x()
+        self.assertEqual(right, refresh)                                      # at the right, level with the Available Files icon
