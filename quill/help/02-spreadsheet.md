@@ -45,6 +45,8 @@ While an `.xlsx` is open in **Numbers**, each cell Quill writes to the file is a
 
 ### When another program holds the file
 
+Quill writes only the cells it fills in, so the results your formulas already show stay as they were and the spreadsheet program does not warn that the file was edited.
+
 If Excel has the file you chose, Quill works through Excel itself (no file to fight over). If a program refuses the save (Excel on Windows), Quill keeps your rows, tries again every few seconds, says so in the **Log**, and after a few tries saves them to *name (Quill copy)* beside the file.
 
 ### Spreadsheets that are already open

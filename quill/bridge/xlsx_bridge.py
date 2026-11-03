@@ -18,6 +18,7 @@ from quill.bridge.base import BridgeError, BridgeLockedError
 from quill.bridge.grid import OpenpyxlGrid
 from quill.bridge.grid_bridge import GridBridge
 from quill.bridge.introspect import ListSource, discover
+from quill.bridge.xlsx_patch import Unsupported, patch_package
 
 log = logging.getLogger("quill.xlsx")
 #: Seconds the system's ``open`` may take to hand a file over (it only asks; it never waits for the program).
@@ -39,6 +40,7 @@ class XlsxBridge(GridBridge):
         self._path = pathlib.Path(path) if path else None
         self._wb = None
         self._dirty = False                      # changes are in memory but the file is held by another program
+        self._list_edits: list[tuple[str, str]] = []     # inline list formulas rewritten since the file was last saved
 
     def connect(self, workbook: str | None = None) -> None:
         # The picker and saved settings pass a workbook *name*; only a path that
@@ -58,6 +60,7 @@ class XlsxBridge(GridBridge):
         self._path = path
         self._name = path.name
         self._grid = OpenpyxlGrid(self._wb)
+        self._list_edits = []
         self._discovery = discover(self._wb, self._vertical, self._headings_row)
 
     def disconnect(self) -> None:
@@ -106,12 +109,34 @@ class XlsxBridge(GridBridge):
     def dirty(self) -> bool:
         return self._dirty
 
+    def _store(self, target: pathlib.Path) -> None:
+        """Write the changes to *target*: into the existing file where that is safe, else the whole workbook.
+
+        Patching keeps everything Quill did not touch (stored formula results above all) exactly as it was, so the
+        spreadsheet program shows no "edited with formulas" notice. See :mod:`quill.bridge.xlsx_patch`.
+        """
+        grid = self._grid
+        if not grid.restructured:
+            try:
+                patch_package(self._path, target, self._wb, grid.unsaved, self._list_edits)
+                return
+            except Unsupported as why:
+                log.info("Saving %s in full instead of patching it: %s", self._path.name, why)
+        self._wb.save(target)
+
+    def _saved(self) -> None:
+        """The file now holds every change made so far."""
+        self._grid.unsaved.clear()
+        self._grid.restructured = False
+        self._list_edits.clear()
+
     def _after_write(self) -> None:
         try:
-            self._wb.save(self._path)
+            self._store(self._path)
         except OSError as exc:                       # another program holds the file (Excel on Windows does)
             self._dirty = True
             raise BridgeLockedError(f"{self._path.name} is in use by another program ({exc.strerror or exc})") from exc
+        self._saved()
         self._dirty = False
 
     def flush(self) -> bool:
@@ -132,7 +157,7 @@ class XlsxBridge(GridBridge):
         return str(copy)
 
     def _write_copy(self, target: pathlib.Path) -> None:
-        self._wb.save(target)
+        self._store(target)
 
     def _add_inline(self, source: ListSource, value: str) -> None:
         """Rewrite the inline validation formula(s) to include *value*."""
@@ -150,6 +175,7 @@ class XlsxBridge(GridBridge):
             for dv in ws.data_validations.dataValidation:
                 if dv.type == "list" and (dv.formula1 or "").lstrip("=").strip() == old:
                     dv.formula1 = formula
+        self._list_edits.append((old, formula))
         self._discovery.sources[source.column] = ListSource(
             column=source.column, items=tuple(new_items)
         )

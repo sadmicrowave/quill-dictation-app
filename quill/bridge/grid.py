@@ -160,6 +160,8 @@ class OpenpyxlGrid(Grid):
         self._wb = wb
         self.changes: list[tuple[str, int, int, object]] = []      # cells written, in sheet coordinates, until taken
         self.changes_lost = False                   # too many were waiting: the list was dropped, a viewer must reload
+        self.unsaved: set[tuple[str, int, int]] = set()   # cells written since the file was last saved (see xlsx_patch)
+        self.restructured = False                   # something beyond cells changed (hidden rows): only a full save keeps it
         self._hidden: dict[str, set[int]] = {}      # rows we hid, per sheet
         self._cursor: dict[str, tuple[int, int]] = {}
 
@@ -202,6 +204,7 @@ class OpenpyxlGrid(Grid):
     def write(self, sheet: str, row: int, col: int, value: object) -> None:
         cell = self._ws(sheet).cell(row=row, column=col)
         cell.value = value
+        self.unsaved.add((sheet, row, col))
         if not self.changes_lost:
             self.changes.append((sheet, row, col, value))      # (so a viewer program can be shown the same cells)
             if len(self.changes) > MAX_CHANGES:                # nobody is taking them: do not keep them, say so instead
@@ -221,6 +224,7 @@ class OpenpyxlGrid(Grid):
         """
         from openpyxl.utils import get_column_letter
         ws = self._ws(sheet)
+        self.restructured = True
         self.clear_autofilter(sheet)
         ws.auto_filter.ref = (
             f"{get_column_letter(first_col)}{header_row}:{get_column_letter(last_col)}{last_row}"
@@ -237,6 +241,7 @@ class OpenpyxlGrid(Grid):
 
     def clear_autofilter(self, sheet: str) -> None:
         ws = self._ws(sheet)
+        self.restructured = True
         for row in self._hidden.pop(sheet, set()):
             ws.row_dimensions[row].hidden = False
 
