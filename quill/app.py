@@ -15,6 +15,7 @@ import logging
 import os
 import pathlib
 import threading
+import time
 from typing import Callable
 
 import shiboken6
@@ -196,6 +197,10 @@ class QuillApp:
         self._ready_note_pending = False             # the model is ready but a warning is showing: the note waits for a connection
         self._open_files: list[OpenFile] = []        # spreadsheets other programs have open (the side panel's list)
         self._open_files_busy = False
+        self._launched_at: dict[str, float] = {}        # when a program was last asked to open each file (see _launch)
+        self._start_wanted = False                      # Start was pressed while the file was not yet open in a program
+        self._waiting_viewer = False
+        self._viewer_looks = 0
         self._viewer_running = False
         self._host_noted = False
         self._host_reload = QTimer()
@@ -785,11 +790,10 @@ class QuillApp:
                     self.choose_spreadsheet_file()
                 else:
                     self.window.open_panel(FILE_PAGE)
+        if not active:
+            self._start_wanted = False                                    # (a Start that was waiting for the file to open is cancelled)
         if active and self.connected and not self._viewer_open():     # Quill only writes to a file that is open to be seen
-            self.window.append_log(f"Waiting for {self.controller.bridge.workbook_name} to open in your spreadsheet program. "
-                                   "Quill writes to the file only while it is open there: press Start again once it is.",
-                                   "warning", reveal=False)
-            self._open_in_viewer()
+            self._wait_for_viewer()
             return
         self.controller.set_listening(active)   # explains what to do if there is no workbook
 
@@ -1074,24 +1078,72 @@ class QuillApp:
         wanted = os.path.realpath(bridge.workbook_path)
         return any(f.path and os.path.realpath(f.path) == wanted for f in self._open_files)
 
-    def _open_in_viewer(self) -> None:
-        """Start the connected file in its own program (in the background), then look again until it shows up there."""
+    #: How long (s) a file counts as "just opened" after Quill asked a program to open it: it is not asked again meanwhile
+    #: (opening it a second time makes some programs, Numbers among them, open a second copy in a new window).
+    JUST_LAUNCHED_S = 45
+    #: How often (ms) and how many times Quill looks for the file to show up in a program while a Start is waiting.
+    VIEWER_LOOK_MS, VIEWER_LOOKS = 1500, 24
+
+    def _just_launched(self, path: str | pathlib.Path) -> bool:
+        return time.monotonic() - self._launched_at.get(os.path.realpath(path), -1e9) < self.JUST_LAUNCHED_S
+
+    def _launch(self, path: str | pathlib.Path) -> bool:
+        """Ask a program to open *path* (only if that was not just done), and keep Quill in front. True if it was asked."""
+        if self._just_launched(path):
+            return False
+        self._launched_at[os.path.realpath(path)] = time.monotonic()
+        ok = self.hosts.launch(path, str(self.settings.preferences["open_with"]))
+        if ok:
+            for delay in (400, 1500):                           # a program that starts slowly may still take the focus
+                QTimer.singleShot(delay, lambda: bring_app_forward(self.window.widget))
+        return ok
+
+    def _wait_for_viewer(self) -> None:
+        """Start was pressed with the file not (yet) seen open in a spreadsheet program.
+
+        Quill looks for it, asks a program to open it only if nobody has it (and only once), keeps looking, and starts
+        listening the moment it is open: pressing Start again is not needed (and never opens it again).
+        """
+        self._start_wanted = True
+        if self._waiting_viewer:
+            return                                                    # one watcher at a time
+        self._waiting_viewer = True
+        self._viewer_looks = 0
+        self.window.append_log(f"Waiting for {self.controller.bridge.workbook_name} to open in your spreadsheet program. "
+                               "Quill writes to the file only while it is open there, and starts listening as soon as it is.",
+                               "warning", reveal=False)
+        self._viewer_look()
+
+    def _viewer_look(self) -> None:
+        self.run_in_background(self._scan_open_files, self._viewer_looked)
+
+    def _viewer_looked(self, found: list[OpenFile] | None) -> None:
+        if found is not None:
+            self._open_files = found
+        if not self._start_wanted or not self.connected:
+            self._waiting_viewer = False                              # Stop was pressed, or the file is gone
+            return
+        if self._viewer_open():
+            self._waiting_viewer = False
+            self._start_wanted = False
+            self._attach_live_if_open_in_excel()
+            self.controller.set_listening(True)
+            return
         path = self.controller.bridge.workbook_path
         name = self.controller.bridge.workbook_name
-
-        def launch() -> bool:
-            return self.hosts.launch(path, str(self.settings.preferences["open_with"]))
-
-        def launched(ok: object) -> None:
-            if ok:
-                for delay in (400, 1500):
-                    QTimer.singleShot(delay, lambda: bring_app_forward(self.window.widget))
-                for delay in (1500, 3500, 7000, 12000):
-                    QTimer.singleShot(delay, self.refresh_open_files)
-            else:
+        if found is not None and not self._just_launched(path):
+            if not self._launch(path):
+                self._waiting_viewer = False
+                self._start_wanted = False
                 self.window.append_log(f"Could not open {name} in a spreadsheet program. Open it yourself, then press Start.", "warning")
-
-        self.run_in_background(launch, launched)
+                return
+        self._viewer_looks += 1
+        if self._viewer_looks >= self.VIEWER_LOOKS:
+            self._waiting_viewer = False
+            self._start_wanted = False
+            self.window.append_log(f"{name} did not open. Open it yourself in a spreadsheet program, then press Start.", "warning")
+            return
+        QTimer.singleShot(self.VIEWER_LOOK_MS, self._viewer_look)
 
     def refresh_open_files(self) -> None:
         """Look again for spreadsheets open in other programs (never two looks at once)."""
@@ -1161,9 +1213,7 @@ class QuillApp:
             if found and any(f.path and os.path.realpath(f.path) == wanted for f in found):
                 self._attach_live_if_open_in_excel()
                 return
-            if found is not None and self.hosts.launch(path, str(self.settings.preferences["open_with"])):
-                for delay in (400, 1500):                          # a program that starts slowly may still take the focus
-                    QTimer.singleShot(delay, lambda: bring_app_forward(self.window.widget))
+            if found is not None and self._launch(path):
                 for delay in (2500, 6000, 12000):                  # then notice if Excel is the one that opened it
                     QTimer.singleShot(delay, self.refresh_open_files)
 

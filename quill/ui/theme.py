@@ -31,7 +31,7 @@ _SCHEMES = {
 #: Colour tokens per scheme. Warm neutrals with one accent.
 TOKENS = {
     "light": dict(bg="#FAF9F5", surface="#FFFFFF", hover="#F1EFE8", pressed="#E8E5DC",
-                  border="#E3E0D6", text="#1F1E1D", muted="#6F6D66", disabled="#B4B1A8", warn="#A8610C"),
+                  border="#E3E0D6", text="#1F1E1D", muted="#5E5C56", disabled="#B4B1A8", warn="#A8610C"),
     "dark":  dict(bg="#262624", surface="#30302E", hover="#3A3A37", pressed="#444441",
                   border="#44443F", text="#ECEBE6", muted="#A19F98", disabled="#6B6A64", warn="#F0B957"),
 }

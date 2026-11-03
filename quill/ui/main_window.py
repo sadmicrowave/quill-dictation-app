@@ -18,6 +18,7 @@ import html
 import logging
 from typing import Callable
 
+import shiboken6
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
@@ -242,6 +243,9 @@ class MainWindow:
         self._size_timer.setInterval(SIZE_SETTLE_MS)
         self._size_timer.timeout.connect(self.report_size)
         window.installEventFilter(ResizeWatcher(window, self._size_timer, self._sync_mini_detail))
+        self._reshow_size: QSize | None = None               # the size the window had when it was hidden (see _SizeKeeper)
+        self._reshowing = False
+        window.installEventFilter(_SizeKeeper(window, self))
         central = QWidget()
         central.setObjectName("mainRoot")
 
@@ -1030,11 +1034,42 @@ class MainWindow:
             self._window.resize(width, height)
         return True
 
+    def remember_for_reshow(self) -> None:
+        """The window is being hidden (closed to the menu bar): note its size, to give it back when it is shown again."""
+        window = self._window
+        animation = getattr(self, "_animation", None)
+        if (window is None or self._log_busy or self._mini != self._view_mini or self._reshowing
+                or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
+            return
+        self._reshow_size = QSize(window.width(), window.height())
+
+    def restore_after_reshow(self) -> None:
+        """The window was shown again: macOS builds a new native window with a different title bar, and the window comes back
+        taller or shorter than it was (it grew a little each time it was closed and reopened, taking the room from the
+        matched words box). Give it the size it had, and keep the size from being reported while it settles."""
+        if self._reshow_size is None or self._window is None:
+            return
+        self._reshowing = True
+        saved = QSize(self._reshow_size)
+        steps = (0, 150, 400, 900)
+        for index, delay in enumerate(steps):
+            QTimer.singleShot(delay, lambda last=index == len(steps) - 1: self._apply_reshow(saved, last))
+
+    def _apply_reshow(self, saved: QSize, last: bool) -> None:
+        window = self._window
+        if window is not None and shiboken6.isValid(window) and window.isVisible() and self._reshow_size is not None:
+            if window.width() != saved.width() or window.height() != saved.height():
+                window.resize(saved)
+        if last:
+            self._reshowing = False
+            self._reshow_size = None
+            self.report_size()
+
     def report_size(self) -> None:
         """Tell the app the full window's size (not while it is the mini view or in the middle of a resize)."""
         window = self._window
         animation = getattr(self, "_animation", None)
-        if (window is None or self._log_busy or self._mini != self._view_mini
+        if (window is None or self._log_busy or self._mini != self._view_mini or self._reshowing
                 or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
             return
         if self._view_mini:                                    # the mini view keeps its own size
@@ -1549,6 +1584,23 @@ class MainWindow:
     def listening(self) -> bool:
         """Last state passed to :meth:`set_listening_indicator`."""
         return self._listening
+
+
+class _SizeKeeper(QObject):
+    """Remembers the main window's size when it is hidden and has it given back when it is shown (see
+    :meth:`MainWindow.restore_after_reshow`)."""
+
+    def __init__(self, window: QWidget, owner: "MainWindow") -> None:
+        super().__init__(window)
+        self._window, self._owner = window, owner
+
+    def eventFilter(self, obj, event) -> bool:                       # noqa: N802 (Qt name)
+        if obj is self._window:
+            if event.type() == QEvent.Type.Hide and not self._window.isMinimized():
+                self._owner.remember_for_reshow()
+            elif event.type() == QEvent.Type.Show and not event.spontaneous():
+                self._owner.restore_after_reshow()
+        return False
 
 
 class _GripPlacer(QObject):

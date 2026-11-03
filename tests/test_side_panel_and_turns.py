@@ -3070,3 +3070,80 @@ class TestSpacingNeverLeavesAClearFrame(unittest.TestCase):
         d.build()
         d._dialog.show()
         self.check(d._dialog, d.root)
+
+
+class TestStartWaitsForTheFileThenListens(PanelApp):
+    """Start with a newly connected file: the file is opened once, never again, and listening starts by itself."""
+
+    def setUp(self):
+        super().setUp()
+        self._env = mock.patch.dict("os.environ", {}, clear=False)
+        self._env.start()
+        __import__("os").environ.pop("QUILL_NO_HOSTS", None)
+        self.hosts.running = lambda: []
+        self.app._open_files = []
+        self.app.VIEWER_LOOK_MS = 10
+        self.me = OpenFile("plants.xlsx", str(self.plants), "Numbers")
+
+    def tearDown(self):
+        self._env.stop()
+        super().tearDown()
+
+    def wait(self, ms=150):
+        import time
+        end = time.time() + ms / 1000
+        while time.time() < end:
+            _app.processEvents()
+            time.sleep(0.005)
+
+    def test_the_file_is_opened_once_however_often_start_is_pressed(self):
+        for _ in range(4):
+            self.app.toggle_listening(True)
+            self.wait(40)
+        self.assertEqual(self.hosts.launched, [str(self.plants.resolve())])
+        self.assertFalse(self.app.controller.session.listening)
+
+    def test_listening_starts_by_itself_the_moment_the_file_shows_up_open(self):
+        self.app.toggle_listening(True)
+        self.wait(40)
+        self.assertFalse(self.app.controller.session.listening)
+        self.hosts.files = [self.me]                                          # the program has opened it
+        self.wait(150)
+        self.assertTrue(self.app.controller.session.listening)
+        self.assertEqual(self.hosts.launched, [str(self.plants.resolve())])   # still only the one request
+
+    def test_a_file_that_is_already_open_is_never_opened_again(self):
+        self.hosts.files = [self.me]
+        self.app.toggle_listening(True)
+        self.wait(60)
+        self.assertTrue(self.app.controller.session.listening)
+        self.assertEqual(self.hosts.launched, [])
+
+    def test_stop_cancels_the_wait(self):
+        self.app.toggle_listening(True)
+        self.wait(40)
+        self.app.toggle_listening(False)
+        self.hosts.files = [self.me]
+        self.wait(100)
+        self.assertFalse(self.app.controller.session.listening)
+
+    def test_it_gives_up_after_a_while_and_says_what_to_do(self):
+        self.app.VIEWER_LOOKS = 3
+        self.app.toggle_listening(True)
+        self.wait(200)
+        text = self.app.window.log.toPlainText()
+        self.assertIn("did not open", text)
+        self.assertIn("then press Start", text)
+        self.assertEqual(self.hosts.launched, [str(self.plants.resolve())])
+        self.hosts.files = [self.me]
+        self.wait(80)
+        self.assertFalse(self.app.controller.session.listening)               # (it stopped waiting)
+
+    def test_a_pick_that_just_opened_the_file_is_not_followed_by_a_second_opening_on_start(self):
+        self.chosen[0] = str(self.other)
+        self.app.choose_spreadsheet_file()                                    # the loader opens it
+        opened = list(self.hosts.launched)
+        self.assertEqual(len(opened), 1)
+        self.app.toggle_listening(True)
+        self.wait(60)
+        self.assertEqual(self.hosts.launched, opened)

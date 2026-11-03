@@ -675,3 +675,58 @@ class TestOldMiniSizeIsWidened(unittest.TestCase):
         self.assertEqual(w._mini_size.width(), MainWindow.MINI_WIDTH)
         w.restore_mini_size(520, 200)
         self.assertEqual(w._mini_size.width(), 520)
+
+
+class TestSizeAfterCloseAndReopen(unittest.TestCase):
+    """macOS gives a reopened window a different title bar, so it came back taller each time; it must come back as it was."""
+
+    def wait(self, ms):
+        import time
+        end = time.time() + ms / 1000
+        while time.time() < end:
+            _app.processEvents()
+            time.sleep(0.005)
+
+    def test_a_window_that_comes_back_bigger_is_put_back_and_the_bigger_size_is_never_saved(self):
+        w = MainWindow()
+        w.setup()
+        reported = []
+        w._on_resized = lambda width, height: reported.append((width, height))
+        w.widget.show()
+        w.widget.resize(560, 700)
+        self.wait(100)
+        w.widget.hide()
+        self.assertEqual((w._reshow_size.width(), w._reshow_size.height()), (560, 700))
+        w.widget.show()
+        w.widget.resize(560, 728)                                  # what the system did: 28 more
+        self.wait(1300)
+        self.assertEqual((w.widget.width(), w.widget.height()), (560, 700))
+        self.assertNotIn((560, 728), reported)
+        self.assertFalse(w._reshowing)
+        w.widget.hide()
+        w.widget.show()
+        w.widget.resize(560, 720)
+        self.wait(1300)
+        self.assertEqual(w.widget.height(), 700)                    # every time
+
+    def test_a_window_shown_for_the_first_time_is_left_alone(self):
+        w = MainWindow()
+        w.setup()
+        w.widget.resize(520, 600)
+        w.widget.show()
+        self.wait(1100)
+        self.assertEqual((w.widget.width(), w.widget.height()), (520, 600))
+
+    def test_the_mini_view_gets_its_own_size_back_not_the_full_windows(self):
+        w = MainWindow()
+        w.setup()
+        w.widget.show()
+        w.set_mini(True)
+        self.wait(200)
+        mini = (w.widget.width(), w.widget.height())
+        w.widget.hide()
+        self.assertEqual((w._reshow_size.width(), w._reshow_size.height()), mini)
+        w.widget.show()
+        w.widget.resize(mini[0], mini[1] + 28)
+        self.wait(1300)
+        self.assertEqual((w.widget.width(), w.widget.height()), mini)
