@@ -588,3 +588,9 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 
 - `pytest` runs the **quick** suite (about a minute and a half): the ~320 tests that take 0.25 s or more (listed in `tests/slow_tests.txt`) are left out. `pytest --full` (or `QUILL_FULL=1`) runs everything (about 4.5 minutes); do that before a commit or a build, or when something broad changed. A test named on the command line is always run. `python tools/make_slow_list.py` rewrites the list.
 - On a real screen: `tools/verify_window_effects.py` (opacity and blur basics) and `tools/verify_control_opacity.py` (every control, window, theme, spacing; about 25 minutes, leave the screen alone), both macOS only.
+
+## Phase 68: Start, window size, muted text
+
+- Start with a file that is not yet seen open in a spreadsheet program no longer asks for it to be opened on every press (Numbers opened a new copy each time, and listening never began). `_wait_for_viewer` looks, opens the file only if nobody has it and only once per 45 s (`_launch`, `JUST_LAUNCHED_S`; the loader's own opening counts too), keeps looking every 1.5 s for up to 36 s, and starts listening by itself when it shows up; Stop cancels, giving up says what to do.
+- macOS builds a new native window when the window is closed to the menu bar and shown again, and it came back 28 px taller and 24 px lower each time (taking the room from the matched words box). `_SizeKeeper` / `MainWindow.restore_after_reshow` give back the remembered size and position and keep the intermediate sizes from being saved. Checked on a real screen: size and position identical across repeated close and reopen.
+- Light theme muted text is a shade darker (`#6F6D66` to `#5E5C56`, contrast on the window 4.9 to 6.4); the dark theme's muted colour is unchanged.

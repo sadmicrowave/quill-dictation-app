@@ -697,10 +697,15 @@ class TestSizeAfterCloseAndReopen(unittest.TestCase):
         self.wait(100)
         w.widget.hide()
         self.assertEqual((w._reshow_size.width(), w._reshow_size.height()), (560, 700))
+        w.widget.move(120, 140)
+        w.widget.hide()
+        spot = w._reshow_pos
         w.widget.show()
-        w.widget.resize(560, 728)                                  # what the system did: 28 more
+        w.widget.resize(560, 728)                                  # what the system did: 28 more ...
+        w.widget.move(spot.x(), spot.y() + 24)                     # ... and 24 lower
         self.wait(1300)
         self.assertEqual((w.widget.width(), w.widget.height()), (560, 700))
+        self.assertEqual((w.widget.pos().x(), w.widget.pos().y()), (spot.x(), spot.y()))
         self.assertNotIn((560, 728), reported)
         self.assertFalse(w._reshowing)
         w.widget.hide()

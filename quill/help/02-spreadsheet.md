@@ -33,7 +33,7 @@ Press the **gear** at the right of **Active File** for the **file settings** (an
 
 ### Several programs at once
 
-You can have Excel open with one workbook, Numbers with another and LibreOffice with a third. Quill writes only while the active file is open in one of them, and each turn is shown in the program that has that file: switching the active file (in the **Files** panel or with **Open File**) switches where the rows appear, with nothing to set. If the file is open nowhere, Quill opens it for you; **Start** waits until it is open.
+You can have Excel open with one workbook, Numbers with another and LibreOffice with a third. Quill writes only while the active file is open in one of them, and each turn is shown in the program that has that file: switching the active file (in the **Files** panel or with **Open File**) switches where the rows appear, with nothing to set. If the file is open nowhere, Quill opens it for you, once (never a second copy), and **Start** begins listening by itself the moment it is open: you do not press it again.
 
 ### Rows appearing live in LibreOffice
 

@@ -244,6 +244,7 @@ class MainWindow:
         self._size_timer.timeout.connect(self.report_size)
         window.installEventFilter(ResizeWatcher(window, self._size_timer, self._sync_mini_detail))
         self._reshow_size: QSize | None = None               # the size the window had when it was hidden (see _SizeKeeper)
+        self._reshow_pos = None                              # ... and where it was
         self._reshowing = False
         window.installEventFilter(_SizeKeeper(window, self))
         central = QWidget()
@@ -1042,6 +1043,7 @@ class MainWindow:
                 or (animation is not None and animation.state() == QPropertyAnimation.State.Running)):
             return
         self._reshow_size = QSize(window.width(), window.height())
+        self._reshow_pos = window.pos()
 
     def restore_after_reshow(self) -> None:
         """The window was shown again: macOS builds a new native window with a different title bar, and the window comes back
@@ -1050,16 +1052,18 @@ class MainWindow:
         if self._reshow_size is None or self._window is None:
             return
         self._reshowing = True
-        saved = QSize(self._reshow_size)
+        saved, spot = QSize(self._reshow_size), self._reshow_pos
         steps = (0, 150, 400, 900)
         for index, delay in enumerate(steps):
-            QTimer.singleShot(delay, lambda last=index == len(steps) - 1: self._apply_reshow(saved, last))
+            QTimer.singleShot(delay, lambda last=index == len(steps) - 1: self._apply_reshow(saved, spot, last))
 
-    def _apply_reshow(self, saved: QSize, last: bool) -> None:
+    def _apply_reshow(self, saved: QSize, spot, last: bool) -> None:
         window = self._window
         if window is not None and shiboken6.isValid(window) and window.isVisible() and self._reshow_size is not None:
             if window.width() != saved.width() or window.height() != saved.height():
                 window.resize(saved)
+            if spot is not None and window.pos() != spot:
+                window.move(spot)                                    # (it also came back lower by the title bar's difference)
         if last:
             self._reshowing = False
             self._reshow_size = None
