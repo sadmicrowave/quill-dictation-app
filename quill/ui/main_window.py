@@ -32,6 +32,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFontMetrics, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (
+    QMenu,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QHeaderView,
@@ -123,6 +124,9 @@ LOG_TIME_GAP = 12           # px between the time and the message in the log
 LOG_LEVELS = {"info": (None, None), "warning": ("Warning", "#D98E04"), "error": ("Error", "#E5484D")}
 
 
+#: How long the "Remember ...?" line stays before it goes by itself (nothing is learned then).
+LEARN_OFFER_MS = 12_000
+
 class MainWindow:
     """The compact status window.
 
@@ -158,6 +162,9 @@ class MainWindow:
         on_resized: Callable[[int, int], None] | None = None,
         on_mini_resized: Callable[[int, int], None] | None = None,
         on_field_removed: Callable[[str], None] | None = None,
+        on_field_options: Callable[[str], list[str]] | None = None,
+        on_field_changed: Callable[[str, str], None] | None = None,
+        on_learn_answer: Callable[[bool | None], None] | None = None,
         on_file_state: Callable[[bool, str, str], None] | None = None,
         mini: bool = False,
         mini_on_top: bool = True,
@@ -215,6 +222,9 @@ class MainWindow:
         self._mini_size: QSize | None = None  # the size the user left the mini view at
         self._on_mini_resized = on_mini_resized or (lambda width, height: None)
         self._on_field_removed = on_field_removed or (lambda column: None)
+        self._on_field_options = on_field_options or (lambda column: [])      # the other columns a line's value could go in
+        self._on_field_changed = on_field_changed or (lambda column, to: None)
+        self._on_learn_answer = on_learn_answer or (lambda answer: None)      # True: yes, False: no, None: no answer in time
         self._row_fields: dict[str, object] = {}   # what the row grid shows now
         self._stream_words: list[tuple[str, WordMatch]] = []     # what was heard (final), with what Quill made of each word
         self._stream_partial: list[tuple[str, WordMatch]] = []   # the phrase still being spoken
@@ -367,6 +377,7 @@ class MainWindow:
         self.row_table.verticalHeader().setVisible(False)
         self.row_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.row_table.row_remove_requested.connect(self._remove_row_requested)
+        self.row_table.row_change_requested.connect(self._change_row_requested)
         self._row_height = self.row_table.verticalHeader().defaultSectionSize()
         self.row_table.setMinimumHeight(ROW_EMPTY_HEIGHT)           # starts small; grows with the fields heard
         self._row_target = ROW_EMPTY_HEIGHT
@@ -385,6 +396,25 @@ class MainWindow:
         self.row_grip.released.connect(lambda: self._on_log_height(self._log_height))
         self.row_table.installEventFilter(_GripPlacer(self.row_table, self.row_grip))
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
+        self.learn_bar = QWidget()                 # "Remember that 'spotted' means Observation Date?  Yes  No": quiet, goes by itself
+        learn = QHBoxLayout(self.learn_bar)
+        learn.setContentsMargins(0, 0, 0, 0)
+        learn.setSpacing(6)
+        self.learn_label = QLabel("")                # wraps: a long column name must still be read in full
+        self.learn_label.setWordWrap(True)
+        self.learn_label.setProperty("note", True)
+        learn.addWidget(self.learn_label, 1)
+        self.learn_yes, self.learn_no = QPushButton("Yes"), QPushButton("No")
+        for button, answer in ((self.learn_yes, True), (self.learn_no, False)):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda _=False, a=answer: self._learn_answered(a))
+            learn.addWidget(button)
+        self.learn_bar.setVisible(False)
+        self._learn_timer = QTimer(self._window)
+        self._learn_timer.setSingleShot(True)
+        self._learn_timer.setInterval(LEARN_OFFER_MS)
+        self._learn_timer.timeout.connect(lambda: self._learn_answered(None))
+        layout.addWidget(self.learn_bar)
         self._has_last_saved = False                       # the line shows only once a row has been saved
         self.last_label = ElidedLabel("")                  # one line however much was saved
         self.last_label.setProperty("note", True)          # smaller italic supporting text
@@ -1003,6 +1033,8 @@ class MainWindow:
         detail = full or self._mini_detail                                   # the mini view shows them only when tall
         self.stream.setVisible(detail)
         self.row_table.setVisible(detail)
+        if self._view_mini:
+            self.learn_bar.setVisible(False)
         self.row_grip.allowed = full                                         # (only the full window is resized this way)
         self.row_grip.setVisible(full and detail)
         self.log_grip.allowed = full
@@ -1331,6 +1363,7 @@ class MainWindow:
     def update_current_row(self, fields: dict[str, object]) -> None:
         """Show the record being built, one column per line (the box grows with the fields, then scrolls)."""
         self._row_fields = dict(fields)
+        self.row_table.set_changeable({c for c in fields if self._on_field_options(c)})
         self.row_table.setRowCount(len(fields))
         self.row_placeholder.setVisible(not fields)
         for r, (column, value) in enumerate(fields.items()):
@@ -1343,6 +1376,41 @@ class MainWindow:
                 self.row_table.setItem(r, c, item)
         self._size_rows()
         self._fit_row_table()
+
+    def _change_row_requested(self, column: str, where) -> None:
+        """The user clicked a line's column name: offer the other columns its value could go in."""
+        options = self._on_field_options(column)
+        if not options:
+            return
+        menu = QMenu(self._window)
+        header = menu.addAction("Change this to")
+        header.setEnabled(False)
+        menu.addSeparator()
+        for option in options:
+            menu.addAction(option).triggered.connect(lambda _=False, o=option: self._field_changed(column, o))
+        menu.exec(where)
+
+    def _field_changed(self, column: str, to_column: str) -> None:
+        self._on_field_changed(column, to_column)
+
+    def show_learn_offer(self, text: str) -> None:
+        """Ask "Remember ...?" in a quiet line under the row; it goes by itself after a few seconds (nothing is learned then)."""
+        self.learn_label.setText(text)
+        self.learn_bar.setVisible(self._learn_allowed())
+        self._learn_timer.start()
+        self._keep_minimum()
+
+    def hide_learn_offer(self) -> None:
+        self._learn_timer.stop()
+        self.learn_bar.setVisible(False)
+        self._keep_minimum()
+
+    def _learn_allowed(self) -> bool:
+        return not self._view_mini
+
+    def _learn_answered(self, answer: bool | None) -> None:
+        self.hide_learn_offer()
+        self._on_learn_answer(answer)
 
     def _remove_row_requested(self, column: str) -> None:
         """The user clicked a line's delete button: take it out of the grid, un-colour its words, tell the app."""

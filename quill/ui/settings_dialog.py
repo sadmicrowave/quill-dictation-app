@@ -62,6 +62,8 @@ from quill.listener.model import BETTER, STANDARD, WHISPER_NAME, fallback_choice
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
 from quill.ui.hints import fill_missing_tips
+from quill.learning import LEARN_AFTER_RANGE
+from quill.ui.learned_page import LearnedWordsPanel
 from quill.ui.settings_widgets import (
     NavDelegate,
     ModelRow,
@@ -84,7 +86,7 @@ BINDABLE_ACTIONS = [a for a in Action if a is not Action.NONE]
 
 #: Sidebar groups: (caption, [page titles]).
 GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
-          ("Voice and Commands", ["Keywords", "Speech Model"])]
+          ("Voice and Commands", ["Keywords", "Speech Model", "Learned Words"])]
 
 #: The speech models, in the order they are offered: (key, name, download size, what it does for the quality).
 SPEECH_MODELS = (
@@ -151,7 +153,7 @@ def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel,
 EDITED_PREFERENCES = (
     "theme", "speak_sort_prompts", "auto_voice_sort", "mic_always_on", "auto_stop", "auto_stop_seconds",
     "sheet_check_seconds", "mini_on_top", "hide_dock_icon", "speech_quality", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity", "sorting_sounds",
-    "blur", "history_limit", "feedback", "sound_pack", "echo_style",
+    "blur", "history_limit", "feedback", "sound_pack", "echo_style", "learn_after", "learn_ask",
 )
 
 
@@ -176,7 +178,8 @@ class SettingsDialog:
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
                  on_open_logs=None, on_help=None, on_download_model=None, model_installed=None,
-                 on_uninstall_model=None, model_removable=None, program_available=None) -> None:
+                 on_uninstall_model=None, model_removable=None, program_available=None, active_file=None) -> None:
+        self._active_file = active_file or (lambda: ("", "", []))      # (path, name, columns) of the active file
         self._program_available = program_available or (lambda program: True)
         self._on_uninstall_model = on_uninstall_model or (lambda quality: None)
         self._model_removable = model_removable or (lambda quality: False)
@@ -212,6 +215,9 @@ class SettingsDialog:
         self.echo_combo: QComboBox | None = None
         self.history_spin: QSpinBox | None = None
         self.sheet_spin: QSpinBox | None = None
+        self.learn_spin: QSpinBox | None = None
+        self.learn_ask_check: ToggleSwitch | None = None
+        self.learned: "LearnedWordsPanel | None" = None
         self.speak_check: ToggleSwitch | None = None
         self.auto_sort_check: ToggleSwitch | None = None
         self.mic_check: ToggleSwitch | None = None
@@ -407,8 +413,11 @@ class SettingsDialog:
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
                         self.pack_combo, self.echo_combo, self.open_with_combo):
             control.currentIndexChanged.connect(self._live)
-        for control in (self.font_spin, self.history_spin, self.sheet_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin):
+        for control in (self.font_spin, self.history_spin, self.sheet_spin, self.opacity_slider, self.blur_slider, self.auto_stop_spin,
+                        self.learn_spin):
             control.valueChanged.connect(self._live)
+        self.learn_ask_check.toggled.connect(self._live)
+        self.learn_spin.valueChanged.connect(lambda _=0: self.learned.refresh())     # (the Status column follows the setting)
         dialog.rejected.connect(self.revert)
 
     def _live(self, *_args) -> None:
@@ -446,6 +455,8 @@ class SettingsDialog:
         prefs["blur"] = self.blur_slider.value()
         prefs["history_limit"] = self.history_spin.value()
         prefs["sheet_check_seconds"] = self.sheet_spin.value()
+        prefs["learn_after"] = self.learn_spin.value()
+        prefs["learn_ask"] = self.learn_ask_check.isChecked()
         prefs["feedback"] = self.feedback_combo.currentData()
         prefs["sound_pack"] = self.pack_combo.currentData()
         prefs["echo_style"] = self.echo_combo.currentData()
@@ -818,8 +829,50 @@ class SettingsDialog:
         self._keywords_built = False
         if not self._lazy_keywords:
             self._ensure_keywords()
+        self._build_learned_page()
         if self.SHOW_ACCOUNT:
             self._build_account_page()
+
+    def _build_learned_page(self) -> None:
+        """Settings > Learned Words: how Quill learns, and the list of what it has learned."""
+        prefs = self._settings.preferences
+        page = self._page(
+            "Learned Words",
+            "Words you taught Quill to read as a column. When you say a date without naming its column, Quill uses these "
+            "to choose between your date columns. Quill learns a word when you change a line's column in the Current Row "
+            "box (click the column name), and remembers which files it learned each word in.\n\n"
+            "To teach a word right away, say it while Quill is listening: the word, then “means”, then the column's name, "
+            "for example “spotted means Observation Date”. It is learned the moment you say it, without waiting for "
+            "repeated corrections.")
+        self.learn_spin = GuardedSpinBox()
+        self.learn_spin.setRange(*LEARN_AFTER_RANGE)
+        self.learn_spin.setValue(int(prefs["learn_after"]))
+        self.learn_spin.setSuffix(" times")
+        self.learn_spin.setToolTip("How many times you change a word to the same column before Quill uses it by itself.")
+        self._add("Learned Words", page, "Corrections Before Learning",
+                  "How many times you must change a word to the same column before Quill uses it by itself (1 to 5). "
+                  "A higher number keeps one slip of the mouse from teaching Quill the wrong thing.",
+                  self.learn_spin, "learn learning corrections count threshold")
+        self.learn_ask_check = ToggleSwitch()
+        self.learn_ask_check.setChecked(bool(prefs["learn_ask"]))
+        self._add("Learned Words", page, "Ask Before Learning",
+                  "After you change a line's column, Quill asks whether to remember it. Turn this off to count every "
+                  "change without asking.", self.learn_ask_check, "remember ask confirm prompt learn")
+        self.learned = LearnedWordsPanel(self._settings.links, lambda: int(self._settings.preferences["learn_after"]),
+                                         self._active_file)
+        self.learned.changed.connect(self._links_changed)
+        page.addWidget(self.learned, 1)
+
+    def _links_changed(self) -> None:
+        """Learned words were forgotten: that is saved at once (it does not wait for the window's OK) and applied."""
+        self._settings.save()
+        self._on_change()
+
+    def show_learned_for_file(self) -> None:
+        """Open Learned Words on the active file's words (the shortcut in the Files panel)."""
+        self.show_page_named("Learned Words")
+        if self.learned is not None:
+            self.learned.show_this_file(True)
 
     def _ensure_keywords(self) -> None:
         """Build the Keywords page now if it has not been built yet."""

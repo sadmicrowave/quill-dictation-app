@@ -115,7 +115,7 @@ class Event:
 
     kind: str
     """One of: started, stopped, updated, committed, discarded, ignored,
-    search, clear_search, sort_terms, confirm, add_values, alias_added, skipped,
+    search, clear_search, sort_terms, teach_link, confirm, add_values, alias_added, skipped,
     expired, error. The controller rewrites ``search``/``clear_search`` into
     ``searched`` / ``cleared`` (or ``unsure`` / ``error``) once it has acted."""
 
@@ -150,6 +150,7 @@ class Session:
     today: Callable[[], dt.date] = dt.date.today
     listening: bool = False
     record: dict = field(default_factory=dict)
+    context: dict = field(default_factory=dict)      # column -> words spoken around a date placed without its column's name
     committed: int = 0
     ignored_while_stopped: int = 0
     pool: dict = field(default_factory=dict)        # TermKey -> times heard, not yet shown
@@ -172,6 +173,9 @@ class Session:
             events += self._answer(tokens[0] in YES_WORDS)
             text = " ".join(tokens[1:])
 
+        taught = self._teaching(tokens)
+        if taught is not None:
+            return events + [taught]
         for segment in self.matcher.split(text):
             if isinstance(segment, CommandEvent):
                 events += self._command(segment)
@@ -300,6 +304,21 @@ class Session:
     # Internals                                                            #
     # ------------------------------------------------------------------ #
 
+    def _teaching(self, tokens: list[str]) -> Event | None:
+        """"<word> means <column>": the user says outright which column a word stands for.
+
+        Only while listening, and only when the phrase is exactly a word (or two), "means", and one column's name;
+        anything else is dictation. Returns a ``teach_link`` event carrying ``values=[(word, column)]``.
+        """
+        if not self.listening or len(tokens) < 3:
+            return None
+        for at in (1, 2):
+            if len(tokens) > at + 1 and tokens[at] == "means":
+                found = self.vocab.field_at(tokens, at + 1)
+                if found and found[1] == len(tokens) - at - 1:
+                    return Event("teach_link", values=[(" ".join(tokens[:at]), found[0])])
+        return None
+
     def _segment(self, text: str) -> list[Event]:
         if not text:
             return []
@@ -312,6 +331,9 @@ class Session:
             if column in result.additive and column in self.record:           # another value for it: under the first
                 value = merge_values(self.record[column], value)
             self.record[column] = value
+        for column, words in result.context.items():
+            if column in result.updates:
+                self.context[column] = words
         for cand in result.candidates:
             key = (cand.column, cand.term)
             self.pool[key] = self.pool.get(key, 0) + 1
@@ -366,6 +388,7 @@ class Session:
         events: list[Event] = []
         if self.record:
             row, self.record = dict(self.record), {}
+            self.context.clear()
             terms = sorted(self.row_terms, key=lambda k: (k[0] or "", k[1]))
             self.row_terms.clear()
             self.committed += 1
@@ -385,6 +408,7 @@ class Session:
             self.pending = None
         self.row_terms.clear()
         row, self.record = dict(self.record), {}
+        self.context.clear()
         return [Event("discarded", record=row, detail="Row discarded")]
 
     def _ask_if_needed(self) -> list[Event]:

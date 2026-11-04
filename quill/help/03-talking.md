@@ -45,7 +45,18 @@ Say a date any way you like and Quill writes the **real date** into the sheet.
 - *"last friday"*, *"next monday"*, *"friday"*, *"last week"*
 - *"march third"*, *"the third of march twenty twenty five"*, *"october thirty"*
 
-Which date column? Quill reads your spreadsheet, not a word list. If a word you said is a form of a word in a date column's heading (*"departed"* near **Departure Date**), that column is used. Otherwise the first empty date column, left to right, is used and the Log says which (the second date you say goes to the second date column). You can always name the column: *"departure date yesterday"*.
+Which date column? Quill reads your spreadsheet, not a word list. If a word you said is a form of a word in a date column's heading (*"departed"* near **Departure Date**), that column is used. Otherwise the first empty date column, left to right, is used and the Log says which (the second date you say goes to the second date column). You can always name the column: *"departure date yesterday"*. Words you have taught Quill come first: see **Teaching Quill your words** below.
+
+## 🧑‍🏫 Teaching Quill your words
+
+Only you know that, in your sheet, *"spotted"* means **Observation Date** and *"left"* means **Departure Date**. Quill never ships a word list; it learns yours.
+
+- **Change a line's column.** In the row being built, click a line's column name (a small arrow shows when the pointer is over it) and pick another column under **Change this to**. A value already in that column swaps places, so two dates in the wrong order are fixed by one click.
+- **Quill asks once:** *"Remember that 'spotted' means Observation Date?"* with **Yes** and **No** (or say *yes* or *no*). It goes away by itself after a few seconds, and nothing is learned then.
+- **After enough corrections** (2 by default) Quill uses the word by itself, and the Log says so: *'spotted' used for Observation Date (learned)*.
+- **Teach a word at once:** while listening, say the word, then *means*, then the column's name: *"spotted means observation date"*. It is learned the moment you say it.
+- Quill never learns numbers, small everyday words, or words that are already in your sheet (a heading or a list value), and a column you name always wins.
+- **See and undo it** in **Settings > Learned Words**, or from the **Learned Words** link under the active file in the Files panel.
 
 A month and day with no year mean this year, or last year if that day is more than a month ahead.
 

@@ -39,6 +39,7 @@ except ImportError:
         tomllib = None  # type: ignore[assignment]
 
 from quill.feedback import ECHO_WORDS, MODES, PACKS
+from quill.learning import LEARN_AFTER_RANGE, LinkStore
 from quill.licensing import DEFAULT_ACCOUNT, clean_account
 from quill.parser.commands import RESERVED_ANSWER_WORDS, Action
 from quill.parser.tokens import tokenize
@@ -92,6 +93,8 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "sorting_width": 0,
     "vertical_layout": False,  # headings run down the first column (one record per column) instead of across the first row
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
+    "learn_after": 2,         # corrections of the same word to the same column before Quill uses the link (1 to 5)
+    "learn_ask": True,        # after a column is changed, ask "Remember ...?" (off: learn from the change without asking)
 }
 
 #: Allowed range for ``opacity`` (percent). At 0 the window would vanish, so 10 is the floor.
@@ -191,6 +194,7 @@ class Settings:
         self.aliases: dict[str, dict[str, str]] = aliases or {}
         self.preferences: dict[str, object] = {**DEFAULT_PREFERENCES, **(preferences or {})}
         self.account: dict[str, object] = clean_account(None)    # licence / subscription facts (licensing.py)
+        self.links = LinkStore()          # words the user taught Quill to read as a column (learning.py)
         self._config_dir = config_dir
 
     # ------------------------------------------------------------------ #
@@ -235,6 +239,7 @@ class Settings:
                 settings.preferences["font_size"] = int(DEFAULT_PREFERENCES["font_size"])
         settings.preferences["prefs_version"] = int(DEFAULT_PREFERENCES["prefs_version"])
         settings.account = clean_account(data.get("account") if isinstance(data.get("account"), dict) else None)
+        settings.links = LinkStore.from_list(data.get("links"))
         raw_aliases = data.get("aliases")
         if isinstance(raw_aliases, dict):
             for column, mapping in raw_aliases.items():
@@ -252,6 +257,8 @@ class Settings:
         if checked == OLD_SHEET_CHECK_DEFAULT:
             checked = DEFAULT_PREFERENCES["sheet_check_seconds"]
         settings.preferences["sheet_check_seconds"] = max(SHEET_CHECK_RANGE[0], min(SHEET_CHECK_RANGE[1], checked))
+        low, high = LEARN_AFTER_RANGE
+        settings.preferences["learn_after"] = max(low, min(high, int(settings.preferences["learn_after"])))
         low, high = HISTORY_LIMIT_RANGE
         settings.preferences["history_limit"] = max(low, min(high, int(settings.preferences["history_limit"])))
         low, high = OPACITY_RANGE
@@ -366,6 +373,13 @@ class Settings:
         lines.append("\n[account]\n")
         for key in DEFAULT_ACCOUNT:
             lines.append(f"{key} = {_toml_value(self.account[key])}\n")
+        for entry in self.links.to_list():
+            lines.append("\n[[links]]\n")
+            lines.append(f"word = {_toml_string(entry['word'])}\nshown = {_toml_string(entry['shown'])}\ncolumn = {_toml_string(entry['column'])}\n")
+            lines.append(f"count = {entry['count']}\ntaught = {_toml_value(entry['taught'])}\nused = {entry['used']}\n")
+            sources = ", ".join(f"{{ path = {_toml_string(src['path'])}, name = {_toml_string(src['name'])}, count = {src['count']} }}"
+                                for src in entry["sources"])
+            lines.append(f"sources = [{sources}]\n")
         for column, mapping in sorted(self.aliases.items()):
             if mapping:
                 lines.append(f"\n[aliases.{_toml_string(column)}]\n")

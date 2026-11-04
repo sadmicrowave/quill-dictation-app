@@ -235,7 +235,8 @@ class QuillApp:
             on_sorting=self.show_sorting,
             on_undo=self.undo, on_next_row=self.next_row, on_help=self.open_help, on_log_toggled=self._log_toggled,
             on_resized=self._window_resized, on_mini_resized=self._mini_window_resized,
-            on_field_removed=self.remove_field,
+            on_field_removed=self.remove_field, on_field_options=self.controller.columns_for_change,
+            on_field_changed=self.change_field, on_learn_answer=self.answer_learn_offer,
             log_collapsed=bool(settings.preferences["log_collapsed"]),
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
@@ -994,6 +995,8 @@ class QuillApp:
         panel.start_row_changed.connect(self.controller.set_start_row)
         panel.headings_row_changed.connect(self.controller.set_headings_row)
         panel.keywords_requested.connect(lambda: self.open_settings("Keywords"))
+        panel.learned_counter = lambda path: len(self.settings.links.for_file(path, self.controller.vocab.headers()))
+        panel.learned_words_requested.connect(lambda: self.open_settings("Learned Words", this_file=True))
         self._sync_turn_panel()
         self.window.set_panel_listener(self._panel_toggled, self._panel_width)
 
@@ -1442,11 +1445,22 @@ class QuillApp:
             self.help.restyle(self.settings.preferences, self.qapp)
         self.help.show(topic)
 
-    def open_settings(self, page: str | None = None) -> None:
-        """Show the Settings window (not modal: the app stays usable, and can be quit, while it is open), on *page* if given."""
+    def _active_file_facts(self) -> tuple[str, str, list[str]]:
+        """``(path, name, columns)`` of the file Quill works on, for the Learned Words list ("" and [] with none)."""
+        bridge = self.controller.bridge
+        path = str(getattr(bridge, "workbook_path", "") or "") if self.connected else ""
+        return path, os.path.basename(path), self.controller.vocab.headers() if path else []
+
+    def open_settings(self, page: str | None = None, this_file: bool = False) -> None:
+        """Show the Settings window (not modal: the app stays usable, and can be quit, while it is open), on *page* if given.
+
+        *this_file* opens Learned Words on the active file's words.
+        """
         if self._settings_dialog is not None:                 # already open: bring it forward, never a second one
             self._settings_dialog.bring_forward()
-            if page:
+            if this_file:
+                self._settings_dialog.show_learned_for_file()
+            elif page:
                 self._settings_dialog.show_page_named(page)
             return
         self._settings_dialog = SettingsDialog(
@@ -1454,10 +1468,12 @@ class QuillApp:
             on_change=lambda: self.apply_settings(quiet=True),
             on_download_model=self.download_model, model_installed=self.quality_installed,
             on_uninstall_model=self.uninstall_model, model_removable=self.quality_removable,
-            program_available=self.hosts.installed)
+            program_available=self.hosts.installed, active_file=self._active_file_facts)
         self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
-        if page:
+        if this_file:
+            self._settings_dialog.show_learned_for_file()
+        elif page:
             self._settings_dialog.show_page_named(page)
 
     def _settings_closed(self, accepted: bool) -> None:
@@ -1596,6 +1612,18 @@ class QuillApp:
         if self.controller.remove_field(column):
             self.window.append_log(f"Removed {column} from the row")
         self.window.update_current_row(self.controller.session.record)
+
+    def change_field(self, column: str, to_column: str) -> None:
+        """The user changed which column a line of the row being built goes in (from the menu on its name)."""
+        self.controller.change_field(column, to_column)
+        self.window.update_current_row(self.controller.session.record)
+
+    def answer_learn_offer(self, answer: bool | None) -> None:
+        """Yes or no to "Remember ...?" (None: it timed out, so nothing is learned)."""
+        if answer is None:
+            self.controller.expire_learn_offer()
+        else:
+            self.controller.answer_learn_offer(answer)
 
     def _match_heard_words(self, words: list[str]):
         """What Quill makes of each word heard (understood words are drawn as pills in the Voice Stream)."""
@@ -1749,6 +1777,15 @@ class QuillApp:
             self.sorting.set_voice_status((event.record or {}).get("heard", ""), event.detail)
             self.window.append_log(f"Voice Sort: {event.detail}")
             self.refresh_sorting()
+            return
+        elif kind == "learn_offer":
+            self.window.show_learn_offer(event.detail)
+            return
+        elif kind in ("changed", "learned", "learning", "learn_declined"):
+            self.window.hide_learn_offer()
+            self.window.panel.refresh_learned()
+            self.window.append_log(event.detail)
+            self.window.update_current_row(self.controller.session.record)
             return
         elif kind == "undone":
             self.window.append_log(event.detail)

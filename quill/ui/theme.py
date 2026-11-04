@@ -265,6 +265,9 @@ QPushButton:disabled {{ color: {t['disabled']}; background: {win}; border-color:
 QPushButton:checked, QPushButton[accent="true"] {{ background: {t['accent']}; color: {t['on_accent']};
               border-color: {t['accent']}; font-weight: 600; }}
 QPushButton:checked:hover, QPushButton[accent="true"]:hover {{ background: {t['accent_hover']}; }}
+QPushButton[danger="true"] {{ background: #E5484D; color: #FFFFFF; border-color: #E5484D; }}
+QPushButton[danger="true"]:hover {{ background: #CD3A3F; border-color: #CD3A3F; }}
+QLabel#confirmTitle {{ font-weight: 600; }}
 QPushButton::menu-indicator {{ width: 0; }}
 
 QLineEdit, QSpinBox, QComboBox {{ background: {surf}; color: {t['text']};

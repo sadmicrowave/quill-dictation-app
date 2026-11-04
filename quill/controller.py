@@ -16,7 +16,9 @@ from typing import Callable
 from quill.bridge.base import BridgeError, BridgeLockedError, WorkbookBridge
 from quill.config.settings import Settings
 from quill.history import History
-from quill.parser.commands import Action, CommandMatcher
+from quill.learning import link_word
+from quill.parser.commands import NO_WORDS, YES_WORDS, Action, CommandMatcher
+from quill.parser.tokens import tokenize
 from quill.parser.vocab import Vocabulary
 from quill.search import parse_search
 from quill.session import Decision, Event, Session, TermKey
@@ -83,6 +85,8 @@ class Controller:
         """Which workbook the last :meth:`connect` reached (a different one clears the heard terms)."""
         self._append_target: tuple[str, int] | None = None
         """``(sheet, record)`` that "append to" turns keep adding to (None: the next turn starts a new record)."""
+        self.learn_offer: tuple[str, str] | None = None
+        """``(word, column)`` Quill is asking "Remember ...?" about after a line's column was changed (None: no question open)."""
 
     # ------------------------------------------------------------------ #
     # Workbook connection                                                  #
@@ -132,7 +136,13 @@ class Controller:
         self.vocab.numeric_columns = self.bridge.numeric_columns()
         self.vocab.date_columns = self.bridge.date_columns()
         self._apply_aliases()
+        self._apply_learning()
         self._sheet = self.bridge.active_sheet_name()
+
+    def _apply_learning(self) -> None:
+        """Give the vocabulary what the user taught Quill about words and columns (and how soon to use it)."""
+        self.vocab.links = self.settings.links
+        self.vocab.learn_after = int(self.settings.preferences["learn_after"])
 
     def _apply_aliases(self) -> None:
         """Re-teach the vocabulary the user's saved synonyms (e.g. "extra large" = XL)."""
@@ -149,6 +159,7 @@ class Controller:
         """Rebuild the keyword matcher after the user edited settings."""
         self.session.matcher = CommandMatcher(self.settings.keywords)
         self.history.limit = int(self.settings.preferences["history_limit"])
+        self._apply_learning()
 
     # ------------------------------------------------------------------ #
     # Dictation                                                            #
@@ -165,6 +176,10 @@ class Controller:
     def _handle_spoken(self, text: str) -> None:
         if self.voice_sorter is not None:
             self._voice_sort(text)
+            return
+        words = tokenize(text)
+        if self.learn_offer is not None and len(words) == 1 and words[0] in YES_WORDS | NO_WORDS:
+            self.answer_learn_offer(words[0] in YES_WORDS)           # a spoken yes or no answers the "Remember ...?" question
             return
         if not self.connected:
             self.try_connect()   # a workbook may have been opened since we last looked
@@ -300,8 +315,116 @@ class Controller:
         if column not in self.session.record:
             return False
         value = self.session.record.pop(column)
+        self.session.context.pop(column, None)
         log.debug("removed %s=%r from the row being built", column, value)
         return True
+
+    # ------------------------------------------------------------------ #
+    # Learned links: which column a word means                              #
+    # ------------------------------------------------------------------ #
+
+    def columns_for_change(self, column: str) -> list[str]:
+        """The other columns the value on the row's *column* line could be changed to (empty when there are none).
+
+        Only columns that fit the value: a date goes to the other date columns, a number to the other numeric ones,
+        a word to the lists that already accept it.
+        """
+        if column not in self.session.record:
+            return []
+        value = self.session.record[column]
+        if isinstance(value, dt.date):
+            pool = self.vocab.date_columns
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            pool = self.vocab.numeric_columns
+        elif isinstance(value, str) and self.vocab.is_list_column(column):
+            pool = self.vocab.columns_for(value.split("\n")[0])
+        else:
+            pool = []
+        return [c for c in pool if c != column]
+
+    def change_field(self, column: str, to_column: str) -> bool:
+        """The user changed the column of one understood value of the row being built (it is written to *to_column* instead).
+
+        A value already in *to_column* swaps places, so two dates in the wrong order are fixed by one change. The words
+        spoken around the value are what Quill can learn from this (see :meth:`answer_learn_offer`).
+
+        Returns:
+            False if the change is not allowed (no such line, or the value does not fit *to_column*).
+        """
+        if to_column not in self.columns_for_change(column):
+            return False
+        record, context = self.session.record, self.session.context
+        value, words = record.pop(column), context.pop(column, [])
+        if to_column in record:
+            record[column], other = record[to_column], context.pop(to_column, [])
+            if other:
+                context[column] = other
+        record[to_column] = value
+        if words:
+            context[to_column] = words
+        self._on_event(Event("changed", detail=f"Changed {column} to {to_column}"))
+        self._offer_learning(words, to_column)
+        return True
+
+    def _offer_learning(self, words: list[str], column: str) -> None:
+        """After a change: the first spoken word near the value that can be learned is asked about (or counted, if asking is off)."""
+        word = next((w for w in words if self._learnable(w)), None)
+        self.learn_offer = None
+        if word is None:
+            return
+        if self.settings.preferences["learn_ask"]:
+            self.learn_offer = (word, column)
+            self._on_event(Event("learn_offer", detail=f"Remember that '{word}' means {column}?", values=[(word, column)]))
+        else:
+            self._count_link(word, column)
+
+    def _learnable(self, word: str) -> bool:
+        """Can *word* become a link? Not a number or filler, and never a word of this sheet (a heading word or a list value)."""
+        return (link_word(word) is not None and self.vocab.field_at([word], 0) is None
+                and not self.vocab.matches_at([word], 0))
+
+    def answer_learn_offer(self, yes: bool) -> None:
+        """Yes or no to "Remember ...?": yes counts the change as a lesson, no teaches nothing."""
+        offer, self.learn_offer = self.learn_offer, None
+        if offer is None:
+            return
+        if yes:
+            self._count_link(*offer)
+        else:
+            self._on_event(Event("learn_declined", detail="Nothing remembered"))
+
+    def expire_learn_offer(self) -> None:
+        """No answer in time: the question goes away and nothing is learned."""
+        self.learn_offer = None
+
+    def _source(self) -> tuple[str, str]:
+        """The file a lesson is learned in: ``(path, name)``."""
+        path = str(getattr(self.bridge, "workbook_path", "") or "")
+        name = self._connected_to.rsplit("/", 1)[-1] if self._connected_to else ""
+        with contextlib.suppress(BridgeError):
+            name = self.bridge.workbook_name
+        return path, name
+
+    def _count_link(self, word: str, column: str) -> None:
+        link = self.settings.links.observe(word, column, *self._source())
+        if link is None:
+            return
+        self.settings.save()
+        need = int(self.settings.preferences["learn_after"])
+        if link.is_active(need):
+            self._on_event(Event("learned", detail=f"Learned: '{word}' means {column}"))
+        else:
+            self._on_event(Event("learning", detail=f"Noted: '{word}' for {column} ({link.count} of {need})"))
+
+    def teach_link(self, word: str, column: str) -> Event:
+        """"<word> means <column>", said outright: in force at once. Returns the event that says what happened."""
+        if not self._learnable(word):
+            return Event("ignored", detail=f"'{word}' can't be taught: it is a number, a short or everyday word, or a word already in this sheet")
+        link = self.settings.links.teach(word, column, *self._source())
+        if link is None:
+            return Event("ignored", detail=f"'{word}' can't be taught")
+        self.settings.save()
+        return Event("learned", detail=f"Learned: '{word}' means {column}")
 
     def pending_terms(self) -> list[TermKey]:
         """Terms waiting to be sorted: ``(suggested column or None, words)``."""
@@ -473,6 +596,10 @@ class Controller:
             self._clear_search(event)
         elif event.kind == "turn_option":
             done = self._turn_event(event.detail.lower())
+            event.kind, event.detail = done.kind, done.detail
+        elif event.kind == "teach_link":
+            word, column = event.values[0]
+            done = self.teach_link(word, column)
             event.kind, event.detail = done.kind, done.detail
         elif event.kind == "undo":
             messages = self.undo()

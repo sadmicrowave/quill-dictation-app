@@ -114,6 +114,10 @@ class ParseResult:
     corrections: dict[str, str] = field(default_factory=dict)
     """Words that were taken as a similar-sounding known word: ``{"waste": "waist"}``."""
 
+    context: dict[str, list[str]] = field(default_factory=dict)
+    """For a date placed without its column's name: the words spoken around it, nearest first. They are what a
+    correction of its column teaches (see :mod:`quill.learning`)."""
+
     additive: set[str] = field(default_factory=set)
     """Columns filled by a known value spoken without the column's name. A second different value for such a
     column is added under the first (one value per line of the cell) instead of replacing it."""
@@ -235,6 +239,7 @@ class _Parser:
             self.result.unmatched.append(" ".join(self.tokens[self.i:self.i + used]))
         else:
             self._set(column, date, self.i, self.i + used)
+            self.result.context[column] = self.vocab.context_words(self.tokens, self.i)[:2]
             if note:
                 self.result.assumptions.append(note)
         self.i += used

@@ -42,7 +42,7 @@ class TestLayout(DialogCase):
         self.assertEqual(self.d.search.placeholderText(), "Search")
         names = [self.d.nav.item(i).text() for i in range(self.d.nav.count())]
         self.assertEqual(names, ["Preferences", "General", "Appearance", "Sounds",
-                                 "Voice and Commands", "Keywords", "Speech Model"])
+                                 "Voice and Commands", "Keywords", "Speech Model", "Learned Words"])
         self.assertEqual([t for _, titles in GROUPS for t in titles], list(self.d._nav_items))
 
     def test_captions_cannot_be_selected(self):
@@ -63,7 +63,8 @@ class TestLayout(DialogCase):
                           "Keep the Microphone Open When Not Listening", "Keep the Mini View on Top", "Hide the Dock Icon", "Troubleshooting", "Open Files With", "Check for Changes",
                           "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur", "Term Helper Follows Window Opacity",
                           "Confirm With", "Sound Set", "Spoken Word", "Stop Listening When Quiet",
-                          "Quiet Time Before Stopping", "Quick", "Broad", "Careful", "Sounds for Term Helper Actions"})
+                          "Quiet Time Before Stopping", "Quick", "Broad", "Careful", "Sounds for Term Helper Actions",
+                          "Corrections Before Learning", "Ask Before Learning"})
 
     def test_the_keyword_table_gets_the_spare_height(self):
         self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))
@@ -102,7 +103,7 @@ class TestSearch(DialogCase):
         self.assertEqual(self.visible_pages(), [])
         self.assertEqual(self.d.filter(""), len(self.d.rows) + 1)           # +1: the keyword editor
         self.assertFalse(self.d.empty_label.isVisible())
-        self.assertEqual(self.visible_pages(), ["General", "Appearance", "Sounds", "Keywords", "Speech Model"])
+        self.assertEqual(self.visible_pages(), ["General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words"])
         self.assertTrue(all(not r.isHidden() for r in self.d.rows))
 
     def test_search_finds_a_keyword_phrase(self):

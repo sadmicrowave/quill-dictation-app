@@ -10,6 +10,7 @@ import difflib
 import re
 from dataclasses import dataclass
 
+from quill.learning import LinkStore, link_word
 from quill.parser.fillers import is_filler
 from quill.parser.sounds import initials_match, same_subject, sounds_like
 from quill.parser.tokens import tokenize
@@ -77,6 +78,10 @@ class Vocabulary:
         """Headers whose data is numeric; set by the controller from the bridge."""
         self.date_columns: list[str] = []
         """Headers whose data is dates, in sheet order; set by the controller from the bridge."""
+        self.links: LinkStore | None = None
+        """What the user taught Quill about which column a word means (set by the controller; None: nothing learned)."""
+        self.learn_after = 2
+        """Corrections of one word to one column before its link is used (the ``learn_after`` setting)."""
 
     # ------------------------------------------------------------------ #
     # Loading                                                              #
@@ -215,14 +220,21 @@ class Vocabulary:
     #: Header words that only say "this is a date"; they never identify *which* date column is meant.
     _DATE_NOISE = frozenset({"date", "dated", "day", "time", "when", "on", "of", "the"})
 
+    @staticmethod
+    def context_words(tokens: list[str], i: int) -> list[str]:
+        """The words spoken around ``tokens[i]``, nearest first, that a link can be made from (no small words or numbers)."""
+        order = [*range(i - 1, max(i - 7, -1), -1), *range(i + 1, min(i + 4, len(tokens)))]
+        return [tokens[j] for j in order if link_word(tokens[j]) is not None]
+
     def date_column_for(self, tokens: list[str], i: int, filled: set[str]) -> tuple[str | None, str | None]:
         """The date column a spoken date at ``tokens[i]`` belongs to when no column name was said.
 
-        Nothing here knows any subject. Two things decide, both taken from the spreadsheet itself:
+        Nothing here knows any subject. Three things decide; the last two come from the spreadsheet itself:
 
-        1. a word spoken near the date that is a form of a word in a date column's header ("departed" near
+        1. a word the user taught (see :mod:`quill.learning`), nearest first: "spotted" -> Observation Date;
+        2. a word spoken near the date that is a form of a word in a date column's header ("departed" near
            a "Departure Date" column, "observed" near "Observation Date") picks that column;
-        2. otherwise the first date column, in sheet order, that is still empty in this row (so a second
+        3. otherwise the first date column, in sheet order, that is still empty in this row (so a second
            bare date goes to the second date column).
 
         Returns:
@@ -231,8 +243,12 @@ class Vocabulary:
         """
         if not self.date_columns:
             return None, None
-        order = [*range(i - 1, max(i - 7, -1), -1), *range(i + 1, min(i + 4, len(tokens)))]      # nearest word first
-        nearby = [tokens[j] for j in order if not is_filler(tokens[j]) and not any(ch.isdigit() for ch in tokens[j])]
+        spoken = self.context_words(tokens, i)
+        if self.links is not None:
+            chosen = self.links.choose(spoken, self.date_columns, self.learn_after)
+            if chosen is not None:
+                return chosen[0], f"'{chosen[1]}' used for {chosen[0]} (learned)"
+        nearby = [w for w in spoken if not is_filler(w)]                  # (a header's own words are matched by plain words only)
         headers = {c: [w for w in tokenize(c) if w not in self._DATE_NOISE] for c in self.date_columns}
         for word in nearby:
             for column, header in headers.items():

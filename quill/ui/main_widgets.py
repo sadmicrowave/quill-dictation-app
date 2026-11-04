@@ -124,11 +124,15 @@ class RowTable(QTableWidget):
 
     #: Emitted with the column name when the user clicks a line's delete button.
     row_remove_requested = Signal(str)
+    #: Emitted with the column name and the global point under the pointer when the user clicks the column name of a
+    #: line whose value could go in another column (see :meth:`set_changeable`).
+    row_change_requested = Signal(str, QPoint)
 
     DELETE_SIZE = 16          # px, the round delete button
     DELETE_MARGIN = 9         # px from the right edge (the button sits in the right-most cell)
     DELETE_HOT_FILL = "#E5484D"   # the button turns red while the pointer is over it: it removes something
     DELETE_TIP = "Remove this line from the row.\nQuill will not write it."
+    CHANGE_TIP = "Change which column this value goes in."
 
     def __init__(self, rows: int, columns: int) -> None:
         super().__init__(rows, columns)
@@ -139,6 +143,8 @@ class RowTable(QTableWidget):
         self.setMouseTracking(True)
         self._hovered_row = -1
         self._button_hot = False                 # the pointer is over the delete button itself
+        self._changeable: set[str] = set()       # columns whose line can be changed to another column
+        self._over_name = False                  # the pointer is over the column name of such a line
         self._button_fill = QColor("#7A55C2")    # the theme colour; set with :meth:`set_delete_colors`
         self._button_glyph = QColor("#FFFFFF")
 
@@ -146,6 +152,17 @@ class RowTable(QTableWidget):
         """Colour the delete button: a filled circle in *fill* with an "x" in *glyph* (the theme's accent colours)."""
         self._button_fill, self._button_glyph = QColor(fill), QColor(glyph)
         self.viewport().update()
+
+    def set_changeable(self, columns: set[str]) -> None:
+        """The columns whose line can be changed to another column: their name shows a small arrow and can be clicked."""
+        self._changeable = set(columns)
+        self.viewport().update()
+
+    def _name_hit(self, row: int, point: QPoint) -> bool:
+        """Is *point* on the column-name cell of a line that can be changed?"""
+        item = self.item(row, 0) if row >= 0 else None
+        return (item is not None and item.text() in self._changeable and point.x() < self.columnWidth(0)
+                and not self.delete_button_rect(row).contains(point))
 
     # -- the delete button -------------------------------------------------
 
@@ -174,13 +191,17 @@ class RowTable(QTableWidget):
         if hot != self._button_hot:
             self._button_hot = hot
             self.viewport().update()
-        self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if hot else Qt.CursorShape.ArrowCursor)
-        self.viewport().setToolTip(self.DELETE_TIP if hot else "")
+        name = not hot and self._name_hit(row, point)
+        if name != self._over_name:
+            self._over_name = name
+            self.viewport().update()
+        self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if hot or name else Qt.CursorShape.ArrowCursor)
+        self.viewport().setToolTip(self.DELETE_TIP if hot else self.CHANGE_TIP if name else "")
 
     def leaveEvent(self, event) -> None:                             # noqa: N802
         super().leaveEvent(event)
         if self._hovered_row != -1:
-            self._hovered_row, self._button_hot = -1, False
+            self._hovered_row, self._button_hot, self._over_name = -1, False, False
             self.viewport().setToolTip("")
             self.viewport().update()
 
@@ -192,6 +213,9 @@ class RowTable(QTableWidget):
             self._hovered_row, self._button_hot = -1, False
             self.viewport().setToolTip("")
             self.row_remove_requested.emit(self.item(row, 0).text())
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self._name_hit(row, point):
+            self.row_change_requested.emit(self.item(row, 0).text(), event.globalPosition().toPoint())
             return
         super().mousePressEvent(event)
 
@@ -212,6 +236,15 @@ class RowTable(QTableWidget):
             for row in range(self.rowCount() - 1):     # no line under the last row
                 y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
                 painter.drawLine(0, y, self.viewport().width() - 1, y)
+        if self._hovered_row >= 0 and self.item(self._hovered_row, 0) is not None \
+                and self.item(self._hovered_row, 0).text() in self._changeable:          # a small arrow after the name: it opens a menu
+            row = self._hovered_row
+            name_width = self.fontMetrics().horizontalAdvance(self.item(row, 0).text())
+            x = min(self.columnWidth(0) - 14, 8 + name_width + 10)
+            y = self.rowViewportPosition(row) + self.rowHeight(row) / 2
+            painter.setPen(QPen(self.palette().placeholderText().color(), 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(QPointF(x - 3.5, y - 1.5), QPointF(x, y + 2))
+            painter.drawLine(QPointF(x, y + 2), QPointF(x + 3.5, y - 1.5))
         if self._hovered_row >= 0:
             box = QRectF(self.delete_button_rect(self._hovered_row))
             centre = box.center()                      # the exact middle, so the "x" is centred in the circle

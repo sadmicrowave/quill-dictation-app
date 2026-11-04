@@ -402,6 +402,7 @@ class SidePanel(QFrame):
     width_released = Signal()
     settings_requested = Signal()               # the gear button (the window shows the overlay)
     keywords_requested = Signal()               # the Keywords link on the turn page
+    learned_words_requested = Signal()          # the Learned Words link under the active file's facts
 
     def __init__(self) -> None:
         super().__init__()
@@ -572,6 +573,17 @@ class SidePanel(QFrame):
             label.setVisible(False)
             value.setVisible(False)
         layout.addLayout(table)
+        self.learned_counter = lambda path: 0                    # set by the app: how many learned words belong to a file
+        self.learned_link = QLabel("")                           # "Learned Words (7)": opens them for this file (only with a file)
+        self.learned_link.setProperty("panelNote", True)
+        self.learned_link.setTextFormat(Qt.TextFormat.RichText)
+        self.learned_link.setOpenExternalLinks(False)
+        self.learned_link.setProperty("hoverLinkTips", True)
+        self.learned_link.linkActivated.connect(lambda _: self.learned_words_requested.emit())
+        self.learned_link.linkHovered.connect(lambda link: self.learned_link.setToolTip(
+            "Words Quill learned from you for this file: open them in Settings." if link else ""))
+        self.learned_link.setVisible(False)
+        layout.addWidget(self.learned_link)
         layout.addSpacing(4)
         layout.addWidget(_rule())
         layout.addSpacing(4)
@@ -727,12 +739,21 @@ class SidePanel(QFrame):
             value_label.setFullText(text, tip)
             name_label.setVisible(bool(text))
             value_label.setVisible(bool(text))
+        self._path = path
+        self.refresh_learned()
         self.sheet_refresh_button.setVisible("Sheet" in facts)
         self.type_icon.setVisible("Type" in facts)
         if "Type" in facts:
             from quill.ui.file_icons import file_icon
             self.type_icon.setPixmap(file_icon(path or name, kind, 16).pixmap(16, 16))
         self._draw_file_icon()
+
+    def refresh_learned(self) -> None:
+        """Show how many learned words belong to the active file (the link is hidden while there is no file)."""
+        path = getattr(self, "_path", "")
+        self.learned_link.setVisible(self._has_file)
+        if self._has_file:
+            self.learned_link.setText(f'<a href="learned">Learned Words ({self.learned_counter(path)})</a>')
 
     def fact(self, label: str) -> str:
         """The value shown for *label* in the file table ("" while it is hidden)."""

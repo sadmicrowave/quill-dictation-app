@@ -55,3 +55,18 @@ FILLER_WORDS: frozenset[str] = frozenset(_FUNCTION_WORDS + _COMMON_VERBS + _TIME
 def is_filler(word: str) -> bool:
     """True if *word* (lowercase) is everyday speech that is never a new list value."""
     return word in FILLER_WORDS
+
+
+#: Verbs that only help another verb ("was", "have", "will"): never worth learning as a column.
+_HELPER_VERBS = frozenset("""
+be am is are was were been being have has had having do does did done doing can could may might must shall should will would
+""".split())
+
+#: Words a learned link can never be made from: the small function words, noise and time words, and helper verbs. Everyday
+#: verbs are *not* here: "sold", "bought" and "spotted" are exactly what tells a date column apart.
+LINK_STOPWORDS: frozenset[str] = frozenset(_FUNCTION_WORDS + _NOISE + _TIME_AND_PLACE) | _HELPER_VERBS
+
+
+def is_link_stopword(word: str) -> bool:
+    """True if *word* (lowercase) can never be learned as meaning a column."""
+    return word in LINK_STOPWORDS
