@@ -234,12 +234,12 @@ class _Parser:
             self.run_words.pop()                       # "… observed yesterday": the verb leads into the date
             self.result.unmatched.pop()
         self._flush()
-        column, note = self.vocab.date_column_for(self.tokens, self.i, self.filled)
+        column, note = self.vocab.date_column_for(self.tokens, self.i, self.filled, self.i + used)
         if column is None:
             self.result.unmatched.append(" ".join(self.tokens[self.i:self.i + used]))
         else:
             self._set(column, date, self.i, self.i + used)
-            self.result.context[column] = self.vocab.context_words(self.tokens, self.i)[:2]
+            self.result.context[column] = self.vocab.context_words(self.tokens, self.i, self.i + used)[:2]
             if note:
                 self.result.assumptions.append(note)
         self.i += used
@@ -275,11 +275,12 @@ class _Parser:
         if amount is None or not CURRENCY_WORDS & set(self.tokens[self.i:self.i + used]):
             return False
         self._flush()
-        column, note = self.vocab.default_amount_column()
+        column, note = self.vocab.amount_column_for(self.tokens, self.i, self.i + used)
         if column is None:
             self.result.unmatched.append(" ".join(self.tokens[self.i:self.i + used]))
         else:
             self._set(column, amount, self.i, self.i + used)
+            self.result.context[column] = self.vocab.context_words(self.tokens, self.i, self.i + used)[:2]
             if note:
                 self.result.assumptions.append(note)
         self.i += used

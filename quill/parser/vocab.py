@@ -197,6 +197,20 @@ class Vocabulary:
                                     and e.canonical.lower() == canonical.lower()
                                     and tokens != _tokenize(e.canonical.lower()))]
 
+    def amount_columns(self) -> list[str]:
+        """The columns a bare amount could belong to: non-list columns that hold numbers or have a money-like header."""
+        return [c for c in self.headers()
+                if not self.is_list_column(c) and (c in self.numeric_columns or money_header(c))]
+
+    def amount_column_for(self, tokens: list[str], i: int, end: int) -> tuple[str | None, str | None]:
+        """The column a bare amount at ``tokens[i:end]`` belongs to: a word the user taught (nearest first, among every
+        amount column), else the sheet's own default (see :meth:`default_amount_column`)."""
+        if self.links is not None:
+            chosen = self.links.choose(self.context_words(tokens, i, end), self.amount_columns(), self.learn_after)
+            if chosen is not None:
+                return chosen[0], f"'{chosen[1]}' used for {chosen[0]} (learned)"
+        return self.default_amount_column()
+
     def default_amount_column(self) -> tuple[str | None, str | None]:
         """The column a bare amount ("under 50", "thirty dollars") belongs to.
 
@@ -221,12 +235,15 @@ class Vocabulary:
     _DATE_NOISE = frozenset({"date", "dated", "day", "time", "when", "on", "of", "the"})
 
     @staticmethod
-    def context_words(tokens: list[str], i: int) -> list[str]:
-        """The words spoken around ``tokens[i]``, nearest first, that a link can be made from (no small words or numbers)."""
-        order = [*range(i - 1, max(i - 7, -1), -1), *range(i + 1, min(i + 4, len(tokens)))]
+    def context_words(tokens: list[str], i: int, end: int | None = None) -> list[str]:
+        """The words spoken around the value at ``tokens[i:end]`` (one word by default), nearest first, that a link can be made
+        from (no small words or numbers; the value's own words are never included)."""
+        end = i + 1 if end is None else end
+        order = [*range(i - 1, max(i - 7, -1), -1), *range(end, min(end + 3, len(tokens)))]
         return [tokens[j] for j in order if link_word(tokens[j]) is not None]
 
-    def date_column_for(self, tokens: list[str], i: int, filled: set[str]) -> tuple[str | None, str | None]:
+    def date_column_for(self, tokens: list[str], i: int, filled: set[str],
+                        end: int | None = None) -> tuple[str | None, str | None]:
         """The date column a spoken date at ``tokens[i]`` belongs to when no column name was said.
 
         Nothing here knows any subject. Three things decide; the last two come from the spreadsheet itself:
@@ -243,7 +260,7 @@ class Vocabulary:
         """
         if not self.date_columns:
             return None, None
-        spoken = self.context_words(tokens, i)
+        spoken = self.context_words(tokens, i, end)
         if self.links is not None:
             chosen = self.links.choose(spoken, self.date_columns, self.learn_after)
             if chosen is not None:

@@ -65,3 +65,18 @@ Each model's description names the model underneath, so you can look it up: **Qu
 ## 🖥️ Dock and menu bar
 
 Quill lives in both. Hide the Dock icon in **General**, then use the menu bar icon > **Open Quill**. Closing the window never quits Quill: use **Quit** in the menu bar menu.
+
+
+## 🍎 The menu bar
+
+Everything Quill does is also in its menus: the menu bar at the top of the screen on a Mac, and the window's own menu bar on Windows.
+
+| Menu | What's in it |
+|---|---|
+| **File** | Open File… (**⌘O**), Use the Open Workbook, Check for Open Files Now (**⌘R**), Settings… (**⌘,**; on a Mac it sits under *Quill*), Quit (**⌘Q**; *Exit* on Windows) |
+| **Listening** | Start / Stop Listening (**⌘L**), Next Row (**⌘↩**), Start a New Row, Undo (**⌘Z**), Term Helper… (**⇧⌘T**, shows its count), and the turn choice: each turn a new row, or each turn adds to the same row |
+| **View** | Switch to Mini View / the Full Window (**⇧⌘M**), Files Panel (**⇧⌘F**), Turn Options Panel (**⇧⌘O**), Log (**⌥⌘L**), and Settings Page to open any Settings page directly |
+| **Window** | Minimize (**⌘M**), Bring Quill to the Front |
+| **Help** | Quill Help (**F1**), Open the Log Folder, About Quill |
+
+Entries that do not apply are greyed out (Next Row while not listening, Undo with nothing to take back, Term Helper with nothing to sort), and the wording and check marks follow what Quill is doing. On a Mac the same menus show while Settings, the Term Helper or Help is in front. On Windows, use **Ctrl** where a Mac uses **⌘** and **Alt** for **⌥**.

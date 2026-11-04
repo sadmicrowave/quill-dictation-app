@@ -150,6 +150,7 @@ class Session:
     today: Callable[[], dt.date] = dt.date.today
     listening: bool = False
     record: dict = field(default_factory=dict)
+    row_ended: bool = False                          # the last phrase said "next row" or "delete row" (even with nothing to save)
     context: dict = field(default_factory=dict)      # column -> words spoken around a date placed without its column's name
     committed: int = 0
     ignored_while_stopped: int = 0
@@ -167,6 +168,7 @@ class Session:
 
     def feed(self, text: str) -> list[Event]:
         """Process one recognised phrase and return the events it caused."""
+        self.row_ended = False
         events: list[Event] = []
         tokens = tokenize(text)
         if self.pending and self._voice_open and tokens and tokens[0] in YES_WORDS | NO_WORDS:
@@ -365,8 +367,10 @@ class Session:
         if not self.listening:
             return [Event("ignored", detail=f"{action.name.replace('_', ' ').title()} heard while stopped")]
         if action is Action.NEXT_ROW:
+            self.row_ended = True
             return self._commit()
         if action is Action.DELETE_ROW:
+            self.row_ended = True
             return self._discard()
         if action is Action.SEARCH_FOR:
             if not command.remainder:

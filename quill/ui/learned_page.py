@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem,
     QVBoxLayout, QWidget,
@@ -171,6 +171,7 @@ class LearnedWordsPanel(QWidget):
                     holder.setFont(0, font)
                     holder.setFlags(Qt.ItemFlag.ItemIsEnabled)
                     self.tree.addTopLevelItem(holder)
+                    self.tree.setFirstColumnSpanned(self.tree.indexOfTopLevelItem(holder), QModelIndex(), True)   # the name reads in full
                 holder.addChild(self._item(link))
         self.tree.expandAll()
         self.tree.setUpdatesEnabled(True)

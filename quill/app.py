@@ -69,11 +69,13 @@ from quill.ui.chrome import (
     set_dock_icon_visible,
     watch_native_window,
 )
+from quill.ui.confirm import info
 from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import MainWindow
+from quill.ui.menus import MenuState, QuillMenus
 from quill.ui.player import SoundPlayer
-from quill.ui.settings_dialog import SettingsDialog
-from quill.ui.side_panel import FILE_PAGE, TITLES, TURN_PAGE
+from quill.ui.settings_dialog import SettingsDialog, open_log_folder
+from quill.ui.side_panel import APPEND_TO, FILE_PAGE, NEXT_ROW, TITLES, TURN_PAGE
 from quill.ui.sorting_window import SortingWindow
 from quill.ui.theme import (
     apply_opacity,
@@ -254,6 +256,8 @@ class QuillApp:
         )
         self.listener = None
         self.connected = False
+        self.menus: QuillMenus | None = None             # built in start()
+        self._default_menu_bar = None
         self._listener_factory = listener_factory or self._default_listener
         self._model_finder = model_finder
         self._model_downloader = model_downloader
@@ -309,6 +313,7 @@ class QuillApp:
         """Build the UI, connect to the workbook, and start listening for speech."""
         self._apply_look()
         self.window.setup()
+        self._build_menus()
         self.sorting.setup(parent=self.window.widget)
         if not getattr(self.qapp, "_quill_click_through", None):    # one filter per application, however many windows
             self.qapp._quill_click_through = PopupClickThrough(self.qapp)   # one click on Start / Stop works with a drop-down open
@@ -345,6 +350,7 @@ class QuillApp:
         self._install_titlebar_button()
         self.window.set_file_mode(isinstance(self.controller.bridge, XlsxBridge))
         self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None)
+        self._sync_menus()
         self._use_best_installed()
         self._start_listener()
         self._watcher.start()
@@ -638,6 +644,67 @@ class QuillApp:
             return                                   # probably being saved right now; try again next tick
         self._seen_mtime = mtime
         self.window.append_log("Workbook changed: lists and columns re-read")
+
+    # ------------------------------------------------------------------ #
+    # Menu bar                                                             #
+    # ------------------------------------------------------------------ #
+
+    def _build_menus(self) -> None:
+        """Fill the window's menu bar (the OS menu bar on macOS) with every major operation; see :mod:`quill.ui.menus`."""
+        w = self.window
+        self.menus = QuillMenus({
+            "open_file": lambda: self.choose_spreadsheet_file(), "use_excel": lambda: self.use_live_excel(),
+            "refresh_files": lambda: self.refresh_open_files(manual=True),
+            "settings": lambda: self.open_settings(), "settings_page": lambda page: self.open_settings(page),
+            "quit": lambda: self.quit_app(),
+            "toggle_listening": lambda: self.toggle_listening(not w.listening),
+            "next_row": lambda: self.next_row(), "undo": lambda: self.undo(), "term_helper": lambda: self.show_sorting(),
+            "new_row": lambda: self.controller.start_new_row(),
+            "mode_next_row": lambda: self._set_turn_mode(NEXT_ROW), "mode_append": lambda: self._set_turn_mode(APPEND_TO),
+            "mini": lambda: w.set_mini(not w.mini, notify=True),
+            "files_panel": lambda: w.toggle_panel(FILE_PAGE), "turn_panel": lambda: w.toggle_panel(TURN_PAGE),
+            "log": lambda: w.set_log_collapsed(not w.log_collapsed, notify=True),
+            "minimize": lambda: w.widget.showMinimized(), "bring_front": lambda: self._bring_to_front(),
+            "help": lambda: self.open_help(), "open_logs": lambda: open_log_folder(), "about": lambda: self._about(),
+        })
+        self.menus.state.file_page, self.menus.state.turn_page = FILE_PAGE, TURN_PAGE
+        self.menus.install(w.widget.menuBar(), reuse={"open_file": w.open_file_action, "use_excel": w.use_excel_action})
+        self._default_menu_bar = self.menus.install_default_bar()         # macOS: the same menus while Settings or Help is in front
+        self._menu_timer = QTimer(self.qapp)
+        self._menu_timer.setSingleShot(True)
+        self._menu_timer.setInterval(0)
+        self._menu_timer.timeout.connect(self._sync_menus)
+
+    def request_menu_sync(self) -> None:
+        """Something the menus show may have changed: bring them up to date (once, after the current event is handled)."""
+        timer = getattr(self, "_menu_timer", None)
+        if timer is not None and not timer.isActive():
+            timer.start()
+
+    def _sync_menus(self) -> None:
+        if not self._window_alive() or getattr(self, "menus", None) is None:
+            return
+        w, c = self.window, self.controller
+        self.menus.update(
+            listening=w.listening, has_file=self.connected, can_use_excel=w.use_excel_action.isEnabled(), mini=w.mini,
+            panel_page=w.panel_page, log_open=not w.log_collapsed, can_undo=len(c.history) > 0,
+            sorting_count=len(c.pending_terms()), turn_mode=c.turn_mode)
+
+    def _set_turn_mode(self, mode: str) -> None:
+        self.controller.set_turn_mode(mode)
+        self._sync_turn_panel()
+
+    def _bring_to_front(self) -> None:
+        w = self.window.widget
+        w.showNormal() if w.isMinimized() else w.show()
+        w.raise_()
+        w.activateWindow()
+
+    def _about(self) -> None:
+        from quill import __version__
+        info(self.window.widget, f"Quill {__version__}",
+             "Hands-free spreadsheet dictation. Everything runs on this computer: your voice and your spreadsheets "
+             "are never sent anywhere.")
 
     def show_workbook(self) -> None:
         """Bring the workbook being dictated into to the front (tray click)."""
@@ -1060,6 +1127,7 @@ class QuillApp:
 
     def _sync_turn_panel(self) -> None:
         """Show the saved turn options on the panel's turn page."""
+        self.request_menu_sync()
         c = self.controller
         prefs = self.settings.preferences
         self.window.panel.set_options(c.turn_mode, c.vertical, int(prefs["start_row"]), int(prefs["headings_row"]))
@@ -1077,6 +1145,7 @@ class QuillApp:
             self._titlebar.set_extra_active(1, page == TURN_PAGE)
 
     def _panel_toggled(self, page: str) -> None:
+        self.request_menu_sync()
         self._show_titlebar_panel(page)
         if page and self._titlebar is not None:
             self._titlebar.set_panel_title(TITLES[page])
@@ -1539,6 +1608,7 @@ class QuillApp:
 
     def _sync_titlebar_file(self, has_file: bool, name: str, sheet: str = "") -> None:
         """Draw the title bar's folder icon: muted and closed with no file, solid and open with one."""
+        self.request_menu_sync()
         if self._titlebar is None:
             return
         from quill.ui.icons import titlebar_png
@@ -1548,6 +1618,7 @@ class QuillApp:
 
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
+        self.request_menu_sync()
         if self._titlebar_left is not None:
             self._titlebar_left.set_enabled(len(self.controller.history) > 0)
 
@@ -1562,6 +1633,7 @@ class QuillApp:
         The window's stay-on-top level is changed in place, so nothing needs restyling. Only
         where that was impossible (the old, window-recreating way) is the look applied again.
         """
+        self.request_menu_sync()
         self.settings.preferences["mini_mode"] = mini
         self.settings.save()
         if self._titlebar is not None:
@@ -1655,6 +1727,7 @@ class QuillApp:
 
     def _log_toggled(self, collapsed: bool) -> None:
         """Remember whether the user collapsed the log."""
+        self.request_menu_sync()
         self.settings.preferences["log_collapsed"] = collapsed
         self.settings.save()
 
@@ -1719,6 +1792,7 @@ class QuillApp:
     def handle_event(self, event: Event) -> None:
         """Reflect a Session/Controller event in the window and tray."""
         self._handle_event(event)
+        self.request_menu_sync()
         if event.kind in self._WRITE_EVENTS:
             self._remember_mtime()
             self._show_in_viewer()
@@ -1823,6 +1897,7 @@ class QuillApp:
             return "–"
 
     def _set_listening(self, active: bool) -> None:
+        self.request_menu_sync()
         self.window.set_listening_indicator(active)
         self.tray.set_listening(active)
         self._restart_quiet_timer()

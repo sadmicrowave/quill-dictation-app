@@ -23,7 +23,7 @@ class ConfirmDialog(QDialog):
         danger: Colour the action button red (the default: these are deletions).
     """
 
-    def __init__(self, parent: QWidget | None, title: str, message: str, action: str, cancel: str = "Cancel",
+    def __init__(self, parent: QWidget | None, title: str, message: str, action: str, cancel: str | None = "Cancel",
                  danger: bool = True) -> None:
         super().__init__(parent)
         self.setObjectName("confirmDialog")
@@ -46,15 +46,15 @@ class ConfirmDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         buttons.addStretch(1)
-        self.cancel_button = QPushButton(cancel)
+        self.cancel_button = QPushButton(cancel or "")
         self.action_button = QPushButton(action)
         self.action_button.setProperty("danger", danger)
         self.action_button.setProperty("accent", not danger)
-        for button in (self.cancel_button, self.action_button):
+        for button in ((self.cancel_button,) if cancel else ()) + (self.action_button,):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setAutoDefault(False)
             buttons.addWidget(button)
-        self.cancel_button.setDefault(True)               # Return and Escape both back out: the safe choice
+        (self.cancel_button if cancel else self.action_button).setDefault(True)   # Return and Escape back out: the safe choice
         self.cancel_button.clicked.connect(self.reject)
         self.action_button.clicked.connect(self.accept)
         layout.addLayout(buttons)
@@ -66,5 +66,14 @@ def confirm(parent: QWidget | None, title: str, message: str, action: str, cance
     dialog = ConfirmDialog(parent, title, message, action, cancel, danger)
     try:
         return dialog.exec() == QDialog.DialogCode.Accepted
+    finally:
+        dialog.deleteLater()
+
+
+def info(parent: QWidget | None, title: str, message: str, button: str = "OK") -> None:
+    """Tell the user something (one button), in the same style as :func:`confirm`."""
+    dialog = ConfirmDialog(parent, title, message, button, cancel=None, danger=False)
+    try:
+        dialog.exec()
     finally:
         dialog.deleteLater()

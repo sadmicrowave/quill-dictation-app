@@ -51,7 +51,9 @@ Which date column? Quill reads your spreadsheet, not a word list. If a word you 
 
 Only you know that, in your sheet, *"spotted"* means **Observation Date** and *"left"* means **Departure Date**. Quill never ships a word list; it learns yours.
 
-- **Change a line's column.** In the row being built, click a line's column name (a small arrow shows when the pointer is over it) and pick another column under **Change this to**. A value already in that column swaps places, so two dates in the wrong order are fixed by one click.
+- **Change a line's column.** In the row being built, click a line's column name (dates and amounts) (a small arrow shows when the pointer is over it) and pick another column under **Change this to**. A value already in that column swaps places, so two dates in the wrong order are fixed by one click.
+- **Or delete and say it again.** Delete the wrong line (the round **x**) and say the value again *with its column's name*: *"departure date yesterday"*. Quill sees the correction and offers the same question. It only counts when the new column is one you named (not one Quill guessed), the value is the same sort (a date for a date, an amount for an amount), and it comes in the next two phrases of the same row.
+- **Amounts too.** A bare amount (*"paid thirty dollars"*) goes to the first money column, or to the column a learned word says; change it the same way.
 - **Quill asks once:** *"Remember that 'spotted' means Observation Date?"* with **Yes** and **No** (or say *yes* or *no*). It goes away by itself after a few seconds, and nothing is learned then.
 - **After enough corrections** (2 by default) Quill uses the word by itself, and the Log says so: *'spotted' used for Observation Date (learned)*.
 - **Teach a word at once:** while listening, say the word, then *means*, then the column's name: *"spotted means observation date"*. It is learned the moment you say it.

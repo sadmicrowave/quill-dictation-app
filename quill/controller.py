@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import logging
+from dataclasses import dataclass
 from typing import Callable
 
 from quill.bridge.base import BridgeError, BridgeLockedError, WorkbookBridge
@@ -25,6 +26,26 @@ from quill.session import Decision, Event, Session, TermKey
 from quill.sorting_voice import VoiceSorter
 
 log = logging.getLogger("quill.controller")
+
+
+def _kind(value: object) -> str:
+    """What sort of value a line holds, for telling whether a re-said value is the one that was deleted."""
+    if isinstance(value, dt.date):
+        return "date"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "number"
+    return "text"
+
+
+@dataclass
+class _Redo:
+    """A line the user deleted that had words around it: if the same sort of value is said again with a column's name, that
+    is a correction Quill can learn from (see :meth:`Controller._check_redo`)."""
+
+    column: str
+    kind: str
+    words: list[str]
+    steps: int = 0
 
 EventCallback = Callable[[Event], None]
 
@@ -85,6 +106,8 @@ class Controller:
         """Which workbook the last :meth:`connect` reached (a different one clears the heard terms)."""
         self._append_target: tuple[str, int] | None = None
         """``(sheet, record)`` that "append to" turns keep adding to (None: the next turn starts a new record)."""
+        self._redo: _Redo | None = None
+        """The line just deleted, while a redo of it may still come (None: nothing to watch for)."""
         self.learn_offer: tuple[str, str] | None = None
         """``(word, column)`` Quill is asking "Remember ...?" about after a line's column was changed (None: no question open)."""
 
@@ -99,6 +122,7 @@ class Controller:
             BridgeError: if the workbook cannot be reached.
         """
         self.connected = False
+        self._redo = None
         self.history.clear()   # undo steps belong to the workbook they were made in
         self._append_target = None
         if hasattr(self.bridge, "set_vertical"):
@@ -185,10 +209,12 @@ class Controller:
             self.try_connect()   # a workbook may have been opened since we last looked
         else:
             self._follow_active_sheet()
+        before = set(self.session.record)
         with self.history.group("Sorted several terms"):   # a spoken "yes" can answer many
             for event in self._refuse_without_workbook(self.session.feed(text)):
                 self._carry_out(event)
                 self._on_event(event)
+        self._check_redo(before)
 
     def _refuse_without_workbook(self, events: list[Event]) -> list[Event]:
         """With nothing to write to, swap "started" for guidance and keep the gate shut."""
@@ -315,7 +341,8 @@ class Controller:
         if column not in self.session.record:
             return False
         value = self.session.record.pop(column)
-        self.session.context.pop(column, None)
+        words = self.session.context.pop(column, [])
+        self._redo = _Redo(column, _kind(value), words) if words else None
         log.debug("removed %s=%r from the row being built", column, value)
         return True
 
@@ -335,7 +362,7 @@ class Controller:
         if isinstance(value, dt.date):
             pool = self.vocab.date_columns
         elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            pool = self.vocab.numeric_columns
+            pool = self.vocab.amount_columns() or self.vocab.numeric_columns
         elif isinstance(value, str) and self.vocab.is_list_column(column):
             pool = self.vocab.columns_for(value.split("\n")[0])
         else:
@@ -365,6 +392,27 @@ class Controller:
         self._on_event(Event("changed", detail=f"Changed {column} to {to_column}"))
         self._offer_learning(words, to_column)
         return True
+
+    def _check_redo(self, before: set[str]) -> None:
+        """After a phrase: was a deleted line said again, with a column's name, in another column? That is a correction, so
+        what was said around the first one is offered as a lesson (delete-and-redo). Looks at the next two phrases only,
+        and never when Quill itself guessed the new column: only a column the user named counts."""
+        redo = self._redo
+        if redo is None:
+            return
+        if self.session.row_ended:                          # "next row" with nothing to save still means the row is over
+            self._redo = None
+            return
+        record, guessed = self.session.record, self.session.context
+        for column in record:
+            if column in before or column == redo.column or column in guessed or _kind(record[column]) != redo.kind:
+                continue
+            self._redo = None
+            self._offer_learning(redo.words, column)
+            return
+        redo.steps += 1
+        if redo.steps >= 2:
+            self._redo = None
 
     def _offer_learning(self, words: list[str], column: str) -> None:
         """After a change: the first spoken word near the value that can be learned is asked about (or counted, if asking is off)."""
@@ -582,6 +630,8 @@ class Controller:
     def _carry_out(self, event: Event) -> None:
         """Do what a Session event asks of the outside world (write the row, save a synonym, search, speak ...)."""
         log.debug("event %s: %s", event.kind, event.detail)
+        if event.kind in ("committed", "discarded"):
+            self._redo = None                              # the row is over: a deleted line can no longer be redone in it
         if event.resolved is not None:
             self._record(event)
         if event.kind == "committed":
