@@ -640,6 +640,8 @@ class QuillApp:
             self.window.append_log(f"Could not check the sheet: {exc}", "warning")
             return
         self._show_active_sheet()
+        if changed and self.window.panel_page != FILE_PAGE:           # followed to another sheet (any program): the folder icon says so
+            self.window.raise_file_alert(f"Now on sheet {bridge.active_sheet_name()}")
         if not quiet and not changed:
             self.window.append_log(f"Checked: sheet '{bridge.active_sheet_name()}' is the one open.")
 
@@ -658,7 +660,14 @@ class QuillApp:
                                "file and follow it.", "warning")
         if self.controller.session.listening:                        # nothing may flow into the old sheet meanwhile
             self.controller.set_listening(False)
-            self.window.toggle_button.alert()
+            self._alert_start(True)
+
+    def _alert_start(self, was_listening: bool) -> None:
+        """Start shakes and blinks red; when Quill was listening by voice it also plays the error cue (the short falling sound,
+        or the spoken word), because the user is not looking. A click with nothing listening needs no sound: it was deliberate."""
+        self.window.toggle_button.alert()
+        if was_listening:
+            self.feedback.cue("error")
 
     def _clear_sheet_alert(self) -> None:
         """The program and the file agree on the sheet again: put the red dot and the note away."""
@@ -1454,6 +1463,7 @@ class QuillApp:
         self._seen_open = ""
         self._attach_paused = True                                      # (it waits for the user to choose, however many files are open)
         closed, closed_path = bridge.workbook_name, bridge.workbook_path
+        was_listening = self.controller.session.listening
         self.settings.preferences["workbook_file"] = ""             # (a restart starts with no file, like the first time)
         self.settings.save()
         self.controller.detach()
@@ -1472,7 +1482,7 @@ class QuillApp:
         self._closed_file = closed_path
         self.window.panel.show_closed(closed)                           # the note under Open File, with Reopen
         self.window.open_panel(FILE_PAGE)
-        self.window.toggle_button.alert()                               # Start shakes: the file dropped away
+        self._alert_start(was_listening)                                # Start shakes: the file dropped away
 
     def _attach_live_if_open_in_excel(self) -> bool:
         """Working on an .xlsx file that Excel now has open: work through Excel itself instead, so there is no file for

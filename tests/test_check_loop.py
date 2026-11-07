@@ -441,3 +441,20 @@ class TestSheetNotSavedYet(PanelApp):
         self.app.refresh_active_sheet()
         self.assertTrue(any("did not save" in text for _, text in self.logged))
         self.assertTrue(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+
+    def test_following_the_program_to_another_sheet_puts_the_dot_on_the_folder_icon(self):
+        answers = [True]
+        self.app.controller.follow_sheet = lambda: answers.pop() if answers else False      # (one change, as a program gives)
+        self.app._apply_sheet(None, quiet=True)
+        self.assertIn("Now on sheet", self.app.window.file_alert)
+        self.app.window.open_panel(FILE_PAGE)
+        self.assertEqual(self.app.window.file_alert, "")
+
+    def test_a_shake_while_listening_also_plays_the_error_cue_but_a_click_does_not(self):
+        cues, shakes = [], []
+        self.app.feedback.cue = lambda name, *a, **k: cues.append(name)
+        self.app.window.toggle_button.alert = lambda: shakes.append(1)
+        self.app._alert_start(False)
+        self.assertEqual((cues, len(shakes)), ([], 1))
+        self.app._alert_start(True)
+        self.assertEqual((cues, len(shakes)), (["error"], 2))
