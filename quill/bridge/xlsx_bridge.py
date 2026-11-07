@@ -14,6 +14,7 @@ import sys
 
 import openpyxl
 
+from quill import platforms
 from quill.bridge.base import BridgeError, BridgeLockedError
 from quill.bridge.grid import OpenpyxlGrid
 from quill.bridge.grid_bridge import GridBridge
@@ -75,8 +76,9 @@ class XlsxBridge(GridBridge):
         """Open the file in the system's default spreadsheet application."""
         if self._path is None:
             return
-        if sys.platform == "win32":
-            os.startfile(str(self._path))   # type: ignore[attr-defined]
+        opener = platforms.offered(sys.platform, "open_file")
+        if opener is not None:
+            opener(str(self._path))
         else:
             try:
                 subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(self._path)],    # noqa: S603, S607

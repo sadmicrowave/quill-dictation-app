@@ -21,6 +21,7 @@ from typing import Callable
 from PySide6.QtCore import QPoint, QRectF, Qt
 from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+from quill import platforms
 
 
 ICON_SIZE = 64
@@ -264,5 +265,5 @@ class TrayIcon:
         macOS shows the attached menu by itself. Windows shows it only on a
         right click, so a left click pops it up there too.
         """
-        if reason == QSystemTrayIcon.ActivationReason.Trigger and sys.platform == "win32":
+        if reason == QSystemTrayIcon.ActivationReason.Trigger and platforms.offered(sys.platform, "TRAY_CLICK_OPENS_MENU", False):
             self._menu.popup(QCursor.pos())

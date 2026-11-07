@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import QMenu, QMenuBar
+from quill import platforms
 
 #: The Settings pages the View menu can open directly (the titles of the pages in the Settings window).
 SETTINGS_PAGES = ("General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words")
@@ -172,8 +173,8 @@ class QuillMenus:
 
     def _make(self, menu: QMenu, entry: Entry) -> QAction:
         text = entry.text
-        if entry.key == "quit" and self._platform == "win32":
-            text = "Exit"
+        if entry.key == "quit":
+            text = platforms.offered(self._platform, "QUIT_LABEL", text)
         action = menu.addAction(text)
         if entry.shortcut:
             action.setShortcut(QKeySequence(entry.shortcut))

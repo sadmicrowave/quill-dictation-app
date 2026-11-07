@@ -120,16 +120,6 @@ class TestAlwaysOnTop(unittest.TestCase):
         self.assertTrue(chrome.set_always_on_top(QWidget(), False, platform="darwin", appkit=kit))
         self.assertEqual(kit.window.level, 0)
 
-    def test_windows_uses_setwindowpos_topmost_and_notopmost(self):
-        native()
-        calls = []
-        user32 = type("U", (), {"SetWindowPos": lambda s, *a: calls.append(a)})()
-        self.assertTrue(chrome.set_always_on_top(QWidget(), True, platform="win32", user32=user32))
-        self.assertTrue(chrome.set_always_on_top(QWidget(), False, platform="win32", user32=user32))
-        import ctypes
-        self.assertEqual(calls[0][1].value, ctypes.c_void_p(-1).value)      # HWND_TOPMOST
-        self.assertEqual(calls[1][1].value, ctypes.c_void_p(-2).value)      # HWND_NOTOPMOST
-        self.assertEqual(calls[0][6], 0x1 | 0x2 | 0x10)               # no size, no move, no activate
 
     def test_errors_fall_back_quietly(self):
         native()

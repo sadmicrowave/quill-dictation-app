@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+from quill import platforms
 from quill.bridge.numbers_mirror import MirrorResult
 
 from quill.bridge.processes import running_executables
@@ -118,8 +119,9 @@ def profile_scripts_dir(platform: str | None = None, home: pathlib.Path | None =
     home = home or pathlib.Path.home()
     if platform == "darwin":
         return home / "Library" / "Application Support" / "LibreOffice" / "4" / "user" / "Scripts" / "python"
-    if platform == "win32":
-        return pathlib.Path(os.environ.get("APPDATA", str(home))) / "LibreOffice" / "4" / "user" / "Scripts" / "python"
+    other = platforms.offered(platform, "libreoffice")
+    if other is not None:
+        return other.profile_scripts_dir(home)
     return home / ".config" / "libreoffice" / "4" / "user" / "Scripts" / "python"
 
 
@@ -129,12 +131,9 @@ def find_soffice(platform: str | None = None) -> str | None:
     if platform == "darwin":
         candidate = pathlib.Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
         return str(candidate) if candidate.is_file() else None
-    if platform == "win32":
-        for root in (os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")):
-            candidate = pathlib.Path(root) / "LibreOffice" / "program" / "soffice.exe"
-            if candidate.is_file():
-                return str(candidate)
-        return None
+    other = platforms.offered(platform, "libreoffice")
+    if other is not None:
+        return other.find_soffice()
     import shutil
     return shutil.which("soffice")
 
@@ -177,9 +176,9 @@ def _is_running(platform: str | None = None) -> bool:
     if native is not None:                                          # the system's own list: no process is started
         return bool(native & {"soffice", "soffice.bin"})
     try:
-        if platform == "win32":
-            out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=6, check=False).stdout.lower()  # noqa: S603, S607
-            return '"soffice.exe"' in out or '"soffice.bin"' in out
+        other = platforms.offered(platform, "libreoffice")
+        if other is not None:
+            return other.is_running()
         out = subprocess.run(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=6, check=False).stdout   # noqa: S603, S607
         return any(pathlib.PurePosixPath(line.strip()).name.lower() in ("soffice", "soffice.bin") for line in out.splitlines())
     except (OSError, subprocess.SubprocessError):

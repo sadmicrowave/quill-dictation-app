@@ -20,35 +20,6 @@ _app = QApplication.instance() or QApplication([])
 COLORS = {"bg": "#FAF9F5", "text": "#1F1E1D", "border": "#E3E0D6"}
 
 
-class TestWindowsChrome(unittest.TestCase):
-    def test_colorref_is_blue_green_red(self):
-        self.assertEqual(chrome.colorref("#112233"), 0x332211)
-
-    def test_dark_mode_colours_and_rounding_are_set(self):
-        calls = []
-        self.assertTrue(chrome.windows_chrome(77, True, COLORS, lambda h, a, v: calls.append((h, a, v))))
-        self.assertEqual(calls[0], (77, chrome.DWMWA_USE_IMMERSIVE_DARK_MODE, 1))
-        attrs = {a: v for _, a, v in calls}
-        self.assertEqual(attrs[chrome.DWMWA_CAPTION_COLOR], chrome.colorref("#FAF9F5"))
-        self.assertEqual(attrs[chrome.DWMWA_TEXT_COLOR], chrome.colorref("#1F1E1D"))
-        self.assertEqual(attrs[chrome.DWMWA_BORDER_COLOR], chrome.colorref("#E3E0D6"))
-        self.assertEqual(attrs[chrome.DWMWA_WINDOW_CORNER_PREFERENCE], chrome.DWMWCP_ROUND)
-
-    def test_light_mode_turns_dark_title_bar_off(self):
-        calls = []
-        chrome.windows_chrome(1, False, COLORS, lambda h, a, v: calls.append((a, v)))
-        self.assertIn((chrome.DWMWA_USE_IMMERSIVE_DARK_MODE, 0), calls)
-
-    def test_attributes_an_older_windows_rejects_are_skipped(self):
-        def picky(hwnd, attribute, value):
-            if attribute != chrome.DWMWA_USE_IMMERSIVE_DARK_MODE:
-                raise OSError("not on this build")
-        self.assertTrue(chrome.windows_chrome(1, True, COLORS, picky))
-
-    def test_without_dwm_nothing_happens(self):
-        self.assertFalse(chrome.windows_chrome(1, True, COLORS))      # no ctypes.windll here
-
-
 class Rect:
     def __init__(self, width, height):
         self.size = type("S", (), {"width": width, "height": height})()
@@ -203,28 +174,6 @@ class TestMacChrome(unittest.TestCase):
         chrome.mac_chrome(5, False, COLORS, appkit=kit, opacity=100, blur=0)
         self.assertIn(("opaque", True), kit._window.calls)
         self.assertIn(("bg", (0.98, 0.98, 0.96, 1.0)), kit._window.calls)
-
-
-class TestWindowsBlur(unittest.TestCase):
-    def test_acrylic_backdrop_and_extended_frame_when_blurred(self):
-        calls, extended = [], []
-        chrome.windows_chrome(9, False, COLORS, lambda h, a, v: calls.append((a, v)), blur=40,
-                              extend_frame=extended.append)
-        self.assertIn((chrome.DWMWA_SYSTEMBACKDROP_TYPE, chrome.BACKDROP_ACRYLIC), calls)
-        self.assertEqual(extended, [9])
-
-    def test_no_backdrop_when_not_blurred(self):
-        calls, extended = [], []
-        chrome.windows_chrome(9, False, COLORS, lambda h, a, v: calls.append((a, v)), blur=0,
-                              extend_frame=extended.append)
-        self.assertIn((chrome.DWMWA_SYSTEMBACKDROP_TYPE, chrome.BACKDROP_NONE), calls)
-        self.assertEqual(extended, [])
-
-    def test_older_windows_without_the_backdrop_attribute_still_works(self):
-        def picky(hwnd, attribute, value):
-            if attribute == chrome.DWMWA_SYSTEMBACKDROP_TYPE:
-                raise OSError("unknown attribute")
-        self.assertTrue(chrome.windows_chrome(1, True, COLORS, picky, blur=50, extend_frame=lambda h: None))
 
 
 class TestApplyChrome(unittest.TestCase):

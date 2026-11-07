@@ -1,0 +1,27 @@
+"""The Windows provider (see :mod:`quill.platforms` for what a provider may offer).
+
+Developed on the ``windows`` branch, because it can only be tested on a Windows machine. Everything Quill does differently on
+Windows is in this package: the window look, the voice, live Excel through COM, the spreadsheet programs and LibreOffice.
+"""
+
+from quill.platforms.windows import excel_com, hosts, libreoffice
+from quill.platforms.windows.bridge import WinBridge
+from quill.platforms.windows.chrome import apply_chrome, set_topmost
+from quill.platforms.windows.speech import render_clip, speak
+
+NATIVE_QPA = "windows"
+QUIT_LABEL = "Exit"
+TRAY_CLICK_OPENS_MENU = True
+
+
+def new_live_bridge():
+    return WinBridge()
+
+
+def open_file(path: str) -> None:
+    import os
+    os.startfile(path)                  # type: ignore[attr-defined]  # noqa: S606
+
+
+__all__ = ["excel_com", "hosts", "libreoffice", "WinBridge", "apply_chrome", "set_topmost", "render_clip", "speak",
+           "NATIVE_QPA", "QUIT_LABEL", "TRAY_CLICK_OPENS_MENU", "new_live_bridge", "open_file"]

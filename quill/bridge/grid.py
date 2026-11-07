@@ -15,6 +15,7 @@ import datetime as dt
 import sys
 from abc import ABC, abstractmethod
 
+from quill import platforms
 from quill.bridge.filters import ColumnFilter
 
 
@@ -302,8 +303,9 @@ class XlwingsGrid(Grid):
         target.value = value
         if isinstance(value, str) and "\n" in value:          # several values in one cell: one per line
             try:
-                if self._platform == "win32":
-                    target.api.WrapText = True
+                com = platforms.offered(self._platform, "excel_com")        # (Windows: Excel's COM object model)
+                if com is not None:
+                    com.wrap_text(target.api)
                 else:
                     target.api.wrap_text.set(True)
             except Exception:
@@ -316,19 +318,14 @@ class XlwingsGrid(Grid):
     # through the native API (COM on Windows, AppleScript on macOS) via ``.api``.
     # Not yet exercised against a real Excel; see the To Do.
 
-    _XL_AND = 1
-    _XL_FILTER_VALUES = 7
-
     def set_autofilter(self, sheet, header_row, first_col, last_col, last_row, criteria):
         from quill.bridge.base import BridgeError
         ws = self._book.sheets[sheet]
         table = ws.range((header_row, first_col), (max(last_row, header_row + 1), last_col))
         try:
-            if self._platform == "win32":
-                if ws.api.AutoFilterMode:
-                    ws.api.AutoFilterMode = False
-                for col, flt in criteria.items():
-                    self._apply_windows(table.api, col - first_col + 1, flt)
+            com = platforms.offered(self._platform, "excel_com")
+            if com is not None:
+                com.set_autofilter(ws.api, table.api, first_col, criteria)
             else:
                 if ws.api.autofilter_mode.get():
                     ws.api.autofilter_mode.set(False)
@@ -337,21 +334,6 @@ class XlwingsGrid(Grid):
         except Exception as exc:
             raise BridgeError(f"The spreadsheet program would not apply the filter: {exc}") from exc
         return None   # visible-row count is not read back from Excel
-
-    def _apply_windows(self, rng_api, field: int, flt: ColumnFilter) -> None:
-        if flt.values:
-            if len(flt.values) == 1:
-                rng_api.AutoFilter(Field=field, Criteria1="=" + flt.values[0])
-            else:
-                rng_api.AutoFilter(Field=field, Criteria1=list(flt.values),
-                                   Operator=self._XL_FILTER_VALUES)
-            return
-        tests = [f"{op}{limit:g}" for op, limit in flt.comparisons]
-        if len(tests) == 1:
-            rng_api.AutoFilter(Field=field, Criteria1=tests[0])
-        else:
-            rng_api.AutoFilter(Field=field, Criteria1=tests[0], Operator=self._XL_AND,
-                               Criteria2=tests[1])
 
     def _apply_mac(self, rng_api, field: int, flt: ColumnFilter) -> None:
         from appscript import k
@@ -372,9 +354,9 @@ class XlwingsGrid(Grid):
         from quill.bridge.base import BridgeError
         ws = self._book.sheets[sheet]
         try:
-            if self._platform == "win32":
-                if ws.api.FilterMode:
-                    ws.api.ShowAllData()
+            com = platforms.offered(self._platform, "excel_com")
+            if com is not None:
+                com.clear_autofilter(ws.api)
             elif ws.api.filter_mode.get():
                 ws.api.show_all_data()
         except Exception as exc:

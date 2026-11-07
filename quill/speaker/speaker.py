@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from typing import Callable
+from quill import platforms
 
 log = logging.getLogger("quill.speaker")
 
@@ -75,8 +76,10 @@ class Speaker:
                     time.sleep(lead_in)
                 if self._platform == "darwin":
                     self._say_mac(text)
-                elif self._platform == "win32":
-                    self._say_win(text)
+                else:
+                    speak = platforms.offered(self._platform, "speak")
+                    if speak is not None:
+                        speak(text)
             finally:
                 if on_done:
                     on_done()
@@ -88,12 +91,3 @@ class Speaker:
             subprocess.run(["say", "--", text], check=False, timeout=30)    # noqa: S603, S607 (built-in macOS tool)
         except Exception as exc:
             log.debug("speech failed: %s", exc)   # TTS is a nicety; the prompt is also logged
-
-    def _say_win(self, text: str) -> None:
-        try:
-            import pyttsx3
-            engine = pyttsx3.init()   # one engine per utterance: SAPI engines are thread-bound
-            engine.say(text)
-            engine.runAndWait()
-        except Exception as exc:
-            log.debug("speech failed: %s", exc)

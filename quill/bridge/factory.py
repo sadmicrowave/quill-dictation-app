@@ -3,6 +3,7 @@
 from __future__ import annotations
 import pathlib
 import sys
+from quill import platforms
 from quill.bridge.base import WorkbookBridge
 
 
@@ -29,7 +30,7 @@ def get_bridge(xlsx_path: str | pathlib.Path | None = None) -> WorkbookBridge:
             instead of driving a live Excel (no Excel needed).
 
     Raises:
-        NotImplementedError: on an unsupported platform (live Excel only).
+        NotImplementedError: where no live bridge exists (live Excel only).
     """
     if xlsx_path is not None:
         if pathlib.Path(xlsx_path).suffix.lower() in (".csv", ".tsv"):
@@ -37,14 +38,13 @@ def get_bridge(xlsx_path: str | pathlib.Path | None = None) -> WorkbookBridge:
             return CsvBridge(xlsx_path)
         from quill.bridge.xlsx_bridge import XlsxBridge
         return XlsxBridge(xlsx_path)
-    if sys.platform == "win32":
-        from quill.bridge.win_bridge import WinBridge
-        return WinBridge()
-    elif sys.platform == "darwin":
+    if sys.platform == "darwin":
         from quill.bridge.mac_bridge import MacBridge
         return MacBridge()
-    else:
-        raise NotImplementedError(
-            f"Quill does not support platform '{sys.platform}'. "
-            "Windows and macOS are supported."
-        )
+    make = platforms.offered(sys.platform, "new_live_bridge")
+    if make is not None:
+        return make()
+    raise NotImplementedError(
+        f"Quill has no live spreadsheet bridge for platform '{sys.platform}' in this build. "
+        "Open a spreadsheet file instead."
+    )
