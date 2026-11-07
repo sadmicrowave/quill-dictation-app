@@ -121,6 +121,12 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
         quill.tray.notify.assert_called_with(NO_WORKBOOK_HELP)
         self.assertEqual(self.speaker.said, [])                    # the popup shows it; nothing is spoken
 
+    def test_start_button_shakes_and_blinks_red_when_it_cannot_start(self):
+        quill = self.make_app()
+        quill.window.toggle_button.shake_ms = 0                    # (no swing in a test: only the blink)
+        quill.window.toggle_button.click()
+        self.assertIn("255, 59, 48", quill.window.toggle_button.styleSheet())
+
     def test_no_file_is_not_an_error_the_files_panel_is_the_answer(self):
         quill = self.make_app()
         quill.window.set_mini(True)
@@ -378,3 +384,45 @@ class TestXlwingsGridFilters(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestStartAlert(unittest.TestCase):
+    """Start with no spreadsheet: the button says no (a shake and a red blink) and ends where it began."""
+
+    def setUp(self):
+        from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout
+        self._app = QApplication.instance() or QApplication([])
+        from quill.ui.widgets import ListenButton
+        self.holder = QWidget()
+        self.holder.resize(300, 60)
+        row = QHBoxLayout(self.holder)
+        self.button = ListenButton()
+        row.addWidget(self.button)
+        self.holder.show()
+        self.addCleanup(self.holder.close)
+
+    def test_it_blinks_red_then_clears(self):
+        from PySide6.QtTest import QTest
+        self.button.shake_ms = 0
+        self.button.alert()
+        self.assertIn("255, 59, 48", self.button.styleSheet())
+        QTest.qWait(self.button.ALERT_MS + 150)
+        self.assertEqual(self.button.styleSheet(), "")
+
+    def test_it_swings_sideways_and_comes_back(self):
+        from PySide6.QtTest import QTest
+        home = self.button.pos()
+        self.button.alert()
+        QTest.qWait(120)
+        self.assertNotEqual(self.button.pos(), home)                # (mid-swing)
+        QTest.qWait(self.button.shake_ms + 150)
+        self.assertEqual(self.button.pos(), home)
+        self.assertEqual(self.button.pos().y(), home.y())
+
+    def test_a_second_alert_during_a_shake_does_not_stack(self):
+        from PySide6.QtTest import QTest
+        home = self.button.pos()
+        self.button.alert()
+        self.button.alert()
+        QTest.qWait(self.button.shake_ms + 150)
+        self.assertEqual(self.button.pos(), home)

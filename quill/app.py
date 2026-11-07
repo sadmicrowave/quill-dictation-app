@@ -1814,6 +1814,7 @@ class QuillApp:
             self.sorting.note_outcome(event.terms[0], "error")
         elif kind == "error" and event.detail == NO_WORKBOOK_HELP:
             self.window.set_not_connected(True)
+            self.window.toggle_button.alert()                       # Start shakes and blinks red: it could not start (the Files panel is the way out)
             self.tray.notify(NO_WORKBOOK_HELP)
             self.window.append_log(event.detail)                          # logged as plain information (no red "!" in the mini view, the Log stays shut): the Files panel and the file window are the answer
             return

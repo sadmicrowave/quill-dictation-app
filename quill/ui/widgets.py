@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 import shiboken6
-from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from quill.ui.icons import make_icon
-from quill.ui.theme import PILL_BG, PILL_FG
+from quill.ui.theme import FLASH_STYLES, PILL_BG, PILL_FG
 
 #: Height of a pill notice ("File not connected", "Start Listening").
 CHIP_HEIGHT = 22
@@ -239,6 +239,39 @@ class ListenButton(QPushButton):
         self._notice = shown
         self.fixed_tip = tip if shown and tip else None
         self._show_text()
+
+    #: How long the "no" shake lasts (0 turns it off: tests), how far it swings (pixels), and how long the red blink stays.
+    shake_ms = 420
+    SHAKE_PX = 7
+    ALERT_MS = 700
+
+    def alert(self) -> None:
+        """Say "no" without words: the button shakes side to side and blinks red, once. Used when Start is pressed and
+        nothing can start (no spreadsheet is connected); the Files panel opening is then the way out."""
+        border, tint = FLASH_STYLES["error"]
+        self.setStyleSheet(f"QPushButton {{ border: 1px solid {border}; background: {tint}; }}")
+        QTimer.singleShot(self.ALERT_MS, lambda: self.setStyleSheet("") if shiboken6.isValid(self) else None)
+        if self.shake_ms <= 0 or not self.isVisible() or getattr(self, "_shaking", False):
+            return
+        self._shaking = True
+        home = self.pos()
+        swing = QVariantAnimation(self)
+        swing.setDuration(self.shake_ms)
+        swing.setStartValue(0.0)
+        swing.setEndValue(1.0)
+
+        def step(t: float) -> None:                                  # a few quick swings that die away
+            self.move(home.x() + round(self.SHAKE_PX * math.sin(t * math.pi * 5) * (1 - t)), home.y())
+
+        def done() -> None:
+            self._shaking = False
+            if shiboken6.isValid(self):
+                self.move(home)
+                if self.parentWidget() is not None and self.parentWidget().layout() is not None:
+                    self.parentWidget().layout().activate()          # (the layout is the authority on where it sits)
+        swing.valueChanged.connect(step)
+        swing.finished.connect(done)
+        swing.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def set_active(self, active: bool) -> None:
         """Listening (filled, stop icon, green moving lines) or idle (outlined, play icon, still muted lines)."""
