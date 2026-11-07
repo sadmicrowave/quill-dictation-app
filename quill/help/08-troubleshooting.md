@@ -16,7 +16,7 @@
 | Listening stopped by itself | Nothing was said for 10 seconds. Say **"start listening"** again, or change **Stop Listening When Quiet** in **Settings > General** |
 | Nothing happens when I talk | Say **"start listening"**; check microphone permission in your computer's privacy settings |
 | *… was closed* (an amber note under **Open File** in the Files panel) | You closed the spreadsheet window, so Quill stopped listening (nothing is lost) and the Start button shakes. Choose **Reopen** to open it again, or pick another file |
-| *Sheet … is open in your spreadsheet program but is not in the saved file yet* (Log) | You added or renamed a sheet and have not saved. Save the file (keep the format) and Quill follows it |
+| A red dot on the folder icon, a green-outlined note under **Sheet** (*… is not saved in the file yet*) | You opened a sheet that the saved file does not have (a new or renamed sheet). Quill stays on its last sheet until you save the file (keep the format) and press the refresh icon beside Sheet; opening the Files panel puts the dot away |
 | *File not connected* | Open your spreadsheet. Quill finds it in a few seconds. Pressing **Start** with none open shakes the button and opens the Files panel so you can pick one |
 | Mac asks about controlling your spreadsheet program | Choose **OK**. To undo: *System Settings > Privacy & Security > Automation* |
 | Quill doesn't know my lists | **Save** the sheet; Quill re-reads it. Lists must be real drop-downs (*Data > Data Validation > List*) |

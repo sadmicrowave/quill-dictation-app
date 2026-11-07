@@ -293,7 +293,9 @@ class LibreOfficeMirror:
 
     def _run_job(self, soffice: str, folder: pathlib.Path, answer: pathlib.Path) -> MirrorResult:
         address = f"vnd.sun.star.script:{SCRIPT_NAME}$apply?language=Python&location=user"
-        code = (self.runner or _system)([soffice, address])
+        # "--headless": without it every call starts a second LibreOffice process that shows its own Dock icon for a moment
+        # (once per look, so every few seconds). With it the request is still handed to the running LibreOffice, silently.
+        code = (self.runner or _system)([soffice, "--headless", address])
         if code != 0:
             return MirrorResult(False, "error", f"soffice exited with {code}")
         deadline = time.monotonic() + self.wait_s

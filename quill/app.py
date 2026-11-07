@@ -406,7 +406,7 @@ class QuillApp:
 
     def poll_workbooks(self) -> None:
         """The tick of the one check loop (every ``sheet_check_seconds``): attach when a workbook appears, detach when it
-        closes, and take ONE look at the spreadsheet programs (:meth:`refresh_open_files`) that serves the Available Files
+        closes, and take ONE look at the spreadsheet programs (:meth:`refresh_open_files`) that serves the Open Spreadsheets
         list, a closed file and the open sheet together.
 
         This is what makes "just open a spreadsheet and start talking" work: Quill need not be told which workbook; it
@@ -610,9 +610,12 @@ class QuillApp:
             if sheet and sheet != bridge.active_sheet_name():
                 if bridge.set_active_sheet(sheet):
                     changed = self.controller.follow_sheet()
+                    self._clear_sheet_alert()
                 else:
                     self._warn_sheet_not_saved(sheet)
             else:
+                if sheet:                                                # (the program named a sheet and the file has it)
+                    self._clear_sheet_alert()
                 changed = self.controller.follow_sheet()                # (a live program: it says which sheet is open)
         except BridgeError as exc:
             self.window.append_log(f"Could not check the sheet: {exc}", "warning")
@@ -627,8 +630,19 @@ class QuillApp:
         if sheet in names or self._unsaved_sheet == sheet:
             return                                                       # (said once per sheet, not at every look)
         self._unsaved_sheet = sheet
+        program = next((f.app for f in self._open_files if f.path and os.path.realpath(f.path) == os.path.realpath(
+            getattr(self.controller.bridge, "workbook_path", "") or "")), "your spreadsheet program")
+        self.window.panel.show_sheet_alert(sheet, program, self.controller.bridge.active_sheet_name())
+        self.window.raise_file_alert(f"A different sheet is open ({sheet}) and it is not saved yet.")
         self.window.append_log(f"Sheet '{sheet}' is open in your spreadsheet program but is not in the saved file yet, so Quill "
                                "stays on its last sheet. Save the file (keep the format) and Quill will use it.", "warning")
+
+    def _clear_sheet_alert(self) -> None:
+        """The program and the file agree on the sheet again: put the red dot and the note away."""
+        if self._unsaved_sheet:
+            self._unsaved_sheet = ""
+            self.window.clear_file_alert()
+            self.window.panel.hide_sheet_alert()
 
     def _show_active_sheet(self) -> None:
         """Tell the window which sheet is open (the folder icon's hover text names it)."""
@@ -1332,7 +1346,7 @@ class QuillApp:
     def refresh_open_files(self, manual: bool = False, announce: bool = False, then=None) -> None:
         """Take the one look at the spreadsheet programs (never two at once; one asked for meanwhile runs right after).
 
-        It refreshes the Available Files list, lets go of the file if its window was closed, notices the program's open sheet
+        It refreshes the Open Spreadsheets list, lets go of the file if its window was closed, notices the program's open sheet
         and, with no file, picks up a file another program has open. *manual*: a refresh icon or Start asked, so a closed
         spreadsheet is acted on at once (a timer's look is trusted only when every question was answered anyway).
         *announce*: say which sheet is open. *then*: called when the look is done (Start waits for it).
@@ -1638,9 +1652,11 @@ class QuillApp:
         if self._titlebar is None:
             return
         from quill.ui.icons import titlebar_png
-        png = titlebar_png("folder-open" if has_file else "folder")
+        alert = self.window.file_alert
+        png = titlebar_png("folder-open" if has_file else "folder", badge=bool(alert),
+                           color=self.window._text_color if alert else "#000000")
         tip = (f"{name}\nSheet: {sheet}" if has_file and sheet else name if has_file else "Open File")
-        self._titlebar.set_extra_image(0, png, tip, muted=not has_file)
+        self._titlebar.set_extra_image(0, png, f"{alert}\n{tip}" if alert else tip, muted=not has_file, template=not alert)
 
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QByteArray, Qt
-from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QPointF, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 #: Icon name -> SVG body (24 x 24 box, ``COLOR`` is replaced by the requested colour).
@@ -64,16 +64,34 @@ def svg_for(name: str, color: str) -> str:
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>'
 
 
-def titlebar_png(name: str, size: int = 19, scale: int = 2) -> bytes:
+#: The alert dot: a red circle at the icon's top right, with a thin ring of the background colour so it stands off the icon.
+BADGE_RED = "#E5484D"
+
+
+def _paint_badge(pixmap: QPixmap, scale: int) -> None:
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    side = pixmap.width()
+    radius = side * 0.20
+    cx, cy = side - radius - side * 0.02, radius + side * 0.02
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(BADGE_RED))
+    painter.drawEllipse(QPointF(cx, cy), radius, radius)
+    painter.end()
+
+
+def titlebar_png(name: str, size: int = 19, scale: int = 2, badge: bool = False, color: str = "#000000") -> bytes:
     """PNG bytes of icon *name* for the macOS title bar: black (the system tints it) with the fine lines of the
     other title-bar symbols, so it does not look heavier or whiter than they do."""
     from PySide6.QtCore import QBuffer, QIODevice
-    svg = svg_for(name, "#000000").replace('stroke-width="1.8"', 'stroke-width="1.35"').replace('fill-opacity=".25"', 'fill-opacity="0"')
+    svg = svg_for(name, color).replace('stroke-width="1.8"', 'stroke-width="1.35"').replace('fill-opacity=".25"', 'fill-opacity="0"')
     pixmap = QPixmap(size * scale, size * scale)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     QSvgRenderer(QByteArray(svg.encode("utf-8"))).render(painter)
     painter.end()
+    if badge:                                   # (a badge is red, so the picture cannot be a tinted template)
+        _paint_badge(pixmap, scale)
     data = QByteArray()
     buffer = QBuffer(data)
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -81,7 +99,7 @@ def titlebar_png(name: str, size: int = 19, scale: int = 2) -> bytes:
     return bytes(data)
 
 
-def make_icon(name: str, color: str, size: int = 18, scale: int = 2) -> QIcon:
+def make_icon(name: str, color: str, size: int = 18, scale: int = 2, badge: bool = False) -> QIcon:
     """Render icon *name* as a QIcon *size* points square (drawn at *scale*x for sharp screens)."""
     renderer = QSvgRenderer(QByteArray(svg_for(name, color).encode("utf-8")))
     pixmap = QPixmap(size * scale, size * scale)
@@ -89,5 +107,7 @@ def make_icon(name: str, color: str, size: int = 18, scale: int = 2) -> QIcon:
     painter = QPainter(pixmap)
     renderer.render(painter)
     painter.end()
+    if badge:
+        _paint_badge(pixmap, scale)
     pixmap.setDevicePixelRatio(scale)
     return QIcon(pixmap)

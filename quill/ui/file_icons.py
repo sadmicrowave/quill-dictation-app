@@ -1,4 +1,4 @@
-"""Mini icons for the Available Files list: one per spreadsheet program or file type, drawn here from simple shapes.
+"""Mini icons for the Open Spreadsheets list: one per spreadsheet program or file type, drawn here from simple shapes.
 
 They are Quill's own drawings (the Excel one follows the look of the Excel logo, with its word removed and its greens shifted a
 little; the others are a Numbers-style bar tile and white pages with an L or CSV), so the app can be sold without

@@ -379,20 +379,33 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestSheetNotSavedYet(unittest.TestCase):
-    """A sheet that the program shows but the saved file does not have: said once, and Quill stays on its last sheet."""
+class TestSheetNotSavedYet(PanelApp):
+    """A sheet that the program shows but the saved file does not have: the folder icon gets a red dot, the Files panel a
+    green-outlined note, and Quill stays on its last sheet; both go when the file and the program agree again."""
 
-    def test_the_warning_is_logged_once_per_sheet(self):
-        import types
-        from quill.app import QuillApp
-        logged = []
-        app = types.SimpleNamespace(
-            _unsaved_sheet="", controller=types.SimpleNamespace(bridge=types.SimpleNamespace(sheet_names=lambda: ["Sheet1"])),
-            window=types.SimpleNamespace(append_log=lambda text, level="info", **kw: logged.append((level, text))))
-        QuillApp._warn_sheet_not_saved(app, "Sheet2")
-        QuillApp._warn_sheet_not_saved(app, "Sheet2")
-        self.assertEqual(len(logged), 1)
-        self.assertEqual(logged[0][0], "warning")
-        self.assertIn("not in the saved file", logged[0][1])
-        QuillApp._warn_sheet_not_saved(app, "Sheet1")                      # a sheet the file has: nothing to say
-        self.assertEqual(len(logged), 1)
+    def setUp(self):
+        super().setUp()
+        self.app.connect_to_file(self.plants) if hasattr(self.app, "connect_to_file") else None
+        self.logged = []
+        self.app.window.append_log = lambda text, level="info", **kw: self.logged.append((level, text))
+
+    def test_the_dot_the_note_and_one_log_line_appear_once(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        window = self.app.window
+        self.assertIn("Sheet Nine", window.file_alert)
+        self.assertTrue(window.panel.sheet_note.isVisibleTo(window.panel))
+        self.assertIn("Sheet Nine is not saved", window.panel.sheet_note_label.text())
+        self.assertEqual([lvl for lvl, _ in self.logged].count("warning"), 1)
+
+    def test_opening_the_file_panel_puts_the_dot_away_but_the_note_stays(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app.window.open_panel(FILE_PAGE)
+        self.assertEqual(self.app.window.file_alert, "")
+        self.assertTrue(self.app.window.panel.sheet_note.isVisibleTo(self.app.window.panel))
+
+    def test_everything_goes_when_the_file_has_the_sheet(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._apply_sheet(self.app.controller.bridge.active_sheet_name(), quiet=True)
+        self.assertEqual(self.app.window.file_alert, "")
+        self.assertFalse(self.app.window.panel.sheet_note.isVisibleTo(self.app.window.panel))

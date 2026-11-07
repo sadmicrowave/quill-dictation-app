@@ -70,17 +70,16 @@ ROW_HEIGHT = 30                                    # the height of a button (the
 
 
 class ActiveBorder(QStyledItemDelegate):
-    """Draws the active file's row with the same green border and faint green tint as an accepted Term Helper row."""
+    """Draws the active file's row with the same green border as an accepted Term Helper row (no fill)."""
 
     def paint(self, painter, option, index) -> None:
         super().paint(painter, option, index)
         if index.data(ACTIVE_ROLE):
             painter.save()
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            border, tint = FLASH_STYLES["accepted"]
-            red, green, blue, alpha = (float(v) for v in re.findall(r"[\d.]+", tint))
+            border = FLASH_STYLES["accepted"][0]
             painter.setPen(QPen(QColor(border), 1))
-            painter.setBrush(QColor(int(red), int(green), int(blue), int(alpha * 255)))
+            painter.setBrush(Qt.BrushStyle.NoBrush)            # (the green border only: no fill)
             painter.drawRoundedRect(QRectF(option.rect).adjusted(0.5, 2.5, -0.5, -2.5), 8, 8)
             painter.restore()
 
@@ -391,7 +390,7 @@ class SidePanel(QFrame):
     speech_models_requested = Signal()          # the link under the Speech Model drop-down
     speech_model_chosen = Signal(str)           # the key of the model picked in the Turn Options drop-down
     sheet_refresh_requested = Signal()          # the refresh icon beside Sheet
-    refresh_requested = Signal()                # the refresh icon beside Available Files
+    refresh_requested = Signal()                # the refresh icon beside Open Spreadsheets
     file_chosen = Signal(object)                # the data of the picked list entry
     mode_changed = Signal(str)                  # NEXT_ROW or APPEND_TO
     layout_changed = Signal(bool)               # True: headings run down the first column
@@ -562,6 +561,32 @@ class SidePanel(QFrame):
         note.setVisible(False)
         return note
 
+    def _build_sheet_note(self) -> QFrame:
+        """The green-outlined note under the Sheet row: the program shows a sheet that the saved file does not have."""
+        note = QFrame()
+        note.setProperty("sheetNote", True)
+        note.setProperty("keepMargins", True)
+        inner = QVBoxLayout(note)
+        inner.setContentsMargins(10, 8, 10, 8)
+        self.sheet_note_label = QLabel("")
+        self.sheet_note_label.setProperty("closedBody", True)
+        self.sheet_note_label.setWordWrap(True)
+        inner.addWidget(self.sheet_note_label)
+        note.setVisible(False)
+        return note
+
+    def show_sheet_alert(self, shown: str, program: str, working: str) -> None:
+        """Say that *program* (named in the hover text) shows the sheet *shown*, which the saved file does not have, so Quill
+        stays on *working*."""
+        self.sheet_note.setToolTip(f"{shown} is open in {program}.")
+        self.sheet_note_label.setText(
+            f"{shown} is not saved in the file yet, so Quill is still on {working}. "
+            "Save the file (keep its format), then press refresh.")
+        self.sheet_note.setVisible(True)
+
+    def hide_sheet_alert(self) -> None:
+        self.sheet_note.setVisible(False)
+
     def show_closed(self, name: str) -> None:
         """Say that *name* was closed (shown until a file is connected again, or dismissed)."""
         self.closed_title.setText(f"{name} was closed")
@@ -593,6 +618,8 @@ class SidePanel(QFrame):
         table.setColumnStretch(1, 1)
         self.fact_rows: dict[str, tuple[QLabel, ElidedLabel]] = {}
         for row, name in enumerate(("Sheet", "Path", "Type", "Size", "Modified", "Created")):
+            if row:
+                row += 1                                         # (row 1 is the note that says the sheet is not saved yet)
             label = QLabel(name)
             label.setProperty("panelNote", True)                 # the label is muted
             label.setIndent(0)
@@ -623,6 +650,8 @@ class SidePanel(QFrame):
             self.fact_rows[name] = (label, value)
             label.setVisible(False)
             value.setVisible(False)
+        self.sheet_note = self._build_sheet_note()
+        table.addWidget(self.sheet_note, 1, 0, 1, 3)
         layout.addLayout(table)
         self.learned_counter = lambda path: 0                    # set by the app: how many learned words belong to a file
         self.learned_link = QLabel("")                           # "Learned Words (7)": opens them for this file (only with a file)
@@ -640,7 +669,7 @@ class SidePanel(QFrame):
         layout.addSpacing(4)
         heading_line = QHBoxLayout()
         heading_line.setContentsMargins(0, 0, 0, 0)
-        heading_line.addWidget(_heading("Available Files"), 1)
+        heading_line.addWidget(_heading("Open Spreadsheets"), 1)
         self.refresh_button = self._chrome_button("Look for open spreadsheets now. The list also refreshes by itself.",
                                                   "Refresh the List")
         self.refresh_button.clicked.connect(lambda: self.start_refresh(True))

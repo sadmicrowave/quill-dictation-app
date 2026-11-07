@@ -46,7 +46,8 @@ class TestPushing(Case):
         result = m.push(self.dir / "a.xlsx", [("Sheet1", 4, 2, "teal"), ("Sheet1", 4, 3, 3.5)])
         self.assertTrue(result.ok)
         self.assertEqual(self.calls[0][0], "/x/soffice")
-        self.assertIn("quill_mirror.py$apply", self.calls[0][1])
+        self.assertIn("--headless", self.calls[0])                   # (else each call shows a Dock icon for a moment)
+        self.assertIn("quill_mirror.py$apply", self.calls[0][-1])
         self.assertEqual(self.job["changes"], [["Sheet1", 4, 2, "s", "teal"], ["Sheet1", 4, 3, "n", "3.5"]])
         self.assertTrue(any(u.endswith("a.xlsx") for u in self.job["urls"]))
 

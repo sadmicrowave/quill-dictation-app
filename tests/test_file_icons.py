@@ -1,4 +1,4 @@
-"""The mini icons of the Available Files list: by program, by file type, and a plain page with the extension."""
+"""The mini icons of the Open Spreadsheets list: by program, by file type, and a plain page with the extension."""
 
 import unittest
 
