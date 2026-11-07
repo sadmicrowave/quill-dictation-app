@@ -679,14 +679,14 @@ class TitlebarButton:
         """Enable or grey out the *index*-th extra icon (counting from the left)."""
         self._extras[index][0].setEnabled_(enabled)
 
-    def set_extra_image(self, index: int, png: bytes, tip: str, muted: bool) -> bool:
+    def set_extra_image(self, index: int, png: bytes, tip: str, muted: bool, template: bool = True) -> bool:
         """Give the *index*-th extra icon (counting from the left) its own picture (PNG bytes, drawn as a template
         so the system colours it for the title bar), a tooltip, and dim it when *muted*. Returns False if it can't."""
         try:
             button = self._extras[index][0]
             data = self._appkit.NSData.dataWithBytes_length_(png, len(png))
             image = self._appkit.NSImage.alloc().initWithData_(data)
-            image.setTemplate_(True)
+            image.setTemplate_(template)             # (a picture with a coloured badge is drawn as it is, not tinted)
             image.setSize_((FOLDER_POINTS, FOLDER_POINTS))
             button.setImage_(image)
             button.setToolTip_(tip)

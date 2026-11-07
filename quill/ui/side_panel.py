@@ -69,18 +69,42 @@ LIST_ROLE = Qt.ItemDataRole.UserRole
 ROW_HEIGHT = 30                                    # the height of a button (the file button) and of a row in the file list
 
 
+class DotLabel(QLabel):
+    """A label that can wear the red alert dot just after its text, without changing its size or anything around it."""
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self._dot = False
+
+    def set_dot(self, on: bool) -> None:
+        if on != self._dot:
+            self._dot = on
+            self.update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self._dot:
+            from quill.ui.icons import BADGE_RED
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(BADGE_RED))
+            x = self.fontMetrics().horizontalAdvance(self.text()) + 4
+            painter.drawEllipse(QRectF(x, self.height() / 2 - 6, 7, 7))
+            painter.end()
+
+
 class ActiveBorder(QStyledItemDelegate):
-    """Draws the active file's row with the same green border and faint green tint as an accepted Term Helper row."""
+    """Draws the active file's row with the same green border as an accepted Term Helper row (no fill)."""
 
     def paint(self, painter, option, index) -> None:
         super().paint(painter, option, index)
         if index.data(ACTIVE_ROLE):
             painter.save()
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            border, tint = FLASH_STYLES["accepted"]
-            red, green, blue, alpha = (float(v) for v in re.findall(r"[\d.]+", tint))
+            border = FLASH_STYLES["accepted"][0]
             painter.setPen(QPen(QColor(border), 1))
-            painter.setBrush(QColor(int(red), int(green), int(blue), int(alpha * 255)))
+            painter.setBrush(Qt.BrushStyle.NoBrush)            # (the green border only: no fill)
             painter.drawRoundedRect(QRectF(option.rect).adjusted(0.5, 2.5, -0.5, -2.5), 8, 8)
             painter.restore()
 
@@ -391,7 +415,7 @@ class SidePanel(QFrame):
     speech_models_requested = Signal()          # the link under the Speech Model drop-down
     speech_model_chosen = Signal(str)           # the key of the model picked in the Turn Options drop-down
     sheet_refresh_requested = Signal()          # the refresh icon beside Sheet
-    refresh_requested = Signal()                # the refresh icon beside Available Files
+    refresh_requested = Signal()                # the refresh icon beside Open Spreadsheets
     file_chosen = Signal(object)                # the data of the picked list entry
     mode_changed = Signal(str)                  # NEXT_ROW or APPEND_TO
     layout_changed = Signal(bool)               # True: headings run down the first column
@@ -562,6 +586,22 @@ class SidePanel(QFrame):
         note.setVisible(False)
         return note
 
+    def show_sheet_alert(self, shown: str, program: str, working: str) -> None:
+        """Mark the Sheet row with the red dot (the same dot as on the folder icon): *program* shows the sheet *shown*, which the
+        saved file does not have, so Quill stays on *working*. Nothing moves; the hover text says what to do."""
+        tip = f"{shown} is open in {program} but is not saved in the file yet. Quill is still on {working}.\nPress refresh to save the file and switch to it."
+        label, value = self.fact_rows["Sheet"]
+        label.set_dot(True)
+        for widget in (label, value, self.sheet_refresh_button):
+            widget.setToolTip(tip)
+
+    def hide_sheet_alert(self) -> None:
+        label, value = self.fact_rows["Sheet"]
+        label.set_dot(False)
+        label.setToolTip("")
+        value.setToolTip("")
+        self.sheet_refresh_button.setToolTip("Look at which sheet is open in the spreadsheet program now.")
+
     def show_closed(self, name: str) -> None:
         """Say that *name* was closed (shown until a file is connected again, or dismissed)."""
         self.closed_title.setText(f"{name} was closed")
@@ -593,7 +633,7 @@ class SidePanel(QFrame):
         table.setColumnStretch(1, 1)
         self.fact_rows: dict[str, tuple[QLabel, ElidedLabel]] = {}
         for row, name in enumerate(("Sheet", "Path", "Type", "Size", "Modified", "Created")):
-            label = QLabel(name)
+            label = DotLabel(name)
             label.setProperty("panelNote", True)                 # the label is muted
             label.setIndent(0)
             value = ElidedLabel("")                              # the value is plain text, on one line
@@ -640,7 +680,7 @@ class SidePanel(QFrame):
         layout.addSpacing(4)
         heading_line = QHBoxLayout()
         heading_line.setContentsMargins(0, 0, 0, 0)
-        heading_line.addWidget(_heading("Available Files"), 1)
+        heading_line.addWidget(_heading("Open Spreadsheets"), 1)
         self.refresh_button = self._chrome_button("Look for open spreadsheets now. The list also refreshes by itself.",
                                                   "Refresh the List")
         self.refresh_button.clicked.connect(lambda: self.start_refresh(True))

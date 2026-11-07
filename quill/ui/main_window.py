@@ -209,6 +209,7 @@ class MainWindow:
         self._sheet_name = ""
         self._native_undo_button = False
         self._text_color = "#1F1E1D"
+        self._file_alert = ""                                   # why the folder icon wears a red dot (see raise_file_alert)
         self._accent = "#7A55C2"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
         self._log_height = LOG_OPEN_HEIGHT   # the log's height while open (the user can drag it)
@@ -700,6 +701,8 @@ class MainWindow:
             return
         self._panel_page = page
         self.panel.show_page(page)
+        if page == FILE_PAGE:
+            self.clear_file_alert()                       # (looking at the file section is what the red dot asks for)
         self._on_panel_toggled(page)
         if not self._panel_open:
             self._panel_open = True
@@ -1315,9 +1318,30 @@ class MainWindow:
             muted = QColor(color)
             muted.setAlpha(110)
             color = muted.name(QColor.NameFormat.HexArgb)
-        self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", color, 18))
+        self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", color, 18, badge=bool(self._file_alert)))
+        if self._file_alert:
+            self.open_file_button.setToolTip(f"{self._file_alert}\n{tip}")
         self.panel.set_active(self._workbook_name, self._sheet_name, self._workbook_path, self._workbook_kind)
         self._on_file_state(has, self._workbook_name, self._sheet_name)
+
+    # -- the folder icon's alert dot ------------------------------------------
+
+    @property
+    def file_alert(self) -> str:
+        """Why the folder icon wears its red dot ("" when it does not): what changed in the file section."""
+        return self._file_alert
+
+    def raise_file_alert(self, text: str) -> None:
+        """Put the red dot on the folder icon (in the title bar and in the window) with *text* as its hover line. Opening the
+        side panel puts it away again."""
+        if text != self._file_alert:
+            self._file_alert = text
+            self._show_file_state()
+
+    def clear_file_alert(self) -> None:
+        if self._file_alert:
+            self._file_alert = ""
+            self._show_file_state()
 
     def _row_table_height(self) -> int:
         """How tall the Current Row box should be: small when empty, growing with its rows up to a cap."""

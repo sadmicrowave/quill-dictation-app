@@ -816,7 +816,7 @@ class TestPanelHeaderAndFiles(unittest.TestCase):
 
     def test_the_section_is_called_files_and_has_a_filter_under_it(self):
         headings = [l.text() for l in self.panel.findChildren(QLabel) if l.property("panelHeading")]
-        self.assertIn("Available Files", headings)
+        self.assertIn("Open Spreadsheets", headings)
         self.assertNotIn("Available Spreadsheets", headings)
         self.assertEqual(self.panel.search.placeholderText(), "Search")
 
@@ -1124,7 +1124,7 @@ class TestFilePanelDetails(Dir):
 
     def test_the_available_files_section_has_its_title_description_and_search(self):
         texts = [l.text() for l in self.panel.findChildren(QLabel)]
-        self.assertIn("Available Files", texts)
+        self.assertIn("Open Spreadsheets", texts)
         self.assertIn("Spreadsheet files currently open on your computer.", texts)
         self.assertEqual(self.panel.search.placeholderText(), "Search")
 

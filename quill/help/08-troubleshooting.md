@@ -16,6 +16,9 @@
 | Listening stopped by itself | Nothing was said for 10 seconds. Say **"start listening"** again, or change **Stop Listening When Quiet** in **Settings > General** |
 | Nothing happens when I talk | Say **"start listening"**; check microphone permission in your computer's privacy settings |
 | *… was closed* (an amber note under **Open File** in the Files panel) | You closed the spreadsheet window, so Quill stopped listening (nothing is lost) and the Start button shakes. Choose **Reopen** to open it again, or pick another file |
+| A red dot on the folder icon, then one beside **Sheet** in the Files panel (hover it) | You opened a sheet that the saved file does not have (a new or renamed sheet). Quill will not listen (Start shakes) so nothing lands in the old sheet. Press the refresh icon beside **Sheet**: in LibreOffice Quill saves the file for you (in its own format) and moves to that sheet; in other programs save the file yourself first. Opening the Files panel puts the folder dot away |
+| Start shakes while you are talking | Quill stopped listening because the file was closed or a different sheet is open and not saved. While you were listening by voice you also hear the error sound (or the word *Problem*), because you are not looking; a click on Start with nothing listening only shakes |
+| A red dot on the folder icon: *Now on sheet …* | You moved to another sheet in your spreadsheet program and Quill followed. Opening the Files panel puts the dot away |
 | *File not connected* | Open your spreadsheet. Quill finds it in a few seconds. Pressing **Start** with none open shakes the button and opens the Files panel so you can pick one |
 | Mac asks about controlling your spreadsheet program | Choose **OK**. To undo: *System Settings > Privacy & Security > Automation* |
 | Quill doesn't know my lists | **Save** the sheet; Quill re-reads it. Lists must be real drop-downs (*Data > Data Validation > List*) |

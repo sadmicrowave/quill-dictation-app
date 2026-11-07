@@ -268,7 +268,7 @@ class TitlebarCase(DemoCase):
         self.fake_button = type("B", (), {"mini": None, "set_mini": lambda s, m: setattr(s, "mini", m),
                                           "set_extra_enabled": lambda s, i, f: None, "set_inset": lambda s, w: setattr(s, "inset", w),
                                           "set_extra_active": lambda s, i, on: None, "align": lambda s: 0.0, "set_panel_title": lambda s, t: None,
-                                          "set_extra_image": lambda s, i, png, tip, muted: setattr(s, "file", (tip, muted)) or True,
+                                          "set_extra_image": lambda s, i, png, tip, muted, template=True: setattr(s, "file", (tip, muted)) or True,
                                           "set_enabled": lambda s, f: None})()
         self.made = []
         original = app_module.add_titlebar_button

@@ -377,3 +377,84 @@ class TestTheNativeProcessList(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSheetNotSavedYet(PanelApp):
+    """A sheet that the program shows but the saved file does not have: the folder icon gets a red dot, the Files panel a
+    red dot on the Sheet label (nothing moves), and Quill stays on its last sheet; both go when the file and the program agree
+    again."""
+
+    def setUp(self):
+        super().setUp()
+        self.app.connect_to_file(self.plants) if hasattr(self.app, "connect_to_file") else None
+        self.logged = []
+        self.app.window.append_log = lambda text, level="info", **kw: self.logged.append((level, text))
+
+    def test_the_two_dots_and_one_log_line_appear_once(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        window = self.app.window
+        self.assertIn("Sheet Nine", window.file_alert)
+        label, _ = window.panel.fact_rows["Sheet"]
+        self.assertTrue(label._dot)
+        self.assertIn("Sheet Nine is open in", label.toolTip())
+        self.assertEqual([lvl for lvl, _ in self.logged].count("warning"), 1)
+
+    def test_opening_the_file_panel_puts_the_folder_dot_away_but_the_sheet_dot_stays(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app.window.open_panel(FILE_PAGE)
+        self.assertEqual(self.app.window.file_alert, "")
+        self.assertTrue(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+
+    def test_everything_goes_when_the_file_has_the_sheet(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._apply_sheet(self.app.controller.bridge.active_sheet_name(), quiet=True)
+        self.assertEqual(self.app.window.file_alert, "")
+        self.assertFalse(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+
+    def test_start_does_not_listen_while_the_dot_shows_and_shakes(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        shaken = []
+        self.app.window.toggle_button.alert = lambda: shaken.append(1)
+        self.app.toggle_listening(True)
+        self.assertFalse(self.app.controller.session.listening)
+        self.assertEqual(shaken, [1])
+        self.assertEqual(self.app.window.panel_page, "file")
+
+    def test_the_refresh_icon_saves_in_libreoffice_then_follows(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        saved, looks = [], []
+        self.app._program_holding = lambda path: "libreoffice"
+        self.app.lo_mirror = type("M", (), {"save": lambda s, path: saved.append(path) or True})()
+        self.app.run_in_background = lambda work, done: done(work())
+        self.app.refresh_open_files = lambda **kw: looks.append(kw)
+        self.app.refresh_active_sheet()
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(looks, [{"manual": True, "announce": True}])
+
+    def test_a_failed_save_says_so_and_changes_nothing(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._program_holding = lambda path: "libreoffice"
+        self.app.lo_mirror = type("M", (), {"save": lambda s, path: False})()
+        self.app.run_in_background = lambda work, done: done(work())
+        self.logged.clear()
+        self.app.refresh_active_sheet()
+        self.assertTrue(any("did not save" in text for _, text in self.logged))
+        self.assertTrue(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+
+    def test_following_the_program_to_another_sheet_puts_the_dot_on_the_folder_icon(self):
+        answers = [True]
+        self.app.controller.follow_sheet = lambda: answers.pop() if answers else False      # (one change, as a program gives)
+        self.app._apply_sheet(None, quiet=True)
+        self.assertIn("Now on sheet", self.app.window.file_alert)
+        self.app.window.open_panel(FILE_PAGE)
+        self.assertEqual(self.app.window.file_alert, "")
+
+    def test_a_shake_while_listening_also_plays_the_error_cue_but_a_click_does_not(self):
+        cues, shakes = [], []
+        self.app.feedback.cue = lambda name, *a, **k: cues.append(name)
+        self.app.window.toggle_button.alert = lambda: shakes.append(1)
+        self.app._alert_start(False)
+        self.assertEqual((cues, len(shakes)), ([], 1))
+        self.app._alert_start(True)
+        self.assertEqual((cues, len(shakes)), (["error"], 2))

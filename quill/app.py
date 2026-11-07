@@ -210,6 +210,7 @@ class QuillApp:
         self._launched_at: dict[str, float] = {}        # when a program was last asked to open each file (see _launch)
         self._start_wanted = False                      # Start was pressed while the file was not yet open in a program
         self._waiting_viewer = False
+        self._unsaved_sheet = ""                      # the sheet last reported as not saved yet
         self._viewer_looks = 0
         self._viewer_running = False
         self._host_noted = False
@@ -405,7 +406,7 @@ class QuillApp:
 
     def poll_workbooks(self) -> None:
         """The tick of the one check loop (every ``sheet_check_seconds``): attach when a workbook appears, detach when it
-        closes, and take ONE look at the spreadsheet programs (:meth:`refresh_open_files`) that serves the Available Files
+        closes, and take ONE look at the spreadsheet programs (:meth:`refresh_open_files`) that serves the Open Spreadsheets
         list, a closed file and the open sheet together.
 
         This is what makes "just open a spreadsheet and start talking" work: Quill need not be told which workbook; it
@@ -598,7 +599,26 @@ class QuillApp:
     def refresh_active_sheet(self, quiet: bool = False) -> None:
         """The refresh icon beside Sheet: take the check loop's look now and say which sheet is open (*quiet*: say nothing
         unless the sheet changed). There is no separate sheet timer: the sheet is part of the same look."""
+        if not quiet and self._unsaved_sheet and self._program_holding(self.controller.bridge.workbook_path) == "libreoffice":
+            self._save_and_follow()                       # the refresh icon while the red dot shows: save it, then follow the sheet
+            return
         self.refresh_open_files(manual=not quiet, announce=not quiet)
+
+    def _save_and_follow(self) -> None:
+        """Ask LibreOffice to save the file (the click is the permission), re-read it, then go to the sheet the program shows."""
+        path = self.controller.bridge.workbook_path
+
+        def done(saved: bool | None) -> None:
+            if not saved:
+                self.window.append_log("LibreOffice did not save the file. Save it there, then press refresh again.", "warning")
+                return
+            try:
+                self.controller.refresh()
+            except BridgeError:
+                pass                                        # (being written still: the next look picks it up)
+            self.refresh_open_files(manual=True, announce=True)
+
+        self.run_in_background(lambda: self.lo_mirror.save(path), done)
 
     def _apply_sheet(self, sheet: str | None, quiet: bool) -> None:
         bridge = self.controller.bridge
@@ -609,14 +629,52 @@ class QuillApp:
             if sheet and sheet != bridge.active_sheet_name():
                 if bridge.set_active_sheet(sheet):
                     changed = self.controller.follow_sheet()
+                    self._clear_sheet_alert()
+                else:
+                    self._warn_sheet_not_saved(sheet)
             else:
+                if sheet:                                                # (the program named a sheet and the file has it)
+                    self._clear_sheet_alert()
                 changed = self.controller.follow_sheet()                # (a live program: it says which sheet is open)
         except BridgeError as exc:
             self.window.append_log(f"Could not check the sheet: {exc}", "warning")
             return
         self._show_active_sheet()
+        if changed and self.window.panel_page != FILE_PAGE:           # followed to another sheet (any program): the folder icon says so
+            self.window.raise_file_alert(f"Now on sheet {bridge.active_sheet_name()}")
         if not quiet and not changed:
             self.window.append_log(f"Checked: sheet '{bridge.active_sheet_name()}' is the one open.")
+
+    def _warn_sheet_not_saved(self, sheet: str) -> None:
+        """The program shows a sheet that the saved file does not have (added or renamed since the last save)."""
+        names = getattr(self.controller.bridge, "sheet_names", lambda: [])()
+        if sheet in names or self._unsaved_sheet == sheet:
+            return                                                       # (said once per sheet, not at every look)
+        self._unsaved_sheet = sheet
+        program = next((f.app for f in self._open_files if f.path and os.path.realpath(f.path) == os.path.realpath(
+            getattr(self.controller.bridge, "workbook_path", "") or "")), "your spreadsheet program")
+        self.window.panel.show_sheet_alert(sheet, program, self.controller.bridge.active_sheet_name())
+        self.window.raise_file_alert(f"A different sheet is open ({sheet}) and it is not saved yet.")
+        self.window.append_log(f"Sheet '{sheet}' is open in your spreadsheet program but is not in the saved file yet, so Quill "
+                               "stays on its last sheet and will not listen. Press the refresh icon beside Sheet to save the "
+                               "file and follow it.", "warning")
+        if self.controller.session.listening:                        # nothing may flow into the old sheet meanwhile
+            self.controller.set_listening(False)
+            self._alert_start(True)
+
+    def _alert_start(self, was_listening: bool) -> None:
+        """Start shakes and blinks red; when Quill was listening by voice it also plays the error cue (the short falling sound,
+        or the spoken word), because the user is not looking. A click with nothing listening needs no sound: it was deliberate."""
+        self.window.toggle_button.alert()
+        if was_listening:
+            self.feedback.cue("error")
+
+    def _clear_sheet_alert(self) -> None:
+        """The program and the file agree on the sheet again: put the red dot and the note away."""
+        if self._unsaved_sheet:
+            self._unsaved_sheet = ""
+            self.window.clear_file_alert()
+            self.window.panel.hide_sheet_alert()
 
     def _show_active_sheet(self) -> None:
         """Tell the window which sheet is open (the folder icon's hover text names it)."""
@@ -899,6 +957,11 @@ class QuillApp:
         """
         if active and not _checked and self._needs_fresh_look():
             self.refresh_open_files(manual=True, then=lambda: self.toggle_listening(True, _checked=True))
+            return
+        if active and self._unsaved_sheet:                            # a different sheet is open and not saved: not into the old one
+            self._set_listening(False)
+            self.window.toggle_button.alert()
+            self.window.open_panel(FILE_PAGE)
             return
         if active and not self.connected and not self._released_file(self.controller.bridge):
             self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None,
@@ -1320,7 +1383,7 @@ class QuillApp:
     def refresh_open_files(self, manual: bool = False, announce: bool = False, then=None) -> None:
         """Take the one look at the spreadsheet programs (never two at once; one asked for meanwhile runs right after).
 
-        It refreshes the Available Files list, lets go of the file if its window was closed, notices the program's open sheet
+        It refreshes the Open Spreadsheets list, lets go of the file if its window was closed, notices the program's open sheet
         and, with no file, picks up a file another program has open. *manual*: a refresh icon or Start asked, so a closed
         spreadsheet is acted on at once (a timer's look is trusted only when every question was answered anyway).
         *announce*: say which sheet is open. *then*: called when the look is done (Start waits for it).
@@ -1400,6 +1463,7 @@ class QuillApp:
         self._seen_open = ""
         self._attach_paused = True                                      # (it waits for the user to choose, however many files are open)
         closed, closed_path = bridge.workbook_name, bridge.workbook_path
+        was_listening = self.controller.session.listening
         self.settings.preferences["workbook_file"] = ""             # (a restart starts with no file, like the first time)
         self.settings.save()
         self.controller.detach()
@@ -1418,7 +1482,7 @@ class QuillApp:
         self._closed_file = closed_path
         self.window.panel.show_closed(closed)                           # the note under Open File, with Reopen
         self.window.open_panel(FILE_PAGE)
-        self.window.toggle_button.alert()                               # Start shakes: the file dropped away
+        self._alert_start(was_listening)                                # Start shakes: the file dropped away
 
     def _attach_live_if_open_in_excel(self) -> bool:
         """Working on an .xlsx file that Excel now has open: work through Excel itself instead, so there is no file for
@@ -1626,9 +1690,11 @@ class QuillApp:
         if self._titlebar is None:
             return
         from quill.ui.icons import titlebar_png
-        png = titlebar_png("folder-open" if has_file else "folder")
+        alert = self.window.file_alert
+        png = titlebar_png("folder-open" if has_file else "folder", badge=bool(alert),
+                           color=self.window._text_color if alert else "#000000")
         tip = (f"{name}\nSheet: {sheet}" if has_file and sheet else name if has_file else "Open File")
-        self._titlebar.set_extra_image(0, png, tip, muted=not has_file)
+        self._titlebar.set_extra_image(0, png, f"{alert}\n{tip}" if alert else tip, muted=not has_file, template=not alert)
 
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
