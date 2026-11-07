@@ -589,7 +589,7 @@ class SidePanel(QFrame):
     def show_sheet_alert(self, shown: str, program: str, working: str) -> None:
         """Mark the Sheet row with the red dot (the same dot as on the folder icon): *program* shows the sheet *shown*, which the
         saved file does not have, so Quill stays on *working*. Nothing moves; the hover text says what to do."""
-        tip = f"{shown} is open in {program} but is not saved in the file yet. Quill is still on {working}.\nSave the file, then press refresh."
+        tip = f"{shown} is open in {program} but is not saved in the file yet. Quill is still on {working}.\nPress refresh to save the file and switch to it."
         label, value = self.fact_rows["Sheet"]
         label.set_dot(True)
         for widget in (label, value, self.sheet_refresh_button):

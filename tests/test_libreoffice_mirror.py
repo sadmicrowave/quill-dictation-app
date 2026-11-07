@@ -40,6 +40,19 @@ class Case(unittest.TestCase):
         return LibreOfficeMirror(**defaults)
 
 
+class TestSaving(Case):
+    def test_save_asks_the_script_to_save_and_changes_nothing(self):
+        self.answer = "ok"
+        m = self.mirror()
+        self.assertTrue(m.save(self.dir / "a.xlsx"))
+        self.assertTrue(self.job["save"])
+        self.assertEqual(self.job["changes"], [])
+
+    def test_a_document_that_is_not_open_is_not_saved(self):
+        self.answer = "nodoc"
+        self.assertFalse(self.mirror().save(self.dir / "a.xlsx"))
+
+
 class TestPushing(Case):
     def test_the_cells_go_to_the_running_program_through_its_user_script(self):
         m = self.mirror()

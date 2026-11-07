@@ -411,3 +411,33 @@ class TestSheetNotSavedYet(PanelApp):
         self.app._apply_sheet(self.app.controller.bridge.active_sheet_name(), quiet=True)
         self.assertEqual(self.app.window.file_alert, "")
         self.assertFalse(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+
+    def test_start_does_not_listen_while_the_dot_shows_and_shakes(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        shaken = []
+        self.app.window.toggle_button.alert = lambda: shaken.append(1)
+        self.app.toggle_listening(True)
+        self.assertFalse(self.app.controller.session.listening)
+        self.assertEqual(shaken, [1])
+        self.assertEqual(self.app.window.panel_page, "file")
+
+    def test_the_refresh_icon_saves_in_libreoffice_then_follows(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        saved, looks = [], []
+        self.app._program_holding = lambda path: "libreoffice"
+        self.app.lo_mirror = type("M", (), {"save": lambda s, path: saved.append(path) or True})()
+        self.app.run_in_background = lambda work, done: done(work())
+        self.app.refresh_open_files = lambda **kw: looks.append(kw)
+        self.app.refresh_active_sheet()
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(looks, [{"manual": True, "announce": True}])
+
+    def test_a_failed_save_says_so_and_changes_nothing(self):
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._program_holding = lambda path: "libreoffice"
+        self.app.lo_mirror = type("M", (), {"save": lambda s, path: False})()
+        self.app.run_in_background = lambda work, done: done(work())
+        self.logged.clear()
+        self.app.refresh_active_sheet()
+        self.assertTrue(any("did not save" in text for _, text in self.logged))
+        self.assertTrue(self.app.window.panel.fact_rows["Sheet"][0]._dot)

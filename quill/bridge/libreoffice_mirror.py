@@ -37,7 +37,7 @@ from quill.bridge.processes import running_executables
 log = logging.getLogger("quill.libreoffice")
 
 SCRIPT_NAME = "quill_mirror.py"
-SCRIPT_VERSION = 3
+SCRIPT_VERSION = 4
 #: Seconds to wait for LibreOffice to run the script and answer.
 ANSWER_TIMEOUT_S = 10
 #: Fields of a change, as the script gets them: ``[sheet, row, column, kind, text]``.
@@ -71,6 +71,9 @@ def apply():
                 break
         if document is None:
             return _answer("nodoc")
+        if job.get("save"):
+            document.store()                          # saves in the file's own format (no "keep format" question)
+            return _answer("ok")
         if job.get("sheet"):
             return _answer("sheet:" + document.getCurrentController().getActiveSheet().Name)
         if job.get("probe"):
@@ -249,13 +252,17 @@ class LibreOfficeMirror:
         """Does a running LibreOffice have *path* open? (Asked through the same script, which then changes nothing.)"""
         return self.push(path, [], probe=True).ok
 
+    def save(self, path: str | os.PathLike) -> bool:
+        """Ask the running LibreOffice to save the document for *path* in the file's own format (True if it did)."""
+        return self.push(path, [], probe=True, save=True).ok
+
     def active_sheet(self, path: str | os.PathLike) -> str | None:
         """The name of the sheet open now in the LibreOffice document for *path* (None if it is not open or would not say)."""
         result = self.push(path, [], probe=True, want_sheet=True)
         return result.detail if result.ok and result.reason == "sheet" and result.detail else None
 
     def push(self, path: str | os.PathLike, changes: list[tuple[str, int, int, object]], probe: bool = False,
-             want_sheet: bool = False) -> MirrorResult:
+             want_sheet: bool = False, save: bool = False) -> MirrorResult:
         """Show *changes* (``(sheet, row, column, value)`` in sheet coordinates) in the LibreOffice document for *path*."""
         if not changes and not probe:
             return MirrorResult(True, "ok")
@@ -269,9 +276,10 @@ class LibreOfficeMirror:
         if not self.install():
             return MirrorResult(False, "noprofile")
         with self._lock:                                                          # (a look and a write never share the files)
-            return self._job(soffice, path, changes, probe, want_sheet)
+            return self._job(soffice, path, changes, probe, want_sheet, save)
 
-    def _job(self, soffice: str, path: str | os.PathLike, job_changes: list, probe: bool, want_sheet: bool) -> MirrorResult:
+    def _job(self, soffice: str, path: str | os.PathLike, job_changes: list, probe: bool, want_sheet: bool,
+             save: bool = False) -> MirrorResult:
         folder = self._dir()
         temp = folder / "in.json.tmp"
         try:
@@ -279,7 +287,7 @@ class LibreOfficeMirror:
             answer = folder / "out.json"
             answer.unlink(missing_ok=True)
             job = {"urls": file_addresses(path), "changes": [change_fields(*c) for c in job_changes],
-                   "probe": probe, "sheet": want_sheet}
+                   "probe": probe, "sheet": want_sheet, "save": save}
             temp.write_text(json.dumps(job), encoding="utf-8")
             os.replace(temp, folder / "in.json")
         except OSError as exc:

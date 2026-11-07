@@ -599,7 +599,26 @@ class QuillApp:
     def refresh_active_sheet(self, quiet: bool = False) -> None:
         """The refresh icon beside Sheet: take the check loop's look now and say which sheet is open (*quiet*: say nothing
         unless the sheet changed). There is no separate sheet timer: the sheet is part of the same look."""
+        if not quiet and self._unsaved_sheet and self._program_holding(self.controller.bridge.workbook_path) == "libreoffice":
+            self._save_and_follow()                       # the refresh icon while the red dot shows: save it, then follow the sheet
+            return
         self.refresh_open_files(manual=not quiet, announce=not quiet)
+
+    def _save_and_follow(self) -> None:
+        """Ask LibreOffice to save the file (the click is the permission), re-read it, then go to the sheet the program shows."""
+        path = self.controller.bridge.workbook_path
+
+        def done(saved: bool | None) -> None:
+            if not saved:
+                self.window.append_log("LibreOffice did not save the file. Save it there, then press refresh again.", "warning")
+                return
+            try:
+                self.controller.refresh()
+            except BridgeError:
+                pass                                        # (being written still: the next look picks it up)
+            self.refresh_open_files(manual=True, announce=True)
+
+        self.run_in_background(lambda: self.lo_mirror.save(path), done)
 
     def _apply_sheet(self, sheet: str | None, quiet: bool) -> None:
         bridge = self.controller.bridge
@@ -635,7 +654,11 @@ class QuillApp:
         self.window.panel.show_sheet_alert(sheet, program, self.controller.bridge.active_sheet_name())
         self.window.raise_file_alert(f"A different sheet is open ({sheet}) and it is not saved yet.")
         self.window.append_log(f"Sheet '{sheet}' is open in your spreadsheet program but is not in the saved file yet, so Quill "
-                               "stays on its last sheet. Save the file (keep the format) and Quill will use it.", "warning")
+                               "stays on its last sheet and will not listen. Press the refresh icon beside Sheet to save the "
+                               "file and follow it.", "warning")
+        if self.controller.session.listening:                        # nothing may flow into the old sheet meanwhile
+            self.controller.set_listening(False)
+            self.window.toggle_button.alert()
 
     def _clear_sheet_alert(self) -> None:
         """The program and the file agree on the sheet again: put the red dot and the note away."""
@@ -925,6 +948,11 @@ class QuillApp:
         """
         if active and not _checked and self._needs_fresh_look():
             self.refresh_open_files(manual=True, then=lambda: self.toggle_listening(True, _checked=True))
+            return
+        if active and self._unsaved_sheet:                            # a different sheet is open and not saved: not into the old one
+            self._set_listening(False)
+            self.window.toggle_button.alert()
+            self.window.open_panel(FILE_PAGE)
             return
         if active and not self.connected and not self._released_file(self.controller.bridge):
             self.connect_workbook(str(self.settings.preferences["last_workbook"]) or None,
