@@ -7,8 +7,20 @@ os.environ.setdefault("QUILL_NO_HOSTS", "1")   # ... and never ask the system wh
 
 
 import pathlib
+import sys
 
 import pytest
+
+if sys.platform == "win32":
+    # Qt's offscreen platform has no "Sans Serif" on a Windows machine and falls back to a font about twice as wide, which
+    # makes every text-width test measure the wrong thing. Windows' own UI font is what the app uses there anyway.
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication, QToolTip
+
+    _qt_app = QApplication.instance() or QApplication([])
+    _ui_font = QFont("Segoe UI", 9)
+    _qt_app.setFont(_ui_font)
+    QToolTip.setFont(_ui_font)
 
 SLOW_LIST = pathlib.Path(__file__).parent / "tests" / "slow_tests.txt"
 
