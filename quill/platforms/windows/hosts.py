@@ -46,3 +46,28 @@ def documents(app, run) -> list[tuple[pathlib.Path, str]]:
     from quill.bridge.hosts import files_named_in
     out = run(["wmic", "process", "where", f"name='{PROCESS_NAMES.get(app.key, '')}'", "get", "commandline"])
     return files_named_in(out)
+
+
+class WinHosts:
+    """The object ``quill.bridge.hosts.SpreadsheetHosts`` asks (the same questions as the Mac one), over the functions above."""
+
+    def __init__(self, run, native: bool = False) -> None:
+        self._run = run
+
+    def running(self, apps) -> list:
+        return running(apps, self._run)
+
+    def installed(self, program: str) -> bool:
+        return installed(program)
+
+    def launch(self, path, program: str = "auto") -> bool:
+        return launch(path, program)
+
+    def reload(self, app, path) -> bool:
+        return False                       # no program here can be asked to reload (Windows programs hold the file open)
+
+    def find_by_name(self, name: str, prefer: tuple[str, ...] = ()):
+        return None                        # (only Numbers reports a document by name)
+
+    def documents(self, app, prefer: tuple[str, ...] = ()) -> list:
+        return documents(app, self._run)

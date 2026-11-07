@@ -1,11 +1,11 @@
 """Windows 11 window look: DWM attributes, acrylic blur, always-on-top."""
 import unittest
+from unittest import mock
 
 from PySide6.QtWidgets import QApplication, QWidget
 
 from quill.platforms.windows import chrome as wchrome
 from quill.ui import chrome
-from tests.test_titlebar_and_refresh import native, restore
 
 _app = QApplication.instance() or QApplication([])
 
@@ -63,16 +63,17 @@ class TestWindowsBlur(unittest.TestCase):
 
 
 class TestWindowsTopmost(unittest.TestCase):
-    def tearDown(self):
-        restore()
-
     def test_windows_uses_setwindowpos_topmost_and_notopmost(self):
-        native()
         calls = []
         user32 = type("U", (), {"SetWindowPos": lambda s, *a: calls.append(a)})()
-        self.assertTrue(chrome.set_always_on_top(QWidget(), True, platform="win32", user32=user32))
-        self.assertTrue(chrome.set_always_on_top(QWidget(), False, platform="win32", user32=user32))
+        with mock.patch.object(wchrome, "_native", lambda: True):
+            self.assertTrue(chrome.set_always_on_top(QWidget(), True, platform="win32", user32=user32))
+            self.assertTrue(chrome.set_always_on_top(QWidget(), False, platform="win32", user32=user32))
         import ctypes
         self.assertEqual(calls[0][1].value, ctypes.c_void_p(-1).value)      # HWND_TOPMOST
         self.assertEqual(calls[1][1].value, ctypes.c_void_p(-2).value)      # HWND_NOTOPMOST
         self.assertEqual(calls[0][6], 0x1 | 0x2 | 0x10)               # no size, no move, no activate
+
+    def test_nothing_is_applied_under_the_offscreen_plugin(self):
+        self.assertIsNone(chrome.apply_chrome(QWidget(), True, COLORS, platform="win32"))
+        self.assertFalse(chrome.set_always_on_top(QWidget(), True, platform="win32"))

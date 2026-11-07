@@ -84,17 +84,35 @@ def _dwm_setter() -> DwmSetter | None:
         return None
 
 
-def apply_chrome(handle: int, dark: bool, colors: dict[str, str], blur: int = 0) -> bool:
-    """What :func:`quill.ui.chrome.apply_chrome` asks of a provider."""
-    return windows_chrome(handle, dark, colors, blur=blur)
+def _native() -> bool:
+    """True only when Qt is really drawing with Windows' own window system (not under the offscreen test plugin, where
+    ``winId()`` is not a real window)."""
+    from PySide6.QtGui import QGuiApplication
+    return QGuiApplication.platformName() == "windows"
 
 
-def set_topmost(handle: int, on: bool, user32=None) -> bool:
-    """Keep the window above the others (or stop), in place, without recreating it."""
-    import ctypes
-    user32 = user32 or ctypes.windll.user32
-    HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
-    SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
-    user32.SetWindowPos(ctypes.c_void_p(handle), ctypes.c_void_p(HWND_TOPMOST if on else HWND_NOTOPMOST),
-                        0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
-    return True
+def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | None = None,
+                 opacity: int = 100, blur: int = 0) -> str | None:
+    """What :func:`quill.ui.chrome.apply_chrome` asks of a provider: tint *widget*'s title bar. ``"windows"`` when applied."""
+    try:
+        if not _native():
+            return None
+        return "windows" if windows_chrome(int(widget.winId()), dark, colors, blur=blur) else None
+    except Exception:
+        return None
+
+
+def set_always_on_top(widget, on: bool, platform: str | None = None, user32=None, **unused) -> bool:
+    """Keep the window above the others (or stop), in place, without recreating it. False if the caller must use Qt's flag."""
+    try:
+        if not _native():
+            return False
+        import ctypes
+        user32 = user32 or ctypes.windll.user32
+        HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
+        user32.SetWindowPos(ctypes.c_void_p(int(widget.winId())), ctypes.c_void_p(HWND_TOPMOST if on else HWND_NOTOPMOST),
+                            0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+        return True
+    except Exception:
+        return False

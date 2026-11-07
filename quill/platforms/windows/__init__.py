@@ -4,14 +4,18 @@ Developed on the ``windows`` branch, because it can only be tested on a Windows 
 Windows is in this package: the window look, the voice, live Excel through COM, the spreadsheet programs and LibreOffice.
 """
 
-from quill.platforms.windows import excel_com, hosts, libreoffice
+from quill.platforms.windows import chrome, excel_com, hosts, libreoffice
 from quill.platforms.windows.bridge import WinBridge
-from quill.platforms.windows.chrome import apply_chrome, set_topmost
 from quill.platforms.windows.speech import render_clip, speak
 
 NATIVE_QPA = "windows"
 QUIT_LABEL = "Exit"
 TRAY_CLICK_OPENS_MENU = True
+
+
+def make_hosts(run, native: bool = False):
+    """The object that finds and starts the spreadsheet programs (see :class:`quill.bridge.hosts.SpreadsheetHosts`)."""
+    return hosts.WinHosts(run, native)
 
 
 def new_live_bridge():
@@ -23,5 +27,5 @@ def open_file(path: str) -> None:
     os.startfile(path)                  # type: ignore[attr-defined]  # noqa: S606
 
 
-__all__ = ["excel_com", "hosts", "libreoffice", "WinBridge", "apply_chrome", "set_topmost", "render_clip", "speak",
+__all__ = ["chrome", "excel_com", "hosts", "libreoffice", "make_hosts", "WinBridge", "render_clip", "speak",
            "NATIVE_QPA", "QUIT_LABEL", "TRAY_CLICK_OPENS_MENU", "new_live_bridge", "open_file"]

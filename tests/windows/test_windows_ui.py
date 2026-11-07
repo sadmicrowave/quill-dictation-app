@@ -22,7 +22,6 @@ _app = QApplication.instance() or QApplication([])
 class TestProvider(unittest.TestCase):
     def test_windows_has_a_provider_that_names_its_qt_plugin(self):
         self.assertEqual(platforms.offered("win32", "NATIVE_QPA"), "windows")
-        self.assertIsNone(platforms.provider("darwin"))
         self.assertIsNone(platforms.provider("linux"))
 
     def test_the_quit_item_reads_exit(self):
