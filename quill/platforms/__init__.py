@@ -29,8 +29,9 @@ A provider is a package ``quill.platforms.<name>`` (``windows``). It may define 
 ``libreoffice``
     ``profile_scripts_dir(home)``, ``find_soffice()``, ``is_running()``.
 
-The Windows provider is developed on its own branch (``windows``) and is merged in once it has been tested on Windows.
-Without it, Quill still runs on Windows files-only: the live Excel bridge and the Windows look are simply not offered.
+The Windows provider (``quill/platforms/windows/``) is developed on its own branch, ``windows``, and is merged in once it has
+been tested on Windows. Without it Quill still starts on Windows and works on spreadsheet files; the live Excel bridge and
+the Windows look are simply not offered.
 """
 
 from __future__ import annotations
