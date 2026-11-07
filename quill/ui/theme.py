@@ -18,6 +18,7 @@ import tempfile
 
 from PySide6.QtCore import QEvent, QObject, Qt
 
+from quill import platforms
 from quill.ui import glass as glass_module
 from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
@@ -160,7 +161,7 @@ def backdrop_alpha(opacity: int, blur: int) -> float:
     blurred what shows through it is. At 100 the background is solid whatever the blur. (Windows keeps the older
     behaviour, where without blur the whole window fades; see :func:`apply_opacity`.)
     """
-    if sys.platform != "darwin" and int(blur) <= 0:
+    if not platforms.offered(sys.platform, "OPACITY_THINS_BACKGROUND", False) and int(blur) <= 0:
         return 1.0
     return round(max(0.08, min(100, max(0, int(opacity))) / 100), 3)
 
@@ -526,7 +527,7 @@ def apply_opacity(root: QWidget, percent: int, blur: int = 0) -> None:
     percent = max(0, min(100, int(percent)))
     if root.graphicsEffect() is not None:
         root.setGraphicsEffect(None)                       # no effect may be left over from before
-    root.window().setWindowOpacity(1.0 if (sys.platform == "darwin" or int(blur) > 0) else percent / 100)
+    root.window().setWindowOpacity(1.0 if (platforms.offered(sys.platform, "OPACITY_THINS_BACKGROUND", False) or int(blur) > 0) else percent / 100)
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:

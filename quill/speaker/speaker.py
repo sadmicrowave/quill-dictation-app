@@ -74,20 +74,10 @@ class Speaker:
             try:
                 if lead_in > 0:
                     time.sleep(lead_in)
-                if self._platform == "darwin":
-                    self._say_mac(text)
-                else:
-                    speak = platforms.offered(self._platform, "speak")
-                    if speak is not None:
-                        speak(text)
+                speak = platforms.offered(self._platform, "speak")
+                if speak is not None:
+                    speak(text)
             finally:
                 if on_done:
                     on_done()
         return run
-
-    def _say_mac(self, text: str) -> None:
-        try:
-            # "--" ends the options, so spoken text that starts with "-" is never read as a ``say`` option.
-            subprocess.run(["say", "--", text], check=False, timeout=30)    # noqa: S603, S607 (built-in macOS tool)
-        except Exception as exc:
-            log.debug("speech failed: %s", exc)   # TTS is a nicety; the prompt is also logged

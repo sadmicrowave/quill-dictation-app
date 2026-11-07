@@ -1,6 +1,6 @@
 """Live editing in LibreOffice Calc: the cells Quill writes to the file are also set in the open LibreOffice document.
 
-Like :mod:`quill.bridge.numbers_mirror`, but LibreOffice has no AppleScript for cells and its own Python cannot be
+Like the Numbers mirror (:mod:`quill.platforms.macos.numbers_mirror`), but LibreOffice has no AppleScript for cells and its own Python cannot be
 used from outside (it is not allowed to run on a Mac without being opened once by hand). What every LibreOffice does
 offer is: starting ``soffice`` with a script address while it is running hands the request to the running instance,
 which runs the script inside itself. So Quill puts one small script in the user's LibreOffice profile, writes the cells
@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from quill import platforms
-from quill.bridge.numbers_mirror import MirrorResult
+from quill.bridge.mirror import MirrorResult
 
 from quill.bridge.processes import running_executables
 
@@ -120,8 +120,6 @@ def profile_scripts_dir(platform: str | None = None, home: pathlib.Path | None =
     """LibreOffice's per-user folder for Python scripts."""
     platform = platform or sys.platform
     home = home or pathlib.Path.home()
-    if platform == "darwin":
-        return home / "Library" / "Application Support" / "LibreOffice" / "4" / "user" / "Scripts" / "python"
     other = platforms.offered(platform, "libreoffice")
     if other is not None:
         return other.profile_scripts_dir(home)
@@ -131,9 +129,6 @@ def profile_scripts_dir(platform: str | None = None, home: pathlib.Path | None =
 def find_soffice(platform: str | None = None) -> str | None:
     """Where the ``soffice`` program is, if LibreOffice is installed."""
     platform = platform or sys.platform
-    if platform == "darwin":
-        candidate = pathlib.Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
-        return str(candidate) if candidate.is_file() else None
     other = platforms.offered(platform, "libreoffice")
     if other is not None:
         return other.find_soffice()
@@ -180,7 +175,7 @@ def _is_running(platform: str | None = None) -> bool:
         return bool(native & {"soffice", "soffice.bin"})
     try:
         other = platforms.offered(platform, "libreoffice")
-        if other is not None:
+        if other is not None and hasattr(other, "is_running"):
             return other.is_running()
         out = subprocess.run(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=6, check=False).stdout   # noqa: S603, S607
         return any(pathlib.PurePosixPath(line.strip()).name.lower() in ("soffice", "soffice.bin") for line in out.splitlines())

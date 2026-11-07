@@ -16,7 +16,8 @@ from unittest import mock
 from quill.bridge import hosts as hosts_module
 from quill.bridge.hosts import NUMBERS, OpenFile, SpreadsheetHosts
 from quill.bridge.libreoffice_mirror import LibreOfficeMirror
-from quill.bridge.numbers_mirror import NumbersMirror
+from quill.platforms.macos import hosts as mac_hosts
+from quill.platforms.macos.numbers_mirror import NumbersMirror
 from tests.test_side_panel_and_turns import FILE_PAGE, NoMirror, PanelApp
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "quill"
@@ -204,8 +205,8 @@ class TestNothingGrows(PanelApp):
         self.assertEqual(len(self.app._launched_at), 1)
         h = SpreadsheetHosts("darwin", FakeRunner())
         for i in range(500):
-            h._remember_name(f"doc{i}", pathlib.Path(f"/x/doc{i}.xlsx"))
-        self.assertLessEqual(len(h._found_by_name), h.MAX_REMEMBERED_NAMES)
+            h._os._remember_name(f"doc{i}", pathlib.Path(f"/x/doc{i}.xlsx"))
+        self.assertLessEqual(len(h._os._found_by_name), h._os.MAX_REMEMBERED_NAMES)
 
 
 class TestEveryCommandIsBounded(unittest.TestCase):
@@ -254,6 +255,8 @@ class TestATimedOutCommandIsKilledAndReaped(unittest.TestCase):
         self.addCleanup(env.stop)
         os.environ.pop("QUILL_NO_HOSTS", None)                                   # these run real (harmless) commands
 
+    @unittest.skipIf(sys.platform == "win32", "checks a POSIX child process with os.kill")
+
     def test_the_child_is_gone_and_the_failure_is_reported(self):
         with tempfile.TemporaryDirectory() as folder:
             pid_file = pathlib.Path(folder) / "pid"
@@ -301,7 +304,7 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
             runner = FakeRunner({"osascript": "ok"})
             SpreadsheetHosts("darwin", runner).reload(NUMBERS, path)
             command = runner.calls[0]
-            self.assertEqual(command[:3], ["osascript", "-e", hosts_module._RELOAD_NUMBERS])
+            self.assertEqual(command[:3], ["osascript", "-e", mac_hosts._RELOAD_NUMBERS])
             self.assertEqual(command[3:], [path])
 
     def test_a_spotlight_name_cannot_close_its_quote(self):
@@ -327,7 +330,7 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
             mirror.has_document(path)
             mirror.active_sheet(path)
             mirror.push(path, [("S", 1, 1, "v")])
-        from quill.bridge import numbers_mirror as nm
+        from quill.platforms.macos import numbers_mirror as nm
         for args in runner_calls:
             self.assertIn(args[2], (nm.PROBE, nm.ACTIVE_SHEET, nm.SCRIPT))
             self.assertNotIn("pwned", args[2])

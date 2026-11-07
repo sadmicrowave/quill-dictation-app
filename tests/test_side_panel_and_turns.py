@@ -315,7 +315,7 @@ class NoMirror:
         return self.sheet
 
     def push(self, path, changes):
-        from quill.bridge.numbers_mirror import MirrorResult
+        from quill.platforms.macos.numbers_mirror import MirrorResult
         self.pushed.append((path, list(changes)))
         return MirrorResult(self.has, "ok" if self.has else "nodoc")
 
@@ -1639,7 +1639,7 @@ class TestKeywordsLinkAndOverlay(PanelApp):
 
 class TestTitleCentring(unittest.TestCase):
     def test_the_title_centres_in_the_room_the_panel_leaves(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
 
         class Frame:
             def __init__(self, x, y, w, h): self.origin = type("P", (), {"x": x, "y": y})(); self.size = type("S", (), {"width": w, "height": h})()
@@ -2062,8 +2062,8 @@ class TestTextsAndMenus(PanelApp):
 
 class TestTitleBarScale(unittest.TestCase):
     def test_every_window_gets_a_toolbar_so_its_bar_and_buttons_are_the_larger_size(self):
-        from quill.ui import chrome
-        from tests.test_titlebar_and_refresh import FakeAppKit
+        from quill.platforms.macos import chrome
+        from tests.macos.test_titlebar_and_refresh import FakeAppKit
 
         calls = []
 
@@ -2086,7 +2086,7 @@ class TestTitleBarScale(unittest.TestCase):
         self.assertIn(("separator", False), calls)
 
     def test_a_window_that_already_has_a_toolbar_is_left_alone_and_a_failure_is_quiet(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
 
         class Has:
             def toolbar(self): return object()
@@ -2096,17 +2096,17 @@ class TestTitleBarScale(unittest.TestCase):
 
     def test_mac_chrome_applies_it_to_every_window_it_styles(self):
         import inspect
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         self.assertIn("tall_titlebar(window, appkit)", inspect.getsource(chrome.mac_chrome))
 
     def test_the_icons_are_bigger_than_before_and_all_the_same_box(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         self.assertGreater(chrome._ICON_WIDTH, 30)
         self.assertGreater(chrome._ICON_HEIGHT, 24)
         self.assertGreater(chrome.SYMBOL_POINTS, 14)
 
     def test_every_title_bar_group_levels_itself_by_itself(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         import inspect
         self.assertIn("result.settle()", inspect.getsource(chrome.add_titlebar_button))
 
@@ -2115,14 +2115,14 @@ class TestBlurIsReallyBlur(unittest.TestCase):
     """The pixels are checked by tools/verify_window_effects.py on a real screen; these check what produces them."""
 
     def test_the_slider_maps_to_the_window_servers_blur_radius(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         self.assertEqual([chrome.blur_radius(v) for v in (0, 50, 100)], [0, chrome.MAX_BLUR_RADIUS // 2, chrome.MAX_BLUR_RADIUS])
         self.assertEqual(chrome.blur_radius(-5), 0)
         self.assertEqual(chrome.blur_radius(900), chrome.MAX_BLUR_RADIUS)
 
     def test_the_radius_is_given_to_the_window_server_for_that_window(self):
         import ctypes
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         calls = []
 
         class Fn:
@@ -2140,12 +2140,12 @@ class TestBlurIsReallyBlur(unittest.TestCase):
 
     def test_a_missing_window_server_call_is_reported_not_raised(self):
         import ctypes
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         with mock.patch.object(ctypes, "CDLL", side_effect=OSError("no")):
             self.assertFalse(chrome.set_background_blur(object(), 30))
 
     def test_mac_chrome_sets_a_clear_backing_so_the_blur_has_something_to_show_through(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         from tests.test_chrome_and_layout import COLORS, FakeAppKit, FakeWindow
         for opacity, blur, clear in ((100, 0, False), (100, 60, False), (99, 0, True), (50, 60, True)):
             kit = FakeAppKit(FakeWindow())
@@ -2156,7 +2156,7 @@ class TestBlurIsReallyBlur(unittest.TestCase):
             self.assertEqual(backing, [0.0 if clear else 1.0], (opacity, blur))
 
     def test_the_vibrancy_view_is_only_the_stand_in_and_never_half_faded(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
 
         class View:
             def __init__(self): self.alpha = None; self._id = ""; self.layer_color = None; self.removed = False
@@ -2200,11 +2200,11 @@ class TestBlurIsReallyBlur(unittest.TestCase):
 
     def test_the_opacity_does_not_weaken_the_blur(self):
         import inspect
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         self.assertNotIn("min(1.0, opacity / 100)", inspect.getsource(chrome.mac_chrome))
 
     def test_the_traffic_lights_are_drawn_larger_and_spread_a_little(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         applied = []
 
         class Button:
@@ -2225,7 +2225,7 @@ class TestBlurIsReallyBlur(unittest.TestCase):
 
     def test_every_window_gets_them_when_it_is_styled_and_again_when_it_is_shown(self):
         import inspect
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         self.assertIn("larger_traffic_lights(window)", inspect.getsource(chrome.mac_chrome))
         self.assertIn("_redraw_lights", inspect.getsource(chrome._TitleFilter))
 
@@ -2234,7 +2234,7 @@ class TestPanelChromeFollowsTheTitleBar(unittest.TestCase):
     """The system may rebuild the title bar's views after ours were added; the panel's line, title and X must follow."""
 
     def test_the_three_views_move_into_the_current_title_bar(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
 
         class View:
             def __init__(self, name=""): self.name = name; self.sup = None; self.hidden = None; self.origin = None; self.layer_ = None
@@ -2802,8 +2802,8 @@ class TestSettingsRound5(unittest.TestCase):
 
 class TestTitleBarIconStates(unittest.TestCase):
     def test_leaving_a_panel_clears_the_icons_fill_and_a_stuck_hover(self):
-        from quill.ui import chrome
-        from tests.test_titlebar_and_refresh import FakeAppKit
+        from quill.platforms.macos import chrome
+        from tests.macos.test_titlebar_and_refresh import FakeAppKit
 
         class Button:
             def __init__(self): self._on = False; self._hover = True; self.refreshed = 0
@@ -2835,7 +2835,7 @@ class TestTitleBarIconStates(unittest.TestCase):
 
     def test_the_pointer_is_checked_for_real_not_just_remembered(self):
         import inspect
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         src = inspect.getsource(chrome._button_class)
         self.assertIn("pointerInside", src)
         self.assertIn("mouseLocationOutsideOfEventStream", src)
@@ -3062,7 +3062,7 @@ class TestSentencesAreFinished(unittest.TestCase):
 
 class TestFileWindowIsWarmedUp(PanelApp):
     def test_nothing_is_started_where_the_system_cannot_be_asked(self):
-        from quill.ui.chrome import FileDialogWarmer
+        from quill.platforms.macos.chrome import FileDialogWarmer
         warmer = FileDialogWarmer()
         self.assertFalse(warmer.start())                                    # (offscreen: no real window system)
         self.assertFalse(warmer.start("win32"))

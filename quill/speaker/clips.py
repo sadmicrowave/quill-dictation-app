@@ -43,13 +43,6 @@ def render_with_system_voice(text: str, destination: pathlib.Path) -> bool:
     if os.environ.get("QUILL_NO_SOUND"):
         return False
     try:
-        if sys.platform == "darwin":
-            with tempfile.TemporaryDirectory() as tmp:
-                raw = pathlib.Path(tmp) / "clip.aiff"
-                subprocess.run(["say", "-o", str(raw), "--", text], check=True, timeout=30)       # noqa: S603, S607
-                subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16@22050", str(raw), str(destination)],
-                               check=True, timeout=30)                                             # noqa: S603, S607
-            return destination.is_file()
         render = platforms.offered(sys.platform, "render_clip")
         if render is not None:
             return bool(render(text, destination))

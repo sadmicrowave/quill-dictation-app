@@ -7,7 +7,7 @@ import unittest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication
 
-import quill.ui.chrome as chrome
+from quill.platforms.macos import chrome
 from quill.config.settings import Settings
 from quill.ui import theme
 from quill.ui.main_window import (
@@ -15,7 +15,7 @@ from quill.ui.main_window import (
     MainWindow,
 )
 from quill.ui.settings_widgets import SettingRow, ToggleSwitch
-from tests.test_titlebar_and_refresh import FakeAppKit, FakeButton, FakeController, FakeTarget, native, restore
+from tests.macos.test_titlebar_and_refresh import FakeAppKit, FakeButton, FakeController, FakeTarget, native, restore
 
 _app = QApplication.instance() or QApplication([])
 

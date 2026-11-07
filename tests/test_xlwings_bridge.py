@@ -7,7 +7,7 @@ import openpyxl
 
 from quill.bridge.base import BridgeError
 from quill.bridge.factory import get_bridge
-from quill.bridge.mac_bridge import MacBridge
+from quill.platforms.macos.bridge import MacBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.bridge.xlwings_bridge import XlwingsBridge
 from tests.fixtures import (FakeApp, FakeBook, FakeSheet, FakeXlwings, SPECIES, make_workbook)

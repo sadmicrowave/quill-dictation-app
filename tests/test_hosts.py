@@ -1,6 +1,7 @@
 """Spreadsheet programs other than Excel: finding the file they have open, and reloading it."""
 import pathlib
 import tempfile
+import sys
 import unittest
 
 import openpyxl
@@ -63,6 +64,8 @@ class TestOpenFiles(unittest.TestCase):
         found = SpreadsheetHosts("darwin", runner).open_excel_files()
         self.assertEqual(found, [(LIBREOFFICE, self.path)])
 
+    @unittest.skipIf(sys.platform == "win32", "these fake a Mac's output (POSIX paths); the Windows provider has its own tests")
+
     def test_a_file_opened_inside_a_running_libreoffice_is_found_from_its_open_files(self):
         runner = FakeRunner({"comm=": "/Applications/LibreOffice.app/Contents/MacOS/soffice",
                              "command=": "/Applications/LibreOffice.app/Contents/MacOS/soffice",
@@ -74,6 +77,8 @@ class TestOpenFiles(unittest.TestCase):
         line = f'/Applications/LibreOffice.app/Contents/MacOS/soffice --calc "{self.path}"'
         runner = FakeRunner({"comm=": "/Applications/LibreOffice.app/Contents/MacOS/soffice", "command=": line, "lsof": f"n{self.path}\n"})
         self.assertEqual(SpreadsheetHosts("darwin", runner).open_excel_files(), [(LIBREOFFICE, self.path)])
+
+    @unittest.skipIf(sys.platform == "win32", "these fake a Mac's output (POSIX paths); the Windows provider has its own tests")
 
     def test_a_file_opened_inside_a_running_wps_is_found_the_same_way(self):
         runner = FakeRunner({"comm=": "/Applications/wpsoffice.app/Contents/MacOS/wpsoffice",
@@ -87,7 +92,7 @@ class TestOpenFiles(unittest.TestCase):
         other = make_file(tempfile.mkdtemp(dir=self.dir.name))
         stamps = {str(self.path): "2026-11-06 10:00:00 +0000", str(other): "2026-11-01 10:00:00 +0000"}
         runner = lambda args: stamps.get(args[-1], "") if args[0] == "mdls" else ""
-        self.assertEqual(SpreadsheetHosts("darwin", runner)._most_recently_used([self.path, other]), self.path)
+        self.assertEqual(SpreadsheetHosts("darwin", runner)._os._most_recently_used([self.path, other]), self.path)
 
     def test_files_that_are_not_excel_files_or_do_not_exist_are_ignored(self):
         runner = FakeRunner({"comm=": "/Applications/Numbers.app/Contents/MacOS/Numbers", "Numbers": "/x/a.numbers\n/x/missing.xlsx\n"})
@@ -125,6 +130,8 @@ class TestNumbersDocumentsReportedByNameOnly(unittest.TestCase):
         self.assertEqual([f.path for f in files], [str(active), str(other)])
         self.assertFalse(any("mdfind" in " ".join(c) for c in runner.calls))
 
+    @unittest.skipIf(sys.platform == "win32", "these fake a Mac's output (POSIX paths); the Windows provider has its own tests")
+
     def test_another_file_is_found_with_spotlight_and_the_newest_copy_wins(self):
         old = make_file(self.dir.name, "stock.xlsx")
         new_dir = pathlib.Path(self.dir.name) / "newer"
@@ -146,12 +153,16 @@ class TestNumbersDocumentsReportedByNameOnly(unittest.TestCase):
         h, _ = self.hosts("stock\t\n", f"{gone}\n{cached}\n")
         self.assertEqual(h.open_files(), [])
 
+    @unittest.skipIf(sys.platform == "win32", "these fake a Mac's output (POSIX paths); the Windows provider has its own tests")
+
     def test_a_cloud_drive_folder_is_fine(self):
         cloud = pathlib.Path(self.dir.name) / "Library" / "CloudStorage" / "GoogleDrive-x" / "My Drive"
         cloud.mkdir(parents=True)
         path = make_file(cloud, "stock.xlsx")
         h, _ = self.hosts("stock\t\n", f"{path}\n")
         self.assertEqual([f.path for f in h.open_files()], [str(path)])
+
+    @unittest.skipIf(sys.platform == "win32", "these fake a Mac's output (POSIX paths); the Windows provider has its own tests")
 
     def test_a_name_that_is_found_is_remembered_and_a_name_that_is_not_is_skipped(self):
         path = make_file(self.dir.name, "stock.xlsx")

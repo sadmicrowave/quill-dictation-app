@@ -165,7 +165,7 @@ class QuillMenus:
     def install_default_bar(self) -> QMenuBar | None:
         """macOS only: a menu bar that belongs to no window, shown while a window without its own menu bar (Settings, the Term
         Helper, Help) is in front. None elsewhere."""
-        if self._platform != "darwin":
+        if not platforms.offered(self._platform, "GLOBAL_MENU_BAR", False):
             return None
         bar = QMenuBar()
         self.install(bar)

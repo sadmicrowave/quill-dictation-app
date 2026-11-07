@@ -303,11 +303,9 @@ class XlwingsGrid(Grid):
         target.value = value
         if isinstance(value, str) and "\n" in value:          # several values in one cell: one per line
             try:
-                com = platforms.offered(self._platform, "excel_com")        # (Windows: Excel's COM object model)
+                com = platforms.offered(self._platform, "excel_com")        # (Excel's own object model on this system)
                 if com is not None:
                     com.wrap_text(target.api)
-                else:
-                    target.api.wrap_text.set(True)
             except Exception:
                 pass                                         # cosmetic: the values are written either way
 
@@ -324,41 +322,21 @@ class XlwingsGrid(Grid):
         table = ws.range((header_row, first_col), (max(last_row, header_row + 1), last_col))
         try:
             com = platforms.offered(self._platform, "excel_com")
-            if com is not None:
-                com.set_autofilter(ws.api, table.api, first_col, criteria)
-            else:
-                if ws.api.autofilter_mode.get():
-                    ws.api.autofilter_mode.set(False)
-                for col, flt in criteria.items():
-                    self._apply_mac(table.api, col - first_col + 1, flt)
+            if com is None:
+                raise NotImplementedError("this system has no live Excel filter")
+            com.set_autofilter(ws.api, table.api, first_col, criteria)
         except Exception as exc:
             raise BridgeError(f"The spreadsheet program would not apply the filter: {exc}") from exc
         return None   # visible-row count is not read back from Excel
-
-    def _apply_mac(self, rng_api, field: int, flt: ColumnFilter) -> None:
-        from appscript import k
-        if flt.values:
-            rng_api.autofilter(field=field, criteria1="=" + flt.values[0])
-            if len(flt.values) > 1:   # AppleScript has no value-list form; OR the first two
-                rng_api.autofilter(field=field, criteria1="=" + flt.values[0], operator=k.autofilter_or,
-                                   criteria2="=" + flt.values[1])
-            return
-        tests = [f"{op}{limit:g}" for op, limit in flt.comparisons]
-        if len(tests) == 1:
-            rng_api.autofilter(field=field, criteria1=tests[0])
-        else:
-            rng_api.autofilter(field=field, criteria1=tests[0], operator=k.autofilter_and,
-                               criteria2=tests[1])
 
     def clear_autofilter(self, sheet: str) -> None:
         from quill.bridge.base import BridgeError
         ws = self._book.sheets[sheet]
         try:
             com = platforms.offered(self._platform, "excel_com")
-            if com is not None:
-                com.clear_autofilter(ws.api)
-            elif ws.api.filter_mode.get():
-                ws.api.show_all_data()
+            if com is None:
+                raise NotImplementedError("this system has no live Excel filter")
+            com.clear_autofilter(ws.api)
         except Exception as exc:
             raise BridgeError(f"The spreadsheet program would not clear the filter: {exc}") from exc
 

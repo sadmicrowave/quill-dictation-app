@@ -52,7 +52,7 @@ class TestRebuiltWindowWatcher(unittest.TestCase):
     def test_headless_windows_are_never_reported_rebuilt(self):
         from PySide6.QtWidgets import QWidget
 
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
         widget = QWidget()
         called = []
         chrome.watch_native_window(widget, lambda: called.append(1))

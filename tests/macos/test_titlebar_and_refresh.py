@@ -14,7 +14,7 @@ from quill.app import QuillApp
 from quill.bridge.base import BridgeError
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
-from quill.ui import chrome
+from quill.platforms.macos import chrome
 from quill.ui.main_window import MainWindow
 from tests.fixtures import make_workbook
 from tests.test_app import FakeListener, FakeSpeaker

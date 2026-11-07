@@ -38,9 +38,6 @@ def get_bridge(xlsx_path: str | pathlib.Path | None = None) -> WorkbookBridge:
             return CsvBridge(xlsx_path)
         from quill.bridge.xlsx_bridge import XlsxBridge
         return XlsxBridge(xlsx_path)
-    if sys.platform == "darwin":
-        from quill.bridge.mac_bridge import MacBridge
-        return MacBridge()
     make = platforms.offered(sys.platform, "new_live_bridge")
     if make is not None:
         return make()

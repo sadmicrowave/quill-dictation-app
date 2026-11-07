@@ -16,8 +16,9 @@ import logging
 import os
 import pathlib
 import subprocess
-from dataclasses import dataclass
 from typing import Callable
+
+from quill.bridge.mirror import MirrorResult   # (the answer type is shared; re-exported here)
 
 log = logging.getLogger("quill.numbers")
 
@@ -161,17 +162,6 @@ on run argv
   return "nodoc"
 end run
 '''
-
-
-@dataclass(frozen=True)
-class MirrorResult:
-    """How an attempt to show cells in Numbers went."""
-
-    ok: bool
-    reason: str = ""
-    """``"ok"``, ``"notrunning"``, ``"nodoc"`` (Numbers has no such document open), ``"denied"`` (Quill may not control
-    Numbers), ``"disabled"`` (the system is not asked, as in tests) or ``"error"``."""
-    detail: str = ""
 
 
 def _system(args: list[str], timeout: float = TIMEOUT_S) -> tuple[int, str, str]:

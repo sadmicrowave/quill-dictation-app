@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass
 import os
 import pathlib
+import sys
 import threading
 import time
 from typing import Callable
@@ -28,7 +29,8 @@ from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
 from quill.bridge.hosts import APPS as HOST_APPS, HostApp, OpenFile, SpreadsheetHosts
 from quill.bridge.libreoffice_mirror import LibreOfficeMirror
-from quill.bridge.numbers_mirror import MirrorResult, NumbersMirror
+from quill import platforms
+from quill.bridge.mirror import MirrorResult, NullMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
@@ -184,7 +186,7 @@ class QuillApp:
         file_chooser: Callable[[], str | None] | None = None,
         live_bridge_factory: Callable[[], WorkbookBridge] = get_bridge,
         hosts: SpreadsheetHosts | None = None,
-        mirror: NumbersMirror | None = None,
+        mirror=None,
         lo_mirror: LibreOfficeMirror | None = None,
     ) -> None:
         self.qapp = qapp
@@ -193,7 +195,7 @@ class QuillApp:
         self._live_bridge_factory = live_bridge_factory
         self.hosts = hosts or SpreadsheetHosts()      # finds Numbers / LibreOffice ... and refreshes them after a save
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
-        self.mirror = mirror or NumbersMirror()      # shows each turn's cells in an open Numbers document as they are written
+        self.mirror = mirror or platforms.offered(sys.platform, "NumbersMirror", NullMirror)()      # shows each turn's cells in an open Numbers document as they are written
         self.lo_mirror = lo_mirror or LibreOfficeMirror()      # ... and in an open LibreOffice Calc document
         self._mirror_warned = False
         self._lo_noted = False

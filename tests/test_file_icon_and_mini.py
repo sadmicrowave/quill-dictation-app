@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
-from quill.ui import chrome
+from quill.platforms.macos import chrome
 from quill.ui.main_window import MainWindow
 from quill.ui.widgets import WaveMeter
 from tests.test_app import FakeListener, FakeSpeaker
@@ -56,7 +56,7 @@ class TestFolderIconInTheWindow(unittest.TestCase):
 
 class TestFolderIconInTheTitleBar(unittest.TestCase):
     def test_it_is_the_first_extra_icon_left_of_settings(self):
-        from tests.test_window_polish import FakeAppKit, native, restore
+        from tests.macos.test_window_polish import FakeAppKit, native, restore
         native()
         self.addCleanup(restore)
         kit = FakeAppKit()

@@ -9,7 +9,7 @@ import unittest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
-import quill.ui.chrome as chrome
+from quill.platforms.macos import chrome
 from quill import diagnostics
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -145,7 +145,7 @@ class TestReopening(DockCase):
 
 
 class TestPackagingForClickableApps(unittest.TestCase):
-    ROOT = pathlib.Path(__file__).resolve().parents[1]
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
 
     def test_the_mac_app_is_not_dock_hidden_by_default_and_can_talk_to_excel_and_the_mic(self):
         spec = (self.ROOT / "packaging" / "quill_mac.spec").read_text()
@@ -221,7 +221,7 @@ class TestLogFile(unittest.TestCase):
         self.assertIn("Quill", str(folder))
 
     def test_main_sets_logging_up(self):
-        text = (pathlib.Path(__file__).resolve().parents[1] / "main.py").read_text()
+        text = (pathlib.Path(__file__).resolve().parents[2] / "main.py").read_text()
         self.assertIn("setup_logging(verbose=args.verbose)", text)
 
     def test_verbose_mode_is_switched_on_by_the_flag_or_the_environment(self):

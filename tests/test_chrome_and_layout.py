@@ -9,7 +9,8 @@ from PySide6.QtWidgets import QApplication, QWidget
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import FONT_SIZE_RANGE, Settings
-from quill.ui import chrome, theme
+from quill.platforms.macos import chrome
+from quill.ui import theme
 from quill.ui.main_window import MainWindow
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.widgets import TOOLTIP_LINES, ElidedLabel, tooltip_lines
