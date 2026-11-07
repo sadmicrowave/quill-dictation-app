@@ -42,9 +42,6 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-dev.txt
-      - name: Qt environment
-        shell: bash
-        run: python tools/qt_environment.py
       # Each step keeps its output and, if it fails, shows the end of it as an annotation (readable without signing in).
       - name: Install
         shell: bash
@@ -52,6 +49,9 @@ jobs:
           python -m pip install --upgrade pip
           (pip install -r requirements.txt pytest) 2>&1 | tee install.log
           test "${PIPESTATUS[0]}" -eq 0 || { python tools/ci_annotate.py "install failed" install.log 80; exit 1; }
+      - name: Qt environment
+        shell: bash
+        run: python tools/qt_environment.py
       - name: Quick tests
         if: github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.full)
         shell: bash
