@@ -305,6 +305,9 @@ QPlainTextEdit, QTextEdit, QTableWidget {{ background: {surf}; color: {t['text']
 QHeaderView::section {{ background: {win}; color: {t['muted']}; border: none;
               border-bottom: 1px solid {t['border']}; padding: {d['header']}; font-weight: 600; }}
 QTableWidget::item {{ padding: {d['cell']}; }}
+QTreeWidget#learnedList {{ background: {surf}; border: 1px solid {t['border']}; border-radius: 10px; padding: 4px;
+              outline: none; }}
+QTreeWidget#learnedList::branch {{ image: none; background: transparent; }}
 
 QFrame#termRow {{ background: {surf}; border: 1px solid {t['border']}; border-radius: {d['radius']}px; }}
 QScrollArea {{ border: none; background: transparent; }}

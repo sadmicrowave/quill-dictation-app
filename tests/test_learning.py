@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 import openpyxl
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication, QDialog
 
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -46,6 +46,22 @@ class Dir(unittest.TestCase):
 
 
 class TestStore(unittest.TestCase):
+    def test_unobserve_takes_back_one_count_and_drops_at_zero(self):
+        store = LinkStore()
+        store.observe("spotted", "Observation Date", "/a.xlsx", "a.xlsx")
+        store.observe("spotted", "Observation Date", "/a.xlsx", "a.xlsx")
+        self.assertTrue(store.unobserve("spotted", "Observation Date", "/a.xlsx"))
+        self.assertEqual(store.get("spotted", "Observation Date").count, 1)
+        self.assertTrue(store.unobserve("spotted", "Observation Date", "/a.xlsx"))
+        self.assertEqual(len(store), 0)
+        self.assertFalse(store.unobserve("spotted", "Observation Date"))
+
+    def test_unobserve_leaves_a_taught_link_alone(self):
+        store = LinkStore()
+        store.teach("left", "Departure Date")
+        self.assertFalse(store.unobserve("left", "Departure Date"))
+        self.assertEqual(len(store), 1)
+
     def test_starts_empty(self):
         self.assertEqual(len(LinkStore()), 0)
 
@@ -305,6 +321,56 @@ class TestChangingAColumn(Case):
         self.controller.change_field("Observation Date", "Departure Date")
         self.assertNotIn("learn_offer", self.kinds())
 
+    def test_undo_puts_the_row_back_and_drops_the_waiting_question(self):
+        self.say_and_change()
+        record = self.controller.session.record
+        self.assertEqual(list(record), ["Departure Date"])
+        messages = self.controller.undo()
+        self.assertEqual(messages, ["Undid: Changed Observation Date to Departure Date"])
+        self.assertEqual(list(record), ["Observation Date"])
+        self.assertIs(self.controller.session.record, record)
+        self.assertEqual(self.controller.session.context["Observation Date"][-1], "spotted")
+        self.assertIsNone(self.controller.learn_offer)
+        self.controller.answer_learn_offer(True)                       # (nothing is left to answer)
+        self.assertEqual(len(self.settings.links), 0)
+
+    def test_undo_of_a_swap_restores_both_values(self):
+        self.controller.handle_transcript("spotted yesterday")
+        self.controller.handle_transcript("departure date today")
+        before = dict(self.controller.session.record)
+        self.controller.change_field("Observation Date", "Departure Date")
+        self.controller.undo()
+        self.assertEqual(self.controller.session.record, before)
+
+    def test_undo_takes_back_a_lesson_that_was_already_counted(self):
+        self.say_and_change()
+        self.controller.answer_learn_offer(True)
+        self.assertEqual(self.settings.links.get("spotted", "Departure Date").count, 1)
+        messages = self.controller.undo()
+        self.assertIn("Forgot one count of 'spotted' for Departure Date", messages)
+        self.assertIsNone(self.settings.links.get("spotted", "Departure Date"))
+        self.assertIsNone(Settings.load(self.dir / "cfg").links.get("spotted", "Departure Date"))
+
+    def test_undo_takes_back_a_silently_counted_lesson_too(self):
+        self.settings.preferences["learn_ask"] = False
+        self.say_and_change()
+        self.controller.undo()
+        self.assertEqual(len(self.settings.links), 0)
+
+    def test_undo_after_the_row_moved_on_leaves_it_alone(self):
+        self.say_and_change()
+        self.controller.handle_transcript("delete row")
+        messages = self.controller.undo()
+        self.assertEqual(messages[1], "That row has moved on, so the values were left as they are")
+
+    def test_undo_walks_back_through_two_changes(self):
+        self.say_and_change()
+        self.controller.change_field("Departure Date", "Observation Date")
+        self.controller.undo()
+        self.assertEqual(list(self.controller.session.record), ["Departure Date"])
+        self.controller.undo()
+        self.assertEqual(list(self.controller.session.record), ["Observation Date"])
+
 
 class TestRowTable(unittest.TestCase):
     def table(self):
@@ -364,6 +430,60 @@ class TestLearnedWordsList(unittest.TestCase):
         self.assertEqual(self.words(), ["left", "sold", "spotted"])
         self.panel.grouping.setCurrentIndex(self.panel.grouping.findData("column"))
         self.assertEqual(self.panel.tree.topLevelItemCount(), 3)
+
+    def test_groups_come_most_recent_first_by_default(self):
+        self.store.teach("paid", "Cost", "/a/apparel.xlsx", "apparel.xlsx")           # apparel was learned in last
+        self.panel.refresh()
+        self.assertEqual(self.group_names(), ["apparel.xlsx", "whales.xlsx"])
+        self.store.teach("lured", "Departure Date", "/a/whales.xlsx", "whales.xlsx")   # now whales is the newest
+        self.panel.refresh()
+        self.assertEqual(self.group_names(), ["whales.xlsx", "apparel.xlsx"])
+
+    def test_groups_by_name_and_by_most_words(self):
+        self.panel.order.setCurrentIndex(self.panel.order.findData("name"))
+        self.assertEqual(self.group_names(), ["apparel.xlsx", "whales.xlsx"])
+        self.panel.order.setCurrentIndex(self.panel.order.findData("words"))
+        self.assertEqual(self.group_names(), ["whales.xlsx", "apparel.xlsx"])         # two words against one
+
+    def test_the_order_choice_is_off_without_groups(self):
+        self.panel.grouping.setCurrentIndex(self.panel.grouping.findData("none"))
+        self.assertFalse(self.panel.order.isEnabled())
+        self.panel.grouping.setCurrentIndex(self.panel.grouping.findData("file"))
+        self.assertTrue(self.panel.order.isEnabled())
+
+    def test_a_heading_sorts_the_words_inside_each_group_and_again_reverses(self):
+        self.panel.order.setCurrentIndex(self.panel.order.findData("name"))
+        self.assertEqual(self.group_words("whales.xlsx"), ["left", "spotted"])
+        self.panel._heading_clicked(1)                                               # Quill Reads It As…: Departure Date, Observation Date
+        self.assertEqual(self.group_words("whales.xlsx"), ["left", "spotted"])
+        self.panel._heading_clicked(1)
+        self.assertEqual(self.group_words("whales.xlsx"), ["spotted", "left"])
+        self.panel._heading_clicked(0)
+        self.assertEqual(self.group_words("whales.xlsx"), ["left", "spotted"])
+
+    def test_sorting_by_status_puts_taught_before_still_learning(self):
+        self.store.observe("lured", "Departure Date", "/a/whales.xlsx", "whales.xlsx")
+        self.panel.refresh()
+        self.panel._heading_clicked(3)
+        self.assertEqual(self.group_words("whales.xlsx")[-1], "lured")
+
+    def test_the_recent_order_survives_saving_and_loading(self):
+        again = LinkStore.from_list(self.store.to_list())
+        self.assertEqual({s.name: s.last > 0 for l in again.links() for s in l.sources}, {"whales.xlsx": True, "apparel.xlsx": True})
+        panel = LearnedWordsPanel(again, lambda: 2, lambda: tuple(self.active))
+        self.assertEqual(panel.tree.topLevelItem(0).data(0, Qt.ItemDataRole.UserRole + 2), "apparel.xlsx")
+
+    def group_names(self):
+        tree = self.panel.tree
+        return [tree.topLevelItem(i).data(0, Qt.ItemDataRole.UserRole + 2) for i in range(tree.topLevelItemCount())]
+
+    def group_words(self, name):
+        tree = self.panel.tree
+        for i in range(tree.topLevelItemCount()):
+            top = tree.topLevelItem(i)
+            if top.data(0, Qt.ItemDataRole.UserRole + 2) == name:
+                return [top.child(j).text(0) for j in range(top.childCount())]
+        return []
 
     def test_search_matches_word_column_and_file(self):
         for query, expected in (("spot", ["spotted"]), ("sale", ["sold"]), ("whales", ["left", "spotted"]), ("zzz", [])):

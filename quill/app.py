@@ -1863,6 +1863,9 @@ class QuillApp:
             return
         elif kind == "undone":
             self.window.append_log(event.detail)
+            self.window.hide_learn_offer()                              # (an undone column change takes its question with it)
+            self.window.panel.refresh_learned()
+            self.window.update_current_row(self.controller.session.record)
             self.refresh_sorting(reveal=True)
             return
         elif kind in ("add_values", "alias_added", "skipped"):

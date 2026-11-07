@@ -37,6 +37,18 @@ def _kind(value: object) -> str:
     return "text"
 
 
+class _Change:
+    """One column change of the row being built, kept so Undo can put the row back (see :meth:`Controller.change_field`)."""
+
+    def __init__(self, record: dict, before: dict, context: dict, column: str, to_column: str) -> None:
+        self.record = record                    # the row's live dict: Undo only applies while this is still the row being built
+        self.before = before                    # copy of the row's values before the change
+        self.context_before = context           # copy of the words kept around each value
+        self.column, self.to_column = column, to_column
+        self.value: object = None               # the moved value (set once the change is made)
+        self.counted: tuple[str, str, str] | None = None   # (word, column, file path) if the change was counted as a lesson
+
+
 @dataclass
 class _Redo:
     """A line the user deleted that had words around it: if the same sort of value is said again with a column's name, that
@@ -109,6 +121,7 @@ class Controller:
         self._redo: _Redo | None = None
         """The line just deleted, while a redo of it may still come (None: nothing to watch for)."""
         self.learn_offer: tuple[str, str] | None = None
+        self._offer_change: _Change | None = None   # the column change the waiting question came from (so Undo can take it back)
         """``(word, column)`` Quill is asking "Remember ...?" about after a line's column was changed (None: no question open)."""
 
     # ------------------------------------------------------------------ #
@@ -381,6 +394,7 @@ class Controller:
         if to_column not in self.columns_for_change(column):
             return False
         record, context = self.session.record, self.session.context
+        change = _Change(record, dict(record), {k: list(v) for k, v in context.items()}, column, to_column)
         value, words = record.pop(column), context.pop(column, [])
         if to_column in record:
             record[column], other = record[to_column], context.pop(to_column, [])
@@ -389,9 +403,33 @@ class Controller:
         record[to_column] = value
         if words:
             context[to_column] = words
+        change.value = value
+        self.history.push(f"Changed {column} to {to_column}", lambda: self._undo_change(change))
         self._on_event(Event("changed", detail=f"Changed {column} to {to_column}"))
-        self._offer_learning(words, to_column)
+        self._offer_learning(words, to_column, change)
         return True
+
+    def _undo_change(self, change: _Change) -> list[str]:
+        """Put the row back as it was before a column change, and take back what the change taught (a waiting question
+        goes away; a lesson already counted loses that count). Only possible while that row is still being built."""
+        record = self.session.record
+        if record is not change.record or record.get(change.to_column) != change.value:
+            return ["That row has moved on, so the values were left as they are"]
+        record.clear()
+        record.update(change.before)
+        context = self.session.context
+        context.clear()
+        context.update(change.context_before)
+        notes: list[str] = []
+        if self.learn_offer is not None and self.learn_offer[1] == change.to_column:
+            self.learn_offer = None
+        if change.counted is not None:
+            word, column, path = change.counted
+            if self.settings.links.unobserve(word, column, path):
+                self.settings.save()
+                notes.append(f"Forgot one count of '{word}' for {column}")
+            change.counted = None
+        return notes
 
     def _check_redo(self, before: set[str]) -> None:
         """After a phrase: was a deleted line said again, with a column's name, in another column? That is a correction, so
@@ -414,17 +452,17 @@ class Controller:
         if redo.steps >= 2:
             self._redo = None
 
-    def _offer_learning(self, words: list[str], column: str) -> None:
+    def _offer_learning(self, words: list[str], column: str, change: _Change | None = None) -> None:
         """After a change: the first spoken word near the value that can be learned is asked about (or counted, if asking is off)."""
         word = next((w for w in words if self._learnable(w)), None)
-        self.learn_offer = None
+        self.learn_offer = self._offer_change = None
         if word is None:
             return
         if self.settings.preferences["learn_ask"]:
-            self.learn_offer = (word, column)
+            self.learn_offer, self._offer_change = (word, column), change
             self._on_event(Event("learn_offer", detail=f"Remember that '{word}' means {column}?", values=[(word, column)]))
         else:
-            self._count_link(word, column)
+            self._count_link(word, column, change)
 
     def _learnable(self, word: str) -> bool:
         """Can *word* become a link? Not a number or filler, and never a word of this sheet (a heading word or a list value)."""
@@ -434,16 +472,17 @@ class Controller:
     def answer_learn_offer(self, yes: bool) -> None:
         """Yes or no to "Remember ...?": yes counts the change as a lesson, no teaches nothing."""
         offer, self.learn_offer = self.learn_offer, None
+        change, self._offer_change = self._offer_change, None
         if offer is None:
             return
         if yes:
-            self._count_link(*offer)
+            self._count_link(*offer, change)
         else:
             self._on_event(Event("learn_declined", detail="Nothing remembered"))
 
     def expire_learn_offer(self) -> None:
         """No answer in time: the question goes away and nothing is learned."""
-        self.learn_offer = None
+        self.learn_offer = self._offer_change = None
 
     def _source(self) -> tuple[str, str]:
         """The file a lesson is learned in: ``(path, name)``."""
@@ -453,10 +492,12 @@ class Controller:
             name = self.bridge.workbook_name
         return path, name
 
-    def _count_link(self, word: str, column: str) -> None:
+    def _count_link(self, word: str, column: str, change: _Change | None = None) -> None:
         link = self.settings.links.observe(word, column, *self._source())
         if link is None:
             return
+        if change is not None:
+            change.counted = (word, column, self._source()[0])
         self.settings.save()
         need = int(self.settings.preferences["learn_after"])
         if link.is_active(need):

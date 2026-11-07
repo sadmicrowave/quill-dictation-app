@@ -42,10 +42,10 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 
 **Settings > Learned Words** (under *Voice and Commands*) holds what you taught Quill (see **Teaching Quill your words** in *Talking to Quill*).
 
-- **Corrections Before Learning** (2 by default, 1 to 5): how many times you must change a word to the same column before Quill uses it by itself. A word you teach by saying *"spotted means observation date"* counts at once.
-- **Ask Before Learning** (on by default): after you change a line's column Quill asks whether to remember it. Off: every change is counted without asking.
-- **The list** shows each word, its column, the files it was learned in, its status (*Taught*, *In use*, or *Learning (1 of 2)*) and how often it was used. Search it, switch between **All Files** and **This File**, group it by file or by column, and click a heading to sort. A word is kept by column name, so it also helps other files that have that column.
-- **Forget Selected** and **Forget All Shown** remove words. Removing more than one always asks first, and says how many words are affected; the box has **Cancel** as its default. This can't be undone, and it is saved at once.
+- **Corrections Before Learning** (2 by default, 1 to 5): how many times you change a word to the same column before Quill uses it on its own. Saying *"spotted means observation date"* counts at once.
+- **Ask Before Learning** (on by default): Quill asks before remembering a column change. Off: changes are counted without asking.
+- **The list** shows each word, the column it means, the file it was learned in, its status (*Taught*, *In use*, *Learning (1 of 2)*) and how often it was used. Search it, switch between **All Files** and **This File**, group it by file or column, and choose the group order (**Most Recent First**, **Name A–Z**, **Most Words First**). Click a heading to sort inside each group; click again to reverse.
+- **Forget Selected** and **Forget All Shown** remove words. More than one always asks first; **Cancel** is the default. This can't be undone.
 - The **Learned Words** link under the active file in the Files panel opens this page on **This File**.
 
 ### Check for Changes

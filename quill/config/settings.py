@@ -377,7 +377,7 @@ class Settings:
             lines.append("\n[[links]]\n")
             lines.append(f"word = {_toml_string(entry['word'])}\nshown = {_toml_string(entry['shown'])}\ncolumn = {_toml_string(entry['column'])}\n")
             lines.append(f"count = {entry['count']}\ntaught = {_toml_value(entry['taught'])}\nused = {entry['used']}\n")
-            sources = ", ".join(f"{{ path = {_toml_string(src['path'])}, name = {_toml_string(src['name'])}, count = {src['count']} }}"
+            sources = ", ".join(f"{{ path = {_toml_string(src['path'])}, name = {_toml_string(src['name'])}, count = {src['count']}, last = {float(src.get('last', 0.0))!r} }}"
                                 for src in entry["sources"])
             lines.append(f"sources = [{sources}]\n")
         for column, mapping in sorted(self.aliases.items()):

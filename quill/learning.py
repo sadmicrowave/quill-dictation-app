@@ -20,6 +20,7 @@ Rules (see ``Learned Links Design.md``):
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from quill.parser.fillers import is_link_stopword
@@ -44,6 +45,7 @@ class Source:
     path: str
     name: str
     count: int = 1
+    last: float = 0.0                           # when something was last learned in this file (seconds since 1970; 0 = unknown)
 
 
 @dataclass
@@ -147,6 +149,26 @@ class LinkStore:
                 del self._links[(other.word, other.column)]
         return link
 
+    def unobserve(self, word: str, column: str, path: str = "") -> bool:
+        """Take back one :meth:`observe` (the correction was undone): the count drops by one and the link is dropped at zero.
+
+        A link that was said outright (``taught``) is left alone. The count the correction took from another column
+        is not given back (a changed mind that was itself changed back costs nothing worth tracking). True if a count was removed.
+        """
+        key = link_word(word)
+        link = self._links.get((key, column)) if key else None
+        if link is None or link.taught:
+            return False
+        link.count -= 1
+        for source in list(link.sources):
+            if path and source.path == path:
+                source.count -= 1
+                if source.count <= 0:
+                    link.sources.remove(source)
+        if link.count <= 0:
+            del self._links[(link.word, link.column)]
+        return True
+
     def _count(self, word: str, column: str, path: str, name: str) -> Link | None:
         key = link_word(word)
         if key is None or not column:
@@ -161,10 +183,11 @@ class LinkStore:
             if path and source.path == path:
                 source.count += 1
                 source.name = name or source.name
+                source.last = time.time()
                 break
         else:
             if path or name:
-                link.sources.append(Source(path, name or path))
+                link.sources.append(Source(path, name or path, last=time.time()))
         del link.sources[:-MAX_SOURCES]
         self._trim()
         return link
@@ -219,7 +242,7 @@ class LinkStore:
             out.append({
                 "word": link.word, "shown": link.shown, "column": link.column, "count": link.count, "taught": link.taught,
                 "used": link.used,
-                "sources": [{"path": s.path, "name": s.name, "count": s.count} for s in link.sources],
+                "sources": [{"path": s.path, "name": s.name, "count": s.count, "last": s.last} for s in link.sources],
             })
         return out
 
@@ -238,8 +261,9 @@ class LinkStore:
             sources = []
             for raw in entry.get("sources", []) if isinstance(entry.get("sources"), list) else []:
                 if isinstance(raw, dict) and isinstance(raw.get("path"), str) and isinstance(raw.get("name"), str):
-                    count = raw.get("count")
-                    sources.append(Source(raw["path"], raw["name"], count if isinstance(count, int) and count > 0 else 1))
+                    count, last = raw.get("count"), raw.get("last")
+                    sources.append(Source(raw["path"], raw["name"], count if isinstance(count, int) and count > 0 else 1,
+                                          float(last) if isinstance(last, (int, float)) and not isinstance(last, bool) and last > 0 else 0.0))
             count, used = entry.get("count"), entry.get("used")
             shown = entry.get("shown")
             link = Link(word, column, shown=shown if isinstance(shown, str) and shown else word, count=count if isinstance(count, int) and count > 0 else 1,

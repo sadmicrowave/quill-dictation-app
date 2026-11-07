@@ -850,31 +850,26 @@ class SettingsDialog:
         prefs = self._settings.preferences
         page = self._page(
             "Learned Words",
-            "Words you taught Quill to read as a column. When you say a date or an amount without naming its column, Quill "
-            "uses these to choose between your date or amount columns. Quill learns a word when you change a line's column "
-            "in the Current Row box (click the column name), or delete a line and say it again with its column's name, and "
-            "remembers which files it learned each word in.\n\n"
-            "To teach a word right away, say it while Quill is listening: the word, then “means”, then the column's name, "
-            "for example “spotted means Observation Date”. It is learned the moment you say it, without waiting for "
-            "repeated corrections.")
-        self.learned = LearnedWordsPanel(self._settings.links, lambda: int(self._settings.preferences["learn_after"]),
-                                         self._active_file)
-        self.learned.changed.connect(self._links_changed)
-        page.addWidget(self.learned, 1)
+            "Words you taught Quill to read as a column. When you say a date or amount without naming its column, Quill "
+            "uses them to choose. Change a line's column in the Current Row box to teach one.\n\n"
+            "To teach one at once, say the word, “means”, then the column, like “spotted means Observation Date”.")
         self.learn_spin = GuardedSpinBox()
         self.learn_spin.setRange(*LEARN_AFTER_RANGE)
         self.learn_spin.setValue(int(prefs["learn_after"]))
         self.learn_spin.setSuffix(" times")
         self.learn_spin.setToolTip("How many times you change a word to the same column before Quill uses it by itself.")
         self._add("Learned Words", page, "Corrections Before Learning",
-                  "How many times you must change a word to the same column before Quill uses it by itself (1 to 5). "
-                  "A higher number keeps one slip of the mouse from teaching Quill the wrong thing.",
+                  "How many times you change a word to the same column before Quill uses it on its own (1 to 5).",
                   self.learn_spin, "learn learning corrections count threshold")
         self.learn_ask_check = ToggleSwitch()
         self.learn_ask_check.setChecked(bool(prefs["learn_ask"]))
         self._add("Learned Words", page, "Ask Before Learning",
-                  "After you change a line's column, Quill asks whether to remember it. Turn this off to count every "
-                  "change without asking.", self.learn_ask_check, "remember ask confirm prompt learn")
+                  "Ask before remembering a column change. Off: changes are counted without asking.",
+                  self.learn_ask_check, "remember ask confirm prompt learn")
+        self.learned = LearnedWordsPanel(self._settings.links, lambda: int(self._settings.preferences["learn_after"]),
+                                         self._active_file)
+        self.learned.changed.connect(self._links_changed)
+        page.addWidget(self.learned, 1)
 
     def _links_changed(self) -> None:
         """Learned words were forgotten: that is saved at once (it does not wait for the window's OK) and applied."""
