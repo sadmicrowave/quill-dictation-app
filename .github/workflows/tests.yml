@@ -42,6 +42,9 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-dev.txt
+      - name: Qt environment
+        shell: bash
+        run: python tools/qt_environment.py
       # Each step keeps its output and, if it fails, shows the end of it as an annotation (readable without signing in).
       - name: Install
         shell: bash
