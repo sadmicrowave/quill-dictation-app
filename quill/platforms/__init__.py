@@ -44,7 +44,7 @@ from types import ModuleType
 log = logging.getLogger("quill.platforms")
 
 #: ``sys.platform`` value -> provider package name.
-NAMES = {"win32": "windows"}
+NAMES = {"darwin": "macos", "win32": "windows"}
 
 
 def provider(platform: str | None = None) -> ModuleType | None:

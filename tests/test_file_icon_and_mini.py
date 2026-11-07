@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
-from quill.ui import chrome
+from quill.platforms.macos import chrome
 from quill.ui.main_window import MainWindow
 from quill.ui.widgets import WaveMeter
 from tests.test_app import FakeListener, FakeSpeaker

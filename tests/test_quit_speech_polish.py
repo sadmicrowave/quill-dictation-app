@@ -228,7 +228,7 @@ class TestDockToggleKeepsTheFocus(Case):
         self.assertEqual(raised, ["raise", "activate"])
 
     def test_the_application_is_activated_whether_the_icon_is_shown_or_hidden(self):
-        from quill.ui import chrome
+        from quill.platforms.macos import chrome
 
         class Kit:
             activated = 0

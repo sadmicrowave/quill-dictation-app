@@ -7,7 +7,7 @@ import unittest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication
 
-import quill.ui.chrome as chrome
+from quill.platforms.macos import chrome
 from quill.config.settings import Settings
 from quill.ui import theme
 from quill.ui.main_window import (

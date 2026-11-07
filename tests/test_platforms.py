@@ -9,9 +9,12 @@ from quill.bridge.factory import get_bridge
 
 class TestProvider(unittest.TestCase):
     def test_a_system_with_no_provider_offers_nothing(self):
-        for system in ("darwin", "linux", "plan9"):
+        for system in ("linux", "plan9"):
             self.assertIsNone(platforms.provider(system))
             self.assertEqual(platforms.offered(system, "QUIT_LABEL", "Quit Quill"), "Quit Quill")
+
+    def test_macos_has_a_provider_with_a_chrome_module(self):
+        self.assertTrue(hasattr(platforms.provider("darwin"), "chrome"))
 
     def test_a_provider_that_is_not_in_this_build_is_the_same_as_none(self):
         with mock.patch.dict(platforms.NAMES, {"sunos5": "missing_for_this_test"}):

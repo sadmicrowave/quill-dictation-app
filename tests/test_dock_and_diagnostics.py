@@ -9,7 +9,7 @@ import unittest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
-import quill.ui.chrome as chrome
+from quill.platforms.macos import chrome
 from quill import diagnostics
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
