@@ -400,7 +400,6 @@ QRadioButton::indicator:checked {{ background: {t['accent']}; border: 1px solid 
 QFrame#sidePanel {{ background: transparent; border: none; }}
 QFrame[panelEdge="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
 QFrame[closedNote="true"] {{ background: {rgba(t['warn'], 0.14)}; border: 1px solid {rgba(t['warn'], 0.55)}; border-radius: 10px; }}
-QFrame[sheetNote="true"] {{ background: transparent; border: 1.5px solid {FLASH_STYLES['accepted'][0]}; border-radius: 10px; }}
 QLabel[closedTitle="true"] {{ background: transparent; color: {t['text']}; font-weight: 600; }}
 QLabel[closedBody="true"] {{ background: transparent; color: {t['text']}; }}
 QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}

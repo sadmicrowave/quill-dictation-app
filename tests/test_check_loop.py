@@ -381,7 +381,8 @@ if __name__ == "__main__":
 
 class TestSheetNotSavedYet(PanelApp):
     """A sheet that the program shows but the saved file does not have: the folder icon gets a red dot, the Files panel a
-    green-outlined note, and Quill stays on its last sheet; both go when the file and the program agree again."""
+    red dot on the Sheet label (nothing moves), and Quill stays on its last sheet; both go when the file and the program agree
+    again."""
 
     def setUp(self):
         super().setUp()
@@ -389,23 +390,24 @@ class TestSheetNotSavedYet(PanelApp):
         self.logged = []
         self.app.window.append_log = lambda text, level="info", **kw: self.logged.append((level, text))
 
-    def test_the_dot_the_note_and_one_log_line_appear_once(self):
+    def test_the_two_dots_and_one_log_line_appear_once(self):
         self.app._apply_sheet("Sheet Nine", quiet=True)
         self.app._apply_sheet("Sheet Nine", quiet=True)
         window = self.app.window
         self.assertIn("Sheet Nine", window.file_alert)
-        self.assertTrue(window.panel.sheet_note.isVisibleTo(window.panel))
-        self.assertIn("Sheet Nine is not saved", window.panel.sheet_note_label.text())
+        label, _ = window.panel.fact_rows["Sheet"]
+        self.assertTrue(label._dot)
+        self.assertIn("Sheet Nine is open in", label.toolTip())
         self.assertEqual([lvl for lvl, _ in self.logged].count("warning"), 1)
 
-    def test_opening_the_file_panel_puts_the_dot_away_but_the_note_stays(self):
+    def test_opening_the_file_panel_puts_the_folder_dot_away_but_the_sheet_dot_stays(self):
         self.app._apply_sheet("Sheet Nine", quiet=True)
         self.app.window.open_panel(FILE_PAGE)
         self.assertEqual(self.app.window.file_alert, "")
-        self.assertTrue(self.app.window.panel.sheet_note.isVisibleTo(self.app.window.panel))
+        self.assertTrue(self.app.window.panel.fact_rows["Sheet"][0]._dot)
 
     def test_everything_goes_when_the_file_has_the_sheet(self):
         self.app._apply_sheet("Sheet Nine", quiet=True)
         self.app._apply_sheet(self.app.controller.bridge.active_sheet_name(), quiet=True)
         self.assertEqual(self.app.window.file_alert, "")
-        self.assertFalse(self.app.window.panel.sheet_note.isVisibleTo(self.app.window.panel))
+        self.assertFalse(self.app.window.panel.fact_rows["Sheet"][0]._dot)

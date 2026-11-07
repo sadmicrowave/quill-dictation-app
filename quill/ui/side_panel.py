@@ -69,6 +69,31 @@ LIST_ROLE = Qt.ItemDataRole.UserRole
 ROW_HEIGHT = 30                                    # the height of a button (the file button) and of a row in the file list
 
 
+class DotLabel(QLabel):
+    """A label that can wear the red alert dot just after its text, without changing its size or anything around it."""
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self._dot = False
+
+    def set_dot(self, on: bool) -> None:
+        if on != self._dot:
+            self._dot = on
+            self.update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self._dot:
+            from quill.ui.icons import BADGE_RED
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(BADGE_RED))
+            x = self.fontMetrics().horizontalAdvance(self.text()) + 4
+            painter.drawEllipse(QRectF(x, self.height() / 2 - 6, 7, 7))
+            painter.end()
+
+
 class ActiveBorder(QStyledItemDelegate):
     """Draws the active file's row with the same green border as an accepted Term Helper row (no fill)."""
 
@@ -561,31 +586,21 @@ class SidePanel(QFrame):
         note.setVisible(False)
         return note
 
-    def _build_sheet_note(self) -> QFrame:
-        """The green-outlined note under the Sheet row: the program shows a sheet that the saved file does not have."""
-        note = QFrame()
-        note.setProperty("sheetNote", True)
-        note.setProperty("keepMargins", True)
-        inner = QVBoxLayout(note)
-        inner.setContentsMargins(10, 8, 10, 8)
-        self.sheet_note_label = QLabel("")
-        self.sheet_note_label.setProperty("closedBody", True)
-        self.sheet_note_label.setWordWrap(True)
-        inner.addWidget(self.sheet_note_label)
-        note.setVisible(False)
-        return note
-
     def show_sheet_alert(self, shown: str, program: str, working: str) -> None:
-        """Say that *program* (named in the hover text) shows the sheet *shown*, which the saved file does not have, so Quill
-        stays on *working*."""
-        self.sheet_note.setToolTip(f"{shown} is open in {program}.")
-        self.sheet_note_label.setText(
-            f"{shown} is not saved in the file yet, so Quill is still on {working}. "
-            "Save the file (keep its format), then press refresh.")
-        self.sheet_note.setVisible(True)
+        """Mark the Sheet row with the red dot (the same dot as on the folder icon): *program* shows the sheet *shown*, which the
+        saved file does not have, so Quill stays on *working*. Nothing moves; the hover text says what to do."""
+        tip = f"{shown} is open in {program} but is not saved in the file yet. Quill is still on {working}.\nSave the file, then press refresh."
+        label, value = self.fact_rows["Sheet"]
+        label.set_dot(True)
+        for widget in (label, value, self.sheet_refresh_button):
+            widget.setToolTip(tip)
 
     def hide_sheet_alert(self) -> None:
-        self.sheet_note.setVisible(False)
+        label, value = self.fact_rows["Sheet"]
+        label.set_dot(False)
+        label.setToolTip("")
+        value.setToolTip("")
+        self.sheet_refresh_button.setToolTip("Look at which sheet is open in the spreadsheet program now.")
 
     def show_closed(self, name: str) -> None:
         """Say that *name* was closed (shown until a file is connected again, or dismissed)."""
@@ -618,9 +633,7 @@ class SidePanel(QFrame):
         table.setColumnStretch(1, 1)
         self.fact_rows: dict[str, tuple[QLabel, ElidedLabel]] = {}
         for row, name in enumerate(("Sheet", "Path", "Type", "Size", "Modified", "Created")):
-            if row:
-                row += 1                                         # (row 1 is the note that says the sheet is not saved yet)
-            label = QLabel(name)
+            label = DotLabel(name)
             label.setProperty("panelNote", True)                 # the label is muted
             label.setIndent(0)
             value = ElidedLabel("")                              # the value is plain text, on one line
@@ -650,8 +663,6 @@ class SidePanel(QFrame):
             self.fact_rows[name] = (label, value)
             label.setVisible(False)
             value.setVisible(False)
-        self.sheet_note = self._build_sheet_note()
-        table.addWidget(self.sheet_note, 1, 0, 1, 3)
         layout.addLayout(table)
         self.learned_counter = lambda path: 0                    # set by the app: how many learned words belong to a file
         self.learned_link = QLabel("")                           # "Learned Words (7)": opens them for this file (only with a file)
