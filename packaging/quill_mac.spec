@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 # macOS .app bundle — run: pyinstaller packaging/quill_mac.spec  (from repo root)
 import os
+import sys
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 # PyInstaller resolves relative paths against the folder of this spec file, so anchor everything to the repo root.
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 r = lambda *parts: os.path.join(ROOT, *parts)
+sys.path.insert(0, ROOT)      # (collect_submodules imports quill: the system providers in quill.platforms are loaded by name at run time)
 vosk_d, vosk_b, vosk_h = collect_all("vosk")
 sd_d, sd_b, sd_h = collect_all("sounddevice")
 # The optional "Best" speech model (Whisper through faster-whisper): bundled when its packages are installed.
@@ -22,7 +24,7 @@ a = Analysis(
     binaries=[*vosk_b, *sd_b, *extra_b],
     datas=[(r("quill", "config", "defaults.json"), "quill/config"), (r("quill", "sounds"), "quill/sounds"),
            (r("quill", "model"), "quill/model"), (r("quill", "assets"), "quill/assets"), (r("quill", "help"), "quill/help"),*vosk_d,*sd_d,*extra_d],
-    hiddenimports=[*vosk_h, *sd_h, *extra_h, *collect_submodules("quill"), *collect_submodules("xlwings"), "appscript", "aem", "mactypes", "psutil", "AppKit", "objc", "defusedxml"],
+    hiddenimports=[*vosk_h, *sd_h, *extra_h, *collect_submodules("quill"), "quill.platforms.macos", *collect_submodules("xlwings"), "appscript", "aem", "mactypes", "psutil", "AppKit", "objc", "defusedxml"],
 )
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Quill", console=False)
