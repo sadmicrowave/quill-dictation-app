@@ -1,6 +1,7 @@
 """Graceful handling when no spreadsheet is open, auto-attach, and the tray's workbook line."""
 import pathlib
 import tempfile
+import sys
 import unittest
 from unittest import mock
 
@@ -216,6 +217,8 @@ class TestTrayWorkbookLine(unittest.TestCase):
         tray.set_listening(False)
         self.assertFalse(title.isVisible())
 
+    @unittest.skipIf(sys.platform == "win32", "the expected text uses POSIX path separators (Windows wording is the windows branch's)")
+
     def test_text_shows_name_and_folder(self):
         tray, _ = self.make()
         tray.set_workbook("plants.xlsx", "/data/Inventory/plants.xlsx")
@@ -273,6 +276,8 @@ class TestElide(unittest.TestCase):
         self.assertEqual(len(out), 30)
         self.assertTrue(out.startswith("/Users") and out.endswith("Inventory"))
         self.assertIn("…", out)
+
+    @unittest.skipIf(sys.platform == "win32", "the expected text uses POSIX path separators (Windows wording is the windows branch's)")
 
     def test_folder_uses_tilde_for_home(self):
         home = str(pathlib.Path.home())

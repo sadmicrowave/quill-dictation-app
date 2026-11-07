@@ -2,7 +2,7 @@
 PySide6>=6.7
 
 # Speech recognition (offline)
-vosk>=0.3.45
+vosk>=0.3.44
 sounddevice>=0.4.6
 
 # Text-to-speech (platform-specific; both installed, only one used at runtime)

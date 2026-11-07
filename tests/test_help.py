@@ -41,8 +41,8 @@ class TestPages(unittest.TestCase):
     def test_a_new_page_is_just_a_new_file(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            pathlib.Path(tmp, "01-first.md").write_text("# 😀 First\n\n## One\n\ntext\n\n## Two\n")
-            pathlib.Path(tmp, "02-second.md").write_text("# Second\n")
+            pathlib.Path(tmp, "01-first.md").write_text("# 😀 First\n\n## One\n\ntext\n\n## Two\n", encoding="utf-8")
+            pathlib.Path(tmp, "02-second.md").write_text("# Second\n", encoding="utf-8")
             topics = helpdocs.load_topics(pathlib.Path(tmp))
         self.assertEqual([(t.slug, t.title, t.sections) for t in topics],
                          [("first", "😀 First", ["One", "Two"]), ("second", "Second", [])])

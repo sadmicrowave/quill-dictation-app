@@ -254,6 +254,8 @@ class TestATimedOutCommandIsKilledAndReaped(unittest.TestCase):
         self.addCleanup(env.stop)
         os.environ.pop("QUILL_NO_HOSTS", None)                                   # these run real (harmless) commands
 
+    @unittest.skipIf(sys.platform == "win32", "checks a POSIX child process with os.kill")
+
     def test_the_child_is_gone_and_the_failure_is_reported(self):
         with tempfile.TemporaryDirectory() as folder:
             pid_file = pathlib.Path(folder) / "pid"
