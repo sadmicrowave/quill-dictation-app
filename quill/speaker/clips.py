@@ -19,6 +19,7 @@ import sys
 import tempfile
 import threading
 from typing import Callable
+from quill import platforms
 
 log = logging.getLogger("quill.clips")
 
@@ -49,12 +50,9 @@ def render_with_system_voice(text: str, destination: pathlib.Path) -> bool:
                 subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16@22050", str(raw), str(destination)],
                                check=True, timeout=30)                                             # noqa: S603, S607
             return destination.is_file()
-        if sys.platform == "win32":
-            import pyttsx3
-            engine = pyttsx3.init()
-            engine.save_to_file(text, str(destination))
-            engine.runAndWait()
-            return destination.is_file()
+        render = platforms.offered(sys.platform, "render_clip")
+        if render is not None:
+            return bool(render(text, destination))
     except Exception as exc:                                 # no voice, no tool, no permission: fall back to live speech
         log.debug("could not render %r: %s", text, exc)
     return False

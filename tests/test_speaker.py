@@ -35,17 +35,7 @@ class TestSpeaker(unittest.TestCase):
             Speaker(platform="darwin", run_in_thread=False).say("x", on_done=lambda: done.append(1))
         self.assertEqual(done, [1])
 
-    def test_windows_uses_pyttsx3(self):
-        engine = mock.Mock()
-        fake = mock.Mock(init=mock.Mock(return_value=engine))
-        with mock.patch.dict("sys.modules", {"pyttsx3": fake}):
-            Speaker(platform="win32", run_in_thread=False).say("hello")
-        engine.say.assert_called_once_with("hello")
-        engine.runAndWait.assert_called_once()
 
-    def test_windows_without_pyttsx3_does_not_raise(self):
-        with mock.patch.dict("sys.modules", {"pyttsx3": None}):
-            Speaker(platform="win32", run_in_thread=False).say("hello")
 
     def test_other_platform_is_silent(self):
         with mock.patch("subprocess.run") as run:

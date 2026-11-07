@@ -21,6 +21,7 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 
+from quill import platforms
 from quill.bridge.processes import running_executables
 
 log = logging.getLogger("quill.hosts")
@@ -60,8 +61,6 @@ class HostApp:
     name: str
     mac_process: str = ""
     """Process name as System Events reports it (macOS)."""
-    win_process: str = ""
-    """Executable name as ``tasklist`` reports it (Windows)."""
     live: bool = False
     """Driven live through its own automation (only Excel); others work through the file."""
     reloads: bool = False
@@ -70,12 +69,12 @@ class HostApp:
     """One line of plain advice, shown only when something needs doing by hand."""
 
 
-EXCEL = HostApp("excel", "Excel", "Microsoft Excel", "EXCEL.EXE", live=True)
-NUMBERS = HostApp("numbers", "Numbers", "Numbers", "", reloads=True,
+EXCEL = HostApp("excel", "Excel", "Microsoft Excel", live=True)
+NUMBERS = HostApp("numbers", "Numbers", "Numbers", reloads=True,
                   note="Save the sheet as an Excel file (File > Export To > Excel…) so Quill can read it.")
-LIBREOFFICE = HostApp("libreoffice", "LibreOffice Calc", "soffice", "soffice.exe",
+LIBREOFFICE = HostApp("libreoffice", "LibreOffice Calc", "soffice",
                       note="Reload the file (File > Reload) to see the rows Quill added.")
-WPS = HostApp("wps", "WPS Office", "wpsoffice", "et.exe",
+WPS = HostApp("wps", "WPS Office", "wpsoffice",
               note="Reopen the file to see the rows Quill added.")
 
 APPS: tuple[HostApp, ...] = (EXCEL, NUMBERS, LIBREOFFICE, WPS)
@@ -134,10 +133,8 @@ class SpreadsheetHosts:
             paths = self._run(["ps", "-axo", "comm="]).splitlines()
             names = {pathlib.PurePosixPath(line.strip()).name.lower() for line in paths if line.strip()}
             return [a for a in APPS if a.mac_process and a.mac_process.lower() in names]
-        if self._platform == "win32":
-            lines = self._run(["tasklist", "/fo", "csv", "/nh"]).lower()
-            return [a for a in APPS if a.win_process and f'"{a.win_process.lower()}"' in lines]
-        return []
+        other = platforms.offered(self._platform, "hosts")                  # (Windows: its own provider)
+        return other.running(APPS, self._run) if other is not None else []
 
     def open_excel_files(self, prefer: tuple[str, ...] = ()) -> list[tuple[HostApp, pathlib.Path]]:
         """``.xlsx`` files that the running non-Excel programs have open (best effort, may be empty). *prefer*: paths to take
@@ -200,13 +197,9 @@ class SpreadsheetHosts:
         if self._platform == "darwin":
             bundle = self._MAC_BUNDLES.get(program)
             return bool(bundle) and any((root / bundle).is_dir() for root in (pathlib.Path("/Applications"), pathlib.Path.home() / "Applications"))
-        if self._platform == "win32":
-            roots = [os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")]
-            if program == "libreoffice":
-                return any((pathlib.Path(r) / "LibreOffice" / "program" / "soffice.exe").is_file() for r in roots)
-            if program == "excel":
-                return any(list(pathlib.Path(r, "Microsoft Office").glob("**/EXCEL.EXE")) for r in roots if pathlib.Path(r, "Microsoft Office").is_dir())
-            return False
+        other = platforms.offered(self._platform, "hosts")
+        if other is not None:
+            return other.installed(program)
         import shutil
         return program == "libreoffice" and shutil.which("soffice") is not None
 
@@ -225,9 +218,9 @@ class SpreadsheetHosts:
                 command = ["open", "-g", *(["-a", chosen] if chosen else []), str(path)]
                 return subprocess.run(command, capture_output=True, timeout=COMMAND_TIMEOUT_S,                # noqa: S603
                                       check=False).returncode == 0
-            if self._platform == "win32":
-                os.startfile(str(path))                       # type: ignore[attr-defined]  # noqa: S606
-                return True
+            other = platforms.offered(self._platform, "hosts")
+            if other is not None:
+                return other.launch(path, program)
             subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   # noqa: S603, S607
             return True
         except (OSError, subprocess.SubprocessError) as exc:
@@ -346,11 +339,12 @@ class SpreadsheetHosts:
                         found.append((located, sheet.strip()))
             return found
         # Other programs: the files named on their command line, then (Mac) the files the process holds open.
-        if self._platform == "win32":
-            return self._windows_documents(app)
+        other = platforms.offered(self._platform, "hosts")
+        if other is not None:
+            return other.documents(app, self._run)
         out = self._run(["ps", "-axo", "command="])
         out = "\n".join(line for line in out.splitlines() if app.mac_process.lower() in line.lower())
-        listed = self._on_command_line(out)
+        listed = files_named_in(out)
         if self._platform == "darwin" and app.mac_process:
             # A file opened from inside a running program (File > Open, or a double-click handed to it) is never on its
             # command line, so ask which spreadsheet files the process holds open (lsof needs no permission for our own).
@@ -363,26 +357,11 @@ class SpreadsheetHosts:
                         listed.append((path, ""))
         return listed
 
-    @staticmethod
-    def _on_command_line(text: str) -> list[tuple[pathlib.Path, str]]:
-        """Spreadsheet files named in *text* (a command line or several), as ``(path, '')``."""
-        return [(pathlib.Path(m.strip('" ')), "") for m in re.findall(r'[^"\n]+\.(?:xlsx|csv|tsv)', text)
-                if m.strip('" ').startswith(("/", "~")) or re.match(r'[A-Za-z]:\\', m.strip('" '))]
 
-    def _windows_documents(self, app: HostApp) -> list[tuple[pathlib.Path, str]]:
-        """Spreadsheets *app* has open on Windows.
-
-        STUB (Windows branch, to be built and tested on a Windows machine): today only the files on the program's command
-        line are found, through ``wmic``, which newer Windows 11 builds no longer ship. To do there:
-          1. Ask for the command lines with PowerShell (``Get-CimInstance Win32_Process -Filter "name='soffice.exe'"``) and
-             fall back to ``wmic`` only when PowerShell is unavailable.
-          2. Add the "files the process holds open" step that ``lsof`` gives on a Mac (for example ``handle.exe`` from
-             Sysinternals is not bundled, so use ``Get-Process`` modules / the Restart Manager API, or LibreOffice's and WPS's
-             ``~lock`` files, which sit beside every open document: ``.~lock.<name>#`` for LibreOffice).
-          3. Add tests with a fake runner, as the Mac ones do, and fill in the E2E checklist.
-        """
-        out = self._run(["wmic", "process", "where", f"name='{app.win_process}'", "get", "commandline"])
-        return self._on_command_line(out)
+def files_named_in(text: str) -> list[tuple[pathlib.Path, str]]:
+    """Spreadsheet files named in *text* (a command line or several), as ``(path, '')``."""
+    return [(pathlib.Path(m.strip('" ')), "") for m in re.findall(r'[^"\n]+\.(?:xlsx|csv|tsv)', text)
+            if m.strip('" ').startswith(("/", "~")) or re.match(r'[A-Za-z]:\\', m.strip('" '))]
 
 
 _LIST_NUMBERS = """

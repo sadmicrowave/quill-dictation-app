@@ -8,7 +8,6 @@ import openpyxl
 from quill.bridge.base import BridgeError
 from quill.bridge.factory import get_bridge
 from quill.bridge.mac_bridge import MacBridge
-from quill.bridge.win_bridge import WinBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.bridge.xlwings_bridge import XlwingsBridge
 from tests.fixtures import (FakeApp, FakeBook, FakeSheet, FakeXlwings, SPECIES, make_workbook)
@@ -110,18 +109,6 @@ class TestXlwingsBridge(unittest.TestCase):
             bridge.connect()
         self.assertIn("Automation", str(ctx.exception))
 
-    def test_xlwings_missing(self):
-        import sys
-        saved = sys.modules.get("xlwings")
-        sys.modules["xlwings"] = None  # forces ImportError
-        try:
-            with self.assertRaises(BridgeError):
-                WinBridge().connect()
-        finally:
-            if saved is None:
-                sys.modules.pop("xlwings", None)
-            else:
-                sys.modules["xlwings"] = saved
 
 
 class TestFactory(unittest.TestCase):
@@ -133,8 +120,6 @@ class TestFactory(unittest.TestCase):
         from unittest import mock
         with mock.patch.object(sys, "platform", "darwin"):
             self.assertIsInstance(get_bridge(), MacBridge)
-        with mock.patch.object(sys, "platform", "win32"):
-            self.assertIsInstance(get_bridge(), WinBridge)
         with mock.patch.object(sys, "platform", "linux"):
             with self.assertRaises(NotImplementedError):
                 get_bridge()

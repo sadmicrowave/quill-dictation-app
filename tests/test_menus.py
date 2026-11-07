@@ -133,9 +133,6 @@ class TestBuilt(unittest.TestCase):
         self.assertEqual(self.actions["quit"].menuRole(), QAction.MenuRole.QuitRole)
         self.assertEqual(self.actions["about"].menuRole(), QAction.MenuRole.AboutRole)
         self.assertEqual(self.actions["quit"].text(), "Quit Quill")
-        other = QMainWindow()
-        windows = QuillMenus({}, platform="win32").install(other.menuBar())
-        self.assertEqual(windows["quit"].text(), "Exit")
 
     def test_the_window_less_bar_is_only_built_on_macos(self):
         self.assertIsInstance(self.menus.install_default_bar(), QMenuBar)

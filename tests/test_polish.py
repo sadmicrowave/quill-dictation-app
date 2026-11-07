@@ -117,18 +117,6 @@ class TestTrayClick(unittest.TestCase):
         self.tray._on_activated(QSystemTrayIcon.ActivationReason.Trigger)
         self.assertEqual((self.started, self.stopped), ([], []))
 
-    def test_on_windows_a_left_click_pops_up_the_menu(self):
-        import quill.ui.tray as tray_module
-        shown = []
-        self.tray._menu.popup = lambda pos: shown.append(pos)
-        original = tray_module.sys.platform
-        tray_module.sys.platform = "win32"
-        try:
-            self.tray._on_activated(QSystemTrayIcon.ActivationReason.Trigger)
-        finally:
-            tray_module.sys.platform = original
-        self.assertEqual(len(shown), 1)
-        self.assertEqual((self.started, self.stopped), ([], []))
 
     def test_the_menu_item_still_toggles(self):
         self.tray.toggle_action.trigger()
