@@ -23,12 +23,18 @@ jobs:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
-    # Windows is allowed to fail until the windows branch has been merged and its first green run is seen.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    # Windows may fail on any branch except `windows` (main has no Windows provider until that branch is merged), and the
+    # experimental systems may fail anywhere: they are there to be looked at, not to block.
+    continue-on-error: ${{ matrix.experimental == true || (startsWith(matrix.os, 'windows') && github.ref_name != 'windows') }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        # macOS 26 (latest) and 15 on Apple Silicon, macOS 15 on Intel; Windows Server 2025 and 2022 (x64). GitHub offers no
+        # Windows 10 image and no 32-bit one (and Qt for Python has no 32-bit wheels), so those cannot be tested here.
+        os: [macos-26, macos-15, macos-15-intel, windows-2025, windows-2022]
+        include:
+          - os: windows-11-arm                   # Windows 11 on Arm: its wheels (Qt, Vosk) may not all exist yet
+            experimental: true
     env:
       QT_QPA_PLATFORM: offscreen
       QUILL_NO_SOUND: "1"          # no audio device on a runner
