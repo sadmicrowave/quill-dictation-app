@@ -15,6 +15,7 @@
 | *Could not save the row…* in red in the **Log** (it opens by itself) | The row is **kept** (nothing is lost). Quill only writes to the open sheet, and it doesn't have your columns. Open the sheet you are filling in, then say **"next row"** again |
 | Listening stopped by itself | Nothing was said for 10 seconds. Say **"start listening"** again, or change **Stop Listening When Quiet** in **Settings > General** |
 | Nothing happens when I talk | Say **"start listening"**; check microphone permission in your computer's privacy settings |
+| *… was closed* (an amber note under **Open File** in the Files panel) | You closed the spreadsheet window, so Quill stopped listening (nothing is lost) and the Start button shakes. Choose **Reopen** to open it again, or pick another file |
 | *File not connected* | Open your spreadsheet. Quill finds it in a few seconds. Pressing **Start** with none open shakes the button and opens the Files panel so you can pick one |
 | Mac asks about controlling your spreadsheet program | Choose **OK**. To undo: *System Settings > Privacy & Security > Automation* |
 | Quill doesn't know my lists | **Save** the sheet; Quill re-reads it. Lists must be real drop-downs (*Data > Data Validation > List*) |

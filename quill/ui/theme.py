@@ -399,6 +399,9 @@ QRadioButton::indicator {{ width: 14px; height: 14px; border-radius: 8px; border
 QRadioButton::indicator:checked {{ background: {t['accent']}; border: 1px solid {t['accent']}; }}
 QFrame#sidePanel {{ background: transparent; border: none; }}
 QFrame[panelEdge="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
+QFrame[closedNote="true"] {{ background: {rgba(t['warn'], 0.14)}; border: 1px solid {rgba(t['warn'], 0.55)}; border-radius: 10px; }}
+QLabel[closedTitle="true"] {{ background: transparent; color: {t['text']}; font-weight: 600; }}
+QLabel[closedBody="true"] {{ background: transparent; color: {t['text']}; }}
 QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
 QLineEdit[pillField="true"] {{ background: {PILL_BG}; color: {PILL_FG}; border: 1px solid {PILL_BG}; border-radius: 0; padding: 2px 6px;   /* square-cornered, like the pills in text */
               selection-background-color: {rgba(PILL_FG, 0.35)}; selection-color: {PILL_FG}; }}

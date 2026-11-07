@@ -117,6 +117,41 @@ class TestStartChecksFirst(PanelApp):
         self.assertFalse(self.app.connected)
         self.assertEqual(self.app.window.panel.file_button.text_label.full_text, "Open File")
 
+    def test_a_closed_file_shows_the_note_with_reopen_and_shakes_start(self):
+        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.app.refresh_open_files()                                            # it was open
+        self.hosts.files = []
+        self.app.window.toggle_button.shake_ms = 0                               # (the blink only: no swing in a test)
+        self.app.refresh_open_files()                                            # the look that finds it closed
+        panel = self.app.window.panel
+        self.assertFalse(self.app.connected)
+        self.assertFalse(panel.closed_note.isHidden())
+        self.assertEqual(panel.closed_title.text(), "plants.xlsx was closed")
+        self.assertIn("255, 59, 48", self.app.window.toggle_button.styleSheet())  # Start blinked red
+        self.assertEqual(self.app.window.panel_page, "file")                      # the Files panel is open
+        self.assertEqual(os.path.realpath(self.app._closed_file), os.path.realpath(self.plants))
+
+    def test_reopen_opens_that_file_again_and_clears_the_note(self):
+        self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
+        self.app.refresh_open_files()
+        self.hosts.files = []
+        self.app.refresh_open_files()
+        opened = []
+        self.app.open_workbook_file = lambda path, **kw: opened.append(str(path))
+        self.app.window.panel.reopen_button.click()
+        self.assertEqual([os.path.realpath(o) for o in opened], [os.path.realpath(self.plants)])
+        self.assertTrue(self.app.window.panel.closed_note.isHidden())
+
+    def test_dismiss_hides_the_note_and_connecting_a_file_clears_it(self):
+        panel = self.app.window.panel
+        panel.show_closed("plants.xlsx")
+        panel.dismiss_closed_button.click()
+        self.assertTrue(panel.closed_note.isHidden())
+        panel.show_closed("plants.xlsx")
+        self.app.connect_workbook(str(self.plants))                              # a file is connected again
+        self.assertTrue(self.app.connected)
+        self.assertTrue(panel.closed_note.isHidden())
+
     def test_start_with_the_window_open_goes_ahead(self):
         self.hosts.files = [OpenFile("plants.xlsx", str(self.plants), "Numbers")]
         self.app.toggle_listening(True)

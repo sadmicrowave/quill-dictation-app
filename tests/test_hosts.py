@@ -66,6 +66,36 @@ class TestOpenFiles(unittest.TestCase):
         found = SpreadsheetHosts("darwin", runner).open_excel_files()
         self.assertEqual(found, [(LIBREOFFICE, self.path)])
 
+    def test_a_file_opened_inside_a_running_libreoffice_is_found_from_its_open_files(self):
+        runner = FakeRunner({"comm=": "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+                             "command=": "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+                             "lsof": f"p1\nn/System/Library/Fonts/a.ttc\nn{self.path}\n"})
+        found = SpreadsheetHosts("darwin", runner).open_excel_files()
+        self.assertEqual(found, [(LIBREOFFICE, self.path)])
+
+    def test_a_libreoffice_file_on_the_command_line_and_in_lsof_is_listed_once(self):
+        line = f'/Applications/LibreOffice.app/Contents/MacOS/soffice --calc "{self.path}"'
+        runner = FakeRunner({"comm=": "/Applications/LibreOffice.app/Contents/MacOS/soffice", "command=": line, "lsof": f"n{self.path}\n"})
+        self.assertEqual(SpreadsheetHosts("darwin", runner).open_excel_files(), [(LIBREOFFICE, self.path)])
+
+    def test_a_file_opened_inside_a_running_wps_is_found_the_same_way(self):
+        runner = FakeRunner({"comm=": "/Applications/wpsoffice.app/Contents/MacOS/wpsoffice",
+                             "command=": "/Applications/wpsoffice.app/Contents/MacOS/wpsoffice", "lsof": f"n{self.path}\n"})
+        found = SpreadsheetHosts("darwin", runner).open_excel_files()
+        self.assertEqual([p for _, p in found], [self.path])
+        self.assertIn(["lsof", "-nP", "-c", "wpsoffice", "-Fn"], runner.calls)
+
+    def test_windows_still_reads_the_command_line_until_its_branch_is_built(self):
+        runner = FakeRunner({"tasklist": '"soffice.exe","2","Console"', "wmic": f'soffice.exe --calc "{self.path}"'})
+        found = SpreadsheetHosts("win32", runner).open_excel_files()
+        self.assertEqual(found, [(LIBREOFFICE, self.path)])
+
+    def test_the_most_recently_opened_of_two_same_named_files_wins(self):
+        other = make_file(tempfile.mkdtemp(dir=self.dir.name))
+        stamps = {str(self.path): "2026-11-06 10:00:00 +0000", str(other): "2026-11-01 10:00:00 +0000"}
+        runner = lambda args: stamps.get(args[-1], "") if args[0] == "mdls" else ""
+        self.assertEqual(SpreadsheetHosts("darwin", runner)._most_recently_used([self.path, other]), self.path)
+
     def test_files_that_are_not_excel_files_or_do_not_exist_are_ignored(self):
         runner = FakeRunner({"comm=": "/Applications/Numbers.app/Contents/MacOS/Numbers", "Numbers": "/x/a.numbers\n/x/missing.xlsx\n"})
         self.assertEqual(SpreadsheetHosts("darwin", runner).open_excel_files(), [])

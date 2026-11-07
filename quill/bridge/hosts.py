@@ -11,6 +11,7 @@ without any spreadsheet program installed.
 """
 
 from __future__ import annotations
+import datetime
 import logging
 import os
 import pathlib
@@ -282,7 +283,7 @@ class SpreadsheetHosts:
         if not matches:
             log.info("%s is open in a program, but no file with that name was found", stem)
             return None
-        newest = max(matches, key=lambda m: m.stat().st_mtime)
+        newest = self._most_recently_used(matches)
         self._remember_name(stem, newest)
         return newest
 
@@ -296,15 +297,34 @@ class SpreadsheetHosts:
             del self._found_by_name[next(iter(self._found_by_name))]
 
     #: Folders (besides the active file's own) where a document reported by name only is looked for first, by name.
-    _USUAL_FOLDERS = ("Desktop", "Documents", "Downloads")
+    _USUAL_FOLDERS = ("Desktop", "Documents", "Downloads", "Library/Mobile Documents/com~apple~CloudDocs",
+                      "Library/Mobile Documents/com~apple~Numbers/Documents", "Library/Mobile Documents/com~apple~Excel/Documents")
 
     def _beside(self, stem: str, prefer: tuple[str, ...]) -> pathlib.Path | None:
         """A file called *stem* (with a spreadsheet suffix) in the folder of a *prefer* path or in a usual folder: a plain
         look at those paths, which needs no Spotlight (it may not be allowed to search a cloud folder). Newest wins."""
-        folders = [pathlib.Path(p).parent for p in prefer] + [pathlib.Path.home() / name for name in self._USUAL_FOLDERS]
+        home = pathlib.Path.home()
+        folders = [pathlib.Path(p).parent for p in prefer] + [home / name for name in self._USUAL_FOLDERS]
+        cloud = home / "Library" / "CloudStorage"                       # Google Drive, Dropbox, OneDrive ... (one folder each)
+        if cloud.is_dir():
+            folders += [d for d in sorted(cloud.iterdir())[:12] if d.is_dir()] + [d / "My Drive" for d in sorted(cloud.iterdir())[:12]]
         found = [folder / f"{stem}{suffix}" for folder in folders for suffix in SUPPORTED_SUFFIXES
                  if (folder / f"{stem}{suffix}").is_file()]
-        return max(found, key=lambda f: f.stat().st_mtime) if found else None
+        return self._most_recently_used(found)
+
+    def _most_recently_used(self, paths: list[pathlib.Path]) -> pathlib.Path | None:
+        """The file among *paths* the user opened last (macOS records when each file was last opened, which is what
+        "the one open in the program now" usually is); a file with no such record is ranked by its modified time."""
+        def key(path: pathlib.Path) -> tuple[float, float]:
+            used = 0.0
+            if self._platform == "darwin" and len(paths) > 1:
+                text = self._run(["mdls", "-raw", "-name", "kMDItemLastUsedDate", str(path)]).strip()
+                try:
+                    used = datetime.datetime.strptime(text, "%Y-%m-%d %H:%M:%S %z").timestamp()
+                except ValueError:
+                    used = 0.0
+            return used, path.stat().st_mtime
+        return max(paths, key=key) if paths else None
 
     def _documents(self, app: HostApp, prefer: tuple[str, ...] = ()) -> list[pathlib.Path]:
         """Paths of the documents *app* has open."""
@@ -325,14 +345,44 @@ class SpreadsheetHosts:
                     if located is not None:
                         found.append((located, sheet.strip()))
             return found
-        # Other programs: the files named on their command line.
+        # Other programs: the files named on their command line, then (Mac) the files the process holds open.
         if self._platform == "win32":
-            out = self._run(["wmic", "process", "where", f"name='{app.win_process}'", "get", "commandline"])
-        else:
-            out = self._run(["ps", "-axo", "command="])
-            out = "\n".join(line for line in out.splitlines() if app.mac_process.lower() in line.lower())
-        return [(pathlib.Path(m.strip('" ')), "") for m in re.findall(r'[^"\n]+\.(?:xlsx|csv|tsv)', out)
+            return self._windows_documents(app)
+        out = self._run(["ps", "-axo", "command="])
+        out = "\n".join(line for line in out.splitlines() if app.mac_process.lower() in line.lower())
+        listed = self._on_command_line(out)
+        if self._platform == "darwin" and app.mac_process:
+            # A file opened from inside a running program (File > Open, or a double-click handed to it) is never on its
+            # command line, so ask which spreadsheet files the process holds open (lsof needs no permission for our own).
+            have = {os.path.realpath(path) for path, _ in listed}
+            for line in self._run(["lsof", "-nP", "-c", app.mac_process, "-Fn"]).splitlines():
+                if line.startswith("n/") and line.lower().endswith(SUPPORTED_SUFFIXES):
+                    path = pathlib.Path(line[1:])
+                    if os.path.realpath(path) not in have:
+                        have.add(os.path.realpath(path))
+                        listed.append((path, ""))
+        return listed
+
+    @staticmethod
+    def _on_command_line(text: str) -> list[tuple[pathlib.Path, str]]:
+        """Spreadsheet files named in *text* (a command line or several), as ``(path, '')``."""
+        return [(pathlib.Path(m.strip('" ')), "") for m in re.findall(r'[^"\n]+\.(?:xlsx|csv|tsv)', text)
                 if m.strip('" ').startswith(("/", "~")) or re.match(r'[A-Za-z]:\\', m.strip('" '))]
+
+    def _windows_documents(self, app: HostApp) -> list[tuple[pathlib.Path, str]]:
+        """Spreadsheets *app* has open on Windows.
+
+        STUB (Windows branch, to be built and tested on a Windows machine): today only the files on the program's command
+        line are found, through ``wmic``, which newer Windows 11 builds no longer ship. To do there:
+          1. Ask for the command lines with PowerShell (``Get-CimInstance Win32_Process -Filter "name='soffice.exe'"``) and
+             fall back to ``wmic`` only when PowerShell is unavailable.
+          2. Add the "files the process holds open" step that ``lsof`` gives on a Mac (for example ``handle.exe`` from
+             Sysinternals is not bundled, so use ``Get-Process`` modules / the Restart Manager API, or LibreOffice's and WPS's
+             ``~lock`` files, which sit beside every open document: ``.~lock.<name>#`` for LibreOffice).
+          3. Add tests with a fake runner, as the Mac ones do, and fill in the E2E checklist.
+        """
+        out = self._run(["wmic", "process", "where", f"name='{app.win_process}'", "get", "commandline"])
+        return self._on_command_line(out)
 
 
 _LIST_NUMBERS = """

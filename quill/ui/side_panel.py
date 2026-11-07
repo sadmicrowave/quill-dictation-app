@@ -387,6 +387,7 @@ class SidePanel(QFrame):
     """The panel itself (see the module notes). It starts closed: zero width and hidden."""
 
     open_file_requested = Signal()
+    reopen_requested = Signal()                 # the Reopen button of the "file was closed" note
     speech_models_requested = Signal()          # the link under the Speech Model drop-down
     speech_model_chosen = Signal(str)           # the key of the model picked in the Turn Options drop-down
     sheet_refresh_requested = Signal()          # the refresh icon beside Sheet
@@ -521,6 +522,54 @@ class SidePanel(QFrame):
         layout.setSpacing(6)
         return layout
 
+    def _build_closed_note(self) -> QFrame:
+        """The amber note that says the active file's window was closed, with the way back."""
+        note = QFrame()
+        note.setProperty("closedNote", True)
+        note.setProperty("keepMargins", True)
+        inner = QVBoxLayout(note)
+        inner.setContentsMargins(12, 10, 12, 10)
+        inner.setSpacing(4)
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(4)
+        self.closed_title = QLabel("")
+        self.closed_title.setProperty("closedTitle", True)
+        self.closed_title.setWordWrap(True)
+        top.addWidget(self.closed_title, 1, Qt.AlignmentFlag.AlignTop)
+        self.dismiss_closed_button = QPushButton("✕")           # closes the note (it also goes when a file is connected)
+        self.dismiss_closed_button.setToolTip("Dismiss")
+        self.dismiss_closed_button.setAccessibleName("Dismiss")
+        self.dismiss_closed_button.setFixedSize(22, 22)
+        self.dismiss_closed_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.dismiss_closed_button.setStyleSheet("QPushButton { border: none; background: transparent; padding: 0; }")
+        self.dismiss_closed_button.clicked.connect(self.hide_closed)
+        top.addWidget(self.dismiss_closed_button, 0, Qt.AlignmentFlag.AlignTop)
+        inner.addLayout(top)
+        body = QLabel("Quill stopped listening. Nothing was lost.")
+        body.setProperty("closedBody", True)
+        body.setWordWrap(True)
+        inner.addWidget(body)
+        buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 4, 0, 0)
+        self.reopen_button = QPushButton("Reopen")
+        self.reopen_button.setProperty("accent", True)
+        self.reopen_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reopen_button.clicked.connect(self.reopen_requested)
+        buttons.addWidget(self.reopen_button)
+        buttons.addStretch(1)
+        inner.addLayout(buttons)
+        note.setVisible(False)
+        return note
+
+    def show_closed(self, name: str) -> None:
+        """Say that *name* was closed (shown until a file is connected again, or dismissed)."""
+        self.closed_title.setText(f"{name} was closed")
+        self.closed_note.setVisible(True)
+
+    def hide_closed(self) -> None:
+        self.closed_note.setVisible(False)
+
     def _build_file_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
@@ -535,6 +584,8 @@ class SidePanel(QFrame):
         self.file_button = FileButton()
         self.file_button.clicked.connect(self.open_file_requested)
         layout.addWidget(self.file_button)
+        self.closed_note = self._build_closed_note()             # "<file> was closed": under the Open File button, hidden until then
+        layout.addWidget(self.closed_note)
         table = QGridLayout()                                    # facts about the file: labels and values line up, no borders
         table.setContentsMargins(0, 2, 0, 2)
         table.setHorizontalSpacing(14)

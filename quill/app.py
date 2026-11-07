@@ -203,6 +203,7 @@ class QuillApp:
         self._ready_note_pending = False             # the model is ready but a warning is showing: the note waits for a connection
         self._open_files: list[OpenFile] = []        # spreadsheets other programs have open (the side panel's list)
         self._open_files_busy = False                # the check loop's look is under way (never two at once)
+        self._closed_file = ""                          # the file that was closed (Reopen opens it again)
         self._attach_paused = False                  # Quill let go of a closed file: it picks no other file by itself until one is chosen
         self._seen_open = ""                           # the connected file's real path once a look found it open (see _check_link)
         self._look_again: tuple[bool, bool, list] | None = None   # a look asked for meanwhile: (manual, announce, callbacks)
@@ -391,6 +392,7 @@ class QuillApp:
         if warning:
             self.window.append_log(warning, "warning")
         self.window.set_not_connected(False)
+        self.window.panel.hide_closed()
         if self._ready_note_pending and self.listener is not None and not self._mic_open:
             self._ready_note_pending = False
             self.window.append_log(READY_NOTE)
@@ -1052,6 +1054,7 @@ class QuillApp:
         self.sync_model_panel()
         panel.open_file_requested.connect(self.choose_spreadsheet_file)
         panel.file_chosen.connect(self._panel_pick)
+        panel.reopen_requested.connect(self._reopen_closed)
         panel.refresh_requested.connect(lambda: self.refresh_open_files(manual=True))
         panel.speech_model_chosen.connect(self.choose_speech_model)
         panel.sheet_refresh_requested.connect(lambda: self.refresh_active_sheet(quiet=False))
@@ -1396,7 +1399,7 @@ class QuillApp:
             return                                                      # (never seen open, e.g. just after start-up: Start opens it)
         self._seen_open = ""
         self._attach_paused = True                                      # (it waits for the user to choose, however many files are open)
-        closed = bridge.workbook_name
+        closed, closed_path = bridge.workbook_name, bridge.workbook_path
         self.settings.preferences["workbook_file"] = ""             # (a restart starts with no file, like the first time)
         self.settings.save()
         self.controller.detach()
@@ -1412,6 +1415,10 @@ class QuillApp:
         self.window.set_not_connected(True)
         self.window.append_log(f"{closed} was closed in your spreadsheet program, so Quill let go of it. "
                                "Open it again, or pick another file.", "warning")
+        self._closed_file = closed_path
+        self.window.panel.show_closed(closed)                           # the note under Open File, with Reopen
+        self.window.open_panel(FILE_PAGE)
+        self.window.toggle_button.alert()                               # Start shakes: the file dropped away
 
     def _attach_live_if_open_in_excel(self) -> bool:
         """Working on an .xlsx file that Excel now has open: work through Excel itself instead, so there is no file for
@@ -1456,6 +1463,13 @@ class QuillApp:
             where = f"\nOpen in {active.app}" if active.app else ""
             entries.insert(0, (active.name, f"{active.path or active.name}{where}\nThe file Quill is working on.", active, True))
         self.window.panel.set_available(entries)
+
+    def _reopen_closed(self) -> None:
+        """Reopen button of the "file was closed" note: open that file again (in its own program) and work on it."""
+        path, self._closed_file = self._closed_file, ""
+        self.window.panel.hide_closed()
+        if path:
+            self.open_workbook_file(path)
 
     def _panel_pick(self, entry: OpenFile) -> None:
         """A spreadsheet was picked in the panel's list: work on it (it moves up to the active section)."""
