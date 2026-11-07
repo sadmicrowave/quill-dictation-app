@@ -377,3 +377,22 @@ class TestTheNativeProcessList(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSheetNotSavedYet(unittest.TestCase):
+    """A sheet that the program shows but the saved file does not have: said once, and Quill stays on its last sheet."""
+
+    def test_the_warning_is_logged_once_per_sheet(self):
+        import types
+        from quill.app import QuillApp
+        logged = []
+        app = types.SimpleNamespace(
+            _unsaved_sheet="", controller=types.SimpleNamespace(bridge=types.SimpleNamespace(sheet_names=lambda: ["Sheet1"])),
+            window=types.SimpleNamespace(append_log=lambda text, level="info", **kw: logged.append((level, text))))
+        QuillApp._warn_sheet_not_saved(app, "Sheet2")
+        QuillApp._warn_sheet_not_saved(app, "Sheet2")
+        self.assertEqual(len(logged), 1)
+        self.assertEqual(logged[0][0], "warning")
+        self.assertIn("not in the saved file", logged[0][1])
+        QuillApp._warn_sheet_not_saved(app, "Sheet1")                      # a sheet the file has: nothing to say
+        self.assertEqual(len(logged), 1)

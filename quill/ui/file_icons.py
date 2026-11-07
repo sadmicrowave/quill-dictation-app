@@ -27,21 +27,27 @@ EXCEL = ('<rect x="6.8" y="2.6" width="7.6" height="4.3" fill="#31925B"/><rect x
 #: A white page with a folded corner; the pictures below go in its middle.
 PAGE = ('<path d="M5 3h9l5 5v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#FFFFFF" stroke="#B8B8B8" stroke-width="1"/>'
         '<path d="M14 3v5h5" fill="#E4E4E4" stroke="#B8B8B8" stroke-width="1"/>')
-WORDS = {"csv": "CSV", "libreoffice": "LIB"}                     # what a page says when the type has its own word
+WORDS = {"csv": "CSV"}                     # what a page says when the type has its own word
 TEXT = "#555555"                                               # the colour of the words and letters on a page
-TILES = {"numbers": ("#3E8E2F", BARS)}                         # a coloured tile behind a picture
+#: LibreOffice Calc, flat: a teal-green rounded tile with a white sheet (a grid of 2 columns and 3 rows).
+GRID = ('<rect x="5.5" y="5" width="13" height="14" rx="1.6" fill="#FFFFFF"/><path d="M12 5v14M5.5 9.7h13M5.5 14.3h13" '
+        'stroke="#1F8F6A" stroke-width="1.2" fill="none"/>')
+TILES = {"numbers": ("#3E8E2F", BARS), "libreoffice": ("#1F8F6A", GRID)}      # a coloured tile behind a picture
 EXTENSIONS = {".xlsx": "excel", ".xlsm": "excel", ".xls": "excel", ".numbers": "numbers", ".ods": "libreoffice",
               ".csv": "csv", ".tsv": "csv"}
 
 
 def kind_for(name: str, program: str = "") -> str:
-    """Which tile a file gets: by its type (an .xlsx is an Excel workbook whichever program shows it), else by the program
-    showing it, else "" (a plain page with the extension)."""
-    kind = EXTENSIONS.get(os.path.splitext(name)[1].lower(), "")
-    if kind:
-        return kind
+    """Which tile a file gets: the program showing it when that is known (an .xlsx open in LibreOffice is LibreOffice's tile,
+    because that is what the user sees), else its type (.xlsx: Excel), else "" (a plain page with the extension).
+
+    *program* may be a program name ("LibreOffice Calc") or a description ("Excel (.xlsx), open in LibreOffice Calc": the part
+    after "open in" is the program)."""
     program = program.lower()
-    return next((key for key in ("excel", "numbers", "libreoffice") if key in program), "")
+    if "open in " in program:
+        program = program.split("open in ", 1)[1]
+    shown = next((key for key in ("excel", "numbers", "libreoffice") if key in program), "")
+    return shown or EXTENSIONS.get(os.path.splitext(name)[1].lower(), "")
 
 
 def svg_for(name: str, program: str = "") -> str:

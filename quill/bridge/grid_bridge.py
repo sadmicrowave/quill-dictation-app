@@ -149,6 +149,10 @@ class GridBridge(WorkbookBridge):
     def active_sheet_name(self) -> str:
         return self._require().active_sheet()
 
+    def sheet_names(self) -> list[str]:
+        """The sheets the file has."""
+        return self._require().sheet_names()
+
     def set_active_sheet(self, name: str) -> bool:
         grid = self._require()
         return grid.active_sheet() == name or grid.set_active(name)

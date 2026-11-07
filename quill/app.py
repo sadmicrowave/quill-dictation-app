@@ -210,6 +210,7 @@ class QuillApp:
         self._launched_at: dict[str, float] = {}        # when a program was last asked to open each file (see _launch)
         self._start_wanted = False                      # Start was pressed while the file was not yet open in a program
         self._waiting_viewer = False
+        self._unsaved_sheet = ""                      # the sheet last reported as not saved yet
         self._viewer_looks = 0
         self._viewer_running = False
         self._host_noted = False
@@ -609,6 +610,8 @@ class QuillApp:
             if sheet and sheet != bridge.active_sheet_name():
                 if bridge.set_active_sheet(sheet):
                     changed = self.controller.follow_sheet()
+                else:
+                    self._warn_sheet_not_saved(sheet)
             else:
                 changed = self.controller.follow_sheet()                # (a live program: it says which sheet is open)
         except BridgeError as exc:
@@ -617,6 +620,15 @@ class QuillApp:
         self._show_active_sheet()
         if not quiet and not changed:
             self.window.append_log(f"Checked: sheet '{bridge.active_sheet_name()}' is the one open.")
+
+    def _warn_sheet_not_saved(self, sheet: str) -> None:
+        """The program shows a sheet that the saved file does not have (added or renamed since the last save)."""
+        names = getattr(self.controller.bridge, "sheet_names", lambda: [])()
+        if sheet in names or self._unsaved_sheet == sheet:
+            return                                                       # (said once per sheet, not at every look)
+        self._unsaved_sheet = sheet
+        self.window.append_log(f"Sheet '{sheet}' is open in your spreadsheet program but is not in the saved file yet, so Quill "
+                               "stays on its last sheet. Save the file (keep the format) and Quill will use it.", "warning")
 
     def _show_active_sheet(self) -> None:
         """Tell the window which sheet is open (the folder icon's hover text names it)."""
