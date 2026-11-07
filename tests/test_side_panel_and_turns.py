@@ -315,7 +315,7 @@ class NoMirror:
         return self.sheet
 
     def push(self, path, changes):
-        from quill.bridge.numbers_mirror import MirrorResult
+        from quill.platforms.macos.numbers_mirror import MirrorResult
         self.pushed.append((path, list(changes)))
         return MirrorResult(self.has, "ok" if self.has else "nodoc")
 

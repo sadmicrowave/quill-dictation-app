@@ -2,7 +2,7 @@
 
 Concrete implementations:
   platforms/windows/bridge.py — Windows, live Excel via xlwings COM (on the windows branch)
-  mac_bridge.py   — macOS, live Excel via xlwings + AppleScript
+  platforms/macos/bridge.py — macOS, live Excel via xlwings + AppleScript
   xlsx_bridge.py  — file-based (openpyxl); no Excel needed, used for
                     testing and as a fallback when Excel is unavailable
 

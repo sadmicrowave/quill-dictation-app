@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication
 from quill.app import QuillApp
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.grid import MAX_CHANGES, OpenpyxlGrid
-from quill.bridge.numbers_mirror import FIELD, SCRIPT, MirrorResult, NumbersMirror, cell_argument
+from quill.platforms.macos.numbers_mirror import FIELD, SCRIPT, MirrorResult, NumbersMirror, cell_argument
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
 from tests.fixtures import make_workbook

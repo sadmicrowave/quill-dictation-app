@@ -1,6 +1,6 @@
 """Live editing in LibreOffice Calc: the cells Quill writes to the file are also set in the open LibreOffice document.
 
-Like :mod:`quill.bridge.numbers_mirror`, but LibreOffice has no AppleScript for cells and its own Python cannot be
+Like the Numbers mirror (:mod:`quill.platforms.macos.numbers_mirror`), but LibreOffice has no AppleScript for cells and its own Python cannot be
 used from outside (it is not allowed to run on a Mac without being opened once by hand). What every LibreOffice does
 offer is: starting ``soffice`` with a script address while it is running hands the request to the running instance,
 which runs the script inside itself. So Quill puts one small script in the user's LibreOffice profile, writes the cells
@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from quill import platforms
-from quill.bridge.numbers_mirror import MirrorResult
+from quill.bridge.mirror import MirrorResult
 
 from quill.bridge.processes import running_executables
 

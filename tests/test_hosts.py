@@ -92,7 +92,7 @@ class TestOpenFiles(unittest.TestCase):
         other = make_file(tempfile.mkdtemp(dir=self.dir.name))
         stamps = {str(self.path): "2026-11-06 10:00:00 +0000", str(other): "2026-11-01 10:00:00 +0000"}
         runner = lambda args: stamps.get(args[-1], "") if args[0] == "mdls" else ""
-        self.assertEqual(SpreadsheetHosts("darwin", runner)._most_recently_used([self.path, other]), self.path)
+        self.assertEqual(SpreadsheetHosts("darwin", runner)._os._most_recently_used([self.path, other]), self.path)
 
     def test_files_that_are_not_excel_files_or_do_not_exist_are_ignored(self):
         runner = FakeRunner({"comm=": "/Applications/Numbers.app/Contents/MacOS/Numbers", "Numbers": "/x/a.numbers\n/x/missing.xlsx\n"})
