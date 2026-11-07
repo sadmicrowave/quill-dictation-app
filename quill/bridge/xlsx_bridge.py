@@ -81,7 +81,7 @@ class XlsxBridge(GridBridge):
             opener(str(self._path))
         else:
             try:
-                subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(self._path)],    # noqa: S603, S607
+                subprocess.run(["xdg-open", str(self._path)],    # noqa: S603, S607
                                check=False, timeout=OPEN_TIMEOUT_S, capture_output=True)
             except (OSError, subprocess.SubprocessError) as exc:      # (it never hangs or raises: it only asks)
                 log.debug("could not open %s: %s", self._path, exc)

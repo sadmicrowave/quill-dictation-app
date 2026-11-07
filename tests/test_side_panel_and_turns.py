@@ -2063,7 +2063,7 @@ class TestTextsAndMenus(PanelApp):
 class TestTitleBarScale(unittest.TestCase):
     def test_every_window_gets_a_toolbar_so_its_bar_and_buttons_are_the_larger_size(self):
         from quill.platforms.macos import chrome
-        from tests.test_titlebar_and_refresh import FakeAppKit
+        from tests.macos.test_titlebar_and_refresh import FakeAppKit
 
         calls = []
 
@@ -2803,7 +2803,7 @@ class TestSettingsRound5(unittest.TestCase):
 class TestTitleBarIconStates(unittest.TestCase):
     def test_leaving_a_panel_clears_the_icons_fill_and_a_stuck_hover(self):
         from quill.platforms.macos import chrome
-        from tests.test_titlebar_and_refresh import FakeAppKit
+        from tests.macos.test_titlebar_and_refresh import FakeAppKit
 
         class Button:
             def __init__(self): self._on = False; self._hover = True; self.refreshed = 0

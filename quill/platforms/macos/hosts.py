@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 from quill.bridge.hosts import SUPPORTED_SUFFIXES, files_named_in
-from quill.bridge.processes import running_executables
+from quill.platforms.macos.processes import running_executables as _native_list
 
 log = logging.getLogger("quill.hosts")
 
@@ -41,7 +41,7 @@ class MacHosts:
 
     def running(self, apps) -> list:
         """The programs of *apps* that are running now (the Mac name of each is its ``mac_process``)."""
-        native = running_executables() if self._native else None
+        native = (None if os.environ.get("QUILL_NO_HOSTS") else _native_list()) if self._native else None
         if native is not None:                           # the system's own list: no process is started
             return [a for a in apps if a.mac_process and a.mac_process.lower() in native]
         # `ps` needs no permission, unlike asking System Events, which would show Quill's users a

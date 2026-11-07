@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from typing import Callable
 
 from quill import platforms
-from quill.bridge.processes import running_executables
 
 log = logging.getLogger("quill.hosts")
 
