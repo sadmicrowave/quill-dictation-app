@@ -38,7 +38,8 @@ class TestWindowsChrome(unittest.TestCase):
         self.assertTrue(wchrome.windows_chrome(1, True, COLORS, picky))
 
     def test_without_dwm_nothing_happens(self):
-        self.assertFalse(wchrome.windows_chrome(1, True, COLORS))      # no ctypes.windll here
+        with mock.patch.object(wchrome, "_dwm_setter", lambda: None):      # (on a real Windows the call would exist)
+            self.assertFalse(wchrome.windows_chrome(1, True, COLORS))
 
 class TestWindowsBlur(unittest.TestCase):
     def test_acrylic_backdrop_and_extended_frame_when_blurred(self):
