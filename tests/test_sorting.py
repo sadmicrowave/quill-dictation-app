@@ -327,7 +327,8 @@ class TestSortingWindow(unittest.TestCase):
         self.win.widget.resize(320, 300)
         self.win.show()
         need = self.win.rows[0].sizeHint().width() + 2 * SortingWindow.MARGIN
-        self.assertGreaterEqual(self.win.widget.width(), min(need, 1000))
+        room = self.win.widget.screen().availableGeometry().width() - 40            # (never beyond the screen)
+        self.assertGreaterEqual(self.win.widget.width(), min(need, 1000, room))
 
     def test_the_list_has_small_margins_and_no_frame(self):
         from PySide6.QtWidgets import QFrame

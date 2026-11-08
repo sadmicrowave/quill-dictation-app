@@ -7,8 +7,24 @@ os.environ.setdefault("QUILL_NO_HOSTS", "1")   # ... and never ask the system wh
 
 
 import pathlib
+import sys
 
 import pytest
+
+if sys.platform == "win32":
+    # Qt's offscreen platform sees no installed fonts on a Windows machine ("Sans Serif" is missing and the fallback is about
+    # twice as wide), which makes every text-width test measure the wrong thing. A font shipped with the tests (DejaVu Sans, a
+    # free font) gives them the same text on every machine.
+    from PySide6.QtGui import QFont, QFontDatabase
+    from PySide6.QtWidgets import QApplication, QToolTip
+
+    _qt_app = QApplication.instance() or QApplication([])
+    _font_id = QFontDatabase.addApplicationFont(str(pathlib.Path(__file__).parent / "tests" / "fonts" / "DejaVuSans.ttf"))
+    _families = QFontDatabase.applicationFontFamilies(_font_id) if _font_id >= 0 else []
+    if _families:
+        _ui_font = QFont(_families[0], 9)
+        _qt_app.setFont(_ui_font)
+        QToolTip.setFont(_ui_font)
 
 SLOW_LIST = pathlib.Path(__file__).parent / "tests" / "slow_tests.txt"
 

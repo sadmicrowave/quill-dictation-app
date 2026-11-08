@@ -1004,7 +1004,8 @@ class TestTermHelperPlacement(unittest.TestCase):
     def test_it_cannot_be_made_narrower_than_a_row_and_grows_with_the_font(self):
         self.sw.show()
         narrow = self.sw.widget.minimumWidth()
-        self.assertGreaterEqual(narrow, self.sw.rows[0].sizeHint().width())
+        room = self.sw.widget.screen().availableGeometry().width() - 40                # (never beyond the screen)
+        self.assertGreaterEqual(narrow, min(self.sw.rows[0].sizeHint().width(), room))
         font = self.sw.widget.font()
         font.setPointSize(font.pointSize() + 8)
         self.sw.widget.setFont(font)
