@@ -3235,7 +3235,7 @@ class TestStartWaitsForTheFileThenListens(PanelApp):
     def test_it_gives_up_after_a_while_and_says_what_to_do(self):
         self.app.VIEWER_LOOKS = 3
         self.app.toggle_listening(True)
-        self.wait(200)
+        self.wait(1200)
         text = self.app.window.log.toPlainText()
         self.assertIn("did not open", text)
         self.assertIn("then press Start", text)

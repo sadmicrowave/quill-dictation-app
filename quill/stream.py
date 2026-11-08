@@ -28,6 +28,9 @@ class WordMatch:
     command: bool = False
     """True if the word is part of a spoken command ("next row"); the stream leaves those words out."""
 
+    span: int | None = None
+    """Which understood value the word belongs to: words with the same span are one value ("you hear me") and share one pill."""
+
 
 def match_words(words: list[str], vocab: Vocabulary, matcher: CommandMatcher | None = None,
                 today: dt.date | None = None) -> list[WordMatch]:
@@ -50,10 +53,10 @@ def match_words(words: list[str], vocab: Vocabulary, matcher: CommandMatcher | N
         return matches
 
     result = parse(" ".join(tokens), vocab, today or dt.date.today())
-    for start, end, column in result.spans:
+    for number, (start, end, column) in enumerate(result.spans):
         for k in range(start, min(end, len(tokens))):
             if not matches[owner[k]].known:
-                matches[owner[k]] = WordMatch(True, column)
+                matches[owner[k]] = WordMatch(True, column, span=number)
 
     if matcher is not None:
         for k in matcher.command_positions(" ".join(tokens)):

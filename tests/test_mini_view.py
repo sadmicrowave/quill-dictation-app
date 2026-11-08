@@ -568,6 +568,19 @@ class TestStreamWordColours(unittest.TestCase):
         self.assertNotIn("#ededed", styles["hello"])                         # muted now
         self.assertIn("background-color:#7a55c2", styles["black"])           # the pill
 
+    def test_the_words_of_one_value_share_one_pill(self):
+        from quill.stream import WordMatch
+        self.w.set_stream_classifier(lambda words: [
+            WordMatch(True, "Name", span=0) if word in ("you", "hear", "me") else WordMatch(False) for word in words])
+        self.w.add_stream_text("can you hear me")
+        self.assertEqual([text for _, text in self.colours() if text and "can" not in text], ["you hear me"])
+
+    def test_two_values_in_a_row_stay_two_pills(self):
+        from quill.stream import WordMatch
+        self.w.set_stream_classifier(lambda words: [WordMatch(True, "Name", span=n // 2) for n, _ in enumerate(words)])
+        self.w.add_stream_text("a b c d")
+        self.assertEqual([text for _, text in self.colours()], ["a b", "c d"])
+
     def test_removing_a_column_takes_the_pill_off_its_words(self):
         self.w.add_stream_text("hello black")
         self.w.unmatch_stream_column("Color")

@@ -61,7 +61,7 @@ class StreamGraph(QWidget):
     STEP = 2.0                  # pixels between two readings
     TURN = 0.24                 # how far the sine turns between two readings (radians)
     LEAD = 9.0                  # room kept at the left so the green glow is not cut off by the edge
-    QUIET = 0.16                # how tall the lines are with no voice at all (share of the full height)
+    QUIET = 0.04                # how tall the lines are with no voice at all (share of the full height)
 
     def __init__(self) -> None:
         super().__init__()
@@ -121,7 +121,8 @@ class StreamGraph(QWidget):
         rate = 0.55 if self._target > self._level else 0.18          # quick to rise, slower to fall
         self._level += (self._target - self._level) * rate
         self._target *= 0.85                                          # silence between updates lets it fall away
-        self._samples.appendleft((self._level ** 0.7, self._count * self.TURN))      # (a curve that lifts the quieter voices)
+        shaped = min(1.0, self._level * 1.7) ** 1.35                        # (a curve that keeps a low voice flat and lets a loud one swing wide)
+        self._samples.appendleft((shaped, self._count * self.TURN))
         self._count += 1
         room = int((self.width() - self.LEAD) / self.STEP) + 2
         while len(self._samples) > room:
@@ -133,7 +134,10 @@ class StreamGraph(QWidget):
         half = max(self.height() / 2 - 3.0, 1.0)
         cy = self.height() / 2
         points = []
-        for i, (level, turn) in enumerate(self._samples):
+        readings = list(self._samples)
+        for i, (_, turn) in enumerate(readings):
+            near = readings[max(i - 3, 0):i + 4]
+            level = sum(r[0] for r in near) / len(near)               # (neighbours blended: soft arches)
             x = i * self.STEP
             edge = min(1.0, x / 14.0, max(self.width() - self.LEAD - x, 0.0) / 14.0)        # (the ends settle onto the centre line)
             amp = half * share * (self.QUIET + (1.0 - self.QUIET) * level) * edge
@@ -160,8 +164,9 @@ class StreamGraph(QWidget):
             if len(points) < 2:
                 continue
             path = QPainterPath(points[0])
-            for point in points[1:]:
-                path.lineTo(point)
+            for a, b in zip(points[1:], points[2:]):                  # a spline: curves through the mid-points, the readings steer it
+                path.quadTo(a, (a + b) / 2)
+            path.lineTo(points[-1])
             gradient = QLinearGradient(0, 0, w, 0)
             top = _alpha(self._line, self._line.alphaF() * alpha)
             gradient.setColorAt(0.0, top)

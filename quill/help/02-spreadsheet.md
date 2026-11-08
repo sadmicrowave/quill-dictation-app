@@ -76,7 +76,7 @@ Always the sheet that is **open** (the active tab). Quill never tries another sh
 - **The box that says "Words you say appear here…"**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
 - **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover it).
 - **Last Saved**: the row written last, on the right of the footer (the strip along the bottom of the window). It only appears after the first save.
-- **The footer** holds small icon buttons that all look the same size. The **bug** button opens and closes the **Log**: it is filled with the accent colour while the Log is open and plain when it is closed (the View menu's Log entry does the same, **⌥⌘L**). The Log is a record of what happened. Each line starts with its time; a long message wraps back to where the message starts, not under the time.
+- **The footer** holds small icon buttons that all look the same size. The **bug** button opens and closes the **Log**: it gets the same soft grey rounded highlight as the title bar's buttons while the Log is open and is plain when it is closed (the View menu's Log entry does the same, **⌥⌘L**). The Log is a record of what happened. Each line starts with its time; a long message wraps back to where the message starts, not under the time.
 
 The window opens at the smallest size it can be (and never gets smaller). The mini view remembers its own size; if you close Quill in the mini view, it opens in the mini view again.
 

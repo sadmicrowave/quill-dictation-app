@@ -148,12 +148,15 @@ class TermRow(QFrame):
         top.addWidget(self.prompt)
         top.addSpacing(PROMPT_GAP)                    # room between the question and its controls
         top.addWidget(self.hint)
-        controls = QHBoxLayout()
+        controls = QHBoxLayout()                       # the words and their column ...
         controls.addWidget(self.edit, 1)
         controls.addWidget(self.combo)
-        for button in (self.match_button, self.add_button, self.same_button, self.ignore_button):
-            controls.addWidget(button)
         top.addLayout(controls)
+        answers = QHBoxLayout()                        # ... and, on a row of their own, the ways to answer
+        for button in (self.match_button, self.add_button, self.same_button, self.ignore_button):
+            answers.addWidget(button)
+        answers.addStretch(1)
+        top.addLayout(answers)
 
         apply_spacing(self)
         self.combo.currentIndexChanged.connect(self._update_enabled)
@@ -425,6 +428,7 @@ class SortingWindow:
     #: Told ``(x, y, width)`` once the window has been moved or resized (the app remembers it).
     on_geometry: Callable[[int, int, int], None] | None = None
     _placed = False
+    _sized = False
     _corner = False
     _saved_place: tuple[int, int, int] | None = None
 
@@ -448,8 +452,6 @@ class SortingWindow:
         room = screen.availableGeometry()
         if self._saved_place is not None:
             x, y, width = self._saved_place
-            if width > 0:
-                window.resize(max(width, window.minimumWidth()), window.height())
             spot = QPoint(x, y)
             if any(s.availableGeometry().contains(spot) for s in window.screen().virtualSiblings()):
                 window.move(spot)
@@ -693,7 +695,12 @@ class SortingWindow:
         if screen is not None:
             need = min(need, screen.availableGeometry().width() - 40)
         window.setMinimumWidth(max(need, 320))             # never narrower than a row: no sideways scroll bar (it grows with the font)
-        if window.width() < need:
+        if not self._sized:                                # the first time in a run the width follows the widest row; a width the user
+            self._sized = True                             # left that is far wider than any row needs (an old, one-line layout) is dropped
+            saved = self._saved_place[2] if self._saved_place else 0
+            keep = 0 < saved <= need * 1.25
+            window.resize(max(saved if keep else need, need), window.height())
+        elif window.width() < need:
             window.resize(need, window.height())
 
     def add_all(self) -> None:

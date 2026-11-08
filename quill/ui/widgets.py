@@ -354,15 +354,15 @@ class Pill(QLabel):
 
 class FooterButton(QPushButton):
     """An icon button of the window's footer. All of them are the same size; one that is *on* (its panel is open) is drawn
-    selected, in the accent colour, and goes back to the plain look when it is off.
+    selected, with the same muted fill as the title bar's buttons, and goes back to the plain look when it is off.
 
     Args:
         icon_name: The icon (see :mod:`quill.ui.icons`).
         tip: What it does; the words are kept off the button, so the footer can hold several.
     """
 
-    SIZE = (36, 28)
-    ICON = 16
+    SIZE = (30, 22)
+    ICON = 14
 
     def __init__(self, icon_name: str, tip: str = "") -> None:
         super().__init__()

@@ -94,7 +94,7 @@ ROW_MAX_FULL = 150
 ROW_MAX_MINI = 66
 
 #: Space left below the "Log" heading when the log is minimized, in pixels.
-LOG_BOTTOM_MARGIN = 7
+LOG_BOTTOM_MARGIN = 4
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
 MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and opens at it the first time
@@ -453,7 +453,7 @@ class MainWindow:
         self.footer.setObjectName("windowFooter")
         self.footer.setProperty("keepMargins", True)
         footer_row = QHBoxLayout(self.footer)
-        footer_row.setContentsMargins(0, 5, 0, 0)
+        footer_row.setContentsMargins(0, 2, 0, 0)
         footer_row.setSpacing(6)
         footer_row.setProperty("keepSpacing", True)
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
@@ -1518,10 +1518,28 @@ class MainWindow:
         muted = self.stream.palette().placeholderText().color().name()
 
         def draw(items, unknown_color: str) -> str:
-            return " ".join(
-                f'<span style="{pill}">&nbsp;{html.escape(word)}&nbsp;</span>' if match.known
-                else f'<span style="color:{unknown_color}">{html.escape(word)}</span>'
-                for word, match in items)
+            pieces: list[str] = []
+            run: list[str] = []                         # the words of the value being gathered: one pill for all of them
+            run_span = None
+
+            def close() -> None:
+                nonlocal run, run_span
+                if run:
+                    pieces.append(f'<span style="{pill}">&nbsp;{" ".join(run)}&nbsp;</span>')
+                run, run_span = [], None
+
+            for word, match in items:
+                if match.known and match.span is not None:
+                    if run and match.span != run_span:
+                        close()
+                    run.append(html.escape(word))
+                    run_span = match.span
+                    continue
+                close()
+                pieces.append(f'<span style="{pill}">&nbsp;{html.escape(word)}&nbsp;</span>' if match.known
+                              else f'<span style="color:{unknown_color}">{html.escape(word)}</span>')
+            close()
+            return " ".join(pieces)
 
         parts = [p for p in (draw(self._stream_words, muted), draw(self._stream_partial, self._text_color)) if p]
         self.stream.setHtml(f'<div style="font-style:italic">{" ".join(parts)}</div>' if parts else "")
@@ -1650,7 +1668,7 @@ class MainWindow:
         self.panel.set_colors(text_color, accent)
         self.row_grip.set_color(text_color)
         self.log_grip.set_color(text_color)
-        self.log_toggle.set_colors(text_color, on_accent)
+        self.log_toggle.set_colors(text_color, text_color)
         self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")

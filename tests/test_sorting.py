@@ -223,6 +223,21 @@ class TestSortingWindow(unittest.TestCase):
         self.win = SortingWindow(self.vocab, lambda k, d, t: self.calls.append((k, d, t)))
         self.win.setup()
 
+    def test_the_answers_sit_on_a_row_under_the_words_and_the_column(self):
+        self.win.set_items([(None, "navy")])
+        row = self.win.rows[0]
+        row.show()
+        self.assertLess(row.edit.geometry().bottom(), row.add_button.geometry().top())
+        self.assertLess(row.combo.geometry().bottom(), row.same_button.geometry().top())
+        self.assertEqual(row.add_button.geometry().top(), row.ignore_button.geometry().top())
+
+    def test_the_window_opens_as_wide_as_its_widest_row(self):
+        self.win.set_items([(None, "navy")])
+        self.win.show()
+        need = self.win.widget.minimumWidth()
+        self.assertEqual(self.win.widget.width(), need)
+        self.assertLess(need, 520)
+
     def test_it_is_a_normal_window_that_stays_when_focus_leaves(self):
         from PySide6.QtCore import Qt
         flags = self.win.widget.windowFlags()

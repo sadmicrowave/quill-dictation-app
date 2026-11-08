@@ -352,10 +352,8 @@ QPushButton[outline="true"][iconOnly="true"] {{ border-color: {t['accent']}; }}
 /* The Start button paints itself (see listen_button.py): nothing from the style sheet. */
 QPushButton[listenButton="true"] {{ background: transparent; border: none; padding: 0; }}
 /* The window's footer: flat icon buttons that fill with the accent while their panel is open. */
-QPushButton[footerButton="true"] {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 0; }}
-QPushButton[footerButton="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
-QPushButton[footerButton="true"]:checked {{ background: {t['accent']}; border-color: {t['accent']}; }}
-QPushButton[footerButton="true"]:checked:hover {{ background: {t['accent_hover']}; border-color: {t['accent_hover']}; }}
+QPushButton[footerButton="true"] {{ background: transparent; border: none; border-radius: 6px; padding: 0; }}
+QPushButton[footerButton="true"]:hover, QPushButton[footerButton="true"]:checked {{ background: {rgba(t['text'], 0.14 if dark else 0.10)}; }}
 QFrame#windowFooter {{ background: transparent; border: none; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
 QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}
