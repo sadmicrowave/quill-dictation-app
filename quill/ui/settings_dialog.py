@@ -245,6 +245,7 @@ class SettingsDialog:
         self.auto_sort_check: ToggleSwitch | None = None
         self.mic_check: ToggleSwitch | None = None
         self.auto_stop_check: ToggleSwitch | None = None
+        self.noise_check: ToggleSwitch | None = None
         self.auto_stop_spin: QSpinBox | None = None
         self.mini_top_check: ToggleSwitch | None = None
         self.dock_check: ToggleSwitch | None = None
@@ -432,7 +433,8 @@ class SettingsDialog:
         self.nav.viewport().installEventFilter(self._nav_cursor)
         self._original = copy.deepcopy(self._settings.preferences)
         for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
-                        self.dock_check, self.updates_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check):
+                        self.dock_check, self.updates_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check,
+                        self.noise_check):
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
@@ -467,6 +469,7 @@ class SettingsDialog:
         prefs["auto_voice_sort"] = self.auto_sort_check.isChecked()
         prefs["mic_always_on"] = self.mic_check.isChecked()
         prefs["auto_stop"] = self.auto_stop_check.isChecked()
+        prefs["noise_filter"] = self.noise_check.isChecked()
         prefs["auto_stop_seconds"] = self.auto_stop_spin.value()
         prefs["mini_on_top"] = self.mini_top_check.isChecked()
         prefs["hide_dock_icon"] = self.dock_check.isChecked()
@@ -826,6 +829,13 @@ class SettingsDialog:
         start.blockSignals(True)                                           # (the saved choice is not a change)
         start.setChecked(True)
         start.blockSignals(False)
+        self.noise_check = ToggleSwitch()
+        self.noise_check.setChecked(bool(prefs["noise_filter"]))
+        self._add("Speech Model", page, "Reduce Background Noise",
+                  "Keeps fans, traffic and other sounds from being turned into words: a filter for low rumble and a gate that learns how "
+                  "loud your room is and listens only when something clearly louder (you) is speaking. Turn it off if Quill misses "
+                  "quiet speech. Takes effect the next time you press Start.",
+                  self.noise_check, "noise background filter gate fan room quiet sensitivity")
         self._model_note = ""
         self.set_model_state("", False)
         page.addStretch(1)

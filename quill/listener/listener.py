@@ -22,6 +22,7 @@ import threading
 from array import array
 from typing import Callable, ContextManager
 from quill.diagnostics import exc_kind, syslog
+from quill.listener.noise import NoiseGate
 
 log = logging.getLogger("quill.listener")
 
@@ -45,7 +46,10 @@ def _default_model_loader(path: pathlib.Path):
 
 def _default_recognizer(model, sample_rate: int):
     from vosk import KaldiRecognizer
-    return KaldiRecognizer(model, sample_rate)
+    recognizer = KaldiRecognizer(model, sample_rate)
+    if hasattr(recognizer, "SetWords"):
+        recognizer.SetWords(True)                 # each word comes with how sure the recogniser is of it (see MIN_WORD_CONFIDENCE)
+    return recognizer
 
 
 def _default_stream(sample_rate: int, push: Callable[[bytes], None]):
@@ -58,6 +62,12 @@ def _default_stream(sample_rate: int, push: Callable[[bytes], None]):
         samplerate=sample_rate, blocksize=1600, dtype="int16", channels=1, callback=on_audio
     )
 
+
+#: A word the recogniser is less sure of than this is dropped (room noise comes out as low-confidence words).
+MIN_WORD_CONFIDENCE = 0.55
+#: A phrase of this many words or fewer is dropped when its average confidence is below ``SHORT_PHRASE_CONFIDENCE``.
+SHORT_PHRASE_WORDS = 2
+SHORT_PHRASE_CONFIDENCE = 0.75
 
 #: The most audio kept for the second pass: 30 seconds of 16-bit samples at 16 kHz.
 MAX_PHRASE_BYTES = 30 * 16_000 * 2
@@ -98,6 +108,9 @@ class Listener:
         self._on_partial = on_partial
         self._last_partial = ""
         self._on_level: Callable[[float], None] | None = None
+        self._gate: NoiseGate | None = None      # optional: lets only a voice through (see :meth:`set_noise_filter`)
+        self._on_notice: Callable[[str], None] | None = None
+        self._noticed = False
         self._refiner = None                     # optional second pass over each finished phrase (Whisper)
         self._phrase_audio = bytearray()         # the audio of the phrase being spoken, for that second pass
         self._model_loader = model_loader
@@ -147,6 +160,14 @@ class Listener:
     def set_refiner(self, refiner) -> None:
         """Have each finished phrase re-read by *refiner* (``refine(pcm) -> str | None``); None turns it off."""
         self._refiner = refiner
+
+    def set_noise_filter(self, enabled: bool, on_notice: Callable[[str], None] | None = None) -> None:
+        """Keep background noise away from the recogniser (a high-pass filter and a noise gate that adapts to the room); *on_notice*
+        is told once, in words, when the room is too noisy for good results. Takes effect the next time the microphone opens."""
+        self._noise_filter = bool(enabled)
+        self._on_notice = on_notice
+
+    _noise_filter = False
 
     def set_level_callback(self, callback: Callable[[float], None] | None) -> None:
         """Be told how loud the user's voice is (0 to 1) for every chunk of audio (on the listener's thread)."""
@@ -217,6 +238,8 @@ class Listener:
             if self._model is None:
                 self._model = self._model_loader(self._model_path)
             recognizer = self._recognizer_factory(self._model, self._sample_rate)
+            self._gate = NoiseGate(self._sample_rate) if self._noise_filter else None
+            self._noticed = False
             with self._stream_factory(self._sample_rate, self._audio.put):
                 while self._running:
                     if self._drain.is_set():
@@ -230,6 +253,9 @@ class Listener:
                         continue
                     if self._muted.is_set():
                         continue
+                    if self._gate is not None:
+                        chunk, _ = self._gate.process(chunk)             # the room becomes silence; a voice goes through
+                        self._note_noise()
                     if self._on_level is not None:
                         self._on_level(self.loudness(chunk))
                     if self._refiner is not None:
@@ -248,6 +274,29 @@ class Listener:
         finally:
             self._clear_queue()
 
+    def _note_noise(self) -> None:
+        """Once, say so when the room is too noisy for good recognition."""
+        gate = self._gate
+        if gate is not None and gate.noisy and not self._noticed and self._on_notice is not None:
+            self._noticed = True
+            self._on_notice("The room is noisy, which makes the words less accurate. Move closer to the microphone, or pick a "
+                            "different input in System Settings > Sound.")
+
+    @staticmethod
+    def _clean(result: dict) -> str:
+        """The text of a Vosk result without its doubtful words: those the recogniser was not sure of, and a very short phrase it
+        was not sure of overall (room noise). Results with no word details are taken as they are."""
+        text = str(result.get("text", "")).strip()
+        words = result.get("result")
+        if not text or not isinstance(words, list) or not words or not all(isinstance(w, dict) and "conf" in w for w in words):
+            return text
+        kept = [w for w in words if float(w.get("conf", 1.0)) >= MIN_WORD_CONFIDENCE]
+        if not kept:
+            return ""
+        if len(kept) <= SHORT_PHRASE_WORDS and sum(float(w["conf"]) for w in kept) / len(kept) < SHORT_PHRASE_CONFIDENCE:
+            return ""
+        return " ".join(str(w.get("word", "")) for w in kept).strip()
+
     @staticmethod
     def _read_partial(recognizer) -> str:
         try:
@@ -264,7 +313,7 @@ class Listener:
     def _emit(self, result_json: str) -> None:
         audio, self._phrase_audio = bytes(self._phrase_audio), bytearray()
         try:
-            text = json.loads(result_json).get("text", "").strip()
+            text = self._clean(json.loads(result_json))
         except (ValueError, AttributeError):
             return
         if text and self._refiner is not None and audio:

@@ -35,6 +35,7 @@ from quill import diagnostics, platforms, support, updates
 from quill.bridge.mirror import MirrorResult, NullMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
+from quill.parser.fillers import FILLER_WORDS
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.feedback import spoken_words, Feedback
@@ -115,6 +116,7 @@ class Relay(QObject):
     partial = Signal(str)           # words of the phrase still being spoken
     level = Signal(float)           # how loud the user's voice is (0 to 1), about ten times a second
     error = Signal(str)
+    notice = Signal(str)            # something worth telling the user while listening (for example, a noisy room)
     progress = Signal(int, int)
     model_ready = Signal(object)   # pathlib.Path on success, None on failure
     background_done = Signal(object, object)   # (callback, result) of a task that ran off the GUI thread
@@ -328,6 +330,7 @@ class QuillApp:
         self.relay.lo_event.connect(self._lo_event)
         self.relay.transcript.connect(self.controller.handle_transcript)
         self.relay.error.connect(self._on_error)
+        self.relay.notice.connect(lambda text: self.window.append_log(text, "warning", safe="The room is noisy"))
         self.relay.progress.connect(self._on_progress)
         self.relay.model_ready.connect(self._on_model_ready)
         qapp.styleHints().colorSchemeChanged.connect(self._system_scheme_changed)
@@ -1054,6 +1057,7 @@ class QuillApp:
         set_level = getattr(self.listener, "set_level_callback", None)
         if set_level is not None:
             set_level(self.relay.level.emit)                          # the sound lines follow the user's voice
+        self._apply_noise_filter()
         preload = getattr(self.listener, "preload", None)
         if preload is not None:
             preload()                                   # load the model now; the mic stays off
@@ -1064,6 +1068,12 @@ class QuillApp:
                 self.window.append_log(READY_NOTE, safe="Speech model ready")
             else:
                 self._ready_note_pending = True               # no "ready, press Start" next to a warning: say it once a file is connected
+
+    def _apply_noise_filter(self) -> None:
+        """Give the listener the noise-filter setting (it takes effect the next time the microphone opens)."""
+        set_filter = getattr(self.listener, "set_noise_filter", None)
+        if set_filter is not None:
+            set_filter(bool(self.settings.preferences["noise_filter"]), self.relay.notice.emit)
 
     def mic_wanted(self) -> bool:
         """Should the microphone be open right now?
@@ -2105,7 +2115,8 @@ class QuillApp:
         """A phrase still being spoken: show it in the Voice Stream."""
         if self.window.listening:
             self.window.set_stream_partial(text)
-            self._restart_quiet_timer()
+            if text.strip() and text.strip().lower() not in FILLER_WORDS:      # (an empty partial, or a lone "the", is not someone speaking)
+                self._restart_quiet_timer()
 
     def _mini_window_resized(self, width: int, height: int) -> None:
         """Remember the mini view's size, separately from the full window's."""
@@ -2172,6 +2183,7 @@ class QuillApp:
         if quality != self._loaded_quality and self.listener is not None and self.quality_installed(quality):
             self._reload_listener()                          # the user chose the other speech model
             self.window.append_log(f"Now listening with the {QUALITY_LABELS[quality]} speech model", safe=("Now listening with the %s speech model", QUALITY_LABELS[quality]))
+        self._apply_noise_filter()
         self._sync_mic()
         self._restart_quiet_timer()
         self.controller.lead_in_s = self.feedback.lead_in_s()

@@ -642,3 +642,8 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 - **Delete-and-redo.** `Controller.remove_field` remembers a deleted line that had words around it (`_Redo`); if, within the next two phrases of the same row, the same sort of value (date / number) lands in another column *the user named* (not one Quill guessed: `session.context` marks guesses), `_check_redo` offers the usual "Remember ...?" lesson. "next row" / "delete row" end it (`Session.row_ended`, also with nothing to save).
 - Tests: `tests/test_menus.py`, `tests/test_learning_amounts_redo.py`.
 
+
+
+## Background noise (listener)
+
+`quill/listener/noise.py` keeps the room out of the recogniser: a one-pole **high-pass** filter (about 100 Hz) and a **noise gate** that learns the room's quiet level (the quietest 5% of the last eight seconds), opens only for sound at least 2.5 times that (never below an RMS of 350) and for 0.4 s after, and otherwise hands Vosk *silence* of the same length (so a phrase still ends when the speaker stops). The voice lines on the Start button read the gated audio, so they stay flat for the room. `Listener._clean` also drops words Vosk reports below 0.55 confidence (it is asked for word details) and a phrase of two words or fewer whose average is below 0.75. `Settings > Speech Model > Reduce Background Noise` (`noise_filter`, on by default) turns it off; the Listener itself has it off unless `set_noise_filter(True)` is called, so tests that push fake bytes are unaffected. A room that is noisy after two seconds is reported once through `Relay.notice` into the Log. A lone filler word in a partial phrase no longer restarts the quiet timer.
