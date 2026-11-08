@@ -70,6 +70,18 @@ def make_demo_workbook(folder: pathlib.Path | None = None) -> pathlib.Path:
         column = get_column_letter(HEADERS.index(header) + 1)
         for row in range(2, 6):
             inventory[f"{column}{row}"].number_format = "yyyy-mm-dd"
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    thin = Side(style="thin", color="DDD6EE")
+    for cell in inventory[1]:                                   # a clear header row, so the sheet looks cared for on screen
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="7A55C2")
+        cell.alignment = Alignment(vertical="center")
+    for row in inventory.iter_rows(min_row=2, max_row=24, max_col=len(HEADERS)):
+        for cell in row:
+            cell.border = Border(bottom=thin)
+    for index, name in enumerate(HEADERS, start=1):
+        inventory.column_dimensions[get_column_letter(index)].width = 26 if name == "Notes" else (16 if "Date" in name or "Price" in name else 13)
+    inventory.row_dimensions[1].height = 24
     wb.save(path)
     return path
 
@@ -162,22 +174,26 @@ class Demo:
         """The story for the promo video, in real time: Start, a row spoken word by word with the voice lines moving, Next Row (it
         appears in the open spreadsheet), a second row with words Quill does not know, and the Term Helper answering them by voice."""
         self.reset()
-        row_one = "black t-shirt large nike good condition purchase price thirty five dollars bought it yesterday"
-        row_two = "teal hoodie medium nineties vintage"
+        row_one = "black t-shirt men nike good condition purchase price thirty five dollars bought it yesterday"
+        row_two = "teal hoodie women large patagonia vintage excellent condition"
         words_one = row_one.split()
-        steps: list[tuple[int, Callable[[], None]]] = [(0, self._listen), (900, lambda: self._speak(6200))]
+        steps: list[tuple[int, Callable[[], None]]] = [(0, self._listen), (700, lambda: self._speak(4900))]
         for n in range(1, len(words_one) + 1):
-            steps.append((560 if n > 1 else 300, lambda n=n: self._partial(" ".join(words_one[:n]))))
+            steps.append((400 if n > 1 else 250, lambda n=n: self._partial(" ".join(words_one[:n]))))
         steps.append((500, lambda: self._phrase(row_one)))
         steps.append((900, lambda: self._speak(900)))
         steps.append((500, lambda: self._say_command("next row")))
-        steps.append((1800, lambda: self._speak(3000)))
+        steps.append((1500, lambda: self._speak(3600)))
         words_two = row_two.split()
         for n in range(1, len(words_two) + 1):
-            steps.append((520 if n > 1 else 200, lambda n=n: self._partial(" ".join(words_two[:n]))))
+            steps.append((420 if n > 1 else 200, lambda n=n: self._partial(" ".join(words_two[:n]))))
         steps.append((500, lambda: self._phrase(row_two)))
         steps.append((900, lambda: self._speak(900)))
         steps.append((500, lambda: self._say_command("next row")))
+        steps.append((1700, self._app.toggle_voice_sorting))                 # the Term Helper is open: answer it by voice
+        for text, gap in (("color", 1300), ("yes", 1000), ("ignore", 1000), ("same as l", 1000)):
+            steps.append((gap, lambda: self._speak(650)))
+            steps.append((700, lambda text=text: self._say_command(text)))
         self._steps(steps)
 
     # ------------------------------------------------------------------ #
