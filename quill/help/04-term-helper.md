@@ -42,6 +42,8 @@ The columns on screen are the context: if you say a word that isn't a column but
 | **"Later"** | move to the end |
 | **"Add all"** / **"Ignore all"** | everything at once: all the rows flash and leave together, then the Term Helper closes and the main window comes back to the front, ready for the next row |
 
+What you say to the Term Helper (*yes*, *color*, *same as XL*, *ignore*) is an answer, not dictation: it shows in the Term Helper, and never in the heard words of the row you are building.
+
 If you press **Start** in the main window while the Term Helper is open, voice sorting ends and what you say goes into the row again; new unknown words join the Term Helper list.
 | **"Undo"** | take back the last answer |
 | **"Done"** | leave voice sorting |

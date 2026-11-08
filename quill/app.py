@@ -2126,16 +2126,23 @@ class QuillApp:
         """What Quill makes of each word heard (understood words are drawn as pills in the Voice Stream)."""
         return match_words(words, self.controller.vocab, self.controller.session.matcher)
 
+    def _answering(self) -> bool:
+        """Is what is being said an answer (to the Term Helper by voice, or to a question Quill asked) and not dictation? Answers are
+        commands: they are shown in the Term Helper, never as heard words of the row being built."""
+        return self.controller.voice_sorter is not None or self.controller.session.awaiting_answer
+
     def _on_phrase_heard(self, text: str) -> None:
-        """A finished phrase: add it to the Voice Stream while Quill is listening."""
+        """A finished phrase: add it to the Voice Stream while Quill is listening (an answer to a question is not dictation)."""
         if self.window.listening:
-            self.window.add_stream_text(text)
+            if not self._answering():
+                self.window.add_stream_text(text)
             self._restart_quiet_timer()
 
     def _on_partial_heard(self, text: str) -> None:
         """A phrase still being spoken: show it in the Voice Stream."""
         if self.window.listening:
-            self.window.set_stream_partial(text)
+            if not self._answering():
+                self.window.set_stream_partial(text)
             if text.strip() and text.strip().lower() not in FILLER_WORDS:      # (an empty partial, or a lone "the", is not someone speaking)
                 self._restart_quiet_timer()
 

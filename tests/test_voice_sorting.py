@@ -287,6 +287,23 @@ class TestListeningOnlyForAnswers(AppVoiceCase):
         self.assertNotIn("banana", words)
 
 
+class TestAnswersAreNotHeardWords(AppVoiceCase):
+    def test_what_is_said_to_the_term_helper_never_lands_in_the_heard_words_of_the_row(self):
+        quill = self.make()
+        self.hear(quill, "start listening", SENTENCE, "next row")
+        quill.sorting.voice_button.click()
+        before = quill.window.stream.toPlainText()
+        quill.relay.partial.emit("yes")
+        self.hear(quill, "yes", "same as xl")
+        self.assertEqual(quill.window.stream.toPlainText(), before)                 # the answers are in the Term Helper, not the row
+        quill.controller.stop_voice_sort()
+        self.hear(quill, "black t-shirt")                                             # then the next row starts with its own words only
+        text = quill.window.stream.toPlainText().lower()
+        self.assertIn("black", text)
+        self.assertNotIn("yes", text)
+        self.assertNotIn("same as", text)
+
+
 class TestAppVoiceSorting(AppVoiceCase):
     def setUp(self):
         self.quill = self.make()
