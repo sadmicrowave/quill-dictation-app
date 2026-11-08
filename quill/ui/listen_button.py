@@ -442,7 +442,12 @@ class ListenButton(QPushButton):
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         radius = RADIUS
         capsule = QColor(f["capsule"])
-        if self.isDown():
+        if f["state"] == "none":                                     # (a see-through capsule: hover and press deepen its tint a little)
+            if self.isDown():
+                capsule.setAlphaF(min(1.0, capsule.alphaF() + 0.10))
+            elif self.underMouse():
+                capsule.setAlphaF(min(1.0, capsule.alphaF() + 0.05))
+        elif self.isDown():
             capsule = _mix(capsule, "#000000", 0.12)
         elif self.underMouse():
             capsule = _mix(capsule, "#FFFFFF", 0.07)
