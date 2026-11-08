@@ -60,6 +60,7 @@ class StreamGraph(QWidget):
     FRAME_MS = 40
     STEP = 2.0                  # pixels between two readings
     TURN = 0.24                 # how far the sine turns between two readings (radians)
+    LEAD = 9.0                  # room kept at the left so the green glow is not cut off by the edge
     QUIET = 0.16                # how tall the lines are with no voice at all (share of the full height)
 
     def __init__(self) -> None:
@@ -122,7 +123,7 @@ class StreamGraph(QWidget):
         self._target *= 0.85                                          # silence between updates lets it fall away
         self._samples.appendleft((self._level ** 0.7, self._count * self.TURN))      # (a curve that lifts the quieter voices)
         self._count += 1
-        room = int(self.width() / self.STEP) + 2
+        room = int((self.width() - self.LEAD) / self.STEP) + 2
         while len(self._samples) > room:
             self._samples.pop()
         self.update()
@@ -134,9 +135,9 @@ class StreamGraph(QWidget):
         points = []
         for i, (level, turn) in enumerate(self._samples):
             x = i * self.STEP
-            edge = min(1.0, x / 14.0, max(self.width() - x, 0.0) / 14.0)        # (the ends settle onto the centre line)
+            edge = min(1.0, x / 14.0, max(self.width() - self.LEAD - x, 0.0) / 14.0)        # (the ends settle onto the centre line)
             amp = half * share * (self.QUIET + (1.0 - self.QUIET) * level) * edge
-            points.append(QPointF(x, cy + amp * math.sin(turn + offset)))
+            points.append(QPointF(self.LEAD + x, cy + amp * math.sin(turn + offset)))
         return points
 
     def paintEvent(self, event) -> None:                             # noqa: N802 (Qt name)
@@ -173,9 +174,9 @@ class StreamGraph(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
         painter.setPen(Qt.PenStyle.NoPen)                             # the green glow where the newest sound enters
-        for radius, alpha in ((11.0, 0.10), (7.5, 0.18), (4.4, 0.36)):
+        for radius, alpha in ((8.5, 0.10), (6.0, 0.18), (3.6, 0.38)):
             painter.setBrush(_alpha(self._glow, alpha))
-            painter.drawEllipse(QPointF(2, cy), radius, radius)
+            painter.drawEllipse(QPointF(self.LEAD, cy), radius, radius)
         painter.end()
 
 

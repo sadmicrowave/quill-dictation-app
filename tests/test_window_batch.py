@@ -209,7 +209,7 @@ class TestVoiceReactiveWave(unittest.TestCase):
         for _ in range(5):
             graph._tick()
         self.assertEqual(graph._samples[5], newest)                 # five readings later it is five steps to the right
-        self.assertEqual(graph.trace()[5].x(), 5 * graph.STEP)
+        self.assertEqual(graph.trace()[5].x(), graph.LEAD + 5 * graph.STEP)
 
     def test_it_never_keeps_more_readings_than_the_graph_is_wide(self):
         graph = self.graph()
