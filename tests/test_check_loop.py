@@ -304,8 +304,8 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
             runner = FakeRunner({"osascript": "ok"})
             SpreadsheetHosts("darwin", runner).reload(NUMBERS, path)
             command = runner.calls[0]
-            self.assertEqual(command[:3], ["osascript", "-e", mac_hosts._RELOAD_NUMBERS])
-            self.assertEqual(command[3:], [path])
+            self.assertEqual(command[:5], ["osascript", "-l", "JavaScript", "-e", mac_hosts._RELOAD_NUMBERS])
+            self.assertEqual(command[5:], [path])
 
     def test_a_spotlight_name_cannot_close_its_quote(self):
         for name in ("x'c || kMDItemFSName == '*", "y\\'", "z'"):

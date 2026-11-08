@@ -14,7 +14,8 @@ from PySide6.QtWidgets import QApplication
 from quill.app import QuillApp
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.grid import MAX_CHANGES, OpenpyxlGrid
-from quill.platforms.macos.numbers_mirror import FIELD, SCRIPT, MirrorResult, NumbersMirror, cell_argument
+from quill.platforms.macos.numbers_mirror import (ACTIVE_SHEET, FIELD, OSASCRIPT, PROBE, SCRIPT, MirrorResult, NumbersMirror,
+                                                  cell_argument)
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
 from tests.fixtures import make_workbook
@@ -76,15 +77,15 @@ class TestPushing(Env):
         result = mirror.push("/x/My Plants.xlsx", [("Inventory", 4, 1, "Fern"), ("Inventory", 4, 2, "Small")])
         self.assertTrue(result.ok)
         args = run.calls[0]
-        self.assertEqual(args[:3], ["osascript", "-e", SCRIPT])
-        self.assertEqual(args[3], "My Plants")                            # the name Numbers gives an imported file
-        self.assertEqual(len(args), 6)
+        self.assertEqual(args[:5], ["osascript", "-l", "JavaScript", "-e", SCRIPT])
+        self.assertEqual(args[5], "My Plants")                            # the name Numbers gives an imported file
+        self.assertEqual(len(args), 8)
 
     def test_values_are_never_part_of_the_script_text(self):
         mirror, run = mirror_with()
         hostile = 'x" & (do shell script "rm -rf ~") & "'
         mirror.push("/x/a.xlsx", [("Sheet", 1, 1, hostile)])
-        self.assertNotIn("rm -rf", run.calls[0][2])
+        self.assertNotIn("rm -rf", run.calls[0][4])
         self.assertIn(hostile, run.calls[0][-1])                           # it travels as a plain argument
 
     def test_nothing_to_show_asks_nothing(self):
@@ -110,18 +111,17 @@ class TestPushing(Env):
 
     def test_the_document_is_found_by_name_with_or_without_the_numbers_extension(self):
         self.assertEqual(NumbersMirror.document_name("/a/b/Apparel Inventory.xlsx"), "Apparel Inventory")
-        self.assertIn('n starts with (docName & ".")', SCRIPT.replace("docTitle", "n"))
+        self.assertIn('title.indexOf(docName + ".") === 0', SCRIPT)
 
-    def test_the_script_never_starts_numbers_and_avoids_its_reserved_words(self):
-        self.assertTrue(SCRIPT.index('application "Numbers" is not running') < SCRIPT.index('tell application "Numbers"'))
-        import re
-        for word in ("kind", "value", "name", "row", "column", "text", "date", "table"):
-            self.assertIsNone(re.search(rf"\bset {word} to\b", SCRIPT), word)          # (a variable by that name breaks inside the tell)
+    def test_the_script_never_starts_numbers(self):
+        self.assertTrue(SCRIPT.index("app.running()") < SCRIPT.index("findDocument(app, argv[0])"))
 
-    def test_text_items_are_split_outside_the_tell_block(self):
-        self.assertIn("on splitFields", SCRIPT)
-        tell = SCRIPT[SCRIPT.index('tell application "Numbers"'): SCRIPT.index("on splitFields")]
-        self.assertNotIn("text items", tell)
+    def test_the_scripts_are_javascript_not_applescript(self):
+        # (the Numbers that ships now answers AppleScript's "documents" with nothing; JavaScript for Automation works)
+        self.assertEqual(OSASCRIPT, ["osascript", "-l", "JavaScript", "-e"])
+        for script in (SCRIPT, PROBE, ACTIVE_SHEET):
+            self.assertIn("function run(argv)", script)
+            self.assertNotIn("tell application", script)
 
 
 class TestWrittenCellsAreRemembered(unittest.TestCase):
@@ -426,8 +426,8 @@ class TestAskingWhetherAProgramHasTheFile(unittest.TestCase):
         mirror, run = mirror_with(0, "ok")
         self.assertTrue(mirror.has_document("/x/plants.xlsx"))
         self.assertEqual(run.calls[0][-1], "plants")
-        self.assertIn("documents", run.calls[0][2])
-        self.assertNotIn("set value", run.calls[0][2])
+        self.assertIn("documents", run.calls[0][4])
+        self.assertNotIn("set value", run.calls[0][4])
         self.assertFalse(mirror_with(0, "nodoc")[0].has_document("/x/p.xlsx"))
         self.assertFalse(mirror_with(0, "notrunning")[0].has_document("/x/p.xlsx"))
 
@@ -470,8 +470,8 @@ class TestAskingWhichSheetIsOpen(unittest.TestCase):
         mirror, run = mirror_with(0, "sheet:2024")
         self.assertEqual(mirror.active_sheet("/x/Apparel Inventory SAMPLE.xlsx"), "2024")
         self.assertEqual(run.calls[0][-1], "Apparel Inventory SAMPLE")
-        self.assertIn("active sheet", run.calls[0][2])
-        self.assertNotIn("set value", run.calls[0][2])
+        self.assertIn("activeSheet()", run.calls[0][4])
+        self.assertNotIn("set value", run.calls[0][4])
         for answer in ("nodoc", "notrunning", "", "sheet:"):
             self.assertIsNone(mirror_with(0, answer)[0].active_sheet("/x/a.xlsx"))
         self.assertIsNone(mirror_with(1, "sheet:2024")[0].active_sheet("/x/a.xlsx"))

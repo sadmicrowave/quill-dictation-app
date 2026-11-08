@@ -66,7 +66,7 @@ class MacHosts:
 
     def reload(self, app, path) -> bool:
         """Ask *app* (Numbers) to load *path* again after Quill saved it."""
-        return bool(self._run(["osascript", "-e", _RELOAD_NUMBERS, str(path)]).strip() == "ok")
+        return bool(self._run(["osascript", "-l", "JavaScript", "-e", _RELOAD_NUMBERS, str(path)]).strip() == "ok")
 
     #: Where a file found by name is not taken from (the Trash, and programs' own cache, support, container and mail folders;
     #: cloud drives, which live under ``Library/CloudStorage``, are fine).
@@ -152,7 +152,7 @@ class MacHosts:
     def documents(self, app, prefer: tuple[str, ...] = ()) -> list[tuple[pathlib.Path, str]]:
         """``(path, open sheet)`` of the documents *app* has open (the sheet is '' where the program does not say)."""
         if app.key == "numbers":
-            out = self._run(["osascript", "-e", _LIST_NUMBERS])
+            out = self._run(["osascript", "-l", "JavaScript", "-e", _LIST_NUMBERS])
             found: list[tuple[pathlib.Path, str]] = []
             for line in (l.strip("\r\n") for l in out.splitlines() if l.strip()):
                 parts = line.split("\t")
@@ -182,42 +182,38 @@ class MacHosts:
 
 
 _LIST_NUMBERS = """
-tell application "Numbers"
-  set out to ""
-  repeat with d in documents
-    set docName to ""
-    set docPath to ""
-    set sheetName to ""
-    try
-      set docName to name of d
-    end try
-    try
-      set docPath to POSIX path of (file of d as alias)
-    end try
-    try
-      set sheetName to name of active sheet of d
-    end try
-    set out to out & docName & tab & docPath & tab & sheetName & linefeed
-  end repeat
-  return out
-end tell
+function run() {
+  const app = Application("Numbers");
+  if (!app.running()) return "";
+  const documents = app.documents();
+  let out = "";
+  for (let i = 0; i < documents.length; i++) {
+    let name = "", path = "", sheet = "";
+    try { name = documents[i].name(); } catch (e) {}
+    try { const file = documents[i].file(); if (file) path = String(file); } catch (e) {}
+    try { sheet = documents[i].activeSheet().name(); } catch (e) {}
+    out += name + "\\t" + path + "\\t" + sheet + "\\n";
+  }
+  return out;
+}
 """
 
 _RELOAD_NUMBERS = """
-on run argv
-  set target to item 1 of argv
-  try
-    tell application "Numbers"
-      repeat with d in documents
-        try
-          if POSIX path of (file of d as alias) is target and not (modified of d) then close d saving no
-        end try
-      end repeat
-      open POSIX file target
-    end tell
-    return "ok"
-  on error
-    return "no"
-  end try
-end run
+function run(argv) {
+  const target = argv[0];
+  try {
+    const app = Application("Numbers");
+    const documents = app.documents();
+    for (let i = 0; i < documents.length; i++) {
+      try {
+        const file = documents[i].file();
+        if (file && String(file) === target && !documents[i].modified()) app.close(documents[i], {saving: "no"});
+      } catch (e) {}
+    }
+    app.open(Path(target));
+    return "ok";
+  } catch (e) {
+    return "no";
+  }
+}
 """

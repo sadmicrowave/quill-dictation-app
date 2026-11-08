@@ -3,10 +3,10 @@
 Quill works on a spreadsheet *file*. Numbers shows its own copy of that file, which it only refreshes when the file is
 loaded again (and each reload re-imports the workbook, which makes Numbers show its "may look different" warning). So
 that rows appear in Numbers as each turn ends, the cells that were just written are also set in the open document
-through AppleScript. The file is still written first and stays the source of truth; Numbers is shown the same cells.
+through scripting (JavaScript for Automation). The file is still written first and stays the source of truth; Numbers is shown the same cells.
 
 Nothing here may raise. The script gets everything as separate arguments (never spliced into its text), so no value
-can run as AppleScript. Numbers is never started by this: if it is not running there is nothing to show.
+can run as a script. Numbers is never started by this: if it is not running there is nothing to show.
 """
 
 from __future__ import annotations
@@ -32,136 +32,81 @@ FIELD = "\x1f"
 Runner = Callable[[list[str]], tuple[int, str, str]]
 """Runs a command and returns ``(exit code, standard output, standard error)``."""
 
+#: How the scripts are run. They are JavaScript for Automation, not AppleScript: the Numbers that ships now (Numbers
+#: Creator Studio) answers AppleScript's ``repeat with d in documents`` with nothing at all, but answers the same
+#: questions through JavaScript, and so does the older Numbers.
+OSASCRIPT = ["osascript", "-l", "JavaScript", "-e"]
+
+#: Shared by the scripts: finds the open document called ``docName`` (Numbers names an imported workbook without its
+#: extension and, once edited, ``name.numbers``).
+_FIND_DOCUMENT = r"""
+function findDocument(app, docName) {
+  const documents = app.documents();
+  for (let i = 0; i < documents.length; i++) {
+    let title = "";
+    try { title = documents[i].name(); } catch (e) { continue; }
+    if (title === docName || title.indexOf(docName + ".") === 0) return documents[i];
+  }
+  return null;
+}
+"""
+
 #: Takes the document's file name as argument 1, then one argument per cell: sheet, row, column, kind, text.
-SCRIPT = r'''
-on run argv
-  if application "Numbers" is not running then return "notrunning"
-  set docName to item 1 of argv
-  tell application "Numbers"
-    set targetDoc to missing value
-    repeat with oneDoc in documents
-      try
-        set docTitle to name of oneDoc
-        if docTitle is docName or docTitle starts with (docName & ".") then
-          set targetDoc to oneDoc
-          exit repeat
-        end if
-      end try
-    end repeat
-    if targetDoc is missing value then return "nodoc"
-    repeat with n from 2 to (count of argv)
-      set fields to my splitFields(item n of argv)
-      set sheetName to item 1 of fields
-      set rowNo to (item 2 of fields) as integer
-      set colNo to (item 3 of fields) as integer
-      set fieldKind to item 4 of fields
-      set fieldText to ""
-      if (count of fields) > 4 then set fieldText to item 5 of fields
-      tell targetDoc
-        set sheetRef to missing value
-        try
-          set sheetRef to sheet sheetName
-        end try
-        if sheetRef is missing value then set sheetRef to sheet 1
-        tell sheetRef
-          tell table 1
-            if (row count) < rowNo then set row count to rowNo
-            if (column count) < colNo then set column count to colNo
-            if fieldKind is "e" then
-              set value of cell colNo of row rowNo to missing value
-            else if fieldKind is "n" then
-              set value of cell colNo of row rowNo to my parseNumber(fieldText)
-            else if fieldKind is "d" then
-              set value of cell colNo of row rowNo to my parseDate(fieldText)
-            else
-              set value of cell colNo of row rowNo to fieldText
-            end if
-          end tell
-        end tell
-      end tell
-    end repeat
-  end tell
-  return "ok"
-end run
-
-on splitFields(someText)
-  set saved to AppleScript's text item delimiters
-  set AppleScript's text item delimiters to (ASCII character 31)
-  set pieces to text items of someText
-  set AppleScript's text item delimiters to saved
-  return pieces
-end splitFields
-
-on parseNumber(someText)
-  set isNegative to false
-  if someText starts with "-" then
-    set isNegative to true
-    set someText to text 2 thru -1 of someText
-  end if
-  set dotAt to offset of "." in someText
-  if dotAt is 0 then
-    set total to (someText as integer) as real
-  else
-    set wholePart to 0
-    if dotAt > 1 then set wholePart to (text 1 thru (dotAt - 1) of someText) as integer
-    set fractionText to text (dotAt + 1) thru -1 of someText
-    set total to wholePart as real
-    if (length of fractionText) > 0 then set total to total + ((fractionText as integer) / (10 ^ (length of fractionText)))
-  end if
-  if isNegative then set total to -total
-  return total
-end parseNumber
-
-on parseDate(someText)
-  set saved to AppleScript's text item delimiters
-  set AppleScript's text item delimiters to "-"
-  set bits to text items of someText
-  set AppleScript's text item delimiters to saved
-  set theDate to current date
-  set day of theDate to 1
-  set year of theDate to ((item 1 of bits) as integer)
-  set month of theDate to ((item 2 of bits) as integer)
-  set day of theDate to ((item 3 of bits) as integer)
-  set time of theDate to 0
-  return theDate
-end parseDate
-'''
+SCRIPT = _FIND_DOCUMENT + r"""
+function run(argv) {
+  const app = Application("Numbers");
+  if (!app.running()) return "notrunning";
+  const target = findDocument(app, argv[0]);
+  if (target === null) return "nodoc";
+  for (let n = 1; n < argv.length; n++) {
+    const fields = argv[n].split("\u001f");
+    const sheetName = fields[0];
+    const rowNo = parseInt(fields[1], 10);
+    const colNo = parseInt(fields[2], 10);
+    const kind = fields[3];
+    const text = fields.length > 4 ? fields[4] : "";
+    let sheet;
+    try { sheet = target.sheets.byName(sheetName); sheet.name(); } catch (e) { sheet = target.sheets[0]; }
+    const table = sheet.tables[0];
+    if (table.rowCount() < rowNo) table.rowCount = rowNo;
+    if (table.columnCount() < colNo) table.columnCount = colNo;
+    const cell = table.rows[rowNo - 1].cells[colNo - 1];
+    if (kind === "e") {
+      app.clear(cell);
+    } else if (kind === "n") {
+      cell.value = parseFloat(text);
+    } else if (kind === "d") {
+      const bits = text.split("-");
+      cell.value = new Date(parseInt(bits[0], 10), parseInt(bits[1], 10) - 1, parseInt(bits[2], 10));
+    } else {
+      cell.value = text;
+    }
+  }
+  return "ok";
+}
+"""
 
 
 #: Takes the document's file name as argument 1; answers ``ok`` if Numbers has such a document open (it changes nothing).
-PROBE = r'''
-on run argv
-  if application "Numbers" is not running then return "notrunning"
-  set docName to item 1 of argv
-  tell application "Numbers"
-    repeat with oneDoc in documents
-      try
-        set docTitle to name of oneDoc
-        if docTitle is docName or docTitle starts with (docName & ".") then return "ok"
-      end try
-    end repeat
-  end tell
-  return "nodoc"
-end run
-'''
+PROBE = _FIND_DOCUMENT + r"""
+function run(argv) {
+  const app = Application("Numbers");
+  if (!app.running()) return "notrunning";
+  return findDocument(app, argv[0]) === null ? "nodoc" : "ok";
+}
+"""
 
 
 #: Takes the document's file name as argument 1; answers ``sheet:<name of the sheet that is open now>`` (it changes nothing).
-ACTIVE_SHEET = r'''
-on run argv
-  if application "Numbers" is not running then return "notrunning"
-  set docName to item 1 of argv
-  tell application "Numbers"
-    repeat with oneDoc in documents
-      try
-        set docTitle to name of oneDoc
-        if docTitle is docName or docTitle starts with (docName & ".") then return "sheet:" & (name of active sheet of oneDoc)
-      end try
-    end repeat
-  end tell
-  return "nodoc"
-end run
-'''
+ACTIVE_SHEET = _FIND_DOCUMENT + r"""
+function run(argv) {
+  const app = Application("Numbers");
+  if (!app.running()) return "notrunning";
+  const found = findDocument(app, argv[0]);
+  if (found === null) return "nodoc";
+  return "sheet:" + found.activeSheet().name();
+}
+"""
 
 
 def _system(args: list[str], timeout: float = TIMEOUT_S) -> tuple[int, str, str]:
@@ -217,7 +162,7 @@ class NumbersMirror:
         """Does a running Numbers have a document for *path* open? (Asked without changing anything.)"""
         if os.environ.get("QUILL_NO_HOSTS"):
             return False
-        code, out, _ = self._ask(["osascript", "-e", PROBE, self.document_name(path)])
+        code, out, _ = self._ask([*OSASCRIPT, PROBE, self.document_name(path)])
         return code == 0 and out.strip() == "ok"
 
     def active_sheet(self, path: str | os.PathLike) -> str | None:
@@ -225,7 +170,7 @@ class NumbersMirror:
         document, Numbers is not running, or it would not say)."""
         if os.environ.get("QUILL_NO_HOSTS"):
             return None
-        code, out, _ = self._ask(["osascript", "-e", ACTIVE_SHEET, self.document_name(path)])
+        code, out, _ = self._ask([*OSASCRIPT, ACTIVE_SHEET, self.document_name(path)])
         text = out.strip()
         return text[len("sheet:"):] if code == 0 and text.startswith("sheet:") and len(text) > 6 else None
 
@@ -235,7 +180,7 @@ class NumbersMirror:
             return MirrorResult(True, "ok")
         if os.environ.get("QUILL_NO_HOSTS"):
             return MirrorResult(False, "disabled")
-        args = ["osascript", "-e", SCRIPT, self.document_name(path)]
+        args = [*OSASCRIPT, SCRIPT, self.document_name(path)]
         args += [cell_argument(sheet, row, col, value) for sheet, row, col, value in changes]
         code, out, err = self._run(args)
         text = out.strip()
