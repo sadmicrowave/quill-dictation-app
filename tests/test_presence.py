@@ -353,8 +353,11 @@ class TestStartAlert(unittest.TestCase):
         from PySide6.QtTest import QTest
         home = self.button.pos()
         self.button.alert()
-        QTest.qWait(120)
-        self.assertNotEqual(self.button.pos(), home)                # (mid-swing)
+        seen = set()
+        for _ in range(12):                                          # (sample the swing; one instant can sit on the centre line)
+            QTest.qWait(30)
+            seen.add(self.button.pos().x())
+        self.assertGreater(len(seen | {home.x()}), 1)               # (it moved away from home at some point)
         QTest.qWait(self.button.shake_ms + 150)
         self.assertEqual(self.button.pos(), home)
         self.assertEqual(self.button.pos().y(), home.y())
