@@ -219,6 +219,35 @@ class TestCollapsibleLog(unittest.TestCase):
         self.assertTrue(self.w.log_toggle.isChecked())
         self.assertEqual(self.toggled, [True, False])
 
+    def test_the_export_button_shows_only_while_the_log_is_open(self):
+        self.assertTrue(self.w.export_log_button.isVisible())
+        self.assertEqual(self.w.export_log_button.toolTip(), "Export the log to a text file")
+        self.w.log_toggle.click()
+        self.assertFalse(self.w.export_log_button.isVisible())
+        self.w.log_toggle.click()
+        self.assertTrue(self.w.export_log_button.isVisible())
+
+    def test_the_export_button_sits_right_beside_the_bug_even_with_nothing_saved(self):
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+        bug, export = self.w.log_toggle.geometry(), self.w.export_log_button.geometry()
+        self.assertLessEqual(export.left() - bug.right(), 12)
+
+    def test_exporting_offers_the_dated_name_in_the_home_folder_and_writes_the_log(self):
+        import pathlib, tempfile
+        from unittest import mock
+        self.assertRegex(self.w.log_file_name(), r"^quill-system-log-\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.txt$")
+        self.w.append_log("Hello there")
+        target = pathlib.Path(tempfile.mkdtemp()) / "out.txt"
+        with mock.patch("quill.ui.main_window.QFileDialog.getSaveFileName", return_value=(str(target), "")) as ask:
+            self.assertEqual(self.w.export_log(), str(target))
+        offered = pathlib.Path(ask.call_args.args[2])
+        self.assertEqual(offered.parent, pathlib.Path.home())
+        self.assertTrue(offered.name.startswith("quill-system-log-"))
+        self.assertIn("Hello there", target.read_text())
+        with mock.patch("quill.ui.main_window.QFileDialog.getSaveFileName", return_value=("", "")):
+            self.assertIsNone(self.w.export_log())                       # cancelled: nothing written
+
     def test_a_press_that_only_toggles_the_button_still_opens_and_closes_the_log(self):
         self.w.log_toggle.toggle()                                      # what an accessibility "press" does: no click is made
         self.assertTrue(self.w.log_collapsed)

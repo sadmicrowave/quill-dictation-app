@@ -314,6 +314,7 @@ QTreeWidget#learnedList {{ background: {surf}; border: 1px solid {t['border']}; 
               outline: none; }}
 QTreeWidget#learnedList::branch {{ image: none; background: transparent; }}
 
+QFrame#termBox {{ background: {rgba(t['text'], 0.07 if dark else 0.05)}; border: 1px solid {t['border']}; border-radius: 12px; }}
 QFrame#termRow {{ background: {surf}; border: 1px solid {t['border']}; border-radius: {d['radius']}px; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}

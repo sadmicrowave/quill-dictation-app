@@ -14,7 +14,7 @@ Everything Quill understood is already saved. Term Helper only handles the lefto
 
 ## 🖱️ Answer with the mouse
 
-The word is already capitalised for you, and whatever you type is capitalised when it is added. Each word has a line for the words and the column list, and a line of buttons under it. The window opens only as wide as that row needs. For each word choose:
+The word is already capitalised for you, and whatever you type is capitalised when it is added. Each word has a line for the words and the column list, and a line of buttons under it. The rows sit together in a light rounded box, with room below it before **Add All With a Column** and **Ignore All**. The window opens only as wide as a row needs. For each word choose:
 
 | Button | Means |
 |---|---|

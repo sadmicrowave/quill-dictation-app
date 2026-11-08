@@ -359,17 +359,18 @@ class FooterButton(QPushButton):
     Args:
         icon_name: The icon (see :mod:`quill.ui.icons`).
         tip: What it does; the words are kept off the button, so the footer can hold several.
+        checkable: True for a button that stays selected while its panel is open; False for one that only acts when pressed.
     """
 
     SIZE = (30, 22)
     ICON = 14
 
-    def __init__(self, icon_name: str, tip: str = "") -> None:
+    def __init__(self, icon_name: str, tip: str = "", checkable: bool = True) -> None:
         super().__init__()
         self._icon_name = icon_name
         self._colors = ("#1F1E1D", "#FFFFFF")                         # icon colour plain, and while selected (on the accent)
         self.setProperty("footerButton", True)
-        self.setCheckable(True)
+        self.setCheckable(checkable)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(*self.SIZE)
         self.setIconSize(QSize(self.ICON, self.ICON))

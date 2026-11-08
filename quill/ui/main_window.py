@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import html
 import logging
+import pathlib
 from typing import Callable
 
 import shiboken6
@@ -32,6 +33,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFontMetrics, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QMenu,
     QGraphicsOpacityEffect,
@@ -449,6 +451,9 @@ class MainWindow:
         # the log; others can join it), the last saved row on the right.
         self.log_toggle = FooterButton("bug", "Show the log")
         self.log_toggle.toggled.connect(self._log_button_toggled)        # (toggled, not clicked: an accessibility "press" only toggles)
+        self.export_log_button = FooterButton("export", "Export the log to a text file", checkable=False)
+        self.export_log_button.setVisible(False)                          # shown only while the log is open
+        self.export_log_button.clicked.connect(self.export_log)
         self.footer = QFrame()
         self.footer.setObjectName("windowFooter")
         self.footer.setProperty("keepMargins", True)
@@ -457,8 +462,10 @@ class MainWindow:
         footer_row.setSpacing(6)
         footer_row.setProperty("keepSpacing", True)
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        footer_row.addWidget(self.export_log_button, 0, Qt.AlignmentFlag.AlignLeft)
         footer_row.addSpacing(4)
         footer_row.addWidget(self.last_label, 1)
+        footer_row.addStretch(0)                           # (takes the room when Last Saved is hidden: the buttons stay at the left)
         self.log = QTextEdit()                # (not the plain-text kind: it can hang a long line's wrap under the message)
         self.log.setReadOnly(True)
         self.log.document().setUndoRedoEnabled(False)
@@ -1058,6 +1065,29 @@ class MainWindow:
         self._keep_minimum()
         self.sorting_button.setToolTip("Term Helper: terms that were heard but not placed yet.")
 
+    @staticmethod
+    def log_file_name(now: dt.datetime | None = None) -> str:
+        """The name offered for an exported log: ``quill-system-log-<date and time>.txt``."""
+        return f"quill-system-log-{(now or dt.datetime.now()):%Y-%m-%d_%H-%M-%S}.txt"
+
+    def export_log(self) -> str | None:
+        """Ask where to save the log (the file chooser starts in the user's home folder, with the suggested name) and write it as plain text.
+
+        Returns:
+            The path written, or None if the chooser was cancelled or the file could not be written.
+        """
+        start = str(pathlib.Path.home() / self.log_file_name())
+        chosen, _ = QFileDialog.getSaveFileName(self._window, "Export the Log", start, "Text files (*.txt)")
+        if not chosen:
+            return None
+        try:
+            pathlib.Path(chosen).write_text(self.log.toPlainText() + "\n", encoding="utf-8")
+        except OSError as exc:
+            self.append_log(f"The log could not be saved: {exc.strerror or 'the file could not be written'}.", "error",
+                            safe="The log could not be exported")
+            return None
+        return chosen
+
     def _log_button_toggled(self, selected: bool) -> None:
         """The footer's bug button was switched (a click, or an accessibility press): open or close the log to match. A switch the
         window made itself (it already agrees) changes nothing."""
@@ -1180,6 +1210,7 @@ class MainWindow:
         self.log_toggle.setChecked(not collapsed)                 # selected while the log is open
         self.log_toggle.setToolTip("Show the log" if collapsed else "Hide the log")
         self.log_toggle.setAccessibleName("Show the log" if collapsed else "Hide the log")
+        self.export_log_button.setVisible(not collapsed)           # the export button joins the bug while the log is open
         if notify:
             self._on_log_toggled(collapsed)
 
@@ -1669,6 +1700,7 @@ class MainWindow:
         self.row_grip.set_color(text_color)
         self.log_grip.set_color(text_color)
         self.log_toggle.set_colors(text_color, text_color)
+        self.export_log_button.set_colors(text_color, text_color)
         self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")

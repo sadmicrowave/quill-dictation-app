@@ -45,6 +45,9 @@ SHAPES = {
     "bug": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
            '<path d="M9.2 7.4a2.8 2.8 0 0 1 5.6 0"/><rect x="6.8" y="7.6" width="10.4" height="11.4" rx="5.2"/><path d="M12 7.8v11"/>'
            '<path d="M6.8 12.2H3M17.2 12.2H21M7.3 16.8 4.2 19M16.7 16.8l3.1 2.2M9 4.6 7.2 2.8M15 4.6l1.8-1.8"/></g>',
+    # a tray with an arrow leaving it upwards: send out (export)
+    "export": '<g fill="none" stroke="COLOR" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+              '<path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M4.5 13v5.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V13"/></g>',
     "gear": '<g fill="none" stroke="COLOR" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
             '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>'
             '<circle cx="12" cy="12" r="3"/></g>',

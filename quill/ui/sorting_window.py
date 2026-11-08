@@ -302,6 +302,9 @@ class SortingWindow:
 
     #: Space (px) kept around the list, and the width the window may grow to when it opens.
     MARGIN = 12
+    #: Space (px) inside the rows' box, and between the box and the bottom buttons.
+    BOX_PADDING = 8
+    BOX_GAP = 8
     SIDE_ALLOWANCE = 36
 
     #: How long an answered row flashes, and how long it takes to ease away (ms; 0 = no animation).
@@ -398,8 +401,16 @@ class SortingWindow:
         scroll.setFrameShape(QFrame.Shape.NoFrame)             # the rows run to the window's own margins
         scroll.setWidgetResizable(True)
         scroll.setWidget(holder)
-        layout.addWidget(scroll, 1)
+        box = QFrame()                                          # the rows sit in a light rounded box: they read as one group,
+        box.setObjectName("termBox")                            # apart from the buttons above and below it
+        box.setProperty("keepMargins", True)
+        inside = QVBoxLayout(box)
+        inside.setContentsMargins(self.BOX_PADDING, self.BOX_PADDING, self.BOX_PADDING, self.BOX_PADDING)
+        inside.addWidget(scroll)
+        layout.addWidget(box, 1)                                # (as wide as the button rows: both use the window's margins)
+        layout.addSpacing(self.BOX_GAP)                         # room between the box and the buttons under it
         self.scroll = scroll
+        self.box = box
 
         footer = QHBoxLayout()
         self.add_all_button = QPushButton("Add All With a Column")
@@ -690,7 +701,7 @@ class SortingWindow:
     def _fit_width(self) -> None:
         """Widen the window, if needed, so a whole row fits without scrolling sideways (never beyond the screen)."""
         window = self._window
-        need = max(row.sizeHint().width() for row in self.rows) + 2 * self.MARGIN + self.SIDE_ALLOWANCE
+        need = max(row.sizeHint().width() for row in self.rows) + 2 * self.MARGIN + 2 * self.BOX_PADDING + self.SIDE_ALLOWANCE
         screen = window.screen()
         if screen is not None:
             need = min(need, screen.availableGeometry().width() - 40)

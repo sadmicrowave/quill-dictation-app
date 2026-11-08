@@ -231,6 +231,15 @@ class TestSortingWindow(unittest.TestCase):
         self.assertLess(row.combo.geometry().bottom(), row.same_button.geometry().top())
         self.assertEqual(row.add_button.geometry().top(), row.ignore_button.geometry().top())
 
+    def test_the_rows_sit_in_a_box_as_wide_as_the_button_rows_with_room_below(self):
+        self.win.set_items([(None, "navy")])
+        self.win.show()
+        box, window = self.win.box, self.win.widget
+        self.assertEqual(box.objectName(), "termBox")
+        self.assertEqual(box.geometry().left(), self.win.add_all_button.geometry().left())
+        self.assertEqual(box.geometry().right(), self.win.ignore_all_button.geometry().right())
+        self.assertGreaterEqual(self.win.add_all_button.geometry().top() - box.geometry().bottom(), self.win.BOX_GAP)
+
     def test_the_window_opens_as_wide_as_its_widest_row(self):
         self.win.set_items([(None, "navy")])
         self.win.show()
