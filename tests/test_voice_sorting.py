@@ -252,6 +252,41 @@ class AppVoiceCase(unittest.TestCase):
             quill.relay.transcript.emit(p)
 
 
+class TestListeningOnlyForAnswers(AppVoiceCase):
+    def test_the_recogniser_is_focused_while_sorting_by_voice_and_freed_after(self):
+        from quill.sorting_voice import expected_words
+        quill = self.make()
+        grammars = []
+        quill.listener.set_grammar = grammars.append
+        self.hear(quill, "start listening", SENTENCE, "next row")
+        quill.sorting.voice_button.click()
+        self.assertEqual(len(grammars), 1)
+        words = grammars[0]
+        for expected in ("yes", "ignore", "same", "color", "later", "done"):
+            self.assertIn(expected, words)
+        self.assertEqual(words, expected_words(quill.controller.vocab, quill.settings.aliases))
+        quill.controller.stop_voice_sort()
+        self.assertEqual(grammars[-1], None)
+
+    def test_the_setting_can_turn_it_off(self):
+        quill = self.make(sorting_grammar=False)
+        grammars = []
+        quill.listener.set_grammar = grammars.append
+        self.hear(quill, "start listening", SENTENCE, "next row")
+        quill.sorting.voice_button.click()
+        self.assertEqual(grammars, [None])                       # (nothing is limited)
+
+    def test_the_answer_words_include_columns_values_letters_and_numbers(self):
+        from quill.parser.vocab import Vocabulary
+        from quill.sorting_voice import expected_words
+        vocab = Vocabulary()
+        vocab.load({"Size": ["XL", "Extra Small"], "Color": ["Navy Blue"]}, ["Size", "Color", "Notes"])
+        words = expected_words(vocab, {"Size": {"jumbo": "XL"}})
+        for expected in ("size", "color", "notes", "xl", "x", "l", "extra", "small", "navy", "blue", "jumbo", "three", "undo", "yes"):
+            self.assertIn(expected, words)
+        self.assertNotIn("banana", words)
+
+
 class TestAppVoiceSorting(AppVoiceCase):
     def setUp(self):
         self.quill = self.make()

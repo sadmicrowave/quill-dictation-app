@@ -246,6 +246,7 @@ class SettingsDialog:
         self.mic_check: ToggleSwitch | None = None
         self.auto_stop_check: ToggleSwitch | None = None
         self.noise_check: ToggleSwitch | None = None
+        self.grammar_check: ToggleSwitch | None = None
         self.auto_stop_spin: QSpinBox | None = None
         self.mini_top_check: ToggleSwitch | None = None
         self.dock_check: ToggleSwitch | None = None
@@ -434,7 +435,7 @@ class SettingsDialog:
         self._original = copy.deepcopy(self._settings.preferences)
         for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
                         self.dock_check, self.updates_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check,
-                        self.noise_check):
+                        self.noise_check, self.grammar_check):
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
@@ -470,6 +471,7 @@ class SettingsDialog:
         prefs["mic_always_on"] = self.mic_check.isChecked()
         prefs["auto_stop"] = self.auto_stop_check.isChecked()
         prefs["noise_filter"] = self.noise_check.isChecked()
+        prefs["sorting_grammar"] = self.grammar_check.isChecked()
         prefs["auto_stop_seconds"] = self.auto_stop_spin.value()
         prefs["mini_on_top"] = self.mini_top_check.isChecked()
         prefs["hide_dock_icon"] = self.dock_check.isChecked()
@@ -836,6 +838,13 @@ class SettingsDialog:
                   "loud your room is and listens only when something clearly louder (you) is speaking. Turn it off if Quill misses "
                   "quiet speech. Takes effect the next time you press Start.",
                   self.noise_check, "noise background filter gate fan room quiet sensitivity")
+        self.grammar_check = ToggleSwitch()
+        self.grammar_check.setChecked(bool(prefs["sorting_grammar"]))
+        self._add("Speech Model", page, "Focus On Answers While Sorting",
+                  "While you answer the Term Helper by voice, Quill listens only for the words an answer is made of (yes, ignore, "
+                  "a column name, “same as” and your list values). It hears those more accurately and ignores everything else in the room. "
+                  "Turn it off to hear everything while sorting. Takes effect when voice sorting starts.",
+                  self.grammar_check, "focus grammar sorting answers voice listen only expected words accuracy")
         self._model_note = ""
         self.set_model_state("", False)
         page.addStretch(1)

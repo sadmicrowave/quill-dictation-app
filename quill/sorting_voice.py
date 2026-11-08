@@ -53,6 +53,31 @@ FILLERS = frozenset({"as", "a", "an", "the", "to", "in", "is", "it", "its", "thi
 _SPELLED_MAX = 3
 
 
+_NUMBER_WORDS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen "
+                 "nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred").split()
+
+
+def expected_words(vocab, aliases: dict[str, dict[str, str]] | None = None) -> list[str]:
+    """Every word an answer to the Term Helper can be made of: the commands, the little words between them, the column names, every
+    value in every list (and its letters, for "x l"), numbers (for "undo three") and the synonyms the user taught. A recogniser
+    limited to these (see ``Listener.set_grammar``) cannot hear anything else."""
+    words: set[str] = set()
+    for group in (ADD_WORDS, IGNORE_WORDS, DEFER_WORDS, STOP_WORDS, SAME_WORDS, UNDO_WORDS, FILLERS, {ALL_WORD, "add", "to", "means"}):
+        words |= set(group)
+    words |= set(_NUMBER_WORDS)
+    for column in vocab.headers():
+        words |= set(tokenize(column))
+    for column in vocab.columns():
+        for value in vocab.values_for(column):
+            words |= set(tokenize(value))
+            if len(value) <= 3 and value.isalpha():
+                words |= set(value.lower())                       # "XL" may be heard as "x" "l"
+    for mapping in (aliases or {}).values():
+        for phrase in mapping:
+            words |= set(tokenize(phrase))
+    return sorted(w for w in words if w)
+
+
 @dataclass
 class VoiceSortResult:
     """What one spoken phrase did."""

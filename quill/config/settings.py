@@ -82,6 +82,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "sheet_check_seconds": 10,  # the one check loop: how often Quill looks at the spreadsheet programs (open files, a closed file, the open sheet)
     "mic_always_on": False,   # keep the microphone open while not listening (so "start listening" works)
     "opacity": 100,           # whole-window opacity in percent (text and controls fade too)
+    "sorting_grammar": True,   # while answering the Term Helper by voice, the recogniser listens only for the words an answer is made of
     "noise_filter": True,    # keep background noise away from the recogniser (a high-pass filter and a room-adaptive noise gate)
     "speech_quality": "standard",   # "standard" | "better" | "best": which speech model listens (Broad and Careful are installs)
     "sorting_sounds": True,   # Term Helper answers (added, ignored, a problem) play their confirmation sound

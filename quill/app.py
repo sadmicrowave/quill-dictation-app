@@ -36,6 +36,7 @@ from quill.bridge.mirror import MirrorResult, NullMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.parser.fillers import FILLER_WORDS
+from quill.sorting_voice import expected_words
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
 from quill.feedback import spoken_words, Feedback
@@ -1058,6 +1059,7 @@ class QuillApp:
         if set_level is not None:
             set_level(self.relay.level.emit)                          # the sound lines follow the user's voice
         self._apply_noise_filter()
+        self._focus_listener(self.controller.voice_sorter is not None)
         preload = getattr(self.listener, "preload", None)
         if preload is not None:
             preload()                                   # load the model now; the mic stays off
@@ -1068,6 +1070,17 @@ class QuillApp:
                 self.window.append_log(READY_NOTE, safe="Speech model ready")
             else:
                 self._ready_note_pending = True               # no "ready, press Start" next to a warning: say it once a file is connected
+
+    def _focus_listener(self, active: bool) -> None:
+        """While answering the Term Helper by voice the recogniser listens only for the words an answer is made of (more accurate,
+        and deaf to the room); it goes back to open dictation when voice sorting ends. The *sorting_grammar* setting turns it off."""
+        set_grammar = getattr(self.listener, "set_grammar", None)
+        if set_grammar is None:
+            return
+        if active and self.settings.preferences["sorting_grammar"]:
+            set_grammar(expected_words(self.controller.vocab, self.settings.aliases))
+        else:
+            set_grammar(None)
 
     def _apply_noise_filter(self) -> None:
         """Give the listener the noise-filter setting (it takes effect the next time the microphone opens)."""
@@ -2242,11 +2255,13 @@ class QuillApp:
                 self.window.append_log("Nothing to sort", safe="Nothing to sort")
             return
         elif kind == "sort_voice_started":
+            self._focus_listener(True)
             self.sorting.set_voice_active(True)
             self.refresh_sorting(reveal=True)
             self.window.append_log(event.detail)
             return
         elif kind == "sort_voice_ended":
+            self._focus_listener(False)
             self.sorting.set_voice_active(False)
             self.sorting.set_voice_status("", event.detail)
             self.window.append_log(event.detail)

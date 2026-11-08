@@ -63,6 +63,8 @@ It runs **on your computer**: nothing is sent online. A model is **installed onc
 
 **Reduce Background Noise** (on this same page, on by default) keeps fans, traffic and other sounds from being turned into words. Quill removes low rumble, learns how loud your room is while nobody speaks, and listens only while something clearly louder (you) is going on; the sound lines on the Start button stay flat for the room. Each word the recogniser is unsure of is dropped, and so is a very short phrase it is unsure of. If the room is very noisy the Log says so once. Turn it off if Quill ever misses quiet speech. It takes effect the next time you press Start.
 
+**Focus On Answers While Sorting** (also on this page, on by default): while you answer the Term Helper by voice, Quill listens only for the words an answer is made of (yes, ignore, later, done, a column name, “same as” and the values in your lists). It hears those more accurately and ignores everything else in the room, so a TV or a nearby conversation cannot answer for you. It takes effect when voice sorting starts, and normal dictation is unchanged. Turn it off if you want to say something else while sorting.
+
 Each model's description names the model underneath, so you can look it up: **Quick** uses the Vosk model `vosk-model-small-en-us-0.15`, **Broad** the Vosk model `vosk-model-en-us-0.22-lgraph`, and **Careful** adds OpenAI's Whisper `base.en`, run with faster-whisper (`Systran/faster-whisper-base.en`).
 
 ## 🖥️ Dock and menu bar

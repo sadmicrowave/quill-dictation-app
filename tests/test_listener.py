@@ -161,3 +161,52 @@ class TestListenerErrors(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGrammar(unittest.TestCase):
+    """The recogniser can be limited to the words an answer is made of."""
+
+    def make(self, factory):
+        made = []
+
+        @contextlib.contextmanager
+        def stream(rate, push):
+            made.append(push)
+            yield
+
+        heard = []
+        listener = Listener(pathlib.Path("m"), heard.append, model_loader=lambda p: "m", recognizer_factory=factory, stream_factory=stream)
+        return listener, heard, made
+
+    def test_a_grammar_is_given_to_the_recogniser_and_taken_away_again(self):
+        grammars = []
+
+        class Rec:
+            def __init__(self, model, rate, grammar=None):
+                grammars.append(grammar)
+            def AcceptWaveform(self, chunk): return False
+            def PartialResult(self): return json.dumps({"partial": ""})
+
+        listener, heard, made = self.make(Rec)
+        listener.set_grammar(["Yes", "ignore", "yes"])
+        listener.start()
+        self.assertTrue(wait_for(lambda: made))
+        self.assertEqual(json.loads(grammars[0]), ["yes", "ignore", "[unk]"])              # lower case, no repeats, and [unk] for the rest
+        listener.set_grammar(None)
+        made[0](b"x" * 3200)                                                            # audio makes the capture thread apply it
+        self.assertTrue(wait_for(lambda: grammars[-1] is None))
+        listener.stop()
+
+    def test_a_recogniser_that_takes_no_grammar_still_works(self):
+        listener, heard, made = self.make(FakeRecognizer)
+        listener.set_grammar(["yes"])
+        listener.start()
+        self.assertTrue(wait_for(lambda: made))
+        made[0](b"hello")
+        self.assertTrue(wait_for(lambda: heard))
+        listener.stop()
+
+    def test_unknown_sounds_are_not_words(self):
+        self.assertEqual(Listener._clean({"text": "[unk] yes [unk]"}), "yes")
+        self.assertEqual(Listener._clean({"text": "[unk]"}), "")
+        self.assertEqual(Listener._clean({"text": "[unk] yes", "result": [{"word": "[unk]", "conf": 0.9}, {"word": "yes", "conf": 0.95}]}), "yes")

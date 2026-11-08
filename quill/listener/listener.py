@@ -44,9 +44,9 @@ def _default_model_loader(path: pathlib.Path):
     return Model(str(path))
 
 
-def _default_recognizer(model, sample_rate: int):
+def _default_recognizer(model, sample_rate: int, grammar: str | None = None):
     from vosk import KaldiRecognizer
-    recognizer = KaldiRecognizer(model, sample_rate)
+    recognizer = KaldiRecognizer(model, sample_rate, grammar) if grammar else KaldiRecognizer(model, sample_rate)
     if hasattr(recognizer, "SetWords"):
         recognizer.SetWords(True)                 # each word comes with how sure the recogniser is of it (see MIN_WORD_CONFIDENCE)
     return recognizer
@@ -62,6 +62,9 @@ def _default_stream(sample_rate: int, push: Callable[[bytes], None]):
         samplerate=sample_rate, blocksize=1600, dtype="int16", channels=1, callback=on_audio
     )
 
+
+#: What the recogniser writes for a sound outside its grammar.
+UNKNOWN = "[unk]"
 
 #: A word the recogniser is less sure of than this is dropped (room noise comes out as low-confidence words).
 MIN_WORD_CONFIDENCE = 0.55
@@ -108,6 +111,7 @@ class Listener:
         self._on_partial = on_partial
         self._last_partial = ""
         self._on_level: Callable[[float], None] | None = None
+        self._grammar: str | None = None         # JSON list of the only words the recogniser may hear (see :meth:`set_grammar`)
         self._gate: NoiseGate | None = None      # optional: lets only a voice through (see :meth:`set_noise_filter`)
         self._on_notice: Callable[[str], None] | None = None
         self._noticed = False
@@ -160,6 +164,26 @@ class Listener:
     def set_refiner(self, refiner) -> None:
         """Have each finished phrase re-read by *refiner* (``refine(pcm) -> str | None``); None turns it off."""
         self._refiner = refiner
+
+    def set_grammar(self, words: list[str] | None) -> None:
+        """Limit the recogniser to *words* (plus "[unk]" for anything else) until called with None.
+
+        While Quill expects a short answer (yes, a column name, "same as XL") a recogniser that can only hear those words cannot
+        hear anything else in the room or turn a mumble into a sentence, and is far more accurate on the words it is listening
+        for. Takes effect at once on a running microphone; it is also applied when the microphone next opens.
+        """
+        unique = list(dict.fromkeys(w.lower() for w in (words or []) if w))
+        self._grammar = json.dumps(unique + ["[unk]"]) if unique else None
+        self._drain.set()                                  # the capture thread makes a new recogniser with (or without) it
+
+    def _new_recognizer(self):
+        """A recogniser for the model, with the grammar if one is set (a factory that does not take one gets none)."""
+        if self._grammar is not None:
+            try:
+                return self._recognizer_factory(self._model, self._sample_rate, self._grammar)
+            except TypeError:
+                pass
+        return self._recognizer_factory(self._model, self._sample_rate)
 
     def set_noise_filter(self, enabled: bool, on_notice: Callable[[str], None] | None = None) -> None:
         """Keep background noise away from the recogniser (a high-pass filter and a noise gate that adapts to the room); *on_notice*
@@ -237,7 +261,7 @@ class Listener:
         try:
             if self._model is None:
                 self._model = self._model_loader(self._model_path)
-            recognizer = self._recognizer_factory(self._model, self._sample_rate)
+            recognizer = self._new_recognizer()
             self._gate = NoiseGate(self._sample_rate) if self._noise_filter else None
             self._noticed = False
             with self._stream_factory(self._sample_rate, self._audio.put):
@@ -245,7 +269,7 @@ class Listener:
                     if self._drain.is_set():
                         self._drain.clear()
                         self._clear_queue()
-                        recognizer = self._recognizer_factory(self._model, self._sample_rate)
+                        recognizer = self._new_recognizer()
                         continue
                     try:
                         chunk = self._audio.get(timeout=0.1)
@@ -286,11 +310,11 @@ class Listener:
     def _clean(result: dict) -> str:
         """The text of a Vosk result without its doubtful words: those the recogniser was not sure of, and a very short phrase it
         was not sure of overall (room noise). Results with no word details are taken as they are."""
-        text = str(result.get("text", "")).strip()
+        text = " ".join(w for w in str(result.get("text", "")).split() if w != UNKNOWN).strip()
         words = result.get("result")
         if not text or not isinstance(words, list) or not words or not all(isinstance(w, dict) and "conf" in w for w in words):
             return text
-        kept = [w for w in words if float(w.get("conf", 1.0)) >= MIN_WORD_CONFIDENCE]
+        kept = [w for w in words if float(w.get("conf", 1.0)) >= MIN_WORD_CONFIDENCE and w.get("word") != UNKNOWN]
         if not kept:
             return ""
         if len(kept) <= SHORT_PHRASE_WORDS and sum(float(w["conf"]) for w in kept) / len(kept) < SHORT_PHRASE_CONFIDENCE:
@@ -300,7 +324,7 @@ class Listener:
     @staticmethod
     def _read_partial(recognizer) -> str:
         try:
-            return json.loads(recognizer.PartialResult()).get("partial", "").strip()
+            return " ".join(w for w in json.loads(recognizer.PartialResult()).get("partial", "").split() if w != UNKNOWN)
         except (AttributeError, ValueError):
             return ""
 
@@ -316,7 +340,7 @@ class Listener:
             text = self._clean(json.loads(result_json))
         except (ValueError, AttributeError):
             return
-        if text and self._refiner is not None and audio:
+        if text and self._refiner is not None and audio and self._grammar is None:       # (a second listen would ignore the grammar)
             better = self._refiner.refine(audio)
             if better:
                 log.debug("heard (vosk): %s", text)
