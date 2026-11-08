@@ -55,17 +55,15 @@ class TestIconFiles(unittest.TestCase):
         self.assertIn(256, sizes)
 
     def test_the_svg_matches_the_chosen_design(self):
-        sys.path.insert(0, str(ROOT / "tools"))
-        import make_app_icon, make_icon_ideas
-        self.assertEqual(assets.asset_path("icon.svg").read_text(encoding="utf-8"),
-                         make_icon_ideas.sheet_excel_body("#7A55C2", box=make_app_icon.BOX))
+        from quill.ui import feather
+        self.assertEqual(assets.asset_path("icon.svg").read_text(encoding="utf-8"), feather.icon_svg(feather.PLATE))
 
-    def test_the_small_box_is_centred_vertically_in_the_icon(self):
-        svg = assets.asset_path("icon.svg").read_text(encoding="utf-8")
-        import re
-        box = re.search(r'<rect x="11" y="([\d.]+)" width="64" height="64" rx="11" fill="#5F4297"', svg)
-        self.assertIsNotNone(box)
-        self.assertAlmostEqual(float(box.group(1)) + 32, 64.0, places=1)
+    def test_the_feather_is_centred_in_the_icon(self):
+        from quill.ui import feather
+        xs = [x for part in feather.parts().values() for x, _ in part]
+        ys = [y for part in feather.parts().values() for _, y in part]
+        self.assertAlmostEqual((min(xs) + max(xs)) / 2, 64, delta=6)
+        self.assertAlmostEqual((min(ys) + max(ys)) / 2, 64, delta=6)
 
     def test_the_tile_sheet_behind_it_is_centred_too(self):
         sys.path.insert(0, str(ROOT / "tools"))
@@ -88,14 +86,8 @@ class TestSmallSizes(unittest.TestCase):
         import make_app_icon
         self.tool = make_app_icon
 
-    def test_small_sizes_use_five_bold_lines_and_large_ones_seven_thin_ones(self):
-        small, large = self.tool.svg_for(16), self.tool.svg_for(256)
-        self.assertNotEqual(small, large)
-        self.assertEqual(self.tool.svg_for(48), small)
-        self.assertEqual(self.tool.svg_for(64), large)
-        # the sound lines are drawn three times (two shadows and the white ones)
-        self.assertEqual(small.count('fill="#FFFFFF" opacity="1"'), 5)
-        self.assertEqual(large.count('fill="#FFFFFF" opacity="1"'), 7)
+    def test_every_size_uses_the_same_simple_drawing(self):
+        self.assertEqual(self.tool.svg_for(16), self.tool.svg_for(256))            # a few big shapes need no simplified version
 
     def test_the_simplified_svg_is_shipped_too(self):
         self.assertEqual(assets.asset_path("icon-small.svg").read_text(encoding="utf-8"), self.tool.svg_for(16))

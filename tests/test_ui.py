@@ -84,10 +84,8 @@ class TestTray(unittest.TestCase):
     def test_icons_differ_by_state(self):
         on, off = make_icon(True).pixmap(64, 64).toImage(), make_icon(False).pixmap(64, 64).toImage()
         self.assertNotEqual(on, off)
-        self.assertEqual(on.pixelColor(32, 32).alpha(), 0)       # listening: solid, the lines cut out
-        self.assertGreater(on.pixelColor(14, 14).alpha(), 200)
-        self.assertEqual(off.pixelColor(18, 18).alpha(), 0)      # idle: an outline is hollow
-        self.assertGreater(off.pixelColor(32, 32).alpha(), 200)
+        opaque = lambda img: sum(1 for x in range(64) for y in range(64) if img.pixelColor(x, y).alpha() > 128)
+        self.assertGreater(opaque(on), 1.2 * opaque(off))          # listening: a solid feather; idle: just its outline
 
     def test_toggle_asks_app_for_opposite_state(self):
         calls = []

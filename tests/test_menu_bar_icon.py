@@ -1,4 +1,4 @@
-"""The menu bar icon: the small rounded square of the app icon with its sound lines."""
+"""The menu bar icon: the quill feather of the app icon (outline while idle, solid while listening)."""
 import unittest
 
 from PySide6.QtWidgets import QApplication
@@ -21,21 +21,23 @@ class TestGlyph(unittest.TestCase):
     def test_idle_and_listening_look_different(self):
         self.assertNotEqual(image(make_icon(False)), image(make_icon(True)))
 
-    def test_listening_is_a_solid_square_with_the_lines_cut_out(self):
-        img = image(make_icon(True))
-        self.assertGreater(alpha_at(img, 14, 14), 200)                  # the solid body near a corner
-        self.assertGreater(alpha_at(img, 12, 32), 200)                  # solid left of the lines
-        self.assertEqual(alpha_at(img, 32, 32), 0)                      # centre line cut out
-        self.assertEqual(alpha_at(img, 4, 4), 0)                        # nothing outside the square
+    @staticmethod
+    def covered(img):
+        return sum(1 for x in range(64) for y in range(64) if alpha_at(img, x, y) > 128)
 
-    def test_idle_is_an_outline_with_the_lines_drawn_in(self):
-        img = image(make_icon(False))
-        self.assertEqual(alpha_at(img, 18, 18), 0)                      # hollow inside the outline
-        self.assertGreater(alpha_at(img, 32, 32), 200)                  # the centre line is solid
-        self.assertGreater(alpha_at(img, 10, 32), 200)                  # the outline's left edge
-        self.assertEqual(alpha_at(img, 4, 32), 0)
+    def test_listening_is_a_solid_feather_and_idle_an_outline_of_it(self):
+        solid, outline = image(make_icon(True)), image(make_icon(False))
+        self.assertGreater(self.covered(solid), 1.2 * self.covered(outline))         # the outline leaves the middle hollow
+        self.assertEqual(alpha_at(solid, 2, 2), 0)                                   # nothing in the corners
+        self.assertEqual(alpha_at(outline, 2, 2), 0)
 
-    def test_the_square_is_centred(self):
+    def test_the_rib_is_cut_out_of_the_solid_feather(self):
+        from quill.ui import feather
+        scale, (cx, cy) = 0.55, (32 - 0.55 * 68, 32 - 0.55 * 60)
+        (x, y) = feather.SHAFT[round(0.6 * (len(feather.SHAFT) - 1))]
+        self.assertLess(alpha_at(image(make_icon(True)), round(cx + scale * x), round(cy + scale * y)), 128)
+
+    def test_the_feather_is_centred(self):
         for listening in (False, True):
             img = image(make_icon(listening))
             xs = [x for x in range(64) for y in range(64) if alpha_at(img, x, y) > 128]

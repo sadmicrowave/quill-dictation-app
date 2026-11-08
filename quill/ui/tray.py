@@ -19,7 +19,7 @@ import sys
 from typing import Callable
 
 from PySide6.QtCore import QPoint, QRectF, Qt
-from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 from quill import platforms
 
@@ -52,33 +52,44 @@ def folder_for_display(path: str) -> str:
     return "~" + folder[len(home):] if folder.startswith(home) else folder
 
 
-def _glyph(painter: QPainter, listening: bool, ink: QColor) -> None:
-    """The menu bar glyph: the small rounded square of the app icon with its sound lines.
+def _outline(points) -> QPainterPath:
+    path = QPainterPath()
+    path.moveTo(*points[0])
+    for point in points[1:]:
+        path.lineTo(*point)
+    path.closeSubpath()
+    return path
 
-    Idle is an outline with the lines inside; listening is solid with the lines cut out,
-    so the two states read apart at a glance without needing colour.
+
+def _glyph(painter: QPainter, listening: bool, ink: QColor) -> None:
+    """The menu bar glyph: the quill feather of the app icon (see :mod:`quill.ui.feather`).
+
+    Idle is the feather as an outline with its rib; listening is the feather solid with the rib and the notch cut out, so the
+    two states read apart at a glance without needing colour.
     """
-    box = QRectF(8, 8, 48, 48)
-    heights = [8, 16, 24, 34, 22, 14, 8]
-    step, width = 5.6, 3.6
-    left = 32 - (step * (len(heights) - 1) + width) / 2
-    bars = [QRectF(left + i * step, 32 - h / 2, width, h) for i, h in enumerate(heights)]
+    from quill.ui import feather
+    parts = feather.parts()
+    scale = 0.55
+    painter.save()
+    painter.translate(32 - scale * 68, 32 - scale * 60)         # the feather's middle to the middle of the icon
+    painter.scale(scale, scale)
+    shape = _outline(parts["body"]).united(_outline(parts["quill"]))
     painter.setPen(Qt.PenStyle.NoPen)
     if listening:
         painter.setBrush(ink)
-        painter.drawRoundedRect(box, 12, 12)
+        painter.drawPath(shape)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-        for bar in bars:
-            painter.drawRoundedRect(bar, width / 2, width / 2)
+        painter.drawPath(_outline(parts["rib"]))
+        painter.drawPath(_outline(parts["notch"]))
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
     else:
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(ink, 4.5))
-        painter.drawRoundedRect(box.adjusted(2.25, 2.25, -2.25, -2.25), 10, 10)
+        painter.setPen(QPen(ink, 6.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        painter.drawPath(shape)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(ink)
-        for bar in bars:
-            painter.drawRoundedRect(bar, width / 2, width / 2)
+        painter.drawPath(_outline(parts["rib"]))
+    painter.restore()
 
 
 def make_icon(listening: bool, badge: int = 0, badge_color: str = "#7A55C2", dark: bool = False) -> QIcon:

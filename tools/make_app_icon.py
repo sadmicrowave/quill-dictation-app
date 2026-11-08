@@ -1,4 +1,4 @@
-"""Build Quill's application icon files from the chosen design (a spreadsheet-style sheet of stepped column fills with a total row, behind the sound-lines box, on violet).
+"""Build Quill's application icon files from the chosen design (the quill feather, drawn in ``quill/ui/feather.py``, on a violet squircle).
 
     python tools/make_app_icon.py
 
@@ -20,20 +20,18 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from make_icon_ideas import render_png, sheet_excel_body as sheet_offset_body  # noqa: E402
+from make_icon_ideas import render_png  # noqa: E402
 from quill.assets import ICON_SIZES  # noqa: E402
+from quill.ui import feather  # noqa: E402
 
 OUT = ROOT / "quill" / "assets"
-COLOR = "#7A55C2"                      # violet
+COLOR = feather.PLATE                  # violet
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
-#: The small front box as (x, y, size): bigger than the first design (16, 39, 50) so the sound lines read in the Dock.
-BOX = (11, 32, 64)
-SMALL = 48                              # at this size and below the simplified sound lines are used
 
 
 def svg_for(size: int) -> str:
-    """The icon's SVG for *size* px: seven thin sound lines are fine large, five bold ones read better small."""
-    return sheet_offset_body(COLOR, simple=size <= SMALL, box=BOX)
+    """The icon's SVG (the same drawing at every size: it is made of a few big shapes)."""
+    return feather.icon_svg(COLOR)
 
 
 def write_ico(path: pathlib.Path, svg: str | None = None) -> None:
@@ -69,8 +67,8 @@ def write_icns(path: pathlib.Path) -> bool:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "icon.svg").write_text(sheet_offset_body(COLOR, box=BOX), encoding="utf-8")
-    (OUT / "icon-small.svg").write_text(sheet_offset_body(COLOR, simple=True, box=BOX), encoding="utf-8")
+    (OUT / "icon.svg").write_text(feather.icon_svg(COLOR), encoding="utf-8")
+    (OUT / "icon-small.svg").write_text(feather.icon_svg(COLOR), encoding="utf-8")
     for size in ICON_SIZES:
         render_png(svg_for(size), str(OUT / f"icon-{size}.png"), size)
     write_ico(OUT / "Quill.ico")
