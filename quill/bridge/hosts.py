@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from quill import platforms
+from quill.diagnostics import exc_kind, syslog
 
 log = logging.getLogger("quill.hosts")
 
@@ -93,6 +94,7 @@ def _run(args: list[str], failed: list[str] | None = None) -> str:
         return done.stdout
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("command %s failed: %s", args[0], exc)
+        syslog().debug("A helper command failed: %s", exc_kind(exc))
         if failed is not None:
             failed.append(args[0])
         return ""

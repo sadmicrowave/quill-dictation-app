@@ -20,6 +20,7 @@ from quill.bridge.grid import OpenpyxlGrid
 from quill.bridge.grid_bridge import GridBridge
 from quill.bridge.introspect import ListSource, discover
 from quill.bridge.xlsx_patch import Unsupported, patch_package
+from quill.diagnostics import exc_kind, syslog
 
 log = logging.getLogger("quill.xlsx")
 #: Seconds the system's ``open`` may take to hand a file over (it only asks; it never waits for the program).
@@ -124,6 +125,7 @@ class XlsxBridge(GridBridge):
                 return
             except Unsupported as why:
                 log.info("Saving %s in full instead of patching it: %s", self._path.name, why)
+                syslog().info("Saving a file in full instead of patching it")
         self._wb.save(target)
 
     def _saved(self) -> None:

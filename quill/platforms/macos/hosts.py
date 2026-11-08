@@ -17,6 +17,7 @@ import sys
 
 from quill.bridge.hosts import SUPPORTED_SUFFIXES, files_named_in
 from quill.platforms.macos.processes import running_executables as _native_list
+from quill.diagnostics import exc_kind, syslog
 
 log = logging.getLogger("quill.hosts")
 
@@ -103,6 +104,7 @@ class MacHosts:
                     matches.append(candidate)
         if not matches:
             log.info("%s is open in a program, but no file with that name was found", stem)
+            syslog().info("A file is open in a program, but no file with that name was found")
             return None
         newest = self._most_recently_used(matches)
         self._remember_name(stem, newest)

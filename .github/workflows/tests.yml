@@ -54,6 +54,9 @@ jobs:
           python -m pip install --upgrade pip
           (pip install -r requirements.txt pytest) 2>&1 | tee install.log
           test "${PIPESTATUS[0]}" -eq 0 || { python tools/ci_annotate.py "install failed" install.log 80; exit 1; }
+      - name: Support relay tests
+        if: matrix.os == 'macos-26'
+        run: node --test relay/worker.test.mjs
       - name: Qt environment
         shell: bash
         run: python tools/qt_environment.py

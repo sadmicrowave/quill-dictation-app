@@ -17,7 +17,7 @@
 ## ✅ Why it just works
 
 - **Learns your words** from your own drop-down lists and column headings.
-- **Private**: speech stays on your computer.
+- **Private**: speech stays on your computer ([details](help:privacy)).
 - **Only writes while listening**, so room chatter never lands in your sheet.
 - **Notices changes**: save a new list value and Quill picks it up within seconds.
 

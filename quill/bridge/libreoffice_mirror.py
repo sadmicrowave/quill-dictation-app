@@ -33,6 +33,7 @@ from quill import platforms
 from quill.bridge.mirror import MirrorResult
 
 from quill.bridge.processes import running_executables
+from quill.diagnostics import exc_kind, syslog
 
 log = logging.getLogger("quill.libreoffice")
 
@@ -241,6 +242,7 @@ class LibreOfficeMirror:
             return True
         except OSError as exc:
             log.warning("could not install the LibreOffice script: %s", exc)
+            syslog().warning("Could not install the LibreOffice script: %s", exc_kind(exc))
             return False
 
     def has_document(self, path: str | os.PathLike) -> bool:

@@ -1,0 +1,23 @@
+name = "quill-support"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# The repository that receives the reports. Use a PRIVATE one: reports can hold a version, a system and log lines.
+GITHUB_REPO = "sadmicrowave/quill-support"
+# "true" puts a reply address into the issue (only with a private repository).
+INCLUDE_CONTACT = "false"
+
+# Per-minute limit per connection (Cloudflare's rate-limit binding).
+[[unsafe.bindings]]
+name = "LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+# Optional hourly counter: create with `npx wrangler kv namespace create RATE`, paste the id, uncomment.
+# [[kv_namespaces]]
+# binding = "RATE"
+# id = "PASTE_THE_ID_HERE"
+
+# The token is a secret, never in this file:  npx wrangler secret put GITHUB_TOKEN

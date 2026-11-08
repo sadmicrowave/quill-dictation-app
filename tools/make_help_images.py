@@ -45,6 +45,26 @@ def main() -> None:
         shoot(app, theme)
 
 
+def support_form():
+    """The Report a Problem form with a sample message and the preview open (a log of SYS lines only)."""
+    import logging
+    import tempfile
+    from quill import diagnostics
+    from quill.ui.support_dialog import SupportDialog
+    folder = pathlib.Path(tempfile.mkdtemp())
+    diagnostics.setup_logging(folder)
+    logging.getLogger("quill").info("Connected to a file the report never shows")
+    diagnostics.syslog().info("Connected to a spreadsheet: %d lists, %d values", 5, 25)
+    dialog = SupportDialog(None, lambda payload: None, lambda: None, log_folder=folder, configured=True)
+    dialog.message.setPlainText("After I said next row the line was saved twice.")
+    dialog.toggle_preview()
+    dialog.resize(560, dialog.sizeHint().height())
+    dialog.show()
+    dialog.activateWindow()
+    QApplication.processEvents()
+    return dialog
+
+
 def shoot(app: QApplication, theme: str) -> None:
     dark = theme == "dark"
     apply_theme(app, theme, "violet", "compact")
@@ -130,6 +150,7 @@ def shoot(app: QApplication, theme: str) -> None:
     save(mini.widget, "mini-view.png", 24, theme)
     save(waiting.widget, "not-connected.png", 24, theme)
     save(helper.widget, "term-helper.png", 0, theme)
+    save(support_form(), "support.png", 0, theme)
     for page, side in panels.items():
         save(side.widget, f"side-panel-{page}.png", 24, theme)
     for shown, (dialog, widget) in dialogs.items():

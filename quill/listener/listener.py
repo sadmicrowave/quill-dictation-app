@@ -21,6 +21,7 @@ import queue
 import threading
 from array import array
 from typing import Callable, ContextManager
+from quill.diagnostics import exc_kind, syslog
 
 log = logging.getLogger("quill.listener")
 
@@ -241,6 +242,7 @@ class Listener:
                         self._partial(self._read_partial(recognizer))
         except Exception as exc:   # model missing, no microphone, permission denied, ...
             log.exception("listening stopped")
+            syslog().error("Listening stopped with an error: %s", exc_kind(exc), exc_info=True)
             self._running = False
             self._on_error(f"Listening stopped: {exc}")
         finally:

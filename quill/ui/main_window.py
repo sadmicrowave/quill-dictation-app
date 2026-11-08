@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from quill import diagnostics
 from quill.stream import WordMatch
 from quill.ui.chrome import set_always_on_top
 from quill.ui.hints import fill_missing_tips
@@ -1554,8 +1555,13 @@ class MainWindow:
         self._has_last_saved = True
         self._refresh_visibility()
 
-    def append_log(self, text: str, level: str = "info", reveal: bool = True) -> None:
+    def append_log(self, text: str, level: str = "info", reveal: bool = True, safe: str | tuple | None = None) -> None:
         """Add a timestamped line to the log (and to the log file, for troubleshooting).
+
+        *safe* is the same event as it may be told in a support report: a fixed string, or ``(format, *args)`` whose
+        arguments are numbers, names from a fixed list or an error's class name (see ``diagnostics.syslog``). It goes
+        to the log file as a ``SYS`` line beside the full text, which is ``USR`` and stays on this computer. Leave it
+        out when the event has no safe wording: nothing is then ever reported.
 
         *level* is ``"info"``, ``"warning"`` or ``"error"``. Warnings and errors say so after the time and are
         coloured (every error the same red); an error also opens the log if it is collapsed, so it is seen (unless *reveal* is
@@ -1563,7 +1569,11 @@ class MainWindow:
         """
         label, color = LOG_LEVELS.get(level, LOG_LEVELS["info"])
         text = sentence(text)
-        logging.getLogger("quill").log({"error": logging.ERROR, "warning": logging.WARNING}.get(level, logging.INFO), text)
+        python_level = {"error": logging.ERROR, "warning": logging.WARNING}.get(level, logging.INFO)
+        logging.getLogger("quill").log(python_level, text)
+        if safe is not None:
+            fmt, *args = (safe,) if isinstance(safe, str) else safe
+            diagnostics.syslog().log(python_level, fmt, *args)
         stamp = f"{dt.datetime.now():%H:%M:%S}"
         line = f"{stamp}\t{label + '  ' if label else ''}{text}"
         fmt = QTextCharFormat()                                   # a plain format: the colour never carries to the next line

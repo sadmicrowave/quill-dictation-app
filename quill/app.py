@@ -29,7 +29,7 @@ from quill.bridge.base import BridgeError, WorkbookBridge
 from quill.bridge.factory import get_bridge
 from quill.bridge.hosts import APPS as HOST_APPS, HostApp, OpenFile, SpreadsheetHosts
 from quill.bridge.libreoffice_mirror import LibreOfficeMirror
-from quill import platforms
+from quill import diagnostics, platforms, support
 from quill.bridge.mirror import MirrorResult, NullMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -71,7 +71,7 @@ from quill.ui.chrome import (
     set_dock_icon_visible,
     watch_native_window,
 )
-from quill.ui.confirm import info
+from quill.ui.confirm import confirm, info
 from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import MainWindow
 from quill.ui.menus import MenuState, QuillMenus
@@ -79,6 +79,7 @@ from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog, open_log_folder
 from quill.ui.side_panel import APPEND_TO, FILE_PAGE, NEXT_ROW, TITLES, TURN_PAGE
 from quill.ui.sorting_window import SortingWindow
+from quill.ui.support_dialog import SupportDialog
 from quill.ui.theme import (
     apply_opacity,
     backdrop_alpha,
@@ -361,6 +362,7 @@ class QuillApp:
         self._restart_check_timer()
         QTimer.singleShot(FILE_DIALOG_WARM_MS, self._warm_file_dialog)
         self._flush_timer.start()
+        QTimer.singleShot(4000, self._offer_crash_report)    # (after the window is up; only after an unexpected error)
         QTimer.singleShot(0, self._warm_up_sounds)           # after the window is up: load every sound, make spoken clips
 
     def connect_workbook(self, name: str | None = None, quiet: bool = False) -> None:
@@ -379,7 +381,7 @@ class QuillApp:
         except BridgeError as exc:
             self.connected = False
             if not quiet:
-                self.window.append_log(f"Not connected: {exc}", "warning")
+                self.window.append_log(f"Not connected: {exc}", "warning", safe="Not connected to a spreadsheet")
             self.window.set_not_connected(True)
             return
         self.connected = True
@@ -390,7 +392,7 @@ class QuillApp:
         count = sum(len(v) for v in bridge.get_lists().values())
         self.window.append_log(
             f"Connected to {bridge.workbook_name}: {len(bridge.get_lists())} lists, {count} values"
-        )
+        , safe=("Connected to a spreadsheet: %d lists, %d values", len(bridge.get_lists()), count))
         warning = getattr(bridge, "discovery_warning", None)
         if warning:
             self.window.append_log(warning, "warning")
@@ -398,7 +400,7 @@ class QuillApp:
         self.window.panel.hide_closed()
         if self._ready_note_pending and self.listener is not None and not self._mic_open:
             self._ready_note_pending = False
-            self.window.append_log(READY_NOTE)
+            self.window.append_log(READY_NOTE, safe="Speech model ready")
         self._show_active_sheet()
         self.tray.set_workbook(bridge.workbook_name, bridge.workbook_path)
         self.settings.preferences["last_workbook"] = bridge.workbook_name
@@ -431,7 +433,7 @@ class QuillApp:
             self._set_listening(False)
             self.tray.set_workbook("", "")
             self.window.update_workbooks([])
-            self.window.append_log(f"'{closed}' was closed.")
+            self.window.append_log(f"'{closed}' was closed.", safe="A file was closed in its program")
             self.window.set_not_connected(True)
         if names and not self.connected and self._released_file(bridge):
             names = []                  # (the file's window was closed: it is not attached again just because the file exists)
@@ -439,7 +441,7 @@ class QuillApp:
             preferred = str(self.settings.preferences["last_workbook"])
             self.connect_workbook(preferred if preferred in names else None, quiet=True)
             if self.connected:
-                self.window.append_log(f"Attached to {bridge.workbook_name} automatically.")
+                self.window.append_log(f"Attached to {bridge.workbook_name} automatically.", safe="Attached to a file automatically")
 
     def _released_file(self, bridge) -> bool:
         """Is *bridge* a file whose spreadsheet window was closed and that Quill let go of (see :meth:`_check_link`)?"""
@@ -458,6 +460,7 @@ class QuillApp:
                 result = work()
             except Exception:                       # a helper must never take the app down
                 log.exception("background task failed")
+                diagnostics.syslog().error("A background task failed", exc_info=True)
                 result = None
             self.relay.background_done.emit(done, result)
 
@@ -513,12 +516,12 @@ class QuillApp:
                 if self.lo_mirror.installed_note and not self._lo_noted:
                     self._lo_noted = True
                     self.window.append_log("Quill added a small script to LibreOffice (quill_mirror.py in its user scripts folder) so "
-                                           "rows can appear there as they are written. It is safe to delete.")
+                                           "rows can appear there as they are written. It is safe to delete.", safe="Added the LibreOffice script")
                 return                                              # the program has them: nothing to reload
             if isinstance(result, MirrorResult) and result.reason == "denied" and not self._mirror_warned:
                 self._mirror_warned = True
                 self.window.append_log("Numbers did not let Quill show rows as they are written. Allow it in System Settings > "
-                                       "Privacy & Security > Automation (Quill > Numbers).", "warning")
+                                       "Privacy & Security > Automation (Quill > Numbers).", "warning", safe="Numbers did not allow live rows")
             self._host_reload.start()                               # not in a program that takes live rows (or it said no): the older way
 
         self.run_in_background(show, shown)
@@ -552,7 +555,7 @@ class QuillApp:
                 self._host_noted = True                         # one line of advice, not one per saved row
                 self.window.append_log(f"{host_app.name}: {host_app.note}")
         else:
-            self.window.append_log(f"Couldn't refresh {host_app.name}. {host_app.note}", "warning")
+            self.window.append_log(f"Couldn't refresh {host_app.name}. {host_app.note}", "warning", safe=("Could not refresh %s", host_app.name))
 
     #: Events after which Quill itself has just written to the workbook file.
     _WRITE_EVENTS = frozenset({"committed", "add_values", "alias_added", "undone", "searched", "cleared"})
@@ -612,7 +615,7 @@ class QuillApp:
 
         def done(saved: bool | None) -> None:
             if not saved:
-                self.window.append_log("LibreOffice did not save the file. Save it there, then press refresh again.", "warning")
+                self.window.append_log("LibreOffice did not save the file. Save it there, then press refresh again.", "warning", safe="LibreOffice did not save the file")
                 return
             try:
                 self.controller.refresh()
@@ -639,13 +642,13 @@ class QuillApp:
                     self._clear_sheet_alert()
                 changed = self.controller.follow_sheet()                # (a live program: it says which sheet is open)
         except BridgeError as exc:
-            self.window.append_log(f"Could not check the sheet: {exc}", "warning")
+            self.window.append_log(f"Could not check the sheet: {exc}", "warning", safe="Could not check the sheet")
             return
         self._show_active_sheet()
         if changed and self.window.panel_page != FILE_PAGE:           # followed to another sheet (any program): the folder icon says so
             self.window.raise_file_alert(f"Now on sheet {bridge.active_sheet_name()}")
         if not quiet and not changed:
-            self.window.append_log(f"Checked: sheet '{bridge.active_sheet_name()}' is the one open.")
+            self.window.append_log(f"Checked: sheet '{bridge.active_sheet_name()}' is the one open.", safe="Checked the open sheet")
 
     def _warn_sheet_not_saved(self, sheet: str) -> None:
         """The program shows a sheet that the saved file does not have (added or renamed since the last save)."""
@@ -659,7 +662,7 @@ class QuillApp:
         self.window.raise_file_alert(f"A different sheet is open ({sheet}) and it is not saved yet.")
         self.window.append_log(f"Sheet '{sheet}' is open in your spreadsheet program but is not in the saved file yet, so Quill "
                                "stays on its last sheet and will not listen. Press the refresh icon beside Sheet to save the "
-                               "file and follow it.", "warning")
+                               "file and follow it.", "warning", safe="A sheet is open in the program but not in the saved file")
         if self.controller.session.listening:                        # nothing may flow into the old sheet meanwhile
             self.controller.set_listening(False)
             self._alert_start(True)
@@ -705,7 +708,7 @@ class QuillApp:
         except BridgeError:
             return                                   # probably being saved right now; try again next tick
         self._seen_mtime = mtime
-        self.window.append_log("Workbook changed: lists and columns re-read")
+        self.window.append_log("Workbook changed: lists and columns re-read", safe="Workbook changed: lists and columns re-read")
 
     # ------------------------------------------------------------------ #
     # Menu bar                                                             #
@@ -727,7 +730,8 @@ class QuillApp:
             "files_panel": lambda: w.toggle_panel(FILE_PAGE), "turn_panel": lambda: w.toggle_panel(TURN_PAGE),
             "log": lambda: w.set_log_collapsed(not w.log_collapsed, notify=True),
             "minimize": lambda: w.widget.showMinimized(), "bring_front": lambda: self._bring_to_front(),
-            "help": lambda: self.open_help(), "open_logs": lambda: open_log_folder(), "about": lambda: self._about(),
+            "help": lambda: self.open_help(), "support": lambda: self.open_support(),
+            "privacy": lambda: self.open_help("privacy"), "open_logs": lambda: open_log_folder(), "about": lambda: self._about(),
         })
         self.menus.state.file_page, self.menus.state.turn_page = FILE_PAGE, TURN_PAGE
         self.menus.install(w.widget.menuBar(), reuse={"open_file": w.open_file_action, "use_excel": w.use_excel_action})
@@ -766,14 +770,15 @@ class QuillApp:
         from quill import __version__
         info(self.window.widget, f"Quill {__version__}",
              "Hands-free spreadsheet dictation. Everything runs on this computer: your voice and your spreadsheets "
-             "are never sent anywhere.")
+             "are never sent anywhere. The only thing that ever leaves it is a problem report you choose to send "
+             "(Help > Report a Problem), and you see all of it first.")
 
     def show_workbook(self) -> None:
         """Bring the workbook being dictated into to the front (tray click)."""
         try:
             self.controller.bridge.activate()
         except BridgeError as exc:
-            self.window.append_log(str(exc), "error")
+            self.window.append_log(str(exc), "error", safe=("Error: %s", diagnostics.exc_kind(exc)))
 
     def _find_model(self) -> pathlib.Path | None:
         """The speech model to listen with: the larger one if chosen and installed, else the standard one."""
@@ -783,7 +788,7 @@ class QuillApp:
                 self._loaded_quality = "better"
                 return better
             self.window.append_log("The Broad speech model is not installed yet: using the Quick one. "
-                                   "Install it in Settings, under Speech Model.", "warning")
+                                   "Install it in Settings, under Speech Model.", "warning", safe="The Broad speech model is not installed: using the Quick one")
         self._loaded_quality = "standard"
         return self._model_finder(str(self.settings.preferences["model_path"]))
 
@@ -794,7 +799,7 @@ class QuillApp:
         folder = self._whisper_finder()
         if folder is None or not self._whisper_engine():
             self.window.append_log("The Careful speech model is not ready (install it in Settings, under Speech Model): "
-                                   "using the Quick one.", "warning")
+                                   "using the Quick one.", "warning", safe="The Careful speech model is not ready")
             return None
         self._loaded_quality = "best"
         return self._refiner_factory(folder, self._whisper_hint)
@@ -848,13 +853,13 @@ class QuillApp:
         try:
             freed = self._model_remover(self._model_folder(quality))
         except (OSError, ValueError) as exc:
-            self.window.append_log(f"Could not remove the {QUALITY_LABELS[quality]} speech model: {exc}", "error")
+            self.window.append_log(f"Could not remove the {QUALITY_LABELS[quality]} speech model: {exc}", "error", safe=("Could not remove a speech model: %s", diagnostics.exc_kind(exc)))
             return
-        self.window.append_log(f"{QUALITY_LABELS[quality]} speech model removed ({freed // (1024 * 1024)} MB freed)")
+        self.window.append_log(f"{QUALITY_LABELS[quality]} speech model removed ({freed // (1024 * 1024)} MB freed)", safe=("Speech model removed: %s", QUALITY_LABELS[quality]))
         if str(self.settings.preferences["speech_quality"]) == quality:
             self.settings.preferences["speech_quality"] = fallback_choice(quality, self.quality_installed)
             self.settings.save()
-            self.window.append_log(f"Now using the {QUALITY_LABELS[self.settings.preferences['speech_quality']]} speech model")
+            self.window.append_log(f"Now using the {QUALITY_LABELS[self.settings.preferences['speech_quality']]} speech model", safe=("Using the %s speech model", QUALITY_LABELS[self.settings.preferences["speech_quality"]]))
             self._reload_listener()
         self._show_model_state()
         self.sync_model_panel()
@@ -884,7 +889,7 @@ class QuillApp:
         model = self._find_model()
         if model is None:
             self.window.append_log("No speech model found. Install one in Settings, under Speech Model, "
-                                   "to start dictating.", "warning")
+                                   "to start dictating.", "warning", safe="No speech model found")
             return
         self.listener = self._listener_factory(model, self.relay.transcript.emit, self.relay.error.emit)
         set_partial = getattr(self.listener, "set_partial_callback", None)
@@ -903,7 +908,7 @@ class QuillApp:
         self._sync_mic()
         if not self._mic_open:
             if self.connected:
-                self.window.append_log(READY_NOTE)
+                self.window.append_log(READY_NOTE, safe="Speech model ready")
             else:
                 self._ready_note_pending = True               # no "ready, press Start" next to a warning: say it once a file is connected
 
@@ -929,11 +934,11 @@ class QuillApp:
         if want and not self._mic_open:
             self.listener.start()
             self._mic_open = True
-            self.window.append_log("Microphone On")
+            self.window.append_log("Microphone On", safe="Microphone on")
         elif not want and self._mic_open:
             self.listener.stop()
             self._mic_open = False
-            self.window.append_log("Microphone Off")
+            self.window.append_log("Microphone Off", safe="Microphone off")
         self._restart_quiet_timer(keep_running=True)       # starts when something opens the microphone for Quill
 
     @staticmethod
@@ -999,11 +1004,11 @@ class QuillApp:
             self.controller.refresh()
         except BridgeError as exc:
             self.connected = False
-            self.window.append_log(f"Lost the workbook: {exc}", "error")
+            self.window.append_log(f"Lost the workbook: {exc}", "error", safe=("Lost the workbook: %s", diagnostics.exc_kind(exc)))
             return
         self.window.update_workbooks(self.controller.bridge.open_workbooks(),
                                      self.controller.bridge.workbook_name)
-        self.window.append_log("Workbook re-read")
+        self.window.append_log("Workbook re-read", safe="Workbook re-read")
 
     def resolve_term(self, key: TermKey, decision: Decision, term: str) -> None:
         """The user decided what to do with an unrecognised term."""
@@ -1032,7 +1037,7 @@ class QuillApp:
         if self.controller.voice_sorter is not None:
             self.controller.stop_voice_sort()
         elif not self.controller.start_voice_sort():
-            self.window.append_log("Nothing to sort")
+            self.window.append_log("Nothing to sort", safe="Nothing to sort")
             self.sorting.set_voice_active(False)
 
     def show_sorting(self) -> None:
@@ -1087,7 +1092,7 @@ class QuillApp:
         """
         path = pathlib.Path(path)
         if path.suffix.lower() not in (".xlsx", ".csv", ".tsv") or not path.is_file():
-            self.window.append_log(f"Can't open '{path.name}': choose a spreadsheet file (.xlsx or .csv).", "error")
+            self.window.append_log(f"Can't open '{path.name}': choose a spreadsheet file (.xlsx or .csv).", "error", safe="Could not open a file: not a spreadsheet type")
             return False
         previous, was_connected = self.controller.bridge, self.connected
         if was_connected:
@@ -1105,7 +1110,7 @@ class QuillApp:
             self.settings.preferences["workbook_file"] = str(path)
             self.settings.save()
         self.window.set_file_mode(True)
-        self.window.append_log(f"Working on the file {path.name}")
+        self.window.append_log(f"Working on the file {path.name}", safe="Working on a file")
         return True
 
     # ------------------------------------------------------------------ #
@@ -1147,15 +1152,16 @@ class QuillApp:
         if bridge.flush():
             self._flush_failures = 0
             if not final:
-                self.window.append_log(f"The file is free again: saved the waiting rows to {bridge.workbook_name}")
+                self.window.append_log(f"The file is free again: saved the waiting rows to {bridge.workbook_name}", safe="The file is free again: saved the waiting rows")
             return
         self._flush_failures += 1
         if final or self._flush_failures == FLUSH_COPY_AFTER:
             copy = bridge.save_copy()
             if copy and not final:
-                self.window.append_log(f"{bridge.workbook_name} is still in use. Saved the waiting rows to a copy: {copy}", "warning")
+                self.window.append_log(f"{bridge.workbook_name} is still in use. Saved the waiting rows to a copy: {copy}", "warning", safe="A file is still in use: saved the waiting rows to a copy")
             elif copy:
                 log.warning("quit with unsaved rows; copy saved to %s", copy)
+                diagnostics.syslog().warning("Quit with unsaved rows: a copy was saved")
 
     def _active_kind(self) -> str:
         """What the active file is open in or stored as, for the panel: Excel, LibreOffice Calc, CSV ..."""
@@ -1343,7 +1349,7 @@ class QuillApp:
         self._viewer_looks = 0
         self.window.append_log(f"Waiting for {self.controller.bridge.workbook_name} to open in your spreadsheet program. "
                                "Quill writes to the file only while it is open there, and starts listening as soon as it is.",
-                               "warning", reveal=False)
+                               "warning", reveal=False, safe="Waiting for a file to open in its program")
         self._viewer_look()
 
     def _viewer_look(self) -> None:
@@ -1367,13 +1373,13 @@ class QuillApp:
             if not self._launch(path):
                 self._waiting_viewer = False
                 self._start_wanted = False
-                self.window.append_log(f"Could not open {name} in a spreadsheet program. Open it yourself, then press Start.", "warning")
+                self.window.append_log(f"Could not open {name} in a spreadsheet program. Open it yourself, then press Start.", "warning", safe="Could not open a file in a program")
                 return
         self._viewer_looks += 1
         if self._viewer_looks >= self.VIEWER_LOOKS:
             self._waiting_viewer = False
             self._start_wanted = False
-            self.window.append_log(f"{name} did not open. Open it yourself in a spreadsheet program, then press Start.", "warning")
+            self.window.append_log(f"{name} did not open. Open it yourself in a spreadsheet program, then press Start.", "warning", safe="A file did not open")
             return
         QTimer.singleShot(self.VIEWER_LOOK_MS, self._viewer_look)
 
@@ -1441,7 +1447,7 @@ class QuillApp:
             if self.open_workbook_file(pathlib.Path(entry.path), remember=False):
                 self._host = host_app
                 log.info("working on %s, open in %s", entry.name, host_app.name)
-                self.window.append_log(f"Found {entry.name} open in {host_app.name}: now working on it.")
+                self.window.append_log(f"Found {entry.name} open in {host_app.name}: now working on it.", safe=("Found a file open in %s", host_app.name))
                 return
 
     def _check_link(self, manual: bool = False, complete: bool = True) -> None:
@@ -1480,7 +1486,7 @@ class QuillApp:
         self.window.update_workbooks([])
         self.window.set_not_connected(True)
         self.window.append_log(f"{closed} was closed in your spreadsheet program, so Quill let go of it. "
-                               "Open it again, or pick another file.", "warning")
+                               "Open it again, or pick another file.", "warning", safe="A file was closed in its program: let go of it")
         self._closed_file = closed_path
         self.window.panel.show_closed(closed)                           # the note under Open File, with Reopen
         self.window.open_panel(FILE_PAGE)
@@ -1499,7 +1505,7 @@ class QuillApp:
                 self.use_live_excel()
                 self.connect_workbook(entry.name)
                 if self.connected:
-                    self.window.append_log(f"Excel has {entry.name} open, so Quill now works in Excel directly (no file lock)")
+                    self.window.append_log(f"Excel has {entry.name} open, so Quill now works in Excel directly (no file lock)", safe="A file is open in Excel: working in Excel directly")
                 return self.connected
         return False
 
@@ -1573,7 +1579,7 @@ class QuillApp:
         try:
             bridge = self._live_bridge_factory()
         except NotImplementedError as exc:
-            self.window.append_log(str(exc), "error")
+            self.window.append_log(str(exc), "error", safe=("Error: %s", diagnostics.exc_kind(exc)))
             return
         if self.connected:
             self.controller.detach()
@@ -1583,8 +1589,42 @@ class QuillApp:
         self.settings.preferences["workbook_file"] = ""
         self.settings.save()
         self.window.set_file_mode(False)
-        self.window.append_log("Using the workbook open in your spreadsheet program")
+        self.window.append_log("Using the workbook open in your spreadsheet program", safe="Using the workbook open in the program")
         self.connect_workbook(quiet=True)
+
+    def open_support(self, kind: str = "problem") -> None:
+        """Open the *Report a Problem* form (``kind="crash"`` when Quill hit an unexpected error last time)."""
+        if getattr(self, "_support_dialog", None) is not None:
+            self._support_dialog.raise_()
+            return
+        dialog = SupportDialog(self.window.widget, send=lambda payload: self._send_support(payload),
+                               open_privacy=lambda: self.open_help("privacy"), kind=kind)
+        self._support_dialog = dialog
+        try:
+            dialog.exec()
+        finally:
+            self._support_dialog = None
+            dialog.deleteLater()
+
+    def _send_support(self, payload: dict) -> None:
+        """Send a report off the window's thread and tell the form how it went."""
+        dialog = self._support_dialog
+
+        def done(result) -> None:
+            outcome = result if isinstance(result, support.SendResult) else support.SendResult(False, error="The report could not be sent.")
+            diagnostics.syslog().info("A support report was %s", "sent" if outcome.ok else "not sent")
+            if self._support_dialog is dialog and dialog is not None:
+                dialog.finished(outcome)
+
+        self.run_in_background(lambda: support.send(payload), done)
+
+    def _offer_crash_report(self) -> None:
+        """After an unexpected error last time: offer the form once (only where sending is set up)."""
+        if support.SUPPORT_URL and diagnostics.take_crash():
+            if confirm(self.window.widget, "Quill hit an unexpected error last time",
+                       "Would you like to send a report so it can be fixed? You see exactly what is sent before it goes.",
+                       "Report It", cancel="Not Now", danger=False):
+                self.open_support("crash")
 
     def open_help(self, topic: str | None = None) -> None:
         """Open the help window on *topic* (a page's slug), creating it on first use."""
@@ -1641,6 +1681,7 @@ class QuillApp:
             return
         self._quitting = True
         log.info("quitting")
+        diagnostics.syslog().info("Quitting")
         if self._settings_dialog is not None:
             self._settings_dialog.close_now()
         for widget in list(self.qapp.topLevelWidgets()):
@@ -1751,6 +1792,7 @@ class QuillApp:
     def shutdown(self) -> None:
         """Quitting: close the microphone and stop the timers, so nothing is left running."""
         log.info("shutting down")
+        diagnostics.syslog().info("Shutting down")
         self._watcher.stop()
         self._flush_timer.stop()
         self._flush_held(final=True)
@@ -1764,7 +1806,7 @@ class QuillApp:
     def remove_field(self, column: str) -> None:
         """The user deleted a line of the row being built because Quill got it wrong."""
         if self.controller.remove_field(column):
-            self.window.append_log(f"Removed {column} from the row")
+            self.window.append_log(f"Removed {column} from the row", safe="Removed a column from the row")
         self.window.update_current_row(self.controller.session.record)
 
     def change_field(self, column: str, to_column: str) -> None:
@@ -1859,13 +1901,13 @@ class QuillApp:
         quality = str(self.settings.preferences["speech_quality"])
         if quality != self._loaded_quality and self.listener is not None and self.quality_installed(quality):
             self._reload_listener()                          # the user chose the other speech model
-            self.window.append_log(f"Now listening with the {QUALITY_LABELS[quality]} speech model")
+            self.window.append_log(f"Now listening with the {QUALITY_LABELS[quality]} speech model", safe=("Now listening with the %s speech model", QUALITY_LABELS[quality]))
         self._sync_mic()
         self._restart_quiet_timer()
         self.controller.lead_in_s = self.feedback.lead_in_s()
         self.refresh_sorting()
         if not quiet:
-            self.window.append_log("Settings Saved")
+            self.window.append_log("Settings Saved", safe="Settings saved")
 
     # ------------------------------------------------------------------ #
     # Events from the controller                                           #
@@ -1915,7 +1957,7 @@ class QuillApp:
             if self.controller.pending_terms():
                 self.show_sorting()
             else:
-                self.window.append_log("Nothing to sort")
+                self.window.append_log("Nothing to sort", safe="Nothing to sort")
             return
         elif kind == "sort_voice_started":
             self.sorting.set_voice_active(True)
@@ -1962,7 +2004,7 @@ class QuillApp:
             self.refresh_sorting()                    # a word that was not understood is on the Term Helper's button at once
         if kind == "updated" and not event.detail:
             return
-        self.window.append_log(self._describe(event), "error" if kind == "error" else "info")
+        self.window.append_log(self._describe(event), "error" if kind == "error" else "info", safe=("Event: %s", event.kind))
 
     @staticmethod
     def _describe(event: Event) -> str:
@@ -2039,7 +2081,7 @@ class QuillApp:
             return                                    # (the window is gone, as in a test that has finished)
         seconds = int(self.settings.preferences["auto_stop_seconds"])
         log.info("no speech for %d s: closing the microphone", seconds)
-        self.window.append_log(f"Stopped listening: nothing was said for {seconds} seconds")
+        self.window.append_log(f"Stopped listening: nothing was said for {seconds} seconds", safe=("Stopped listening: nothing was said for %d seconds", seconds))
         if self.controller.session.listening:
             self.controller.set_listening(False)           # first: stopping may ask the pending questions again
         if self.controller.voice_sorter is not None:
@@ -2098,6 +2140,7 @@ class QuillApp:
         """Show an error from a helper thread; if the listener died, close the gate so the window doesn't
         claim to be listening to a dead microphone (and a later Start opens it again)."""
         log.error("%s", message)
+        diagnostics.syslog().error("A helper reported an error")
         self.window.append_log(message, "error")
         if self.listener is not None and self._mic_open and not getattr(self.listener, "running", True):
             self._mic_open = False
@@ -2108,7 +2151,7 @@ class QuillApp:
         """Download the speech model for *quality* on a background thread."""
         quality = quality if quality in QUALITY_LABELS else "standard"
         if quality == "best" and not self._whisper_engine():
-            self.window.append_log("The Careful speech model is not available in this build of Quill.", "error")
+            self.window.append_log("The Careful speech model is not available in this build of Quill.", "error", safe="The Careful speech model is not available in this build")
             return
         spec = SPECS.get(quality)
         self._downloading = quality
@@ -2116,7 +2159,7 @@ class QuillApp:
         self._model_note = "Downloading…"
         self._show_model_state()
         size = spec.size_mb if spec is not None else WHISPER_SIZE_MB
-        self.window.append_log(f"Downloading the {QUALITY_LABELS[quality]} speech model (about {size} MB)")
+        self.window.append_log(f"Downloading the {QUALITY_LABELS[quality]} speech model (about {size} MB)", safe=("Downloading the %s speech model", QUALITY_LABELS[quality]))
 
         def work() -> None:
             try:
@@ -2142,14 +2185,14 @@ class QuillApp:
     def _on_model_ready(self, path) -> None:
         self._model_busy = False
         if path is None:
-            self.window.append_log("Model download failed. Check your connection and try again.", "error")
+            self.window.append_log("Model download failed. Check your connection and try again.", "error", safe="Model download failed")
             self._model_note = ""
             self._show_model_state()
             return
         self._model_note = ""
         self._show_model_state()
         self.sync_model_panel()
-        self.window.append_log(f"{QUALITY_LABELS[self._downloading]} speech model installed")
+        self.window.append_log(f"{QUALITY_LABELS[self._downloading]} speech model installed", safe=("Speech model installed: %s", QUALITY_LABELS[self._downloading]))
         if self._downloading != str(self.settings.preferences["speech_quality"]):
             self.settings.preferences["speech_quality"] = self._downloading        # the model just installed is the one wanted
             self.settings.save()

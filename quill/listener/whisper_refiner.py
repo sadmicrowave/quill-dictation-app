@@ -14,6 +14,7 @@ import logging
 import re
 import threading
 from typing import Callable
+from quill.diagnostics import exc_kind, syslog
 
 log = logging.getLogger("quill.whisper")
 
@@ -84,4 +85,5 @@ class WhisperRefiner:
             return text or None
         except Exception:                                           # never let a failed second look lose the phrase
             log.exception("whisper could not read the phrase")
+            syslog().warning("The Careful model could not read a phrase", exc_info=True)
             return None

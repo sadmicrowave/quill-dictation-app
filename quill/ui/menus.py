@@ -27,7 +27,7 @@ HANDLERS = (
     "open_file", "use_excel", "refresh_files", "settings", "quit",
     "toggle_listening", "next_row", "undo", "term_helper", "new_row", "mode_next_row", "mode_append",
     "mini", "files_panel", "turn_panel", "log", "minimize", "bring_front",
-    "help", "open_logs", "about",
+    "help", "support", "privacy", "open_logs", "about",
 )
 
 
@@ -80,6 +80,9 @@ LAYOUT: tuple[tuple[str, tuple[Entry, ...]], ...] = (
     )),
     ("Help", (
         Entry("help", "Quill Help", "F1"),
+        Entry("support", "Report a Problem…"),
+        Entry("privacy", "Privacy and Your Data"),
+        SEP,
         Entry("open_logs", "Open the Log Folder"),
         SEP,
         Entry("about", "About Quill", role="about"),
