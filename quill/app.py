@@ -678,8 +678,23 @@ class QuillApp:
     #: Milliseconds after LibreOffice says a document was edited before Quill re-reads its lists and headings.
     LO_CHANGED_MS = 600
 
+    def _libreoffice_documents(self) -> list[tuple[pathlib.Path, str]] | None:
+        """What LibreOffice has open, from its live link (None when the link is not up: the process list is asked then)."""
+        link = self.lo_mirror.live_link if hasattr(self.lo_mirror, "live_link") else None
+        if link is None:
+            return None
+        from urllib.parse import unquote, urlparse
+        found = []
+        for url, info in list(link.docs.items()):
+            parsed = urlparse(url)
+            if parsed.scheme == "file" and parsed.path:
+                found.append((pathlib.Path(unquote(parsed.path)), str(info.get("sheet") or "")))
+        return found
+
     def _wire_lo_events(self) -> None:
         """Let LibreOffice's news (from the live link's thread) reach the window's own thread through a signal."""
+        if hasattr(self.hosts, "live_documents"):
+            self.hosts.live_documents["libreoffice"] = self._libreoffice_documents       # (asked first: no process list, no lsof)
         if hasattr(self.lo_mirror, "on_event"):                       # (a pretend mirror in tests has no link)
             self.lo_mirror.on_event = lambda kind, url, sheet: self.relay.lo_event.emit(kind, url, sheet)
         if self.numbers_link is not None:                             # Numbers' news is the same kind (it is made by the looks the app takes)

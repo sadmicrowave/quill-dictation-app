@@ -220,3 +220,29 @@ class TestReload(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestALiveLinkAnswersFirst(unittest.TestCase):
+    def test_a_live_answer_replaces_the_process_list_and_lsof(self):
+        import pathlib
+        from quill.bridge.hosts import LIBREOFFICE
+        runner = FakeRunner({})
+        hosts = SpreadsheetHosts("darwin", runner)
+        hosts.live_documents["libreoffice"] = lambda: [(pathlib.Path("/a/b.xlsx"), "Sheet2")]
+        self.assertEqual(hosts._documents_with_sheets(LIBREOFFICE), [(pathlib.Path("/a/b.xlsx"), "Sheet2")])
+        self.assertEqual(runner.calls, [])                                           # (nothing was started)
+
+    def test_without_a_link_the_old_way_is_used_and_a_broken_link_is_not_trusted(self):
+        from quill.bridge.hosts import LIBREOFFICE
+        runner = FakeRunner({"ps": "", "lsof": ""})
+        hosts = SpreadsheetHosts("darwin", runner)
+        hosts.live_documents["libreoffice"] = lambda: None
+        hosts._documents_with_sheets(LIBREOFFICE)
+        self.assertTrue(runner.calls)
+        runner.calls.clear()
+
+        def broken():
+            raise RuntimeError("x")
+        hosts.live_documents["libreoffice"] = broken
+        hosts._documents_with_sheets(LIBREOFFICE)
+        self.assertTrue(runner.calls)

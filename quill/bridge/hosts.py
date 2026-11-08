@@ -145,6 +145,9 @@ class SpreadsheetHosts:
         self._run = runner or (lambda args: _run(args, self._failed))
         make = platforms.offered(self._platform, "make_hosts", NoHosts)
         self._os = make(lambda args: self._run(args), self._native_processes)      # (a runner set later is used too)
+        self.live_documents: dict[str, Callable[[], list[tuple[pathlib.Path, str]] | None]] = {}
+        """Per program key: a cheap answer from a live link the program keeps open to Quill (``(path, open sheet)`` of each
+        document), or None when the link is not up. Used first, so the process list and ``lsof`` are not asked every look."""
         self.last_look_complete = True
         """Did every question of the last :meth:`open_files` get answered? (False: a time-out or a failing command, so an
         empty answer there means "could not ask", not "nothing is open")."""
@@ -243,6 +246,15 @@ class SpreadsheetHosts:
 
     def _documents_with_sheets(self, app: HostApp, prefer: tuple[str, ...] = ()) -> list[tuple[pathlib.Path, str]]:
         """``(path, open sheet)`` of the documents *app* has open (the sheet is '' where the program does not say)."""
+        live = self.live_documents.get(app.key)
+        if live is not None:
+            try:
+                answer = live()
+            except Exception:                                # (a link that misbehaves is not used)
+                log.debug("a live list failed", exc_info=True)
+                answer = None
+            if answer is not None:
+                return answer
         return self._os.documents(app, prefer)
 
 

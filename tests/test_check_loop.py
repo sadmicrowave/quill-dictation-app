@@ -650,3 +650,13 @@ class TestWorkingInTheOpenLibreOfficeDocument(PanelApp):
         self.assertNotIsInstance(self.app.controller.bridge, self.FakeLiveBridge)
         self.assertEqual(os.path.realpath(self.app.controller.bridge.workbook_path), os.path.realpath(self.plants))
         self.assertTrue(any("link to LibreOffice was lost" in text for _, text in self.logged))
+
+
+class TestWhatLibreOfficeHasOpenComesFromItsLink(PanelApp):
+    def test_the_link_names_the_files_and_sheets_and_no_link_means_ask_the_old_way(self):
+        link = type("L", (), {"docs": {"file:///Users/me/My%20Plants.xlsx": {"sheet": "Data"}, "private:factory/scalc": {"sheet": "S"}}})()
+        self.app.lo_mirror = type("M", (), {"live_link": link})()
+        self.assertEqual(self.app._libreoffice_documents(), [(pathlib.Path("/Users/me/My Plants.xlsx"), "Data")])    # (an unsaved one has no file)
+        self.app.lo_mirror = type("M", (), {"live_link": None})()
+        self.assertIsNone(self.app._libreoffice_documents())
+        self.assertIn("libreoffice", self.app.hosts.live_documents)
