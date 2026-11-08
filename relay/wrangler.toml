@@ -5,6 +5,8 @@ compatibility_date = "2026-01-01"
 [vars]
 # The repository that receives the reports. Use a PRIVATE one: reports can hold a version, a system and log lines.
 GITHUB_REPO = "sadmicrowave/quill-support"
+# The public repository whose newest release the app's "check for updates" reads (GET /latest).
+RELEASE_REPO = "sadmicrowave/quill-dictation-app"
 # "true" puts a reply address into the issue (only with a private repository).
 INCLUDE_CONTACT = "false"
 

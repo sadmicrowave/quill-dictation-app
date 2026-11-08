@@ -94,6 +94,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "vertical_layout": False,  # headings run down the first column (one record per column) instead of across the first row
     "blur": 60,               # blur behind the windows, 0 (none) to 100 (most); macOS / Windows 11
     "learn_after": 2,         # corrections of the same word to the same column before Quill uses the link (1 to 5)
+    "check_for_updates": True,  # at every start, ask the update service whether a newer Quill is out (it sends nothing about you)
     "learn_ask": True,        # after a column is changed, ask "Remember ...?" (off: learn from the change without asking)
 }
 

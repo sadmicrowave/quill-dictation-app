@@ -34,6 +34,10 @@
 | Quill hears itself | Turn off **Speak Sort Term Prompts** (off by default) in **Settings > General**, or wear headphones |
 | Rows don't show in my app | See [Your spreadsheet](help:spreadsheet): some apps need a reload |
 
+## 🆕 Is it already fixed?
+
+Quill checks at every start whether a newer version has been released and, if so, adds **Update Available** to the **Help** menu (and a line to the log). Choose it to read what changed and go to the download page. You can also use **Help > Check for Updates** at any time, and turn the start-up check off in **Settings > General**.
+
 ## 🛟 Still stuck?
 
 ![The Report a Problem form](images/support.png)

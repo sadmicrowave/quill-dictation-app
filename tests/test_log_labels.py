@@ -20,6 +20,7 @@ SAFE_ARGUMENTS = (
     r"^program(_name)?$",                                  # the same, from a live bridge's PROGRAM (LibreOffice / Numbers)
     r"^(self\.)?QUALITY_LABELS\[.+\]$",                    # Quick / Broad / Careful
     r"^event\.kind$",                                      # a fixed list of event kinds
+    r"^outcome\.status$",                                  # an update check's answer: available / current / unknown
     r"^__version__$", r"^platform\.\w+\(\)$",              # version and system facts
 )
 

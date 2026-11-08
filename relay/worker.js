@@ -66,8 +66,42 @@ async function allowed(request, env) {
   return true;
 }
 
+// The newest published (non-draft, non-pre-release) release of the app, as Quill's "check for updates" needs it. The app asks this
+// relay, not GitHub, so GitHub never sees the person's address, and a busy hour cannot use up GitHub's limit (the answer is
+// kept for ten minutes).
+const LATEST_CACHE_S = 600;
+const NOTES_MAX = 600;
+
+export function summarizeRelease(release) {
+  if (!release || typeof release.tag_name !== "string") return { ok: true, version: null };
+  const version = release.tag_name.replace(/^v/i, "").slice(0, 40);
+  const url = typeof release.html_url === "string" && release.html_url.startsWith("https://github.com/") ? release.html_url : "";
+  const notes = typeof release.body === "string" ? release.body.slice(0, NOTES_MAX) : "";
+  return { ok: true, version, url, notes, published: typeof release.published_at === "string" ? release.published_at.slice(0, 10) : "" };
+}
+
+async function latest(request, env) {
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  const key = new Request("https://quill-latest.invalid/latest");
+  const kept = cache ? await cache.match(key) : null;
+  if (kept) return kept;
+  const headers = { accept: "application/vnd.github+json", "user-agent": "quill-support-relay", "x-github-api-version": "2022-11-28" };
+  if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`;
+  const response = await fetch(`https://api.github.com/repos/${env.RELEASE_REPO}/releases/latest`, { headers });
+  if (response.status === 404) return reply({ ok: true, version: null });             // nothing published yet
+  if (!response.ok) return reply({ ok: false, error: "could not read the releases" }, 502);
+  const answer = new Response(JSON.stringify(summarizeRelease(await response.json())),
+    { status: 200, headers: { "content-type": "application/json", "cache-control": `max-age=${LATEST_CACHE_S}` } });
+  if (cache) await cache.put(key, answer.clone());
+  return answer;
+}
+
 export default {
   async fetch(request, env) {
+    if (request.method === "GET" && new URL(request.url).pathname === "/latest") {
+      if (!(await allowed(request, env))) return reply({ ok: false, error: "rate limited" }, 429);
+      return latest(request, env);
+    }
     if (request.method !== "POST") return reply({ ok: false, error: "POST only" }, 405);
     if (Number(request.headers.get("content-length") || 0) > MAX_BODY) return reply({ ok: false, error: "too large" }, 413);
     if (!(await allowed(request, env))) return reply({ ok: false, error: "rate limited" }, 429);

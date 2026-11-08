@@ -27,7 +27,7 @@ HANDLERS = (
     "open_file", "use_excel", "refresh_files", "settings", "quit",
     "toggle_listening", "next_row", "undo", "term_helper", "new_row", "mode_next_row", "mode_append",
     "mini", "files_panel", "turn_panel", "log", "minimize", "bring_front",
-    "help", "support", "privacy", "open_logs", "about",
+    "help", "support", "privacy", "check_updates", "open_logs", "about",
 )
 
 
@@ -83,6 +83,7 @@ LAYOUT: tuple[tuple[str, tuple[Entry, ...]], ...] = (
         Entry("support", "Report a Problem…"),
         Entry("privacy", "Privacy and Your Data"),
         SEP,
+        Entry("check_updates", "Check for Updates…"),
         Entry("open_logs", "Open the Log Folder"),
         SEP,
         Entry("about", "About Quill", role="about"),
@@ -108,6 +109,7 @@ class MenuState:
     log_open: bool = False
     can_undo: bool = False
     sorting_count: int = 0
+    update_version: str = ""              # a newer release than this one exists (its version), else ""
     turn_mode: str = "next_row"            # "next_row" | "append"
     file_page: str = "file"
     turn_page: str = "turn"
@@ -241,6 +243,7 @@ class QuillMenus:
         put("undo", enabled=s.can_undo)
         put("term_helper", text=f"Term Helper ({s.sorting_count})…" if s.sorting_count else "Term Helper…",
             enabled=s.sorting_count > 0)
+        put("check_updates", text=f"Update Available: Quill {s.update_version}…" if s.update_version else "Check for Updates…")
         put("use_excel", enabled=s.can_use_excel)
         put("mini", text="Switch to the Full Window" if s.mini else "Switch to Mini View")
         put("files_panel", checked=s.panel_page == s.file_page)

@@ -1,7 +1,7 @@
 // Run:  node --test relay/worker.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { validate, buildIssue } from "./worker.js";
+import worker, { validate, buildIssue, summarizeRelease } from "./worker.js";
 
 const SYS = "2026-11-07 12:12:47,533 INFO SYS Microphone on";
 const good = { kind: "problem", message: "It stopped", contact: "me@example.com", facts: { Quill: "0.1.0" }, log: [SYS] };
@@ -54,4 +54,24 @@ test("a GitHub failure is a 502 without details", async () => {
   const res = await worker.fetch(post(good), { GITHUB_REPO: "o/r", GITHUB_TOKEN: "bad" });
   assert.equal(res.status, 502);
   assert.deepEqual(await res.json(), { ok: false, error: "could not create the issue" });
+});
+
+test("the newest release is boiled down to a version, a page and short notes", () => {
+  const r = summarizeRelease({ tag_name: "v0.2.0", html_url: "https://github.com/o/r/releases/tag/v0.2.0", body: "x".repeat(2000), published_at: "2026-11-09T10:00:00Z" });
+  assert.equal(r.version, "0.2.0");
+  assert.equal(r.notes.length, 600);
+  assert.equal(r.published, "2026-11-09");
+  assert.equal(summarizeRelease({ tag_name: "1.0", html_url: "https://evil.example/x" }).url, "");       // only GitHub pages are passed on
+  assert.deepEqual(summarizeRelease(null), { ok: true, version: null });
+});
+
+test("GET /latest answers from GitHub, and says so plainly when nothing is published", async () => {
+  const seen = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { seen.push(String(url)); return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 }); };
+  try {
+    const answer = await worker.fetch(new Request("https://relay.example/latest"), { RELEASE_REPO: "o/r" });
+    assert.deepEqual(await answer.json(), { ok: true, version: null });
+    assert.equal(seen[0], "https://api.github.com/repos/o/r/releases/latest");
+  } finally { globalThis.fetch = realFetch; }
 });

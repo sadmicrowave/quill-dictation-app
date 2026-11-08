@@ -1,6 +1,6 @@
 # 🔒 Privacy and Your Data
 
-Quill is built so that your voice and your spreadsheets stay on your computer. This page says exactly what that means, what is stored here, and the one thing that can ever be sent.
+Quill is built so that your voice and your spreadsheets stay on your computer. This page says exactly what that means, what is stored here, and the two things that can ever leave it.
 
 ## 🏠 What stays on your computer
 
@@ -12,6 +12,7 @@ Quill is built so that your voice and your spreadsheets stay on your computer. T
 ## 🌐 When Quill uses the internet
 
 - **Downloading a speech model**, only when you choose to install one: the Quick model comes from alphacephei.com and the Careful one from huggingface.co. Nothing about you is sent with the request except what any download reveals (your network address).
+- **Looking for a newer version**, each time Quill starts (and when you choose **Help > Check for Updates**). Quill asks a small service whether a newer release has been published and sends nothing about you, your files or your voice: only the name and version of Quill, and, as with any request, your network address, which the service does not keep. If a newer version exists, the Help menu says so and the log mentions it once; nothing is downloaded or installed by itself. Turn the check off in **Settings > General > Check for Updates at Start**.
 - **Nothing else.** Quill has no accounts, no analytics, no tracking and no automatic uploads.
 
 ## 📨 Reporting a problem (the only thing that can be sent)

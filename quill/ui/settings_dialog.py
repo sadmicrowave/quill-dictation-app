@@ -156,7 +156,7 @@ def _slider(low: int, high: int, value: int, tip: str) -> tuple[QSlider, QLabel,
 EDITED_PREFERENCES = (
     "theme", "speak_sort_prompts", "auto_voice_sort", "mic_always_on", "auto_stop", "auto_stop_seconds",
     "sheet_check_seconds", "mini_on_top", "hide_dock_icon", "speech_quality", "accent", "spacing", "font_size", "opacity", "sorting_follows_opacity", "sorting_sounds",
-    "blur", "history_limit", "feedback", "sound_pack", "echo_style", "learn_after", "learn_ask",
+    "blur", "history_limit", "check_for_updates", "feedback", "sound_pack", "echo_style", "learn_after", "learn_ask",
 )
 
 
@@ -237,6 +237,7 @@ class SettingsDialog:
         self.auto_stop_spin: QSpinBox | None = None
         self.mini_top_check: ToggleSwitch | None = None
         self.dock_check: ToggleSwitch | None = None
+        self.updates_check: ToggleSwitch | None = None
         self.sorting_opacity_check: ToggleSwitch | None = None
         self.sorting_sounds_check: ToggleSwitch | None = None
         self.model_rows: dict[str, ModelRow] = {}
@@ -420,7 +421,7 @@ class SettingsDialog:
         self.nav.viewport().installEventFilter(self._nav_cursor)
         self._original = copy.deepcopy(self._settings.preferences)
         for control in (self.speak_check, self.auto_sort_check, self.mic_check, self.mini_top_check,
-                        self.dock_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check):
+                        self.dock_check, self.updates_check, self.auto_stop_check, self.sorting_opacity_check, self.sorting_sounds_check):
             control.toggled.connect(self._live)
         self.auto_stop_check.toggled.connect(self.auto_stop_spin.setEnabled)
         for control in (self.theme_combo, self.accent_combo, self.spacing_combo, self.feedback_combo,
@@ -458,6 +459,7 @@ class SettingsDialog:
         prefs["auto_stop_seconds"] = self.auto_stop_spin.value()
         prefs["mini_on_top"] = self.mini_top_check.isChecked()
         prefs["hide_dock_icon"] = self.dock_check.isChecked()
+        prefs["check_for_updates"] = self.updates_check.isChecked()
         prefs["accent"] = self.accent_combo.currentData()
         prefs["spacing"] = self.spacing_combo.currentData()
         prefs["font_size"] = self.font_spin.value()
@@ -678,6 +680,12 @@ class SettingsDialog:
                   "macOS. Quill stays in the menu bar; open it from the menu bar icon (or by opening the app "
                   "again). Off by default: Quill shows in both the Dock and the menu bar.",
                   self.dock_check, "dock menu bar macos")
+        self.updates_check = ToggleSwitch()
+        self.updates_check.setChecked(bool(prefs["check_for_updates"]))
+        self._add("General", page, "Check for Updates at Start",
+                  "Each time Quill starts it asks whether a newer version has been released, and says so if there is one. "
+                  "Nothing about you or your files is sent. You can also check any time from the Help menu.",
+                  self.updates_check, "update upgrade new version release")
         self.mini_top_check = ToggleSwitch()
         self.mini_top_check.setChecked(bool(prefs["mini_on_top"]))
         self._add("General", page, "Keep the Mini View on Top",

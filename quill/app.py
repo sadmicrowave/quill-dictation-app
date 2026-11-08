@@ -21,7 +21,8 @@ import time
 from typing import Callable
 
 import shiboken6
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication
 
 from quill.assets import app_icon
@@ -30,7 +31,7 @@ from quill.bridge.factory import get_bridge
 from quill.bridge.hosts import APPS as HOST_APPS, HostApp, OpenFile, SpreadsheetHosts
 from quill.bridge.libreoffice_bridge import LibreOfficeBridge
 from quill.bridge.libreoffice_mirror import LibreOfficeMirror, file_addresses
-from quill import diagnostics, platforms, support
+from quill import diagnostics, platforms, support, updates
 from quill.bridge.mirror import MirrorResult, NullMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
@@ -375,6 +376,7 @@ class QuillApp:
         QTimer.singleShot(FILE_DIALOG_WARM_MS, self._warm_file_dialog)
         self._flush_timer.start()
         QTimer.singleShot(4000, self._offer_crash_report)    # (after the window is up; only after an unexpected error)
+        QTimer.singleShot(self.UPDATE_CHECK_DELAY_MS, self._check_at_start)     # is a newer Quill out? (if the setting allows)
         QTimer.singleShot(0, self._warm_up_sounds)           # after the window is up: load every sound, make spoken clips
 
     def connect_workbook(self, name: str | None = None, quiet: bool = False) -> None:
@@ -860,7 +862,7 @@ class QuillApp:
             "log": lambda: w.set_log_collapsed(not w.log_collapsed, notify=True),
             "minimize": lambda: w.widget.showMinimized(), "bring_front": lambda: self._bring_to_front(),
             "help": lambda: self.open_help(), "support": lambda: self.open_support(),
-            "privacy": lambda: self.open_help("privacy"), "open_logs": lambda: open_log_folder(), "about": lambda: self._about(),
+            "privacy": lambda: self.open_help("privacy"), "check_updates": lambda: self.check_updates_from_menu(), "open_logs": lambda: open_log_folder(), "about": lambda: self._about(),
         })
         self.menus.state.file_page, self.menus.state.turn_page = FILE_PAGE, TURN_PAGE
         self.menus.install(w.widget.menuBar(), reuse={"open_file": w.open_file_action, "use_excel": w.use_excel_action})
@@ -883,7 +885,9 @@ class QuillApp:
         self.menus.update(
             listening=w.listening, has_file=self.connected, can_use_excel=w.use_excel_action.isEnabled(), mini=w.mini,
             panel_page=w.panel_page, log_open=not w.log_collapsed, can_undo=len(c.history) > 0,
-            sorting_count=len(c.pending_terms()), turn_mode=c.turn_mode)
+            sorting_count=len(c.pending_terms()), turn_mode=c.turn_mode,
+            update_version=(self._update_result.latest if getattr(self, "_update_result", None) is not None
+                            and self._update_result.status == "available" else ""))
 
     def _set_turn_mode(self, mode: str) -> None:
         self.controller.set_turn_mode(mode)
@@ -899,8 +903,9 @@ class QuillApp:
         from quill import __version__
         info(self.window.widget, f"Quill {__version__}",
              "Hands-free spreadsheet dictation. Everything runs on this computer: your voice and your spreadsheets "
-             "are never sent anywhere. The only thing that ever leaves it is a problem report you choose to send "
-             "(Help > Report a Problem), and you see all of it first.")
+             "are never sent anywhere. The only things that leave it are a problem report you choose to send "
+             "(Help > Report a Problem), and you see all of it first, and a check at start for a newer version "
+             "(which sends nothing about you; it can be turned off in Settings).")
 
     def show_workbook(self) -> None:
         """Bring the workbook being dictated into to the front (tray click)."""
@@ -1723,6 +1728,61 @@ class QuillApp:
         self.window.set_file_mode(False)
         self.window.append_log("Using the workbook open in your spreadsheet program", safe="Using the workbook open in the program")
         self.connect_workbook(quiet=True)
+
+    #: Milliseconds after start before Quill asks whether a newer version is out (after the window is up and busy work is done).
+    UPDATE_CHECK_DELAY_MS = 8000
+
+    def _check_at_start(self) -> None:
+        """The check at every start (when the setting is on). Quiet unless a newer version exists."""
+        if not self.settings.preferences["check_for_updates"] or os.environ.get("QUILL_NO_HOSTS"):
+            return
+        self.check_for_updates(manual=False)
+
+    def check_for_updates(self, manual: bool = True) -> None:
+        """Ask the update service for the newest release off the window's thread. *manual*: the person asked, so say how it
+        went whatever the answer is; otherwise only a newer version is mentioned (once, in the log, and in the Help menu)."""
+        self._update_manual = manual
+
+        def done(result) -> None:
+            outcome = result if isinstance(result, updates.UpdateResult) else updates.UpdateResult("unknown", error="The check could not be made.")
+            self._update_result = outcome
+            diagnostics.syslog().info("An update check found: %s", outcome.status)
+            if outcome.status == "available":
+                if not getattr(self, "_update_announced", "") == outcome.latest:
+                    self._update_announced = outcome.latest
+                    from quill import __version__
+                    self.window.append_log(f"A newer Quill is available: {outcome.latest} (you have {__version__}). "
+                                           "Open Help > Update Available to get it.", safe="A newer version of Quill is available")
+                self._sync_menus()
+            if manual:
+                self._tell_update_result(outcome)
+
+        self.run_in_background(lambda: updates.check(), done)
+
+    def _tell_update_result(self, outcome) -> None:
+        """The answer to a check the person asked for."""
+        from quill import __version__
+        if outcome.status == "available":
+            self._offer_update(outcome)
+        elif outcome.status == "current":
+            info(self.window.widget, "Quill is up to date", f"You have the newest version of Quill ({__version__}).")
+        else:
+            info(self.window.widget, "Couldn't check for updates", outcome.error or "The check could not be made. Try again later.")
+
+    def _offer_update(self, outcome) -> None:
+        from quill import __version__
+        notes = f"\n\n{outcome.notes.strip()}" if outcome.notes.strip() else ""
+        if confirm(self.window.widget, f"Quill {outcome.latest} is available",
+                   f"You have Quill {__version__}. The newest version is {outcome.latest}.{notes}", "Download", danger=False):
+            QDesktopServices.openUrl(QUrl(outcome.url))
+
+    def check_updates_from_menu(self) -> None:
+        """Help > Check for Updates (or Update Available): offer a known newer version at once, otherwise check now."""
+        known = getattr(self, "_update_result", None)
+        if known is not None and known.status == "available":
+            self._offer_update(known)
+            return
+        self.check_for_updates(manual=True)
 
     def open_support(self, kind: str = "problem") -> None:
         """Open the *Report a Problem* form (``kind="crash"`` when Quill hit an unexpected error last time)."""
