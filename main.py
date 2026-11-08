@@ -26,7 +26,16 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging(verbose=args.verbose)                      # a packaged app has no console: keep a log file instead
 
     from quill.config.settings import Settings
-    settings = Settings.load()
+    from quill.demo import demo_requested
+    demo = demo_requested(args.demo)
+    if demo:
+        # A demo must never change what a real user has taught Quill (words, synonyms, skipped words, the window's size), and a second
+        # run must start as clean as the first: its settings live in a new throw-away folder every time.
+        import pathlib
+        import tempfile
+        settings = Settings.load(pathlib.Path(tempfile.mkdtemp(prefix="quill-demo-settings-")))
+    else:
+        settings = Settings.load()
 
     from PySide6.QtWidgets import QMessageBox
 
@@ -36,8 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setQuitOnLastWindowClosed(False)  # lives in tray after window closes
 
     from quill.bridge.factory import startup_bridge
-    from quill.demo import demo_requested, make_demo_workbook
-    demo = demo_requested(args.demo)
+    from quill.demo import make_demo_workbook
     if demo:
         args.workbook = str(make_demo_workbook(os.environ.get("QUILL_DEMO_DIR") or None))   # (a fixed folder lets a recording open the same file in a spreadsheet first)
     try:

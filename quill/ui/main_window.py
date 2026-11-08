@@ -105,7 +105,7 @@ FOOTER_ROOM = 22 + 3 + LOG_BOTTOM_MARGIN
 ROW_GRIP_DROP = 5
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
-MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and opens at it the first time
+MIN_WINDOW = (453, 340)      # the full window never gets smaller than this, and opens at it the first time
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user drags it to another)
 LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
 #: Gap (px) between the log box and the footer under it.
@@ -1754,6 +1754,7 @@ class MainWindow:
         self.mini_button.setAccessibleName("Back to the Full Window" if self._view_mini else "Mini View")
         self.badge_label.set_colors(on_accent, accent)
         self.row_table.set_delete_colors(accent, on_accent)
+        self.row_table.set_pill_colors(accent, on_accent)
         self.update_current_row(self._row_fields)         # the grid's first column takes its colour from the theme
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.help_button.setIcon(make_icon("question", text_color, 18))

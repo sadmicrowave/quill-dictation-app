@@ -73,7 +73,10 @@ class TestMainWindow(unittest.TestCase):
         self.assertIn("c.xlsx", self.w.open_file_button.toolTip())          # the folder icon names the file
 
     def test_last_saved(self):
+        self.w.widget.show()
+        QApplication.processEvents()                                        # (the label elides to its width: it needs a laid-out window)
         self.w.set_last_saved("Row 4")
+        QApplication.processEvents()
         self.assertEqual(self.w.last_label.text(), "Last Saved: Row 4")
 
     def test_show_before_setup_is_harmless(self):

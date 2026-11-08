@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QSizePolicy,
     QStyle,
+    QStyledItemDelegate,
     QTableWidget,
     QTextEdit,
     QVBoxLayout,
@@ -112,6 +113,35 @@ class ResizeWatcher(QObject):
         return False
 
 
+class _ValuePills(QStyledItemDelegate):
+    """Draws each value of the row grid as a pill: the same square-cornered, accent-coloured wrapper the words in the Voice Stream
+    wear, because they are what the user said."""
+
+    PAD_X, PAD_Y, MARGIN = 7, 3, 6
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.fill, self.ink = QColor("#7A55C2"), QColor("#FFFFFF")
+
+    def paint(self, painter, option, index) -> None:
+        text = str(index.data() or "")
+        if not text:
+            return
+        table = self.parent()
+        reach = option.rect.width() - self.MARGIN - table.DELETE_SIZE - table.DELETE_MARGIN - 6          # (clear of the delete button)
+        metrics = option.fontMetrics
+        shown = metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(reach - 2 * self.PAD_X, 20))
+        width = metrics.horizontalAdvance(shown) + 2 * self.PAD_X
+        height = min(metrics.height() + 2 * self.PAD_Y, option.rect.height() - 4)
+        box = QRect(option.rect.left() + self.MARGIN, option.rect.top() + (option.rect.height() - height) // 2, width, height)
+        painter.save()
+        painter.fillRect(box, self.fill)
+        painter.setPen(self.ink)
+        painter.setFont(option.font)
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, shown)
+        painter.restore()
+
+
 class RowTable(QTableWidget):
     """The row being built: a column and its value per line, which the user can delete.
 
@@ -147,6 +177,14 @@ class RowTable(QTableWidget):
         self._over_name = False                  # the pointer is over the column name of such a line
         self._button_fill = QColor("#7A55C2")    # the theme colour; set with :meth:`set_delete_colors`
         self._button_glyph = QColor("#FFFFFF")
+        self._pills = _ValuePills(self)
+        if columns >= 2:
+            self.setItemDelegateForColumn(1, self._pills)          # the values, in pills
+
+    def set_pill_colors(self, fill: str, ink: str) -> None:
+        """Colour the pills the values are drawn in (the theme's accent and the colour on it, as in the Voice Stream)."""
+        self._pills.fill, self._pills.ink = QColor(fill), QColor(ink)
+        self.viewport().update()
 
     def set_delete_colors(self, fill: str, glyph: str) -> None:
         """Colour the delete button: a filled circle in *fill* with an "x" in *glyph* (the theme's accent colours)."""

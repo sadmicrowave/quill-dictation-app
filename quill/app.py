@@ -962,14 +962,22 @@ class QuillApp:
         return self._refiner_factory(folder, self._whisper_hint)
 
     def _whisper_hint(self) -> str:
-        """Words the sheet uses ("Brand: Nike, Levi's. Size: S, M."): given to Whisper so it spells them the sheet's way."""
+        """The words the sheet uses ("Brand: Nike, Levi's. Size: S, M, L (also said: large, extra large)."): given to Whisper as its
+        starting prompt so it spells them the sheet's way. A prompt can only be about 224 tokens, so the columns come first, then
+        their values and the synonyms the user taught, until it is full."""
         try:
             vocab = self.controller.vocab
-            parts = [f"{column}: {', '.join(vocab.values_for(column)[:12])}." for column in vocab.columns()[:12]
-                     if vocab.values_for(column)]
+            parts = []
+            for column in vocab.columns()[:14]:
+                values = vocab.values_for(column)
+                if not values:
+                    continue
+                spoken = sorted((self.settings.aliases.get(column) or {}))[:6]
+                extra = f" (also said: {', '.join(spoken)})" if spoken else ""
+                parts.append(f"{column}: {', '.join(values[:14])}{extra}.")
         except Exception:
             return ""
-        return " ".join(parts)[:600]
+        return " ".join(parts)[:800]
 
     def quality_installed(self, quality: str) -> bool:
         """Whether the speech model for *quality* ("standard" or "better") can be found."""

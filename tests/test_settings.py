@@ -183,3 +183,18 @@ class TestNewShippedCommands(SettingsCase):
         s.set_keywords([("go", Action.START_LISTENING), ("halt", Action.STOP_LISTENING)])
         s.save()
         self.assertNotIn("term helper", Settings.load(self.dir).keywords)
+
+
+class TestWindowHeightMigration(unittest.TestCase):
+    def test_a_saved_height_from_before_the_shorter_default_is_forgotten_once(self):
+        import pathlib, tempfile
+        from quill.config.settings import Settings
+        folder = pathlib.Path(tempfile.mkdtemp())
+        settings = Settings.load(folder)
+        settings.preferences.update(window_width=500, window_height=700, prefs_version=2)
+        settings.save()
+        again = Settings.load(folder)
+        self.assertEqual((again.preferences["window_width"], again.preferences["window_height"]), (500, 0))
+        again.preferences["window_height"] = 610                                   # a size chosen since is kept
+        again.save()
+        self.assertEqual(Settings.load(folder).preferences["window_height"], 610)

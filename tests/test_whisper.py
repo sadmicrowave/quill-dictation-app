@@ -199,6 +199,9 @@ class TestBestInTheApp(unittest.TestCase):
     def test_the_hint_lists_the_sheets_values(self):
         self.app.start()
         self.assertTrue(self.app._whisper_hint())
+        self.app.settings.aliases.setdefault("Pot Size", {})["jumbo"] = "XL"
+        self.assertIn("jumbo", self.app._whisper_hint())                       # the synonyms the user taught are in it
+        self.assertLessEqual(len(self.app._whisper_hint()), 800)
 
     def test_download_refused_when_the_engine_is_missing(self):
         self.engine = False

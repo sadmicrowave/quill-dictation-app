@@ -755,3 +755,24 @@ class TestSizeAfterCloseAndReopen(unittest.TestCase):
         w.widget.resize(mini[0], mini[1] + 28)
         self.wait(1300)
         self.assertEqual((w.widget.width(), w.widget.height()), mini)
+
+
+class TestValuePills(unittest.TestCase):
+    def test_the_values_of_the_row_grid_are_drawn_as_pills_in_the_accent_colours(self):
+        from PySide6.QtGui import QColor
+        w = MainWindow()
+        w.setup()
+        w.widget.resize(420, 400)
+        w.widget.show()
+        w.refresh_icons("#EDEDED", "#FFFFFF", "#7A55C2")
+        w.update_current_row({"Color": "Black", "Size": "L"})
+        QApplication.processEvents()
+        table = w.row_table
+        self.assertEqual((table._pills.fill.name().lower(), table._pills.ink.name().lower()), ("#7a55c2", "#ffffff"))
+        index = table.model().index(0, 1)
+        image = table.viewport().grab().toImage()
+        rect = table.visualRect(index)
+        inside = image.pixelColor(rect.left() + 12, rect.center().y())                # a point inside the pill, left of its text
+        self.assertEqual(inside.name().lower(), "#7a55c2")                          # the value wears the accent colour
+        name = image.pixelColor(table.visualRect(table.model().index(0, 0)).left() + 3, rect.center().y())
+        self.assertNotEqual(name.name().lower(), "#7a55c2")                         # the column name does not
