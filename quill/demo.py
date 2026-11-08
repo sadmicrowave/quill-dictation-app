@@ -272,12 +272,18 @@ class Demo:
         """The mini view: a slim strip beside the spreadsheet while two rows are spoken and saved."""
         self.reset()
         self._app.window.set_mini(True)
-        steps: list[tuple[int, Callable[[], None]]] = [(1500, self._listen)]
+        steps: list[tuple[int, Callable[[], None]]] = [(600, self._compact_mini), (900, self._listen)]
         self._say_row(steps, "black jeans men levis good condition purchase price twenty dollars", 700)
         self._say_row(steps, "white dress women adidas excellent condition", 1200)
         steps.append((2500, lambda: None))
         self._steps(steps)
         self._hush(60_000)
+
+    def _compact_mini(self) -> None:
+        """The mini view at its compact default size (it keeps the height the full window had when the switch was made otherwise)."""
+        view = self._app.window
+        if view._window is not None and view._mini_base:
+            view._window.resize(view.MINI_WIDTH, view._mini_base)
 
     def _row(self, words: str):
         return next((r for r in self._app.sorting.rows if r.key[1] == words), None)
