@@ -2035,6 +2035,7 @@ class QuillApp:
         self._numbers_timer.stop()
         if self.numbers_link is not None:
             self.numbers_link.close()
+        platforms.offered(sys.platform, "close_numbers_worker", lambda: None)()          # (the one kept process that asks Numbers things)
         self._flush_timer.stop()
         self._flush_held(final=True)
         self._host_reload.stop()

@@ -6,7 +6,7 @@ from quill.platforms.macos.processes import running_executables
 from quill.platforms.macos.speech import render_clip, speak
 from quill.platforms.macos.bridge import MacBridge
 from quill.platforms.macos.hosts import MacHosts
-from quill.platforms.macos.numbers_live import NumbersBridge, NumbersLink
+from quill.platforms.macos.numbers_live import NumbersBridge, NumbersLink, close_shared as close_numbers_worker
 from quill.platforms.macos.numbers_mirror import NumbersMirror
 
 
@@ -29,7 +29,8 @@ def new_live_bridge():
 
 def make_hosts(run, native: bool = False) -> MacHosts:
     """The object that finds and starts the spreadsheet programs (see :class:`quill.bridge.hosts.SpreadsheetHosts`)."""
-    return MacHosts(run, native)
+    from quill.platforms.macos.numbers_live import list_documents
+    return MacHosts(run, native, numbers_list=list_documents if native else None)
 
 
-__all__ = ["GLOBAL_MENU_BAR", "OPACITY_THINS_BACKGROUND", "open_file", "render_clip", "speak", "chrome", "excel_com", "libreoffice", "running_executables", "MacBridge", "MacHosts", "NumbersMirror", "NumbersLink", "NumbersBridge", "make_hosts", "new_live_bridge"]
+__all__ = ["GLOBAL_MENU_BAR", "OPACITY_THINS_BACKGROUND", "open_file", "render_clip", "speak", "chrome", "excel_com", "libreoffice", "running_executables", "MacBridge", "MacHosts", "NumbersMirror", "NumbersLink", "NumbersBridge", "close_numbers_worker", "make_hosts", "new_live_bridge"]

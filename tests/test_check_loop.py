@@ -244,8 +244,10 @@ class TestEveryCommandIsBounded(unittest.TestCase):
             if name == "subprocess.run":
                 self.assertIn("timeout", {k.arg for k in node.keywords}, f"no timeout in {path}:{node.lineno}")
             if name in ("subprocess.Popen", "subprocess.call", "subprocess.check_output"):
-                # the only allowed one is the fire-and-forget xdg-open on Linux (its pipes go to DEVNULL)
-                self.assertTrue(path.name == "hosts.py", f"{name} in {path}:{node.lineno}")
+                # the allowed ones: the fire-and-forget xdg-open on Linux (its pipes go to DEVNULL), and the one kept process that
+                # asks Numbers things (ScriptWorker: every read has a time limit after which it is killed and waited for, it is
+                # let go of when idle and ends when Quill's end of its pipe closes; tests/macos/test_numbers_live.py proves each)
+                self.assertTrue(path.name in ("hosts.py", "numbers_live.py"), f"{name} in {path}:{node.lineno}")
 
 
 class TestATimedOutCommandIsKilledAndReaped(unittest.TestCase):

@@ -35,9 +35,10 @@ class MacHosts:
         native: Read the running applications from the system's own list instead of starting ``ps`` (False in tests).
     """
 
-    def __init__(self, run, native: bool = False) -> None:
+    def __init__(self, run, native: bool = False, numbers_list=None) -> None:
         self._run = run
         self._native = native
+        self._numbers_list = numbers_list                        # asks Numbers for its documents through one kept process (None: one launch per look)
         self._found_by_name: dict[str, pathlib.Path] = {}        # documents a program reported by name only, and their files
 
     def running(self, apps) -> list:
@@ -152,7 +153,7 @@ class MacHosts:
     def documents(self, app, prefer: tuple[str, ...] = ()) -> list[tuple[pathlib.Path, str]]:
         """``(path, open sheet)`` of the documents *app* has open (the sheet is '' where the program does not say)."""
         if app.key == "numbers":
-            out = self._run(["osascript", "-l", "JavaScript", "-e", _LIST_NUMBERS])
+            out = self._numbers_list() if self._numbers_list is not None else self._run(["osascript", "-l", "JavaScript", "-e", _LIST_NUMBERS])
             found: list[tuple[pathlib.Path, str]] = []
             for line in (l.strip("\r\n") for l in out.splitlines() if l.strip()):
                 parts = line.split("\t")

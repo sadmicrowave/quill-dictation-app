@@ -200,6 +200,18 @@ function handle(command, args) {
     }
     return JSON.stringify({ok: true, running: true, docs: docs});
   }
+  if (command === "list") {                                                       // the Open Spreadsheets list: name, file and open sheet of each document
+    const documents = app.documents();
+    let text = "";
+    for (let i = 0; i < documents.length; i++) {
+      let name = "", path = "", sheet = "";
+      try { name = documents[i].name(); } catch (e) {}
+      try { const file = documents[i].file(); if (file) path = String(file); } catch (e) {}
+      try { sheet = documents[i].activeSheet().name(); } catch (e) {}
+      text += name + "\t" + path + "\t" + sheet + "\n";
+    }
+    return JSON.stringify({ok: true, text: text});
+  }
   const doc = findDocument(app, args.urls || []);
   if (doc === null) return JSON.stringify({ok: false, error: "nodoc"});
   if (command === "used") {
@@ -426,6 +438,32 @@ class WorkerRunner:
         self.worker.close()
 
 
+_shared: WorkerRunner | None = None
+
+
+def shared_runner() -> WorkerRunner:
+    """The one worker process every question to Numbers goes through (the link's and the Open Spreadsheets list's)."""
+    global _shared
+    if _shared is None:
+        _shared = WorkerRunner()
+    return _shared
+
+
+def close_shared() -> None:
+    """Let go of the shared worker (Quill is quitting)."""
+    if _shared is not None:
+        _shared.close()
+
+
+def list_documents() -> str:
+    """Name, file and open sheet of each open Numbers document, one per line, tab separated ('' if none or no answer)."""
+    code, out, _ = shared_runner()(["osascript", "-l", "JavaScript", "-e", SCRIPT, "list", "{}"], 6.0)
+    try:
+        return str(json.loads(out).get("text", "")) if code == 0 else ""
+    except ValueError:
+        return ""
+
+
 def _numbers_running() -> bool:
     """Is Numbers running? (Read from the system's list of applications: no process is started, and Numbers is never started.)"""
     from quill.platforms.macos.processes import running_executables
@@ -452,7 +490,7 @@ class NumbersLink:
     def __init__(self, on_event: EventCallback | None = None, runner: Runner | None = None,
                  running: Callable[[], bool] | None = None) -> None:
         self.on_event = on_event
-        self._run = runner or WorkerRunner()
+        self._run = runner or shared_runner()
         self._running = running or _numbers_running
         self.docs: dict[str, dict] = {}
         self._connected = False

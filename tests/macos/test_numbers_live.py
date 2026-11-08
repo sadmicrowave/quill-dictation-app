@@ -52,7 +52,7 @@ const sheetList = () => sheets;
 Object.defineProperty(sheetList, "name", { value: () => sheets.map((s) => s.name()) });
 sheetList.byName = (n) => { const s = sheets.find((x) => x.name() === n); if (!s) throw new Error("no sheet"); return s; };
 sheets.forEach((s, i) => { sheetList[i] = s; });
-const doc = { name: () => book.title, sheets: sheetList, activeSheet: () => sheets[book.active], modified: () => false };
+const doc = { file: () => null, name: () => book.title, sheets: sheetList, activeSheet: () => sheets[book.active], modified: () => false };
 globalThis.Application = () => ({
   running: () => book.running,
   documents: () => (book.open ? [doc] : []),
@@ -91,6 +91,10 @@ class TestTheRealScript(unittest.TestCase):
         self.assertEqual(answer["docs"][0]["url"], "Plants")
         self.assertEqual(answer["docs"][0]["sheet"], "Data")
         self.assertEqual(answer["docs"][0]["sheets"], ["Data", "Config"])
+
+    def test_the_open_spreadsheets_list_comes_from_the_same_script(self):
+        answer = run_script(a_book(), "list", {})
+        self.assertEqual(answer["text"], "Plants.numbers\t\tData\n")                                 # name, file (none for an import), sheet
 
     def test_numbers_that_is_not_running_is_not_asked_anything(self):
         self.assertEqual(run_script(a_book(running=False), "state", {}), {"ok": True, "running": False, "docs": []})
