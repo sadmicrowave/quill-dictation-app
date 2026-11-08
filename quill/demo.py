@@ -195,8 +195,28 @@ class Demo:
             steps.append((gap, lambda: self._speak(650)))
             steps.append((700, lambda text=text: self._say_command(text)))
         self._steps(steps)
+        self._hush(45_000)
 
     # ------------------------------------------------------------------ #
+
+    def _hush(self, ms: int) -> None:
+        """Keep the real microphone out of a scripted story (room noise would be recognised as words): the listener is muted every
+        300 ms for *ms* milliseconds, then this stops by itself (demo only)."""
+        import time
+        end = time.monotonic() + ms / 1000
+        timer = QTimer()
+        timer.setInterval(300)
+
+        def tick() -> None:
+            listener = getattr(self._app, "listener", None)
+            if listener is not None and hasattr(listener, "mute"):
+                listener.mute()
+            if time.monotonic() >= end:
+                timer.stop()
+
+        timer.timeout.connect(tick)
+        timer.start()
+        self._timers.append(timer)
 
     def _speak(self, ms: int) -> None:
         """Move the voice lines for *ms* like a person talking: a level every 70 ms that rises and falls, then silence. It ends by
