@@ -210,6 +210,7 @@ class MainWindow:
         self._sheet_name = ""
         self._native_undo_button = False
         self._text_color = "#1F1E1D"
+        self._update_alert = False                              # the Settings icon wears a red dot (a newer version is out)
         self._file_alert = ""                                   # why the folder icon wears a red dot (see raise_file_alert)
         self._accent = "#7A55C2"
         self._applied: dict[str, bool] = {}     # which sections are collapsed on screen
@@ -1339,6 +1340,13 @@ class MainWindow:
             self._file_alert = text
             self._show_file_state()
 
+    def set_update_alert(self, on: bool) -> None:
+        """The red dot on the in-window Settings icon (the title bar's is the app's: see ``_sync_titlebar_settings``)."""
+        if on != self._update_alert:
+            self._update_alert = on
+            self.settings_button.setIcon(make_icon("settings", self._text_color, 18, badge=on))
+            self.settings_button.setToolTip("A newer version of Quill is available.\nSettings" if on else "Settings")
+
     def clear_file_alert(self) -> None:
         if self._file_alert:
             self._file_alert = ""
@@ -1656,7 +1664,7 @@ class MainWindow:
         self.help_button.setIcon(make_icon("question", text_color, 18))
         self.turn_button.setIcon(make_icon("turn", text_color, 18))
         self.next_button.setIcon(make_icon("next", accent, 18))
-        self.settings_button.setIcon(make_icon("settings", text_color, 18))
+        self.settings_button.setIcon(make_icon("settings", text_color, 18, badge=self._update_alert))
         self._show_file_state()
         self.toggle_button.set_colors(text_color, on_accent, accent)
 

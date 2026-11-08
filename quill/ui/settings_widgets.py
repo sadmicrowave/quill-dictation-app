@@ -72,8 +72,25 @@ class SettingRow(QWidget):
         return all(word in self.search_text for word in query.lower().split())
 
 
+#: Data role on a nav item that wears the red dot (something there needs the person's eye).
+BADGE_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
 class NavDelegate(QStyledItemDelegate):
-    """Draws the settings list as usual, with each group caption ("Preferences", "Voice and Commands") in bold."""
+    """Draws the settings list as usual, with each group caption ("Preferences", "Voice and Commands") in bold, and the red
+    dot on an item that has one (see :data:`BADGE_ROLE`)."""
+
+    def paint(self, painter, option, index) -> None:             # noqa: N802 (Qt name)
+        super().paint(painter, option, index)
+        if index.data(BADGE_ROLE):
+            from quill.ui.icons import BADGE_RED
+            radius = 4.5
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(BADGE_RED))
+            painter.drawEllipse(QPoint(int(option.rect.right() - 22), int(option.rect.center().y())), radius, radius)
+            painter.restore()
 
     def initStyleOption(self, option, index) -> None:           # noqa: N802 (Qt name)
         super().initStyleOption(option, index)

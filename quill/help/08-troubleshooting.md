@@ -36,7 +36,11 @@
 
 ## 🆕 Is it already fixed?
 
-Quill checks at every start whether a newer version has been released and, if so, adds **Update Available** to the **Help** menu (and a line to the log). Choose it to read what changed and go to the download page. You can also use **Help > Check for Updates** at any time, and turn the start-up check off in **Settings > General**.
+Quill checks at every start whether a newer version has been released. If one is out, a **red dot** appears on the Settings icon and on **About** in the Settings list; open **Settings > About** and press **Update** to read what changed and go to the download page. Press **Check for Updates** there at any time, and turn the start-up check off on the same page.
+
+![The red dot on About in Settings](images/settings-update.png)
+
+![The About page with the Update button](images/settings-about.png)
 
 ## 🛟 Still stuck?
 

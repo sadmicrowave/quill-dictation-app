@@ -5,6 +5,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -30,14 +31,19 @@ function makeTable(data) {
   const ranges = new Proxy({}, { get: (_, ref) => {
     const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(String(ref));
     const c1 = parseLetters(m[1]) - 1, r1 = +m[2] - 1, c2 = parseLetters(m[3]) - 1, r2 = +m[4] - 1;
-    return { cells: { value: () => { const out = []; for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) out.push(get(r, c)); return out; } } };
+    const each = (f) => { const out = []; for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) out.push(f(r, c)); return out; };
+    return new Proxy({ cells: { value: () => each(get), textColor: () => each((r, c) => (data.colors[r] && data.colors[r][c]) || [0, 0, 0]) },
+                       name: () => String(ref) }, {
+      set: (target, key, v) => { if (key === "textColor") { each((r, c) => { data.colors[r] = data.colors[r] || []; data.colors[r][c] = v.map((x) => x / 65535); }); } return true; } });
   } });
   const columns = new Proxy({}, { get: (_, i) => ({ cells: { value: () => { const out = []; for (let r = 0; r < data.rowCount; r++) out.push(get(r, +i)); return out; } } }) });
   const rows = new Proxy({}, { get: (_, i) => ({ cells: new Proxy({}, { get: (_, j) => new Proxy({}, { set: (_, key, v) => {
     data.rows[+i] = data.rows[+i] || [];
     data.rows[+i][+j] = v instanceof Date ? "DATE:" + v.getFullYear() + "-" + (v.getMonth() + 1) + "-" + v.getDate() : v;
     return true; } }) }) }) });
-  return { get rowCount() { const f = () => data.rowCount; return new Proxy(f, { apply: () => data.rowCount }); }, set rowCount(v) { data.rowCount = v; },
+  data.colors = data.colors || [];
+  let selected = null;
+  return { get selectionRange() { return () => selected; }, set selectionRange(v) { selected = v; }, get rowCount() { const f = () => data.rowCount; return new Proxy(f, { apply: () => data.rowCount }); }, set rowCount(v) { data.rowCount = v; },
            get columnCount() { return () => data.colCount; }, set columnCount(v) { data.colCount = v; }, ranges, columns, rows };
 }
 
@@ -110,6 +116,42 @@ class TestTheRealScript(unittest.TestCase):
         self.assertEqual((answer, rows), ({"ok": True}, 6))
         self.assertEqual(row, ["Orca", 4.5, "DATE:2026-11-7"])
 
+    def run_two(self, first, first_args, second, second_args, book):
+        program = FAKE_NUMBERS + "\n" + numbers_live.SCRIPT + "\n" + (
+            "const a = JSON.parse(run([process.argv[1], process.argv[2]]));"
+            "const mid = JSON.stringify(__book.sheets[0].colors);"
+            "const b = JSON.parse(run([process.argv[3], process.argv[4]]));"
+            "process.stdout.write(JSON.stringify([a, JSON.parse(mid), b, __book.sheets[0].colors, __book.sheets[0].selected]));")
+        done = subprocess.run([NODE, "-e", program, "--", first, json.dumps(first_args), second, json.dumps(second_args)],
+                              capture_output=True, text=True, env={"FAKE_BOOK": json.dumps(book), "PATH": ""}, timeout=20, check=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout)
+
+    def test_a_search_fades_the_rows_that_do_not_match_and_keeps_the_matching_ones_as_they_were(self):
+        book = a_book()
+        book["sheets"][0]["colors"] = [[], [], [[0, 0, 0], [0.98, 0, 0.03], [0, 0, 0]]]            # a red cell in row 3 (the match)
+        fade = {"urls": self.names, "sheet": "Data", "top": 2, "left": 1, "rows": 3, "cols": 3, "fade": [40000, 40000, 40000],
+                "keep": [3], "jump": 3}
+        answer = run_script(book, "fade", fade)
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["runs"][0]["index"], 0)                                              # (the colours are remembered as runs)
+        self.assertIsNotNone(answer["runs"][0]["colour"])
+
+    def test_clearing_the_search_paints_every_run_back_in_few_rectangles(self):
+        runs = [{"index": 0, "length": 4, "colour": [0, 0, 0]}, {"index": 4, "length": 1, "colour": [64000, 0, 1800]},
+                {"index": 5, "length": 4, "colour": [0, 0, 0]}]
+        program = FAKE_NUMBERS + "\n" + numbers_live.SCRIPT + "\n" + (
+            "run([process.argv[1], process.argv[2]]);"
+            "process.stdout.write(JSON.stringify(__book.sheets[0].colors));")
+        book = a_book()
+        done = subprocess.run([NODE, "-e", program, "--", "unfade", json.dumps({"urls": self.names, "sheet": "Data", "top": 2, "left": 1, "cols": 3,
+                                                                              "runs": runs, "selection": "A2:A2"})],
+                              capture_output=True, text=True, env={"FAKE_BOOK": json.dumps(book), "PATH": ""}, timeout=20, check=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        colours = json.loads(done.stdout)
+        self.assertAlmostEqual(colours[2][1][0], 64000 / 65535)                                       # row 3, middle cell: the red it had
+        self.assertEqual(colours[1][0], [0, 0, 0])
+
     def test_the_snapshot_has_every_sheet_with_its_size(self):
         answer = run_script(a_book(), "snapshot", {"urls": self.names})
         self.assertEqual([s["name"] for s in answer["sheets"]], ["Data", "Config"])
@@ -129,6 +171,63 @@ class FakeRunner:
 
 def state(*docs):
     return {"ok": True, "running": True, "docs": [dict({"url": "Plants", "sheet": "Data", "sheets": ["Data"], "stamp": 1}, **d) for d in docs]}
+
+
+ECHO = ("import sys,json\n"
+        "for line in sys.stdin:\n"
+        "    r = json.loads(line)\n"
+        "    if r['c'] == 'hang':\n"
+        "        import time; time.sleep(30)\n"
+        "    if r['c'] == 'die':\n"
+        "        sys.exit(1)\n"
+        "    print(json.dumps({'ok': True, 'echo': r['c'], 'pid': __import__('os').getpid()}), flush=True)\n")
+
+
+class TestTheWorkerProcess(unittest.TestCase):
+    def worker(self, idle_s=30.0):
+        worker = numbers_live.ScriptWorker([sys.executable, "-I", "-c", ECHO], idle_s=idle_s)
+        self.addCleanup(worker.close)
+        return worker
+
+    def test_one_process_answers_many_questions(self):
+        worker = self.worker()
+        first = json.loads(worker.ask("a", {}, 5))
+        second = json.loads(worker.ask("b", {}, 5))
+        self.assertEqual((first["echo"], second["echo"]), ("a", "b"))
+        self.assertEqual(first["pid"], second["pid"])
+
+    def test_a_question_that_takes_too_long_kills_the_process_and_the_next_one_starts_a_new_one(self):
+        worker = self.worker()
+        first = json.loads(worker.ask("a", {}, 5))
+        self.assertIsNone(worker.ask("hang", {}, 0.5))
+        self.assertFalse(worker.alive)                                                   # (a stuck program can never hang Quill)
+        self.assertNotEqual(json.loads(worker.ask("b", {}, 5))["pid"], first["pid"])
+
+    def test_a_process_that_died_is_replaced(self):
+        worker = self.worker()
+        json.loads(worker.ask("a", {}, 5))
+        self.assertIsNone(worker.ask("die", {}, 5))
+        self.assertEqual(json.loads(worker.ask("b", {}, 5))["echo"], "b")
+
+    def test_it_lets_go_of_the_process_when_nothing_is_asked_for_a_while(self):
+        import time
+        worker = self.worker(idle_s=0.3)
+        worker.ask("a", {}, 5)
+        self.assertTrue(worker.alive)
+        time.sleep(0.8)
+        self.assertFalse(worker.alive)
+
+    def test_a_worker_that_cannot_start_falls_back_to_one_launch_per_question(self):
+        runner = numbers_live.WorkerRunner(numbers_live.ScriptWorker(["/nonexistent/program"]))
+        launches = []
+        with mock.patch.object(numbers_live, "_system", lambda args, timeout: (launches.append(args), (0, '{"ok": true}', ""))[1]):
+            code, out, _ = runner(["osascript", "-l", "JavaScript", "-e", "script", "state", "{}"], 5)
+        self.assertEqual((code, out), (0, '{"ok": true}'))
+        self.assertEqual(launches[0][-2:], ["state", "{}"])
+
+    def test_the_script_the_worker_runs_has_one_entry_point_and_ends_when_input_closes(self):
+        self.assertEqual(numbers_live.WORKER_SCRIPT.count("function run("), 1)
+        self.assertIn("Number(data.length) === 0", numbers_live.WORKER_SCRIPT)
 
 
 class TestTheNews(unittest.TestCase):
@@ -270,14 +369,74 @@ class TestTheBridge(unittest.TestCase):
             self.bridge()
         self.assertIn("Numbers is not answering", str(caught.exception))
 
-    def test_a_typed_menu_is_extended_in_the_file_because_numbers_will_not_say_what_a_menu_holds(self):
+    def answer_dump_and_reload(self, cells, reload_ok=True):
+        base = self.link.request
+
+        def request(command, timeout=8.0, **fields):
+            self.asked.append((command, fields))
+            if command == "dump":
+                return {"ok": True, "sheets": [{"name": "Data", "rows": len(cells), "cols": 2, "cells": cells}]}
+            if command == "reload":
+                return {"ok": reload_ok}
+            return base(command, timeout, **fields)
+        self.link.request = request
+        self.link.look = lambda deep=True: None
+
+    def test_a_typed_menu_is_extended_in_the_file_and_numbers_is_made_to_open_it_again(self):
+        self.answer_dump_and_reload([["Species", "Count"]])
         bridge = self.bridge()
-        source = bridge._discovery.sources["Species"]
-        bridge._add_inline(source, "Orca")
+        told = []
+        bridge.notify = told.append
+        bridge._add_inline(bridge._discovery.sources["Species"], "Orca")
         rules = [r.formula1 for r in openpyxl.load_workbook(self.path)["Data"].data_validations.dataValidation]
         self.assertEqual(rules, ['"Fern,Moss,Orca"'])
         self.assertEqual(bridge._discovery.sources["Species"].items, ("Fern", "Moss", "Orca"))
-        self.assertNotIn("apply", [c for c, _ in self.asked])                              # (nothing is asked of Numbers)
+        reloads = [f for c, f in self.asked if c == "reload"]
+        self.assertEqual(len(reloads), 1)
+        self.assertEqual(reloads[0]["path"], str(self.path))
+        self.assertEqual(told, [])                                                           # (it simply worked)
+
+    def test_a_document_with_changes_of_its_own_is_not_reopened_and_the_person_is_told(self):
+        self.answer_dump_and_reload([["Species", "Count"], ["Typed in Numbers", 5]])
+        bridge = self.bridge()
+        told = []
+        bridge.notify = told.append
+        bridge._add_inline(bridge._discovery.sources["Species"], "Orca")
+        self.assertNotIn("reload", [c for c, _ in self.asked])
+        self.assertEqual([r.formula1 for r in openpyxl.load_workbook(self.path)["Data"].data_validations.dataValidation], ['"Fern,Moss,Orca"'])
+        self.assertTrue(told and "changes of its own" in told[0])
+
+    def test_numbers_that_will_not_reopen_the_file_is_reported_not_raised(self):
+        self.answer_dump_and_reload([["Species", "Count"]], reload_ok=False)
+        bridge = self.bridge()
+        told = []
+        bridge.notify = told.append
+        bridge._add_inline(bridge._discovery.sources["Species"], "Orca")
+        self.assertTrue(told and "reopen" in told[0])
+
+    def test_what_the_document_holds_is_compared_with_the_file_cell_by_cell(self):
+        import datetime as dt
+        from quill.platforms.macos.numbers_live import _same_cell
+        self.assertTrue(_same_cell(3, 3.0))
+        self.assertTrue(_same_cell(None, ""))
+        self.assertTrue(_same_cell("a ", "a"))
+        self.assertTrue(_same_cell(dt.datetime(2026, 11, 7, 1, 0), dt.datetime(2026, 11, 7)))
+        self.assertTrue(_same_cell(12, "=A1+1"))                                              # a formula: not compared
+        self.assertFalse(_same_cell("a", "b"))
+        self.assertFalse(_same_cell(None, "x"))
+        self.assertFalse(_same_cell(5, 6))
+
+    def test_looks_made_while_the_document_is_reopened_say_nothing(self):
+        events = []
+        link = NumbersLink(on_event=lambda *a: events.append(a), runner=FakeRunner([]), running=lambda: True)
+        link.docs = {"Plants": {"url": "Plants", "sheet": "Data", "sheets": ["Data"], "stamp": 1}}
+        link._connected = True
+        with link.hold():
+            link._news({})                                                                    # gone, for a moment
+            link._news({"Plants": {"url": "Plants", "sheet": "Data", "sheets": ["Data"], "stamp": 1}})
+        self.assertEqual(events, [])
+        link._news({})                                                                        # after the hold, news is made again
+        self.assertEqual(events, [("closed", "Plants", "")])
 
     def test_a_menu_the_file_does_not_have_is_left_alone_and_the_person_is_told(self):
         bridge = self.bridge()
@@ -288,6 +447,51 @@ class TestTheBridge(unittest.TestCase):
             bridge._add_inline(stale, "Orca")
         self.assertIn("Add 'Orca' to the menu in Numbers", str(caught.exception))
         self.assertEqual([r.formula1 for r in openpyxl.load_workbook(self.path)["Data"].data_validations.dataValidation], ['"Fern,Moss"'])
+
+    def test_a_search_fades_through_the_link_and_clearing_it_puts_the_colours_back(self):
+        from quill.bridge.filters import ColumnFilter
+        bridge = self.bridge()
+        grid = bridge._grid
+        base = self.link.request
+
+        def request(command, timeout=8.0, **fields):
+            self.asked.append((command, fields))
+            if command == "read":
+                return {"ok": True, "cells": [["Fern", 3], ["Moss", 5], ["Fern", 7]]}
+            if command == "fade":
+                return {"ok": True, "runs": [{"index": 0, "length": 6, "colour": [0, 0, 0]}], "selection": "B9:B9"}
+            if command == "unfade":
+                return {"ok": True}
+            return base(command, timeout, **fields)
+        self.link.request = request
+        count = grid.set_autofilter("Data", 1, 1, 2, 4, {1: ColumnFilter(column="Species", values=["Fern"])})
+        self.assertEqual(count, 2)
+        fade = next(f for c, f in self.asked if c == "fade")
+        self.assertEqual((fade["keep"], fade["jump"], fade["top"], fade["rows"]), ([2, 4], 2, 2, 3))
+        grid.clear_autofilter("Data")
+        unfade = next(f for c, f in self.asked if c == "unfade")
+        self.assertEqual((unfade["selection"], unfade["runs"][0]["length"]), ("B9:B9", 6))
+        grid.clear_autofilter("Data")                                                              # (nothing left to put back)
+        self.assertEqual([c for c, _ in self.asked].count("unfade"), 1)
+
+    def test_a_search_with_no_match_fades_nothing_and_a_search_that_cannot_paint_still_counts(self):
+        from quill.bridge.filters import ColumnFilter
+        bridge = self.bridge()
+        base = self.link.request
+
+        def request(command, timeout=8.0, **fields):
+            self.asked.append((command, fields))
+            if command == "read":
+                return {"ok": True, "cells": [["Fern", 3]]}
+            if command == "fade":
+                return {"ok": False, "error": "no"}
+            return base(command, timeout, **fields)
+        self.link.request = request
+        none = bridge._grid.set_autofilter("Data", 1, 1, 2, 2, {1: ColumnFilter(column="Species", values=["Orca"])})
+        self.assertEqual(none, 0)
+        self.assertNotIn("fade", [c for c, _ in self.asked])
+        some = bridge._grid.set_autofilter("Data", 1, 1, 2, 2, {1: ColumnFilter(column="Species", values=["Fern"])})
+        self.assertEqual(some, 1)                                                                    # (the colours failed; the count stands)
 
     def test_a_row_goes_into_numbers_and_then_into_the_file_in_one_save(self):
         bridge = self.bridge()

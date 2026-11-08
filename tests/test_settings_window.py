@@ -459,3 +459,45 @@ class TestChoosingASoundPlaysIt(unittest.TestCase):
         for combo in (dialog.feedback_combo, dialog.pack_combo, dialog.echo_combo):
             combo.activated.emit(0)
         self.assertEqual(len(played), 3)
+
+
+class TestAboutPage(DialogCase):
+    def test_about_is_the_first_page_with_the_version_a_button_and_the_start_up_switch(self):
+        self.assertEqual(GROUPS[0], ("About", ["About"]))
+        self.d.show_page_named("About")
+        self.assertEqual(self.d.update_button.text(), "Check for Updates")
+        from quill import __version__
+        row = next(r for r in self.d.rows if r.title == "Version")
+        self.assertIn(__version__, row.description_label.text())
+        self.assertIn("Check for Updates at Start", {r.title for r in self.d.rows})
+        self.assertNotIn("Check for Updates at Start", {r.title for r in self.d._page_rows["General"]})
+
+    def test_the_red_dot_is_on_the_about_item_until_the_page_is_shown(self):
+        from quill.ui.settings_widgets import BADGE_ROLE
+        seen = []
+        self.d._on_about_seen = lambda: seen.append(1)
+        self.d.show_page_named("General")
+        self.d.set_about_badge(True)
+        item = self.d._nav_items["About"]
+        self.assertTrue(item.data(BADGE_ROLE))
+        self.d.show_page_named("About")
+        self.assertFalse(item.data(BADGE_ROLE))
+        self.assertEqual(seen, [1])
+
+    def test_the_button_says_update_when_a_newer_version_is_out_and_does_what_it_says(self):
+        state = {"available": True, "checking": False, "message": "Version 9.9.9 is available."}
+        calls = []
+        self.d._update_state = lambda: state
+        self.d._on_update = lambda: calls.append("update")
+        self.d._on_check_update = lambda: calls.append("check")
+        self.d.refresh_update_state()
+        self.assertEqual(self.d.update_button.text(), "Update")
+        self.d.update_button.click()
+        state.update(available=False)
+        self.d.refresh_update_state()
+        self.assertEqual(self.d.update_button.text(), "Check for Updates")
+        self.d.update_button.click()
+        self.assertEqual(calls, ["update", "check"])
+        state.update(checking=True)
+        self.d.refresh_update_state()
+        self.assertFalse(self.d.update_button.isEnabled())

@@ -679,6 +679,20 @@ class TitlebarButton:
         except Exception:
             return False
 
+    def reset_extra_symbol(self, index: int) -> bool:
+        """Put the *index*-th extra icon's own symbol and tooltip back (after :meth:`set_extra_image` gave it a picture)."""
+        try:
+            button = self._extras[index][0]
+            image = _symbol(self._appkit, button._quill_symbol, button._quill_label)
+            if image is None:
+                return False
+            button.setImage_(image)
+            button.setToolTip_(button._quill_label)
+            button.setAlphaValue_(1.0)
+            return True
+        except Exception:
+            return False
+
     def click(self) -> None:
         """Press the button (used by tests)."""
         self._button.performClick_(None)
@@ -770,6 +784,7 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         for entry in extra or []:
             name, label, action, *hovers = entry
             extra_button, extra_target = make_button(action, _ICON_WIDTH, *hovers)
+            extra_button._quill_symbol, extra_button._quill_label = name, label        # (so the plain picture can be put back)
             image = _symbol(appkit, name, label)
             if image is not None:
                 extra_button.setImage_(image)

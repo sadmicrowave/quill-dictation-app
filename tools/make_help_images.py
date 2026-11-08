@@ -137,10 +137,15 @@ def shoot(app: QApplication, theme: str) -> None:
     helper.show()
 
     dialogs = {}
-    for shown in ("Appearance", "Sounds", "Keywords"):
-        dialog = SettingsDialog(Settings.defaults())
+    newer = {"available": True, "checking": False, "message": "Version 0.2.0 is available."}
+    for shown in ("Appearance", "Sounds", "Keywords", "About", "Update"):
+        dialog = SettingsDialog(Settings.defaults(), update_state=lambda: newer)
         widget = dialog.build()
-        dialog.nav.setCurrentRow(dialog._nav_row(shown))
+        if shown == "Update":                                  # the red dot on About, seen from another page
+            dialog.nav.setCurrentRow(dialog._nav_row("General"))
+            dialog.set_about_badge(True)
+        else:
+            dialog.nav.setCurrentRow(dialog._nav_row(shown))
         widget.resize(820, 520)
         widget.show()
         dialogs[shown] = (dialog, widget)

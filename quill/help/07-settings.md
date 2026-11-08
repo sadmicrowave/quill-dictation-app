@@ -10,6 +10,7 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 
 | Group | What's in it |
 |---|---|
+| **About** | What Quill is, its version number, the **Check for Updates** button (it reads **Update** when a newer version is out) and the switch for checking at every start |
 | **General** | Spoken Term Helper prompts (off by default), automatic voice sorting, microphone, **stop when quiet**, Dock icon, Undo memory |
 | **Appearance** | Theme, accent colour, spacing, text size, opacity, blur |
 | **Sounds** | Sound set, spoken word, sample |
@@ -77,6 +78,6 @@ Everything Quill does is also in its menus: the menu bar at the top of the scree
 | **Listening** | Start / Stop Listening (**⌘L**), Next Row (**⌘↩**), Start a New Row, Undo (**⌘Z**), Term Helper… (**⇧⌘T**, shows its count), and the turn choice: each turn a new row, or each turn adds to the same row |
 | **View** | Switch to Mini View / the Full Window (**⇧⌘M**), Files Panel (**⇧⌘F**), Turn Options Panel (**⇧⌘O**), Log (**⌥⌘L**), and Settings Page to open any Settings page directly |
 | **Window** | Minimize (**⌘M**), Bring Quill to the Front |
-| **Help** | Quill Help (**F1**), Report a Problem…, Privacy and Your Data, Check for Updates… (it reads *Update Available: Quill x.y.z…* when a newer version is out), Open the Log Folder, About Quill |
+| **Help** | Quill Help (**F1**), Report a Problem…, Privacy and Your Data, Open the Log Folder, About Quill (opens **Settings > About**) |
 
 Entries that do not apply are greyed out (Next Row while not listening, Undo with nothing to take back, Term Helper with nothing to sort), and the wording and check marks follow what Quill is doing. On a Mac the same menus show while Settings, the Term Helper or Help is in front. On Windows, use **Ctrl** where a Mac uses **⌘** and **Alt** for **⌥**.

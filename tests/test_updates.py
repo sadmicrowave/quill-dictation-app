@@ -84,51 +84,93 @@ class TestTheCheck(unittest.TestCase):
         self.assertEqual(check("0.1.0", "", opener_for({})).status, "unknown")
 
 
+class FakeTitlebar:
+    def __init__(self): self.calls = []
+    def set_extra_image(self, index, png, tip, muted, template=True): self.calls.append(("image", index, template, tip)); return True
+    def reset_extra_symbol(self, index): self.calls.append(("reset", index)); return True
+
+
 class TestInTheApp(PanelApp):
     def setUp(self):
         super().setUp()
         self.logged, self.shown = [], []
         self.app.window.append_log = lambda text, level="info", **kw: self.logged.append(text)
-        patches = [mock.patch("quill.app.info", lambda parent, title, message, *a, **k: self.shown.append(("info", title, message))),
+        self.titlebar = FakeTitlebar()
+        self.app._titlebar = self.titlebar
+        patches = [mock.patch("quill.app.info", lambda *a, **k: self.shown.append(("info", a))),
                    mock.patch("quill.app.confirm", lambda parent, title, message, action, *a, **k: self.shown.append(("confirm", title, message)) or False)]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
 
-    def check_with(self, result, manual):
+    def check_with(self, result):
         with mock.patch("quill.updates.check", lambda *a, **k: result):
-            self.app.check_for_updates(manual=manual)
+            self.app.check_for_updates(manual=False)
 
-    def test_a_newer_version_says_so_once_in_the_log_and_in_the_help_menu(self):
+    def test_a_newer_version_puts_a_red_dot_on_the_settings_icon_and_says_so_once_in_the_log(self):
         newer = UpdateResult("available", latest="9.9.9")
-        self.check_with(newer, manual=False)
-        self.check_with(newer, manual=False)
+        self.check_with(newer)
+        self.check_with(newer)
         self.assertEqual(sum("9.9.9" in line for line in self.logged), 1)
-        self.assertEqual(self.app.menus.state.update_version, "9.9.9")
-        self.assertIn("Update Available: Quill 9.9.9", self.app.menus.actions()["check_updates"].text())
-        self.assertEqual(self.shown, [])                                    # (the start-up check never interrupts)
+        self.assertTrue(self.app._update_unseen)
+        self.assertTrue(self.app.window._update_alert)
+        self.assertEqual(self.titlebar.calls[-1][:3], ("image", 2, False))                  # (the title bar's own icon, with the dot)
+        self.assertEqual(self.shown, [])                                                     # (nothing pops up)
 
-    def test_an_up_to_date_start_check_is_silent(self):
-        self.check_with(UpdateResult("current"), manual=False)
-        self.check_with(UpdateResult("unknown", error="offline"), manual=False)
+    def test_an_up_to_date_check_is_silent_and_wears_no_dot(self):
+        self.check_with(UpdateResult("current"))
+        self.check_with(UpdateResult("unknown", error="offline"))
         self.assertEqual((self.logged, self.shown), ([], []))
-        self.assertEqual(self.app.menus.actions()["check_updates"].text(), "Check for Updates…")
+        self.assertFalse(self.app._update_unseen)
+        self.assertFalse(self.app.window._update_alert)
+        self.assertEqual(self.titlebar.calls[-1], ("reset", 2))
 
-    def test_a_check_the_person_asked_for_always_answers(self):
-        self.check_with(UpdateResult("current"), manual=True)
-        self.check_with(UpdateResult("unknown", error="offline"), manual=True)
-        self.check_with(UpdateResult("available", latest="9.9.9", notes="Fixes"), manual=True)
-        self.assertEqual([kind for kind, *_ in self.shown], ["info", "info", "confirm"])
-        self.assertIn("offline", self.shown[1][2])
-        self.assertIn("Fixes", self.shown[2][2])
+    def test_looking_at_about_takes_the_dots_away_and_the_same_version_does_not_bring_them_back(self):
+        self.check_with(UpdateResult("available", latest="9.9.9"))
+        self.app._about_seen()
+        self.assertFalse(self.app._update_unseen)
+        self.assertFalse(self.app.window._update_alert)
+        self.assertEqual(self.titlebar.calls[-1], ("reset", 2))
+        self.check_with(UpdateResult("available", latest="9.9.9"))                           # the next start finds the same one
+        self.assertFalse(self.app._update_unseen)
+        self.check_with(UpdateResult("available", latest="9.9.10"))                          # a newer one is new news
+        self.assertTrue(self.app._update_unseen)
 
-    def test_the_menu_entry_offers_a_known_update_without_asking_again(self):
-        self.check_with(UpdateResult("available", latest="9.9.9"), manual=False)
+    def test_the_state_the_about_page_shows(self):
+        self.assertEqual(self.app.update_state()["available"], False)
+        self.check_with(UpdateResult("available", latest="9.9.9"))
+        self.assertEqual(self.app.update_state(), {"available": True, "checking": False, "message": "Version 9.9.9 is available."})
+        self.check_with(UpdateResult("current"))
+        self.assertIn("newest", self.app.update_state()["message"])
+        self.check_with(UpdateResult("unknown", error="Couldn't reach the update service."))
+        self.assertEqual(self.app.update_state()["message"], "Couldn't reach the update service.")
+
+    def test_settings_opens_on_about_while_an_update_has_not_been_looked_at(self):
+        self.check_with(UpdateResult("available", latest="9.9.9"))
+        self.app.open_settings()
+        try:
+            dialog = self.app._settings_dialog
+            self.assertEqual(dialog.nav.currentItem().text(), "About")
+            self.assertFalse(self.app._update_unseen)                                        # (opening the page was the looking)
+            self.assertEqual(dialog.update_button.text(), "Update")
+        finally:
+            self.app._settings_dialog._dialog.close()
+
+    def test_the_update_button_offers_the_download_and_the_other_button_checks(self):
+        self.check_with(UpdateResult("available", latest="9.9.9", notes="Fixes"))
+        self.app.update_now()
+        self.assertEqual(self.shown[-1][0], "confirm")
+        self.assertIn("Fixes", self.shown[-1][2])
         asked = []
         self.app.check_for_updates = lambda manual=True: asked.append(manual)
-        self.app.check_updates_from_menu()
-        self.assertEqual(asked, [])
-        self.assertEqual(self.shown[-1][0], "confirm")
+        self.check_with = None
+        self.app._update_result = UpdateResult("current")
+        self.app.open_settings("About")
+        try:
+            self.app._settings_dialog.update_button.click()
+            self.assertEqual(asked, [True])
+        finally:
+            self.app._settings_dialog._dialog.close()
 
     def test_the_start_check_obeys_the_setting_and_the_tests_own_switch(self):
         calls = []
@@ -144,6 +186,14 @@ class TestInTheApp(PanelApp):
             os.environ["QUILL_NO_HOSTS"] = "1"
             self.app._check_at_start()
             self.assertEqual(calls, [False])
+
+    def test_about_quill_in_the_menu_opens_the_about_page_and_there_is_no_popup(self):
+        self.app._about()
+        try:
+            self.assertEqual(self.app._settings_dialog.nav.currentItem().text(), "About")
+            self.assertEqual(self.shown, [])
+        finally:
+            self.app._settings_dialog._dialog.close()
 
 
 if __name__ == "__main__":

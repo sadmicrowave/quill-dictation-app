@@ -65,7 +65,7 @@ from quill.ui.hints import fill_missing_tips
 from quill.learning import LEARN_AFTER_RANGE
 from quill.ui.learned_page import LearnedWordsPanel
 from quill.ui.settings_widgets import (
-    NavDelegate,
+    BADGE_ROLE, NavDelegate,
     ModelRow,
     PillField,
     FlatCombo,
@@ -88,8 +88,14 @@ BINDABLE_ACTIONS = [a for a in Action if a is not Action.NONE]
 #: Width of the Settings page list: wide enough for the bold group caption "Voice and Commands" in full.
 SIDEBAR_WIDTH = 270
 
-GROUPS = [("Preferences", ["General", "Appearance", "Sounds"]),
+GROUPS = [("About", ["About"]),
+          ("Preferences", ["General", "Appearance", "Sounds"]),
           ("Voice and Commands", ["Keywords", "Speech Model", "Learned Words"])]
+
+#: The About page's description (the text that used to be in a pop-up window).
+ABOUT_TEXT = ("Hands-free spreadsheet dictation. Everything runs on this computer: your voice and your spreadsheets are never sent "
+              "anywhere. The only things that leave it are a problem report you choose to send (Help > Report a Problem), and you see "
+              "all of it first, and a check at start for a newer version, which sends nothing about you.")
 
 #: The speech models, in the order they are offered: (key, name, download size, what it does for the quality).
 SPEECH_MODELS = (
@@ -190,7 +196,12 @@ class SettingsDialog:
 
     def __init__(self, settings: "Settings", parent=None, on_preview=None, on_change=None,
                  on_open_logs=None, on_help=None, on_download_model=None, model_installed=None,
-                 on_uninstall_model=None, model_removable=None, program_available=None, active_file=None) -> None:
+                 on_uninstall_model=None, model_removable=None, program_available=None, active_file=None,
+                 update_state=None, on_check_update=None, on_update=None, on_about_seen=None) -> None:
+        self._update_state = update_state or (lambda: {})              # what the About page shows of the update check
+        self._on_check_update = on_check_update or (lambda: None)
+        self._on_update = on_update or (lambda: None)
+        self._on_about_seen = on_about_seen or (lambda: None)
         self._active_file = active_file or (lambda: ("", "", []))      # (path, name, columns) of the active file
         self._program_available = program_available or (lambda program: True)
         self._on_uninstall_model = on_uninstall_model or (lambda quality: None)
@@ -534,9 +545,48 @@ class SettingsDialog:
     def _nav_row(self, title: str) -> int:
         return self.nav.row(self._nav_items[title])
 
+    # -- the About page: the version, and the update ----------------------------
+
+    def _update_clicked(self) -> None:
+        """The button on the About page: *Update* when a newer version is out, otherwise a check."""
+        if self._update_state().get("available"):
+            self._on_update()
+        else:
+            self._on_check_update()
+
+    def _show_update_state(self) -> None:
+        """Draw the About page's version line and button from what the app knows (see ``update_state``)."""
+        state = self._update_state()
+        row = next((r for r in self._page_rows.get("About", []) if r.title == "Version"), None)
+        self.update_button.setText("Update" if state.get("available") else "Check for Updates")
+        self.update_button.setEnabled(not state.get("checking"))
+        self.update_button.setProperty("accent", bool(state.get("available")))
+        self.update_button.style().unpolish(self.update_button)
+        self.update_button.style().polish(self.update_button)
+        self.update_button.setToolTip("Go to the download page for the newer version." if state.get("available")
+                                      else "Ask whether a newer version of Quill has been released.")
+        if row is not None:
+            from quill import __version__
+            row.description_label.setText(f"Quill {__version__}. " + str(state.get("message", "")))
+
+    def refresh_update_state(self) -> None:
+        """The update check finished (or started): show it, if the About page exists."""
+        if getattr(self, "update_button", None) is not None:
+            self._show_update_state()
+
+    def set_about_badge(self, on: bool) -> None:
+        """Put the red dot on (or take it off) the About item of the navigation list."""
+        item = self._nav_items.get("About")
+        if item is not None:
+            item.setData(BADGE_ROLE, bool(on))
+            self.nav.viewport().update()
+
     def _show_page(self, row: int) -> None:
         item = self.nav.item(row)
         title = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if title == "About":
+            self.set_about_badge(False)
+            self._on_about_seen()                                    # (looking at the page is what the dots ask for)
         if title:
             if title == "Keywords":
                 self._ensure_keywords()                              # built the first time it is opened
@@ -661,6 +711,19 @@ class SettingsDialog:
 
     def _build_pages(self) -> None:
         prefs = self._settings.preferences
+        # --- About (first: what this program is, which version, and whether a newer one is out)
+        from quill import __version__
+        page = self._page("About", ABOUT_TEXT)
+        self.update_button = QPushButton("Check for Updates")
+        self.update_button.clicked.connect(self._update_clicked)
+        self._add("About", page, "Version", f"Quill {__version__}.", self.update_button, "version update upgrade release new check latest")
+        self.updates_check = ToggleSwitch()
+        self.updates_check.setChecked(bool(prefs["check_for_updates"]))
+        self._add("About", page, "Check for Updates at Start",
+                  "Each time Quill starts it asks whether a newer version has been released, and shows a red dot here if there is "
+                  "one. Nothing about you or your files is sent.", self.updates_check, "update upgrade new version release start")
+        page.addStretch(1)
+        self._show_update_state()
         # --- General
         page = self._page("General")
         self.speak_check = ToggleSwitch()
@@ -680,12 +743,6 @@ class SettingsDialog:
                   "macOS. Quill stays in the menu bar; open it from the menu bar icon (or by opening the app "
                   "again). Off by default: Quill shows in both the Dock and the menu bar.",
                   self.dock_check, "dock menu bar macos")
-        self.updates_check = ToggleSwitch()
-        self.updates_check.setChecked(bool(prefs["check_for_updates"]))
-        self._add("General", page, "Check for Updates at Start",
-                  "Each time Quill starts it asks whether a newer version has been released, and says so if there is one. "
-                  "Nothing about you or your files is sent. You can also check any time from the Help menu.",
-                  self.updates_check, "update upgrade new version release")
         self.mini_top_check = ToggleSwitch()
         self.mini_top_check.setChecked(bool(prefs["mini_on_top"]))
         self._add("General", page, "Keep the Mini View on Top",

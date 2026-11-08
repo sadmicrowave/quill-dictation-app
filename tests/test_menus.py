@@ -257,9 +257,9 @@ class TestInTheApp(PanelApp):
         with mock.patch("quill.app.open_log_folder") as logs:
             self.menus._handlers["open_logs"]()
         logs.assert_called_once()
-        with mock.patch("quill.app.info") as shown:
+        with mock.patch.object(self.app, "open_settings") as settings:
             self.actions["about"].trigger()
-        self.assertIn("Quill", shown.call_args.args[1])
+        settings.assert_called_once_with("About")                                  # (there is no pop-up: the About page is in Settings)
         with mock.patch.object(self.app, "quit_app") as quit_:
             self.menus._handlers["quit"]()
         quit_.assert_called_once()

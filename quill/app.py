@@ -206,6 +206,11 @@ class QuillApp:
         self.numbers_link = numbers_link if numbers_link is not None else (link_class() if link_class else None)   # what is open in Numbers, watched
         self._mirror_warned = False
         self._lo_noted = False
+        self._update_result = None                   # the last update check's answer (see check_for_updates)
+        self._update_checking = False
+        self._update_unseen = False                  # a newer version is out and the About page has not been looked at (the red dots)
+        self._update_seen = ""                       # the version whose About page was looked at
+        self._update_announced = ""
         self._numbers_timer = QTimer()               # a quicker look at Numbers, only while listening (ends with the listening)
         self._numbers_timer.setInterval(self.NUMBERS_LOOK_MS)
         self._numbers_timer.timeout.connect(self._look_at_numbers)
@@ -731,6 +736,7 @@ class QuillApp:
         self.connected = False
         self._set_listening(False)
         self.controller.bridge = bridge_class(path, link_of)
+        self.controller.bridge.notify = lambda text: self.window.append_log(text, safe="A menu was changed in the file")     # (a bridge with something to tell)
         self.connect_workbook(quiet=True)
         if not self.connected:                                          # it would not answer: back to the file as it was
             self.controller.bridge = bridge
@@ -864,7 +870,7 @@ class QuillApp:
             "log": lambda: w.set_log_collapsed(not w.log_collapsed, notify=True),
             "minimize": lambda: w.widget.showMinimized(), "bring_front": lambda: self._bring_to_front(),
             "help": lambda: self.open_help(), "support": lambda: self.open_support(),
-            "privacy": lambda: self.open_help("privacy"), "check_updates": lambda: self.check_updates_from_menu(), "open_logs": lambda: open_log_folder(), "about": lambda: self._about(),
+            "privacy": lambda: self.open_help("privacy"), "open_logs": lambda: open_log_folder(), "about": lambda: self._about(),
         })
         self.menus.state.file_page, self.menus.state.turn_page = FILE_PAGE, TURN_PAGE
         self.menus.install(w.widget.menuBar(), reuse={"open_file": w.open_file_action, "use_excel": w.use_excel_action})
@@ -887,9 +893,7 @@ class QuillApp:
         self.menus.update(
             listening=w.listening, has_file=self.connected, can_use_excel=w.use_excel_action.isEnabled(), mini=w.mini,
             panel_page=w.panel_page, log_open=not w.log_collapsed, can_undo=len(c.history) > 0,
-            sorting_count=len(c.pending_terms()), turn_mode=c.turn_mode,
-            update_version=(self._update_result.latest if getattr(self, "_update_result", None) is not None
-                            and self._update_result.status == "available" else ""))
+            sorting_count=len(c.pending_terms()), turn_mode=c.turn_mode)
 
     def _set_turn_mode(self, mode: str) -> None:
         self.controller.set_turn_mode(mode)
@@ -902,12 +906,8 @@ class QuillApp:
         w.activateWindow()
 
     def _about(self) -> None:
-        from quill import __version__
-        info(self.window.widget, f"Quill {__version__}",
-             "Hands-free spreadsheet dictation. Everything runs on this computer: your voice and your spreadsheets "
-             "are never sent anywhere. The only things that leave it are a problem report you choose to send "
-             "(Help > Report a Problem), and you see all of it first, and a check at start for a newer version "
-             "(which sends nothing about you; it can be turned off in Settings).")
+        """About Quill (the app menu on a Mac): the Settings > About page."""
+        self.open_settings("About")
 
     def show_workbook(self) -> None:
         """Bring the workbook being dictated into to the front (tray click)."""
@@ -1742,36 +1742,69 @@ class QuillApp:
             return
         self.check_for_updates(manual=False)
 
+    def update_state(self) -> dict:
+        """What the About page shows of the update check: ``available``, ``checking`` and a ``message``."""
+        result = getattr(self, "_update_result", None)
+        state = {"available": False, "checking": bool(getattr(self, "_update_checking", False)), "message": ""}
+        if state["checking"]:
+            state["message"] = "Checking for a newer version…"
+        elif result is not None and result.status == "available":
+            state.update(available=True, message=f"Version {result.latest} is available.")
+        elif result is not None and result.status == "current":
+            state["message"] = "This is the newest version."
+        elif result is not None:
+            state["message"] = result.error or "The check could not be made."
+        return state
+
     def check_for_updates(self, manual: bool = True) -> None:
-        """Ask the update service for the newest release off the window's thread. *manual*: the person asked, so say how it
-        went whatever the answer is; otherwise only a newer version is mentioned (once, in the log, and in the Help menu)."""
-        self._update_manual = manual
+        """Ask the update service for the newest release off the window's thread. The answer is shown on the Settings > About page
+        (the button there reads *Update* when a newer version is out) and, if the person has not seen it yet, by a red dot on the
+        Settings icon and on About. *manual*: the person pressed the button, so they are looking at the page already."""
+        self._update_checking = True
+        self._refresh_about()
 
         def done(result) -> None:
+            self._update_checking = False
             outcome = result if isinstance(result, updates.UpdateResult) else updates.UpdateResult("unknown", error="The check could not be made.")
             self._update_result = outcome
             diagnostics.syslog().info("An update check found: %s", outcome.status)
             if outcome.status == "available":
-                if not getattr(self, "_update_announced", "") == outcome.latest:
+                if getattr(self, "_update_announced", "") != outcome.latest:
                     self._update_announced = outcome.latest
                     from quill import __version__
                     self.window.append_log(f"A newer Quill is available: {outcome.latest} (you have {__version__}). "
-                                           "Open Help > Update Available to get it.", safe="A newer version of Quill is available")
-                self._sync_menus()
-            if manual:
-                self._tell_update_result(outcome)
+                                           "See Settings > About.", safe="A newer version of Quill is available")
+                if getattr(self, "_update_seen", "") != outcome.latest:
+                    self._update_unseen = True                       # (the dots stay until the person has looked at About)
+            self._refresh_about()
+            self._sync_update_alerts()
 
         self.run_in_background(lambda: updates.check(), done)
 
-    def _tell_update_result(self, outcome) -> None:
-        """The answer to a check the person asked for."""
-        from quill import __version__
-        if outcome.status == "available":
-            self._offer_update(outcome)
-        elif outcome.status == "current":
-            info(self.window.widget, "Quill is up to date", f"You have the newest version of Quill ({__version__}).")
-        else:
-            info(self.window.widget, "Couldn't check for updates", outcome.error or "The check could not be made. Try again later.")
+    def _refresh_about(self) -> None:
+        if self._settings_dialog is not None:
+            self._settings_dialog.refresh_update_state()
+
+    def _sync_update_alerts(self) -> None:
+        """The red dots that lead to the About page: on the Settings icon and on About in the Settings list."""
+        unseen = bool(getattr(self, "_update_unseen", False))
+        self.window.set_update_alert(unseen)
+        self._sync_titlebar_settings()
+        if self._settings_dialog is not None:
+            self._settings_dialog.set_about_badge(unseen)
+
+    def _about_seen(self) -> None:
+        """The About page was shown: the dots have done their job."""
+        result = getattr(self, "_update_result", None)
+        self._update_seen = result.latest if result is not None else ""
+        self._update_unseen = False
+        self._sync_update_alerts()
+
+    def update_now(self) -> None:
+        """The *Update* button: say what the newer version is and go to its download page."""
+        known = getattr(self, "_update_result", None)
+        if known is not None and known.status == "available":
+            self._offer_update(known)
 
     def _offer_update(self, outcome) -> None:
         from quill import __version__
@@ -1779,14 +1812,6 @@ class QuillApp:
         if confirm(self.window.widget, f"Quill {outcome.latest} is available",
                    f"You have Quill {__version__}. The newest version is {outcome.latest}.{notes}", "Download", danger=False):
             QDesktopServices.openUrl(QUrl(outcome.url))
-
-    def check_updates_from_menu(self) -> None:
-        """Help > Check for Updates (or Update Available): offer a known newer version at once, otherwise check now."""
-        known = getattr(self, "_update_result", None)
-        if known is not None and known.status == "available":
-            self._offer_update(known)
-            return
-        self.check_for_updates(manual=True)
 
     def open_support(self, kind: str = "problem") -> None:
         """Open the *Report a Problem* form (``kind="crash"`` when Quill hit an unexpected error last time)."""
@@ -1853,13 +1878,18 @@ class QuillApp:
             on_change=lambda: self.apply_settings(quiet=True),
             on_download_model=self.download_model, model_installed=self.quality_installed,
             on_uninstall_model=self.uninstall_model, model_removable=self.quality_removable,
-            program_available=self.hosts.installed, active_file=self._active_file_facts)
+            program_available=self.hosts.installed, active_file=self._active_file_facts,
+            update_state=self.update_state, on_check_update=lambda: self.check_for_updates(manual=True),
+            on_update=self.update_now, on_about_seen=self._about_seen)
         self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
+        self._settings_dialog.set_about_badge(bool(getattr(self, "_update_unseen", False)))
         if this_file:
             self._settings_dialog.show_learned_for_file()
         elif page:
             self._settings_dialog.show_page_named(page)
+        elif getattr(self, "_update_unseen", False):
+            self._settings_dialog.show_page_named("About")                # a newer version is out: that is what the dot is about
 
     def _settings_closed(self, accepted: bool) -> None:
         """The Settings window closed: forget it, and apply the result if it was saved."""
@@ -1935,6 +1965,18 @@ class QuillApp:
         tip = (f"{name}\nSheet: {sheet}" if has_file and sheet else name if has_file else "Open File")
         self._titlebar.set_extra_image(0, png, f"{alert}\n{tip}" if alert else tip, muted=not has_file, template=not alert)
 
+    def _sync_titlebar_settings(self) -> None:
+        """The title bar's Settings icon: with the red dot while an update has not been looked at, plain otherwise."""
+        if self._titlebar is None:
+            return
+        from quill.ui.icons import titlebar_png
+        alert = bool(getattr(self, "_update_unseen", False))
+        if alert:
+            png = titlebar_png("settings", badge=True, color=self.window._text_color)
+            self._titlebar.set_extra_image(2, png, "A newer version of Quill is available.\nSettings", muted=False, template=False)
+        else:
+            self._titlebar.reset_extra_symbol(2)
+
     def _sync_titlebar_undo(self) -> None:
         """Grey out the title bar's Undo icon while there is nothing to take back."""
         self.request_menu_sync()
@@ -1991,6 +2033,8 @@ class QuillApp:
         diagnostics.syslog().info("Shutting down")
         self._watcher.stop()
         self._numbers_timer.stop()
+        if self.numbers_link is not None:
+            self.numbers_link.close()
         self._flush_timer.stop()
         self._flush_held(final=True)
         self._host_reload.stop()
@@ -2222,14 +2266,14 @@ class QuillApp:
             return "–"
 
     #: Milliseconds between looks at Numbers while Quill is listening (the one check loop looks every few seconds otherwise).
-    NUMBERS_LOOK_MS = 3000
+    NUMBERS_LOOK_MS = 1000
 
     def _look_at_numbers(self) -> None:
         """The quick look while listening: one small question to Numbers, off the window's thread, and only if it runs."""
         if self.numbers_link is None or self._quitting:
             self._numbers_timer.stop()
             return
-        self.run_in_background(self.numbers_link.look, lambda _: None)
+        self.run_in_background(lambda: self.numbers_link.look(deep=False), lambda _: None)
 
     def _set_listening(self, active: bool) -> None:
         if active and self.numbers_link is not None and not os.environ.get("QUILL_NO_HOSTS"):
