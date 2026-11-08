@@ -23,9 +23,8 @@ jobs:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
-    # Windows may fail on any branch except `windows` (main has no Windows provider until that branch is merged), and the
-    # experimental systems may fail anywhere: they are there to be looked at, not to block.
-    continue-on-error: ${{ matrix.experimental == true || (startsWith(matrix.os, 'windows') && github.ref_name != 'windows') }}
+    # Only the experimental systems may fail: they are there to be looked at, not to block.
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
