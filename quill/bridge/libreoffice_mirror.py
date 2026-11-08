@@ -38,7 +38,7 @@ from quill.diagnostics import exc_kind, syslog
 
 log = logging.getLogger("quill.libreoffice")
 
-SCRIPT_VERSION = 5
+SCRIPT_VERSION = 7
 #: The helper's file name carries its version. A running LibreOffice keeps the helper it already loaded under a name, so a
 #: newer helper under the same name would not be seen (the call fails with a scripting error box in LibreOffice); a new name is
 #: always loaded fresh. Older Quill helpers are removed when the new one is put in place.
@@ -64,6 +64,7 @@ import time
 BASE = @BASE@
 VERSION = @VERSION@
 WATCH_S = 0.3                    # how often the server looks at the open documents
+QUIET_S = 0.8                    # a document must be left alone this long before Quill is told it changed
 IDLE_STOP_S = 600                # the server stops when no Quill has been connected for this long
 
 
@@ -123,6 +124,155 @@ def _apply_changes(document, changes):
             cell.NumberFormat = date_key
         else:
             cell.setString(text)
+            if "\n" in text:
+                cell.IsTextWrapped = True                 # several values in one cell: one per line
+
+
+try:                                          # a listener for "the document was edited" (not there in a bare Python: the server then does without)
+    import unohelper
+    from com.sun.star.util import XModifyListener
+
+    class _Modified(unohelper.Base, XModifyListener):
+        def __init__(self, tell):
+            self.tell = tell
+
+        def modified(self, event):
+            self.tell()
+
+        def disposing(self, event):
+            pass
+except Exception:
+    _Modified = None
+
+
+def _used(sheet):
+    cursor = sheet.createCursor()
+    cursor.gotoEndOfUsedArea(False)
+    end = cursor.getRangeAddress()
+    rows, cols = end.EndRow + 1, end.EndColumn + 1
+    if rows == 1 and cols == 1 and sheet.getCellByPosition(0, 0).getType().value == "EMPTY":
+        return 0, 0
+    return rows, cols
+
+
+def _date_of(serial):
+    return (datetime.date(1899, 12, 30) + datetime.timedelta(days=int(serial))).isoformat()
+
+
+def _read(document, sheet_name, top, left, rows, cols, dates=True):
+    # A block of cells: text as text, numbers as numbers, a formula as its own text, a date as {"d": "YYYY-MM-DD"}, empty as null.
+    sheet = document.getSheets().getByName(sheet_name)
+    block = sheet.getCellRangeByPosition(left - 1, top - 1, left - 1 + cols - 1, top - 1 + rows - 1)
+    values, formulas = block.getDataArray(), block.getFormulaArray()
+    formats = document.getNumberFormats()
+    is_date = {}
+    out = []
+    for r, (value_row, formula_row) in enumerate(zip(values, formulas)):
+        line = []
+        for c, (value, formula) in enumerate(zip(value_row, formula_row)):
+            if isinstance(formula, str) and formula.startswith("="):
+                line.append(formula)
+            elif isinstance(value, float) and dates:
+                key = sheet.getCellByPosition(left - 1 + c, top - 1 + r).NumberFormat
+                if key not in is_date:
+                    is_date[key] = bool(formats.getByKey(key).Type & 2)
+                line.append({"d": _date_of(value)} if is_date[key] else value)
+            elif value == "":
+                line.append(None)
+            else:
+                line.append(value)
+        out.append(line)
+    return out
+
+
+def _lo_formula(text):
+    # A validation's source as Excel-style text: "a,b,c" for a typed list, Sheet!$A$1:$A$9 for a range, a name as it is.
+    text = (text or "").strip()
+    if text.startswith('"'):
+        return '"' + ",".join(part.strip().strip('"') for part in text.split(";")) + '"'
+    if "." in text:
+        sheet, _, ref = text.rpartition(".")
+        return sheet.lstrip("$") + "!" + ref
+    return text
+
+
+def _list_validation(cell):
+    try:
+        validation = cell.Validation
+        if validation.Type.value == "LIST":
+            return _lo_formula(validation.getFormula1())
+    except Exception:
+        pass
+    return None
+
+
+def _snapshot(document, max_rows=30, max_cols=60, probe_rows=13, left_rows=300, left_cols=3):
+    sheets = []
+    book = document.getSheets()
+    for name in book.getElementNames():
+        sheet = book.getByName(name)
+        rows, cols = _used(sheet)
+        block = _read(document, name, 1, 1, min(rows, max_rows), min(cols, max_cols), False) if rows and cols else []
+        left = _read(document, name, 1, 1, min(rows, left_rows), min(cols, left_cols), False) if rows and cols else []    # (headings that run down)
+        found = []
+        for col in range(min(cols, max_cols)):
+            for row in list(range(min(rows or probe_rows, probe_rows))) + [rows - 1]:
+                if row < 0:
+                    continue
+                formula = _list_validation(sheet.getCellByPosition(col, row))
+                if formula:
+                    found.append({"row": row + 1, "col": col + 1, "formula": formula})
+                    break
+        sheets.append({"name": name, "used_rows": rows, "used_cols": cols, "block": block, "left": left, "validations": found})
+    names = []
+    try:
+        ranges = document.NamedRanges
+        for name in ranges.getElementNames():
+            names.append({"name": name, "ref": _lo_formula(ranges.getByName(name).Content)})
+    except Exception:
+        pass
+    return {"sheets": sheets, "names": names}
+
+
+def _hide_rows(document, sheet_name, rows, visible):
+    sheet = document.getSheets().getByName(sheet_name)
+    book_rows = sheet.getRows()
+    for number in rows:
+        book_rows.getByIndex(int(number) - 1).IsVisible = visible
+
+
+def _set_inline_list(document, old_items, new_items):
+    # Rewrite a typed drop-down list wherever it is used: every column whose validation is exactly the old list.
+    old = ";".join('"%s"' % item for item in old_items)
+    new = ";".join('"%s"' % item for item in new_items)
+    changed = 0
+    book = document.getSheets()
+    for name in book.getElementNames():
+        sheet = book.getByName(name)
+        rows, cols = _used(sheet)
+        for col in range(cols):
+            first = None
+            for row in range(0, min(rows + 100, 5000)):
+                validation = sheet.getCellByPosition(col, row).Validation
+                match = False
+                try:
+                    match = validation.Type.value == "LIST" and validation.getFormula1() == old
+                except Exception:
+                    pass
+                if match and first is None:
+                    first = row
+                if first is not None and not match:
+                    last = row - 1
+                    break
+            else:
+                last = min(rows + 100, 5000) - 1
+            if first is not None:
+                block = sheet.getCellRangeByPosition(col, first, col, last)
+                validation = block.Validation
+                validation.setFormula1(new)
+                block.Validation = validation
+                changed += 1
+    return changed
 
 
 def apply():
@@ -159,6 +309,9 @@ class _Server:
         self.clients = []
         self.clients_lock = threading.Lock()
         self.known = {}
+        self.touched = {}                             # document address -> when it was last edited (waiting to be told, once it is quiet)
+        self.listeners = {}
+        self.ignore_until = 0.0                       # edits made by Quill's own writes are not news to Quill
         self.stopping = False
         self.last_client = time.time()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -177,6 +330,8 @@ class _Server:
             json.dump({"port": self.port, "token": self.token, "version": VERSION, "pid": os.getpid()}, handle)
         os.replace(path + ".tmp", path)
         self.known = self._look()
+        for url in list(self.known):
+            self._listen(url)
         threading.Thread(target=self._accept, name="quill-live-accept", daemon=True).start()
         threading.Thread(target=self._watch, name="quill-live-watch", daemon=True).start()
 
@@ -205,6 +360,24 @@ class _Server:
                 except Exception:
                     pass
         return found
+
+    def _listen(self, url):
+        # Be told when the document is edited, so Quill can re-read its lists and headings (not at every keystroke: see _watch).
+        if _Modified is None or url in self.listeners:
+            return
+        try:
+            with self.lock:
+                document = _find(self.desktop, [url])
+                if document is not None:
+                    listener = _Modified(lambda: self._touch(url))
+                    document.addModifyListener(listener)
+                    self.listeners[url] = listener
+        except Exception:
+            pass
+
+    def _touch(self, url):
+        if time.time() >= self.ignore_until:
+            self.touched[url] = time.time()
 
     def _send(self, client, message):
         try:
@@ -246,12 +419,19 @@ class _Server:
                 for url, info in now.items():
                     before = self.known.get(url)
                     if before is None:
+                        self._listen(url)
                         self._tell(dict(info, event="opened"))
                     elif before["sheet"] != info["sheet"] or before["sheets"] != info["sheets"]:
                         self._tell(dict(info, event="sheet"))
                 for url in self.known:
                     if url not in now:
+                        self.listeners.pop(url, None)
+                        self.touched.pop(url, None)
                         self._tell({"event": "closed", "url": url})
+                for url, when in list(self.touched.items()):
+                    if time.time() - when >= QUIET_S:           # edits have stopped for a moment: tell once
+                        del self.touched[url]
+                        self._tell({"event": "changed", "url": url})
                 self.known = now
             except Exception:
                 pass
@@ -308,8 +488,37 @@ class _Server:
             if command == "save":
                 document.store()
                 return {"ok": True}
+            if command == "snapshot":
+                return dict(_snapshot(document), ok=True)
+            if command == "read":
+                return {"ok": True, "cells": _read(document, request["sheet"], request["top"], request["left"],
+                                                    request["rows"], request["cols"])}
+            if command == "used":
+                rows, cols = _used(document.getSheets().getByName(request["sheet"]))
+                return {"ok": True, "rows": rows, "cols": cols}
+            if command == "activate":
+                controller = document.getCurrentController()
+                controller.setActiveSheet(document.getSheets().getByName(request["sheet"]))
+                return {"ok": True}
+            if command == "cursor":
+                controller = document.getCurrentController()
+                if request.get("set"):
+                    sheet = document.getSheets().getByName(request["sheet"])
+                    controller.setActiveSheet(sheet)
+                    controller.select(sheet.getCellByPosition(int(request["col"]) - 1, int(request["row"]) - 1))
+                    return {"ok": True}
+                selection = controller.getSelection()
+                address = selection.getRangeAddress()
+                return {"ok": True, "row": address.StartRow + 1, "col": address.StartColumn + 1}
+            if command == "hide":
+                _hide_rows(document, request["sheet"], request.get("rows") or [], bool(request.get("visible")))
+                return {"ok": True}
+            if command == "inline_list":
+                return {"ok": True, "changed": _set_inline_list(document, request["old"], request["new"])}
             if command == "apply":
+                self.ignore_until = time.time() + 1.0
                 _apply_changes(document, request.get("changes") or [])
+                self.ignore_until = time.time() + 1.0
                 return {"ok": True}
         return {"ok": False, "error": "unknown command"}
 
@@ -528,6 +737,11 @@ class LibreOfficeMirror:
     # ------------------------------------------------------------------ #
     # The live link                                                        #
     # ------------------------------------------------------------------ #
+
+    @property
+    def live_link(self) -> LiveLink | None:
+        """The live link while it is up (None otherwise); nothing is started to get it."""
+        return self._live if self.live_connected else None
 
     @property
     def live_connected(self) -> bool:

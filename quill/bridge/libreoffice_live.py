@@ -27,7 +27,7 @@ log = logging.getLogger("quill.libreoffice")
 
 #: Seconds to wait for LibreOffice to answer a request.
 REQUEST_TIMEOUT_S = 8.0
-#: Called with ``(kind, url, sheet)``: ``kind`` is ``opened``, ``closed``, ``sheet`` or ``lost`` (the link dropped).
+#: Called with ``(kind, url, sheet)``: ``kind`` is ``opened``, ``closed``, ``sheet``, ``changed`` (edited, once it is quiet) or ``lost`` (the link dropped).
 EventCallback = Callable[[str, str, str], None]
 
 
@@ -155,7 +155,7 @@ class LiveLink:
             self.docs[url] = {k: message.get(k) for k in ("url", "sheet", "sheets", "modified")}
         elif kind == "closed":
             self.docs.pop(url, None)
-        else:
+        elif kind != "changed":                                    # (changed: the document was edited; nothing to remember, just say so)
             return
         self._emit(kind, url, str(message.get("sheet", "") or ""))
 

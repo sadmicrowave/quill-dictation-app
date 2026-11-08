@@ -533,3 +533,118 @@ class TestSheetNotSavedYet(PanelApp):
         self.assertEqual((cues, len(shakes)), ([], 1))
         self.app._alert_start(True)
         self.assertEqual((cues, len(shakes)), (["error"], 2))
+
+
+class TestWorkingInTheOpenLibreOfficeDocument(PanelApp):
+    """A file that LibreOffice has open and tells Quill about is worked on in the open document (the live bridge), the way a file
+    open in live Excel is; a lost link puts Quill back on the file."""
+
+    class FakeLink:
+        connected = True
+
+        def __init__(self, urls): self.urls = urls
+        def find(self, urls): return {"sheet": "Sheet1"} if any(u in self.urls for u in urls) else None
+
+    def setUp(self):
+        super().setUp()
+        from quill.bridge.libreoffice_mirror import file_addresses
+        global file_addresses_for_fake
+        file_addresses_for_fake = file_addresses
+        self.link = self.FakeLink(file_addresses(self.plants))
+        self.app.lo_mirror = type("M", (), {"live_link": self.link, "on_event": None})()
+        self.app._program_holding = lambda path: "libreoffice"
+        self.logged = []
+        self.app.window.append_log = lambda text, level="info", **kw: self.logged.append((level, text))
+        self.made = []
+        self.will_not_answer = False
+        outer = self
+
+        class FakeLiveBridge(type(self.app.controller.bridge)):
+            def __init__(self, path, link):
+                super().__init__(path)
+                outer.made.append(path)
+
+            def connect(self, workbook=None):
+                if outer.will_not_answer:
+                    from quill.bridge.base import BridgeError
+                    raise BridgeError("LibreOffice is not answering.")
+                super().connect(workbook)                       # (reads the file: enough for the app's flows)
+
+            addresses = property(lambda s: file_addresses_for_fake(s._path))
+            stamp = 0
+            change_stamp = property(lambda s: FakeLiveBridge.stamp)
+
+            def touch(self): FakeLiveBridge.stamp += 1
+
+        patcher = mock.patch("quill.app.LibreOfficeBridge", FakeLiveBridge)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.FakeLiveBridge = FakeLiveBridge
+
+    def test_the_file_is_taken_over_in_the_open_document_and_the_log_says_where_rows_go(self):
+        self.assertTrue(self.app._attach_live_if_open_in_libreoffice())
+        self.assertIsInstance(self.app.controller.bridge, self.FakeLiveBridge)
+        self.assertTrue(self.app.connected)
+        self.assertTrue(any("works in it directly" in text and "unsaved" in text for _, text in self.logged))
+
+    def test_not_while_listening_it_waits_for_the_next_look(self):
+        self.app.controller.session.listening = True
+        self.assertFalse(self.app._attach_live_if_open_in_libreoffice())
+        self.assertEqual(self.made, [])
+
+    def test_only_for_a_file_libreoffice_holds_and_the_link_knows(self):
+        self.app._program_holding = lambda path: "numbers"
+        self.assertFalse(self.app._attach_live_if_open_in_libreoffice())
+        self.app._program_holding = lambda path: "libreoffice"
+        self.link.urls = []                                       # the link does not know the document
+        self.assertFalse(self.app._attach_live_if_open_in_libreoffice())
+        self.app.lo_mirror = type("M", (), {"live_link": None})()   # no link at all
+        self.assertFalse(self.app._attach_live_if_open_in_libreoffice())
+        self.assertEqual(self.made, [])
+
+    def test_a_document_that_will_not_answer_leaves_the_file_as_it_was(self):
+        before = self.app.controller.bridge
+        self.will_not_answer = True
+        self.assertFalse(self.app._attach_live_if_open_in_libreoffice())
+        self.assertIs(self.app.controller.bridge, before)
+        self.assertTrue(self.app.connected)
+
+    def test_it_is_taken_over_once_not_at_every_look(self):
+        self.assertTrue(self.app._attach_live_if_open_in_libreoffice())
+        self.assertFalse(self.app._attach_live_if_open_in_libreoffice())
+        self.assertEqual(len(self.made), 1)
+
+    def test_an_edit_in_libreoffice_re_reads_the_lists_at_once(self):
+        from quill.bridge.libreoffice_mirror import file_addresses
+        self.app._attach_live_if_open_in_libreoffice()
+        refreshed = []
+        self.app.controller.refresh = lambda: refreshed.append(1)
+        self.app._remember_mtime()
+        for _ in range(4):                                                  # a burst of edits
+            self.app._lo_event("changed", file_addresses(self.plants)[0], "")
+        self.assertEqual(refreshed, [])                                      # not at each one ...
+        self.assertTrue(self.app._lo_changed_timer.isActive())
+        self.app._lo_changed_timer.stop()
+        self.app._check_workbook_changes()                                   # ... once, when the timer runs out
+        self.assertEqual(refreshed, [1])
+        self.assertTrue(any("lists and columns re-read" in text for _, text in self.logged))
+
+    def test_an_edit_in_some_other_document_changes_nothing(self):
+        self.app._attach_live_if_open_in_libreoffice()
+        refreshed = []
+        self.app.controller.refresh = lambda: refreshed.append(1)
+        self.app._lo_event("changed", "file:///elsewhere.xlsx", "")
+        self.assertEqual(refreshed, [])
+
+    def test_the_watcher_asks_the_live_bridge_not_the_file_whether_anything_changed(self):
+        self.app._attach_live_if_open_in_libreoffice()
+        before = self.app._workbook_mtime()
+        self.app.controller.bridge.touch()
+        self.assertEqual(self.app._workbook_mtime(), before + 1)
+
+    def test_a_lost_link_puts_quill_back_on_the_saved_file_and_says_so(self):
+        self.app._attach_live_if_open_in_libreoffice()
+        self.app._back_to_the_file()
+        self.assertNotIsInstance(self.app.controller.bridge, self.FakeLiveBridge)
+        self.assertEqual(os.path.realpath(self.app.controller.bridge.workbook_path), os.path.realpath(self.plants))
+        self.assertTrue(any("link to LibreOffice was lost" in text for _, text in self.logged))

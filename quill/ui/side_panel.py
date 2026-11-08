@@ -719,9 +719,6 @@ class SidePanel(QFrame):
     def _build_turn_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
-        layout.addSpacing(4)
-        layout.addWidget(_rule())
-        layout.addSpacing(4)
         self.next_row_radio = QRadioButton("Next Row")
         self.append_radio = QRadioButton("Append To")
         self.next_row_note, self.append_note = _note(""), _note("")

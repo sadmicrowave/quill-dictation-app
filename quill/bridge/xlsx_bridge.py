@@ -73,6 +73,11 @@ class XlsxBridge(GridBridge):
     def workbook_path(self) -> str:
         return str(self._path.resolve()) if self._path else ""
 
+    @property
+    def opened_as(self) -> str:
+        """The path the file was opened with, as given (a program may know the file by this one, not the resolved one)."""
+        return str(self._path) if self._path else ""
+
     def activate(self) -> None:
         """Open the file in the system's default spreadsheet application."""
         if self._path is None:

@@ -1095,8 +1095,8 @@ class TestFilePanelDetails(Dir):
         from quill.ui.side_panel import TITLE_TIPS
         turn_page = self.panel.stack.widget(1).widget()
         order = [turn_page.layout().itemAt(i).widget() for i in range(turn_page.layout().count()) if turn_page.layout().itemAt(i).widget()]
-        self.assertTrue(order[0].property("panelRule"))                  # the description no longer takes room above the choices
-        self.assertEqual(order[0].height(), 1)
+        self.assertIs(order[0], self.panel.next_row_radio)               # nothing above the choices: no description, no separator
+        self.assertFalse(any(w.property("panelRule") for w in order[:1]))
         self.assertFalse(hasattr(self.panel, "turn_intro"))
         self.assertIn("Settings to control how each speak-match-write iteration (known as a 'Turn') is handled.", TITLE_TIPS["turn"])
         self.assertIn("Settings > Keywords", TITLE_TIPS["turn"])
