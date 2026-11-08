@@ -505,6 +505,47 @@ class TestAppSorting(unittest.TestCase):
         self.assertEqual(self.quill.window.badge_label.text(), "3")
         self.assertFalse(self.quill.window.sorting_button.isHidden())
 
+    def test_ignore_all_button_makes_every_row_leave_together_not_one_after_another(self):
+        self.hear("start listening", SENTENCE, "next row")
+        sorting = self.quill.sorting
+        SortingWindow.animation_ms, SortingWindow.FLASH_MS = 400, 300
+        try:
+            self.assertEqual(len(sorting.rows), 3)
+            sorting.ignore_all_button.click()
+            self.assertEqual(sorting._together, 3)                  # all three are easing out at once ...
+            self.assertEqual(sorting._queue, [])                    # ... and none is waiting for its turn
+        finally:
+            SortingWindow.animation_ms, SortingWindow.FLASH_MS = 0, 160
+
+    def test_nothing_is_redrawn_while_a_batch_of_answers_is_being_applied(self):
+        self.hear("start listening", SENTENCE, "next row")
+        calls = []
+        real = self.quill.sorting.set_items
+        self.quill.sorting.set_items = lambda items: (calls.append(list(items)), real(items))[1]
+        with self.quill.controller.batch("test"):
+            for key in list(self.quill.controller.pending_terms()):
+                self.quill.resolve_term(key, Decision.ignore(), key[1])
+            self.assertEqual(calls, [])                             # still showing all of them
+        self.assertEqual(calls, [[]])                               # then drawn once, as it now stands
+
+    def test_words_trimmed_off_a_term_are_learned_as_words_to_skip(self):
+        self.hear("start listening", "gizmo teal")
+        key = next(k for k in self.quill.controller.pending_terms() if k[1] == "gizmo teal")
+        self.quill.resolve_term(key, Decision.add("Color", "Teal"), "teal")
+        self.assertEqual(self.quill.settings.skip_words, ["gizmo"])
+        self.assertIn("gizmo", self.quill.controller.vocab.skip_words)
+        self.hear("gizmo mauve")
+        self.assertIn("mauve", [k[1] for k in self.quill.controller.pending_terms()])
+        self.assertNotIn("gizmo mauve", [k[1] for k in self.quill.controller.pending_terms()])
+        saved = Settings.load(self.dir / "cfg")
+        self.assertEqual(saved.skip_words, ["gizmo"])               # kept between runs
+
+    def test_a_rewritten_term_or_a_list_value_teaches_nothing(self):
+        self.hear("start listening", "gizmo teal")
+        key = next(k for k in self.quill.controller.pending_terms() if k[1] == "gizmo teal")
+        self.quill.resolve_term(key, Decision.add("Color", "Aqua"), "aqua")        # not a trim: the words were replaced
+        self.assertEqual(self.quill.settings.skip_words, [])
+
     def test_a_term_answered_before_the_row_ends_goes_into_that_row(self):
         self.hear("start listening", SENTENCE)
         teal = next(r for r in self.quill.sorting.rows if r.key == (None, "teal"))

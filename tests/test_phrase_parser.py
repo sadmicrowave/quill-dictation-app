@@ -192,6 +192,16 @@ class TestProseUseOfHeaderWords(unittest.TestCase):
             result = self.parse(said)
             self.assertEqual([c.term for c in result.candidates], ["teal"], said)
 
+    def test_contractions_heard_without_their_apostrophe_are_not_values(self):
+        for said in ("im teal", "id like teal", "ive got teal", "it isnt teal", "i cant find teal", "thats teal"):
+            self.assertEqual([c.term for c in self.parse(said).candidates], ["teal"], said)
+
+    def test_words_the_user_taught_quill_to_skip_are_not_glued_to_a_value(self):
+        vocab = Vocabulary()
+        vocab.load({"Type": ["T-Shirt"]}, ["Type"])
+        vocab.skip_words = frozenset({"gizmo"})
+        self.assertEqual([c.term for c in parse("gizmo teal", vocab, TODAY).candidates], ["teal"])
+
     def test_a_stand_in_noun_after_the_value_is_dropped_too(self):
         self.assertEqual([c.term for c in self.parse("the teal ones").candidates], ["teal"])
 

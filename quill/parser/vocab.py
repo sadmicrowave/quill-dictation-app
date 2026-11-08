@@ -79,6 +79,8 @@ class Vocabulary:
         self.date_columns: list[str] = []
         """Headers whose data is dates, in sheet order; set by the controller from the bridge."""
         self.links: LinkStore | None = None
+        self.skip_words: frozenset[str] = frozenset()
+        """Words the user showed Quill are never part of a value (learned from trimmed terms): treated like everyday filler."""
         """What the user taught Quill about which column a word means (set by the controller; None: nothing learned)."""
         self.learn_after = 2
         """Corrections of one word to one column before its link is used (the ``learn_after`` setting)."""

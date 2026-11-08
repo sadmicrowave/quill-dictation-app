@@ -15,7 +15,7 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 | **Appearance** | Theme, accent colour, spacing, text size, opacity, blur |
 | **Sounds** | Sound set, spoken word, sample |
 | **Keywords** | The phrases you say and what they do |
-| **Learned Words** | The words you taught Quill to read as a column, and how soon it learns them |
+| **Learned Words** | The words you taught Quill to read as a column, how soon it learns them, and **Words To Skip** (words you trimmed off terms in the Term Helper) |
 
 ## 🎨 Look
 

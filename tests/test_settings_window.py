@@ -182,6 +182,15 @@ class TestWidgets(DialogCase):
         self.assertTrue(bare.description_label.isHidden())
 
 
+class TestSkippedWords(DialogCase):
+    def test_the_words_to_skip_can_be_edited_and_are_saved_at_once(self):
+        self.d.skip_edit.setText("Gizmo, thingy ; gizmo")
+        self.d.skip_edit.editingFinished.emit()
+        self.assertEqual(self.settings.skip_words, ["gizmo", "thingy"])
+        self.assertEqual(Settings.load(self.dir).skip_words, ["gizmo", "thingy"])
+        self.assertEqual(self.d.skip_edit.text(), "gizmo, thingy")
+
+
 class TestSaving(DialogCase):
     def test_everything_round_trips_through_ok(self):
         d = self.d

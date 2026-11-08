@@ -938,10 +938,28 @@ class SettingsDialog:
         self._add("Learned Words", page, "Ask Before Learning",
                   "Ask before remembering a column change. Off: changes are counted without asking.",
                   self.learn_ask_check, "remember ask confirm prompt learn")
+        self.skip_edit = QLineEdit(", ".join(self._settings.skip_words))
+        self.skip_edit.setPlaceholderText("none yet")
+        self.skip_edit.setToolTip("Words Quill never makes part of a new value. Taught when you trim a word off a term in the Term Helper; "
+                                  "edit the list to forget or add some (separate with commas).")
+        self.skip_edit.editingFinished.connect(self._skip_words_changed)
+        self._add("Learned Words", page, "Words To Skip",
+                  "Words Quill leaves out of new values. Trim a word off a term in the Term Helper (“ones teal” to “teal”) and Quill "
+                  "skips it from then on. Separate with commas.",
+                  self.skip_edit, "skip ignore words filler learned trimmed")
         self.learned = LearnedWordsPanel(self._settings.links, lambda: int(self._settings.preferences["learn_after"]),
                                          self._active_file)
         self.learned.changed.connect(self._links_changed)
         page.addWidget(self.learned, 1)
+
+    def _skip_words_changed(self) -> None:
+        """The skipped words were edited: kept (saved at once, like the learned words) and applied."""
+        words = [w.strip().lower() for w in self.skip_edit.text().replace(";", ",").split(",") if w.strip()]
+        self._settings.skip_words = []
+        self._settings.add_skip_words(words)
+        self.skip_edit.setText(", ".join(self._settings.skip_words))
+        self._settings.save()
+        self._on_change()
 
     def _links_changed(self) -> None:
         """Learned words were forgotten: that is saved at once (it does not wait for the window's OK) and applied."""

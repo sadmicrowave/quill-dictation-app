@@ -330,6 +330,8 @@ class SortingWindow:
         self._outcomes: dict[TermKey, str] = {}            # how each answered term was answered (picks the blink colour)
         self._retiring = False
         self._together = 0                                 # rows of a batch still easing out (they leave at the same time)
+        self._holding = 0                                  # > 0 while a batch (Add All, Ignore All) is being applied ...
+        self._held: list[TermKey] | None = None            # ... the list it ends with, shown once when the batch is over
         self.on_done = lambda: None                        # called when the last row has left and the window closes
         self._titlebar = None
         self._window: QWidget | None = None
@@ -508,6 +510,9 @@ class SortingWindow:
         terms that were just answered flash green, then ease away one after another, and the window
         closes after the last one when nothing is left, so the answers can be seen being accepted.
         """
+        if self._holding:                                  # a batch is half-applied: show only where it ends up (one animation)
+            self._held = list(items)
+            return
         old = {row.key: row for row in self.rows}
         for row in self.rows:
             self._list.removeWidget(row)
@@ -714,16 +719,29 @@ class SortingWindow:
         elif window.width() < need:
             window.resize(need, window.height())
 
+    @contextlib.contextmanager
+    def _as_one_change(self):
+        """Answers made inside leave the list together: each answer would otherwise refresh the list on its own and the rows would
+        leave one after another (a cascade). The list is refreshed once, at the end, with every answered row going at the same time."""
+        self._holding += 1
+        try:
+            yield
+        finally:
+            self._holding -= 1
+            if not self._holding and self._held is not None:
+                items, self._held = self._held, None
+                self.set_items(items)
+
     def add_all(self) -> None:
         """Add every row that already has a column chosen."""
-        with self._batch("Added terms"):
+        with self._batch("Added terms"), self._as_one_change():
             for row in list(self.rows):
                 if row.column and row.words:
                     row.add()
 
     def ignore_all(self) -> None:
         """Forget every term in the list."""
-        with self._batch("Ignored terms"):
+        with self._batch("Ignored terms"), self._as_one_change():
             for row in list(self.rows):
                 row.ignore()
 

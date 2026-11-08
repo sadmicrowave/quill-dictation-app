@@ -201,7 +201,7 @@ class _Parser:
                 continue
 
             word = self.tokens[self.i]
-            if word in COMMON_WORDS or parse_number(self.tokens, self.i)[0] is not None:
+            if self._is_common(word) or parse_number(self.tokens, self.i)[0] is not None:
                 self._flush()
                 self.result.unmatched.append(word)
             else:
@@ -382,7 +382,7 @@ class _Parser:
             end += 1
         text_end = end
         while (end < len(self.tokens) and self._starts_date(end)           # only when a date interrupted the text
-               and text_end > self.i and self.tokens[text_end - 1] in COMMON_WORDS):
+               and text_end > self.i and self._is_common(self.tokens[text_end - 1])):
             text_end -= 1                                         # "… it was" leads into the date, it is not text
         if text_end == self.i:
             if end == self.i:
@@ -408,11 +408,15 @@ class _Parser:
             self.i += 1
         return words
 
+    def _is_common(self, word: str) -> bool:
+        """An everyday word, or one the user taught Quill to skip: never part of a new value."""
+        return word in COMMON_WORDS or word in self.vocab.skip_words
+
     def _is_boundary(self, j: int) -> bool:
         """True where a run of unknown words should stop."""
         word = self.tokens[j]
         return (
-            word in COMMON_WORDS
+            self._is_common(word)
             or self.vocab.field_at(self.tokens, j) is not None
             or bool(self.vocab.matches_at(self.tokens, j))
             or parse_number(self.tokens, j)[0] is not None

@@ -140,6 +140,8 @@ def _defaults_path() -> pathlib.Path:
 
 #: Commands added after the first release: a keyword file saved earlier gets their shipped phrases too.
 NEW_ACTIONS = (Action.OPEN_TERM_HELPER, Action.APPEND_ON, Action.APPEND_OFF, Action.ROWS_DOWN_ON, Action.ROWS_DOWN_OFF)
+#: Most skipped words kept (the oldest go first).
+MAX_SKIP_WORDS = 200
 KEYWORDS_VERSION = 3          # raised whenever shipped commands are added
 
 
@@ -196,6 +198,7 @@ class Settings:
         self.preferences: dict[str, object] = {**DEFAULT_PREFERENCES, **(preferences or {})}
         self.account: dict[str, object] = clean_account(None)    # licence / subscription facts (licensing.py)
         self.links = LinkStore()          # words the user taught Quill to read as a column (learning.py)
+        self.skip_words: list[str] = []   # words the user trimmed off terms: Quill never makes them part of a new value
         self._config_dir = config_dir
 
     # ------------------------------------------------------------------ #
@@ -241,6 +244,9 @@ class Settings:
         settings.preferences["prefs_version"] = int(DEFAULT_PREFERENCES["prefs_version"])
         settings.account = clean_account(data.get("account") if isinstance(data.get("account"), dict) else None)
         settings.links = LinkStore.from_list(data.get("links"))
+        raw_skips = data.get("skip_words")
+        if isinstance(raw_skips, list):
+            settings.skip_words = [str(w).lower() for w in raw_skips if isinstance(w, str) and w.strip()][-MAX_SKIP_WORDS:]
         raw_aliases = data.get("aliases")
         if isinstance(raw_aliases, dict):
             for column, mapping in raw_aliases.items():
@@ -355,6 +361,12 @@ class Settings:
             self.aliases.pop(column, None)
         return previous
 
+    def add_skip_words(self, words: list[str]) -> list[str]:
+        """Remember words Quill must never make part of a new value (not yet saved); returns the ones that were new."""
+        new = [w for w in dict.fromkeys(w.strip().lower() for w in words) if w and w not in self.skip_words]
+        self.skip_words = (self.skip_words + new)[-MAX_SKIP_WORDS:]
+        return new
+
     def reset_keywords(self) -> None:
         """Restore the shipped default keywords (preferences are untouched)."""
         self.keywords = self.defaults().keywords
@@ -365,7 +377,8 @@ class Settings:
 
     def save(self) -> None:
         """Write keywords and preferences to TOML in the config dir."""
-        lines = [f"keywords_version = {KEYWORDS_VERSION}\n\n[keywords]\n"]
+        skips = ", ".join(_toml_string(w) for w in self.skip_words)
+        lines = [f"keywords_version = {KEYWORDS_VERSION}\nskip_words = [{skips}]\n\n[keywords]\n"]
         for phrase, action in sorted(self.keywords.items()):
             lines.append(f"{_toml_string(phrase)} = {_toml_string(action.name)}\n")
         lines.append("\n[preferences]\n")

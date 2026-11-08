@@ -268,6 +268,8 @@ class QuillApp:
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
+        self._refresh_after_batch = self._reveal_after_batch = False      # (see refresh_sorting)
+        self.controller.on_batch_done = self._batch_done
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
                                      on_voice=self.toggle_voice_sorting,
                                      on_undo=self.undo, batch=self.controller.batch, on_help=self.open_help,
@@ -1161,13 +1163,24 @@ class QuillApp:
                                      self.controller.bridge.workbook_name)
         self.window.append_log("Workbook re-read", safe="Workbook re-read")
 
+    def _batch_done(self) -> None:
+        """The outermost batch of answers ended: draw the Term Helper once, as it now stands."""
+        if self._refresh_after_batch:
+            reveal, self._refresh_after_batch, self._reveal_after_batch = self._reveal_after_batch, False, False
+            self.refresh_sorting(reveal=reveal)
+
     def resolve_term(self, key: TermKey, decision: Decision, term: str) -> None:
         """The user decided what to do with an unrecognised term."""
         self.controller.resolve_term(key, decision, term)
         self.refresh_sorting()
 
     def refresh_sorting(self, reveal: bool = False) -> None:
-        """Sync the Needs-sorting list and button with the pending terms."""
+        """Sync the Needs-sorting list and button with the pending terms. While a batch of answers (Add All, Ignore All, a spoken
+        "ignore all") is being applied nothing is redrawn: it is drawn once when the batch ends, so its rows leave together."""
+        if self.controller.batch_depth:
+            self._refresh_after_batch = True
+            self._reveal_after_batch = self._reveal_after_batch or reveal
+            return
         pending = self.controller.pending_terms()
         self.sorting.set_items(pending)
         self.window.set_sorting_count(len(pending))

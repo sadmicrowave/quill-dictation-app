@@ -10,6 +10,7 @@ words: adjectives and nouns (and words that can be a condition or a status, such
 
 from __future__ import annotations
 
+#: The spoken contractions come without their apostrophe ("I'm" is heard as "im", "I'd" as "id"): they are skipped too.
 #: Pronouns, articles, prepositions, conjunctions and other small words. The stand-ins for a noun ("ones", "something", "kind") are here
 #: too: "this ones teal" has the value "teal"; if they were not skipped they would be glued to it as "ones teal".
 _FUNCTION_WORDS = """
@@ -24,6 +25,8 @@ up down out off away back apart together forward ahead aside inside outside
 exactly mainly mostly roughly around approximately basically simply totally completely
 ones something anything everything nothing someone anyone everyone somebody anybody everybody
 whatever whichever whoever things kind kinds
+im id ive ill youre youve youd theyre theyve theyd hes shes thats whats whos heres theres weve
+dont doesnt didnt isnt arent wasnt werent hasnt havent hadnt cant couldnt wouldnt shouldnt wont mustnt aint
 """.split()
 
 #: Everyday verbs and their forms (what a speaker says *about* the item, not a property of it).

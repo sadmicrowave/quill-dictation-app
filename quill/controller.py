@@ -19,6 +19,8 @@ from quill.config.settings import Settings
 from quill.history import History
 from quill.learning import link_word
 from quill.parser.commands import NO_WORDS, YES_WORDS, Action, CommandMatcher
+from quill.parser.numbers import parse_number
+from quill.parser.phrase_parser import COMMON_WORDS
 from quill.parser.tokens import tokenize
 from quill.parser.vocab import Vocabulary
 from quill.search import parse_search
@@ -113,6 +115,8 @@ class Controller:
         self.lead_in_s = 0.0
         """Seconds the spoken sorting question waits so a cue can play first (set by the app)."""
         self.history = History(int(settings.preferences["history_limit"]))
+        self.batch_depth = 0                                   # > 0 while a batch of answers is being applied
+        self.on_batch_done: Callable[[], None] = lambda: None  # told when the outermost batch ends (the lists then refresh once)
         """The most recent sorting decisions, newest last, for :meth:`undo`."""
         self._connected_to = ""
         """Which workbook the last :meth:`connect` reached (a different one clears the heard terms)."""
@@ -179,6 +183,7 @@ class Controller:
     def _apply_learning(self) -> None:
         """Give the vocabulary what the user taught Quill about words and columns (and how soon to use it)."""
         self.vocab.links = self.settings.links
+        self.vocab.skip_words = frozenset(self.settings.skip_words)
         self.vocab.learn_after = int(self.settings.preferences["learn_after"])
 
     def _apply_aliases(self) -> None:
@@ -524,6 +529,30 @@ class Controller:
         for event in self.session.resolve(key, decision, term):
             self._carry_out(event)
             self._on_event(event)
+        self._learn_skipped_words(key, decision, term)
+
+    def _learn_skipped_words(self, key: TermKey, decision: Decision, term: str | None) -> None:
+        """The user trimmed words off the start or end of a term before adding it ("ones teal" became "teal"): those words are
+        not part of values, so Quill skips them from now on, here and in every file. Only whole words at the ends count; a term
+        that was rewritten, or a word that is a heading, a list value or a number, teaches nothing."""
+        if decision.kind not in ("add", "alias") or not term:
+            return
+        heard, kept = tokenize(key[1]), tokenize(term)
+        size = len(kept)
+        at = next((i for i in range(len(heard) - size + 1) if heard[i:i + size] == kept), None) if kept else None
+        if at is None or size == len(heard):
+            return
+        vocab = self.vocab
+        words = [w for w in heard[:at] + heard[at + size:]
+                 if len(w) >= 2 and w.isalpha() and w not in COMMON_WORDS and w not in self.settings.skip_words
+                 and vocab.field_at([w], 0) is None and not vocab.matches_at([w], 0) and parse_number([w], 0)[0] is None]
+        learned = self.settings.add_skip_words(words)
+        if not learned:
+            return
+        self.settings.save()
+        self._apply_learning()
+        shown = ", ".join(f"‘{w}’" for w in learned)
+        self._on_event(Event("learning", detail=f"Quill will skip {shown} from now on (Settings > Learned Words lists them)"))
 
     def defer_term(self, key: TermKey) -> None:
         """Leave a term for later (moves it to the end of the list)."""
@@ -534,9 +563,18 @@ class Controller:
         self.session.defer(key)
         self.history.push(f"Left ‘{key[1]}’ for later", lambda: self._restore(key, index, None))
 
+    @contextlib.contextmanager
     def batch(self, label: str):
-        """Context manager: decisions made inside undo together as one step."""
-        return self.history.group(label)
+        """Context manager: decisions made inside undo together as one step, and what shows them (the Term Helper list) is
+        refreshed once when the batch ends, so a whole batch changes the screen as one action (see ``on_batch_done``)."""
+        self.batch_depth += 1
+        try:
+            with self.history.group(label):
+                yield
+        finally:
+            self.batch_depth -= 1
+            if not self.batch_depth:
+                self.on_batch_done()
 
     # ------------------------------------------------------------------ #
     # Undo                                                                 #
