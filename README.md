@@ -651,3 +651,7 @@ Not built: Linux, free-text "contains" search, date comparisons in search, a fil
 ### Listening only for answers
 
 While voice sorting is on, `QuillApp._focus_listener` gives the Listener `set_grammar(expected_words(vocab, aliases))` (`quill/sorting_voice.py`): the commands, the little words, the column names, every list value and its letters, number words and the user's synonyms. The Listener builds a Vosk grammar from them (plus `[unk]`, which is stripped from results and partials) and makes a new recogniser at once; the Whisper second pass is skipped while a grammar is set. `set_grammar(None)` when sorting ends restores open dictation. `Settings > Speech Model > Focus On Answers While Sorting` (`sorting_grammar`, on by default) turns it off. A recogniser factory that takes no grammar argument still works (it is called without it).
+
+### Update check and an older relay
+
+`quill/updates.py` asks the relay's `GET /latest`. A relay that has not been redeployed since `/latest` was added answers 405 (its old code only knows `POST`), which used to show *"The update service answered with an error (405)"*. On a 404 or 405 from the relay the check now asks GitHub's public releases API directly (`GITHUB_LATEST_URL`; the repository is public) and carries on; GitHub's own 404 means nothing is released yet, which counts as up to date. Redeploying the relay (`cd relay && npx wrangler@4 deploy`, or a push to `main` that touches `relay/`, which runs the workflow) makes the app use it again.

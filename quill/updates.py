@@ -24,6 +24,9 @@ from quill.support import SUPPORT_URL
 LATEST_URL = SUPPORT_URL.rstrip("/") + "/latest" if SUPPORT_URL else ""
 #: Where releases are listed (used when the relay names no page).
 RELEASES_URL = "https://github.com/sadmicrowave/quill-dictation-app/releases/latest"
+#: The same release information straight from GitHub (the repository is public). Used only when the relay is an older build that does
+#: not answer ``/latest`` yet (it says 404 or 405), so checking for updates keeps working while the relay is being updated.
+GITHUB_LATEST_URL = "https://api.github.com/repos/sadmicrowave/quill-dictation-app/releases/latest"
 TIMEOUT_S = 8
 
 
@@ -71,9 +74,35 @@ def check(current: str | None = None, url: str | None = None, opener: Callable |
         with (opener or urllib.request.urlopen)(request, timeout=TIMEOUT_S) as response:   # noqa: S310  # nosec B310 (https only, above)
             body = json.loads(response.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as exc:
+        if exc.code in (404, 405) and url == LATEST_URL:                  # an older relay: ask GitHub directly
+            return _from_github(current, opener)
         return UpdateResult("unknown", error=f"The update service answered with an error ({exc.code}).")
     except (OSError, ValueError):
         return UpdateResult("unknown", error="Couldn't reach the update service. Check your connection.")
+    return _result(body, current)
+
+
+def _from_github(current: str, opener: Callable | None) -> UpdateResult:
+    """The newest release read from GitHub's public API (see :data:`GITHUB_LATEST_URL`). Never raises."""
+    request = urllib.request.Request(GITHUB_LATEST_URL, method="GET", headers={
+        "User-Agent": f"Quill/{current}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with (opener or urllib.request.urlopen)(request, timeout=TIMEOUT_S) as response:   # noqa: S310  # nosec B310 (https only, constant)
+            release = json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return UpdateResult("current")                                # nothing has been released yet
+        return UpdateResult("unknown", error=f"The update service answered with an error ({exc.code}).")
+    except (OSError, ValueError):
+        return UpdateResult("unknown", error="Couldn't reach the update service. Check your connection.")
+    if not isinstance(release, dict):
+        return UpdateResult("unknown", error="The update service could not say what the newest version is.")
+    tag = str(release.get("tag_name") or "").strip()
+    version = tag[1:] if tag[:1] in ("v", "V") else tag
+    return _result({"ok": True, "version": version, "url": release.get("html_url"), "notes": str(release.get("body") or "")[:600]}, current)
+
+
+def _result(body: object, current: str) -> UpdateResult:
     if not isinstance(body, dict) or not body.get("ok"):
         return UpdateResult("unknown", error="The update service could not say what the newest version is.")
     latest = str(body.get("version") or "")

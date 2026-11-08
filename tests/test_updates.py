@@ -68,6 +68,24 @@ class TestTheCheck(unittest.TestCase):
     def test_nothing_published_yet_is_current(self):
         self.assertEqual(self.ask({"ok": True, "version": None})[0].status, "current")
 
+    def test_an_older_relay_that_says_405_is_bypassed_by_asking_github(self):
+        calls = []
+
+        def opener(request, timeout=None):
+            calls.append(request.full_url)
+            if request.full_url == updates.LATEST_URL:
+                raise urllib.error.HTTPError(request.full_url, 405, "Method Not Allowed", {}, io.BytesIO(b'{"ok":false}'))
+            return Reply({"tag_name": "v9.9.9", "html_url": "https://github.com/sadmicrowave/quill-dictation-app/releases/tag/v9.9.9", "body": "Notes"})
+
+        result = check(current="1.0.0", opener=opener)
+        self.assertEqual((result.status, result.latest), ("available", "9.9.9"))
+        self.assertEqual(calls, [updates.LATEST_URL, updates.GITHUB_LATEST_URL])
+
+    def test_github_saying_nothing_is_released_is_current(self):
+        def opener(request, timeout=None):
+            raise urllib.error.HTTPError(request.full_url, 405 if request.full_url == updates.LATEST_URL else 404, "x", {}, io.BytesIO(b"{}"))
+        self.assertEqual(check(current="1.0.0", opener=opener).status, "current")
+
     def test_a_page_that_is_not_on_github_is_not_followed(self):
         result, _ = self.ask({"ok": True, "version": "0.2.0", "url": "https://evil.example/download"})
         self.assertEqual(result.url, updates.RELEASES_URL)
