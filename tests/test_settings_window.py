@@ -501,3 +501,23 @@ class TestAboutPage(DialogCase):
         state.update(checking=True)
         self.d.refresh_update_state()
         self.assertFalse(self.d.update_button.isEnabled())
+
+
+class TestAccessibilityPressesReachTheSettings(DialogCase):
+    """An accessibility "press" on a checkable control only toggles it (no click is made), so what a control tells the app has to
+    hang on its toggle, or VoiceOver users change nothing."""
+
+    def test_a_segment_pressed_the_accessible_way_still_reports_the_choice(self):
+        control = self.d.theme_combo
+        got = []
+        control.currentIndexChanged.connect(got.append)
+        control._buttons[1].toggle()                                  # what the press does
+        self.assertEqual(got, [1])
+        control.setCurrentIndex(0)                                    # the program's own change says nothing
+        self.assertEqual(got, [1])
+
+    def test_a_switch_and_a_radio_button_report_on_toggle_too(self):
+        seen = []
+        self.d.speak_check.toggled.connect(seen.append)
+        self.d.speak_check.toggle()
+        self.assertEqual(seen, [True])

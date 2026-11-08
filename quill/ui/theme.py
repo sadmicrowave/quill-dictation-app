@@ -354,7 +354,7 @@ QPushButton[footerButton="true"] {{ background: transparent; border: 1px solid t
 QPushButton[footerButton="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QPushButton[footerButton="true"]:checked {{ background: {t['accent']}; border-color: {t['accent']}; }}
 QPushButton[footerButton="true"]:checked:hover {{ background: {t['accent_hover']}; border-color: {t['accent_hover']}; }}
-QFrame#windowFooter {{ background: transparent; border: none; border-top: 1px solid {t['border']}; }}
+QFrame#windowFooter {{ background: transparent; border: none; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
 QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}
 QSlider::handle:horizontal {{ width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;

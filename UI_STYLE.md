@@ -30,8 +30,11 @@ what can be checked; this page is what cannot.
 | **Tool tip** | the rounded lighter-grey card, centred on the pointer, plain text only (no markup, no emoji or symbols), on screen | `widgets.TipWindow`, `CenteredToolTips` |
 | **Hover text** | every clickable element has some (`hints.fill_missing_tips` is the safety net) | `hints.py` |
 | **Confirming blink** | one blink for the whole app: green for it worked, grey for a deliberate no, red for it could not | `theme.FLASH_STYLES` |
+| **Footer icon button** | 36 x 28, 16 px icon, flat; fills with the accent while its panel is open | `widgets.FooterButton`, `QPushButton[footerButton]` |
 | **Sounds** | only for what the user *said*, never for a click | `Event.spoken`, `Controller` |
 
-Rules of thumb: a control that works the same way gets the same widget; wording that depends on the sheet's layout
+Rules of thumb: a checkable control (switch, radio, segment, footer button) tells the app through its **toggled** signal, never only
+`clicked`, because an accessibility "press" (VoiceOver) toggles a checkable control without making a click; a change the program
+makes itself must not be reported as the person's; a control that works the same way gets the same widget; wording that depends on the sheet's layout
 follows it (rows or columns); never ship a window the pixel checks have not seen (`tools/verify_window_effects.py`
 for opacity and blur).

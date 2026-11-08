@@ -369,7 +369,8 @@ class SegmentedControl(QWidget):
         self._buttons: list[QToolButton] = []
         self._data: list[object] = []
         self._icon_names: list[str] = []
-        self._group.idClicked.connect(self._clicked)
+        self._syncing = False                                                    # (a change made by the program is not the person's)
+        self._group.idToggled.connect(self._toggled)       # toggled, not clicked: an accessibility press only toggles
 
     def addItem(self, icon_name: str, label: str, data: object) -> None:      # noqa: N802
         button = QToolButton()
@@ -387,7 +388,9 @@ class SegmentedControl(QWidget):
         self._buttons.append(button)
         self._data.append(data)
         if index == 0:
+            self._syncing = True
             button.setChecked(True)
+            self._syncing = False
 
     def refresh_icons(self, color: str | None = None) -> None:
         """Redraw the icons in *color* (default: the current text colour), e.g. after the theme changed."""
@@ -406,10 +409,13 @@ class SegmentedControl(QWidget):
 
     def setCurrentIndex(self, index: int) -> None:                            # noqa: N802
         if 0 <= index < len(self._buttons):
+            self._syncing = True
             self._buttons[index].setChecked(True)
+            self._syncing = False
 
     def findData(self, data: object) -> int:                                  # noqa: N802
         return self._data.index(data) if data in self._data else -1
 
-    def _clicked(self, index: int) -> None:
-        self.currentIndexChanged.emit(index)
+    def _toggled(self, index: int, checked: bool) -> None:
+        if checked and not self._syncing:
+            self.currentIndexChanged.emit(index)
