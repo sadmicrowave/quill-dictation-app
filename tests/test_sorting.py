@@ -230,6 +230,8 @@ class TestSortingWindow(unittest.TestCase):
         self.assertLess(row.edit.geometry().bottom(), row.add_button.geometry().top())
         self.assertLess(row.combo.geometry().bottom(), row.same_button.geometry().top())
         self.assertEqual(row.add_button.geometry().top(), row.ignore_button.geometry().top())
+        self.assertGreater(row.add_button.geometry().left(), row.width() // 3)          # right-aligned
+        self.assertLessEqual(row.width() - row.ignore_button.geometry().right(), 24)
 
     def test_the_rows_sit_in_a_box_as_wide_as_the_button_rows_with_room_below(self):
         self.win.set_items([(None, "navy")])

@@ -219,6 +219,27 @@ class TestCollapsibleLog(unittest.TestCase):
         self.assertTrue(self.w.log_toggle.isChecked())
         self.assertEqual(self.toggled, [True, False])
 
+    def test_next_row_eases_in_and_out_instead_of_jumping(self):
+        from PySide6.QtWidgets import QApplication
+        import time
+        w = self.w
+        w.animation_ms = 150
+        w.set_listening_indicator(True)
+        widths = []
+        end = time.time() + 0.4
+        while time.time() < end:
+            QApplication.processEvents()
+            widths.append(w.next_button.width())
+        self.assertGreater(len(set(widths)), 3)                         # several widths on the way
+        self.assertEqual(widths[-1], w.next_button.height() + 14)
+        w.set_listening_indicator(False)
+        QApplication.processEvents()
+        self.assertTrue(w.next_button.isVisible())                      # still easing out
+        end = time.time() + 0.4
+        while time.time() < end:
+            QApplication.processEvents()
+        self.assertFalse(w.next_button.isVisible())
+
     def test_the_export_button_shows_only_while_the_log_is_open(self):
         self.assertTrue(self.w.export_log_button.isVisible())
         self.assertEqual(self.w.export_log_button.toolTip(), "Export the log to a text file")

@@ -152,10 +152,10 @@ class TermRow(QFrame):
         controls.addWidget(self.edit, 1)
         controls.addWidget(self.combo)
         top.addLayout(controls)
-        answers = QHBoxLayout()                        # ... and, on a row of their own, the ways to answer
+        answers = QHBoxLayout()                        # ... and, on a row of their own, the ways to answer (right-aligned)
+        answers.addStretch(1)
         for button in (self.match_button, self.add_button, self.same_button, self.ignore_button):
             answers.addWidget(button)
-        answers.addStretch(1)
         top.addLayout(answers)
 
         apply_spacing(self)

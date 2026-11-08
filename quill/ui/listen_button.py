@@ -60,8 +60,9 @@ class StreamGraph(QWidget):
     FRAME_MS = 40
     STEP = 2.0                  # pixels between two readings
     TURN = 0.24                 # how far the sine turns between two readings (radians)
+    GATE = 0.30                 # readings under this are room noise, not a voice: the lines stay flat for them
     LEAD = 9.0                  # room kept at the left so the green glow is not cut off by the edge
-    QUIET = 0.04                # how tall the lines are with no voice at all (share of the full height)
+    QUIET = 0.0                 # how tall the lines are with no voice at all (share of the full height): none, a flat line
 
     def __init__(self) -> None:
         super().__init__()
@@ -106,7 +107,8 @@ class StreamGraph(QWidget):
 
     def set_level(self, level: float) -> None:
         """The loudness of the user's voice right now (0 to 1)."""
-        self._target = max(0.0, min(1.0, level))
+        level = max(0.0, min(1.0, level))
+        self._target = 0.0 if level < self.GATE else (level - self.GATE) / (1.0 - self.GATE)
 
     def hideEvent(self, event) -> None:                    # noqa: N802 (Qt name): nothing animates out of sight
         self._timer.stop()

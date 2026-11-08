@@ -96,14 +96,17 @@ ROW_MAX_FULL = 150
 ROW_MAX_MINI = 66
 
 #: Space left below the "Log" heading when the log is minimized, in pixels.
-LOG_BOTTOM_MARGIN = 4
+LOG_BOTTOM_MARGIN = 3
+
+#: Pixels the grip of the heard-words box sits below that box's bottom edge: over the middle of the gap to the box under it.
+ROW_GRIP_DROP = 5
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
 MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and opens at it the first time
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user drags it to another)
 LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
 #: Gap (px) between the log box and the footer under it.
-LOG_FOOTER_GAP = 6
+LOG_FOOTER_GAP = 0
 MIN_CONTENT_WIDTH = 405     # the content (everything but the side panel) is never dragged narrower than this
 
 #: Lines kept in the log before the oldest are dropped.
@@ -237,6 +240,7 @@ class MainWindow:
         self._stream_done = False            # the row ended: the next words start a fresh stream
         self._classify_words = lambda words: [WordMatch(False) for _ in words]
         self._sorting_animation: QVariantAnimation | None = None
+        self._next_animation: QVariantAnimation | None = None             # the Next Row button easing in or out beside Start
         self._window: QMainWindow | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
         self._listening = False
@@ -397,7 +401,7 @@ class MainWindow:
         self.row_grip = ResizeGrip(central)         # drag the bottom edge of the matched words box: it trades height with the log
         self.row_grip.dragged.connect(self._grip_dragged)
         self.row_grip.released.connect(lambda: self._on_log_height(self._log_height))
-        self.row_table.installEventFilter(_GripPlacer(self.row_table, self.row_grip))
+        self.row_table.installEventFilter(_GripPlacer(self.row_table, self.row_grip, ROW_GRIP_DROP))
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
         self.learn_bar = QWidget()                 # "Remember that 'spotted' means Observation Date?  Yes  No": quiet, goes by itself
         learn = QHBoxLayout(self.learn_bar)
@@ -458,7 +462,7 @@ class MainWindow:
         self.footer.setObjectName("windowFooter")
         self.footer.setProperty("keepMargins", True)
         footer_row = QHBoxLayout(self.footer)
-        footer_row.setContentsMargins(0, 2, 0, 0)
+        footer_row.setContentsMargins(0, 3, 0, 0)
         footer_row.setSpacing(6)
         footer_row.setProperty("keepSpacing", True)
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
@@ -476,10 +480,6 @@ class MainWindow:
         log_block.addWidget(self.log)
         log_block.addWidget(self.footer)
         layout.addLayout(log_block)
-        self.log_grip = ResizeGrip(central)         # drag the bottom edge of the log: it and the window grow or shrink together
-        self.log_grip.dragged.connect(self._log_grip_dragged)
-        self.log_grip.released.connect(lambda: self._on_log_height(self._log_height))
-        self.log.installEventFilter(_GripPlacer(self.log, self.log_grip))
         layout.addStretch(0)         # soaks up spare height in the compact mini view (and while it grows back), so nothing drifts down
         self._spacer_index = layout.count() - 1
 
@@ -933,24 +933,6 @@ class MainWindow:
         floor = max(self._layout.minimumSize().height(), MIN_WINDOW[1])
         window.resize(window.width(), max(floor, window.height() + dy))
 
-    def _log_grip_dragged(self, dy: int) -> None:
-        """The bottom edge of the log was dragged *dy* px (down is positive): the log takes the difference and the window
-        grows or shrinks by the same amount, so what is above does not move. Height only."""
-        window = self._window
-        if window is None or self._view_mini or self._log_busy or self._log_collapsed or not self.log.isVisibleTo(window):
-            return
-        wanted = max(LOG_MIN_HEIGHT, min(LOG_MAX_HEIGHT, self._log_height + dy))
-        change = wanted - self._log_height
-        if not change:
-            return
-        screen = window.screen()
-        if change > 0 and screen is not None and window.height() + change > screen.availableGeometry().height():
-            return
-        self._log_height = wanted
-        self.log.setFixedHeight(wanted)
-        self._layout.activate()
-        window.resize(window.width(), window.height() + change)
-
     def _fit_height(self) -> int:
         """The height the window needs right now (the layout is recomputed first, as Qt only does that lazily)."""
         layout = self._layout
@@ -1028,13 +1010,18 @@ class MainWindow:
         self.toggle_button.set_notice(self._not_connected, self._not_connected_tip)
         self.open_file_button.setVisible(full and not self._native_file_button)
         self.turn_button.setVisible(full and not self._native_turn_button)
-        self.next_button.setVisible(self._listening)                          # only while a turn is going on
+        sliding = self._next_animation is not None
+        if not sliding:
+            self.next_button.setVisible(self._listening)                      # only while a turn is going on
         self.error_button.setVisible(self._view_mini and bool(self._mini_error))
         self.toggle_button.set_compact(self._view_mini)                      # (first: the Next Row button below is as tall as it)
         tall = self.sorting_button.fontMetrics().height() * 2 + 4
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
         beside = max(tall if full else 0, self.toggle_button.sizeHint().height())
-        self.next_button.setFixedSize(beside + 14, beside)                    # as tall as the Start button
+        if sliding:
+            self.next_button.setFixedHeight(beside)                           # (its width is being eased)
+        else:
+            self.next_button.setFixedSize(beside + 14, beside)                # as tall as the Start button
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
         self.footer.setVisible(full)
@@ -1045,8 +1032,6 @@ class MainWindow:
             self.learn_bar.setVisible(False)
         self.row_grip.allowed = full                                         # (only the full window is resized this way)
         self.row_grip.setVisible(full and detail)
-        self.log_grip.allowed = full
-        self.log_grip.setVisible(full and self.log.isVisibleTo(self._window))
         self.last_label.setVisible(full and self._has_last_saved)
         self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
@@ -1668,9 +1653,54 @@ class MainWindow:
 
     def set_listening_indicator(self, active: bool) -> None:
         """Update the button (icon, text, colours, sound lines)."""
+        changed = active != self._listening
         self._listening = active
         self.toggle_button.set_active(active)
+        slide = (changed and self._window is not None and self._window.isVisible() and self.animation_ms > 0
+                 and not self._view_mini)
+        if slide:
+            self._begin_next_slide(active)
         self._refresh_visibility()
+        if slide:
+            self._run_next_slide(active)
+
+    def _begin_next_slide(self, appearing: bool) -> None:
+        """Before the layout is refreshed: stop an earlier slide and, when the button is coming, start it squeezed shut."""
+        if self._next_animation is not None:
+            self._next_animation.stop()
+        self._next_animation = QVariantAnimation(self.next_button)
+        if appearing:
+            self.next_button.setVisible(True)
+            self.next_button.setFixedWidth(0)
+
+    def _run_next_slide(self, appearing: bool) -> None:
+        """The Next Row button eases in beside Start (which gives it the room, getting narrower) or eases out again (Start
+        grows back); the width changes smoothly instead of jumping."""
+        button = self.next_button
+        full = button.height() + 14
+        animation = self._next_animation
+        effect = QGraphicsOpacityEffect(button)
+        button.setGraphicsEffect(effect)
+        animation.setDuration(max(self.animation_ms, 1))
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.setStartValue(0.0 if appearing else 1.0)
+        animation.setEndValue(1.0 if appearing else 0.0)
+
+        def step(value) -> None:
+            button.setFixedWidth(max(int(full * float(value)), 0))
+            effect.setOpacity(float(value))
+
+        def done() -> None:
+            if self._next_animation is animation:
+                self._next_animation = None
+                button.setGraphicsEffect(None)
+                button.setVisible(self._listening)
+                button.setFixedSize(full, button.height())
+
+        animation.valueChanged.connect(step)
+        animation.finished.connect(done)
+        step(animation.startValue())
+        animation.start()
 
     def set_quiet_countdown(self, seconds: int | None) -> None:
         """Show how many seconds are left before Quill stops listening because it is quiet (None hides it)."""
@@ -1698,7 +1728,6 @@ class MainWindow:
             return                      # not built yet; setup() draws them
         self.panel.set_colors(text_color, accent)
         self.row_grip.set_color(text_color)
-        self.log_grip.set_color(text_color)
         self.log_toggle.set_colors(text_color, text_color)
         self.export_log_button.set_colors(text_color, text_color)
         self._render_stream()
@@ -1788,14 +1817,14 @@ class _SizeKeeper(QObject):
 class _GripPlacer(QObject):
     """Keeps a resize grip on the bottom edge of the box it belongs to."""
 
-    def __init__(self, box: QWidget, grip: ResizeGrip) -> None:
+    def __init__(self, box: QWidget, grip: ResizeGrip, drop: int = 0) -> None:
         super().__init__(box)
-        self._box, self._grip = box, grip
+        self._box, self._grip, self._drop = box, grip, drop          # (*drop*: px the grip sits below the box's bottom edge)
 
     def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
         if event.type() in (QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show, QEvent.Type.Hide):
             box, grip = self._box, self._grip
             grip.setVisible(box.isVisible() and getattr(grip, "allowed", True))
-            grip.setGeometry(box.x(), box.y() + box.height() - grip.height(), box.width(), grip.height())
+            grip.setGeometry(box.x(), box.y() + box.height() - grip.height() + self._drop, box.width(), grip.height())
             grip.raise_()
         return False

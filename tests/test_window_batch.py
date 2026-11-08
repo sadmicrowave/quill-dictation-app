@@ -201,6 +201,13 @@ class TestVoiceReactiveWave(unittest.TestCase):
         self.assertGreater(loud, quiet * 3)
         self.assertLessEqual(loud, graph.height() / 2)
 
+    def test_room_noise_keeps_the_lines_flat(self):
+        graph = self.graph()
+        for _ in range(60):
+            graph.set_level(graph.GATE * 0.9)                  # below the gate: not a voice
+            graph._tick()
+        self.assertEqual(self.swing(graph), 0.0)
+
     def test_new_sound_enters_at_the_left_and_moves_right(self):
         graph = self.graph()
         graph.set_level(1.0)

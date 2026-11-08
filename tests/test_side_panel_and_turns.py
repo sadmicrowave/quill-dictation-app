@@ -1850,8 +1850,10 @@ class TestResizableAreas(PanelApp):
         grip, box = self.w.row_grip, self.w.row_table
         self.assertTrue(grip.isVisibleTo(self.w.widget))
         self.assertEqual(grip.cursor().shape(), Qt.CursorShape.SizeVerCursor)
-        self.assertEqual(grip.geometry().bottom(), box.geometry().bottom())
+        from quill.ui.main_window import ROW_GRIP_DROP
+        self.assertEqual(grip.geometry().bottom(), box.geometry().bottom() + ROW_GRIP_DROP)      # over the middle of the gap below
         self.assertEqual((grip.x(), grip.width()), (box.x(), box.width()))
+        self.assertFalse(hasattr(self.w, "log_grip"))                    # the log's border has no grip
         self.assertTrue(grip.toolTip())
 
     def test_dragging_down_makes_the_box_taller_and_the_log_shorter_at_the_same_window_size(self):
@@ -2595,40 +2597,6 @@ class TestLogGripAndHeading(PanelApp):
         self.w.widget.show()
         self.w.set_log_collapsed(False)
         _app.processEvents()
-
-    def test_the_log_has_a_grip_on_its_bottom_edge_for_the_height_only(self):
-        grip, log = self.w.log_grip, self.w.log
-        self.assertTrue(grip.isVisibleTo(self.w.widget))
-        self.assertEqual(grip.cursor().shape(), Qt.CursorShape.SizeVerCursor)
-        self.assertEqual(grip.geometry().bottom(), log.geometry().bottom())
-        self.assertEqual((grip.x(), grip.width()), (log.x(), log.width()))
-
-    def test_dragging_it_down_grows_the_log_and_the_window_together_and_never_sideways(self):
-        width, height, log = self.w.widget.width(), self.w.widget.height(), self.w.log_height
-        self.w.log_grip.dragged.emit(40)
-        _app.processEvents()
-        self.assertEqual(self.w.log_height, log + 40)
-        self.assertEqual(self.w.log.height(), log + 40)
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (width, height + 40))
-
-    def test_dragging_it_up_shrinks_both_and_stops_at_the_least(self):
-        from quill.ui.main_window import LOG_MIN_HEIGHT
-        self.w.log_grip.dragged.emit(-9999)
-        self.assertEqual(self.w.log_height, LOG_MIN_HEIGHT)
-
-    def test_it_is_remembered(self):
-        self.w.log_grip.dragged.emit(30)
-        self.w.log_grip.released.emit()
-        self.assertEqual(self.app.settings.preferences["log_height"], 150)
-
-    def test_it_is_gone_while_the_log_is_hidden_and_in_the_mini_view(self):
-        self.w.set_log_collapsed(True)
-        _app.processEvents()
-        self.assertFalse(self.w.log_grip.isVisibleTo(self.w.widget))
-        self.w.set_log_collapsed(False)
-        self.w.set_mini(True)
-        _app.processEvents()
-        self.assertFalse(self.w.log_grip.isVisibleTo(self.w.widget))
 
     def test_the_footer_sits_close_under_the_log_in_both_spacings(self):
         from quill.ui.main_window import LOG_FOOTER_GAP
