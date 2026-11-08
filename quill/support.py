@@ -23,7 +23,7 @@ from typing import Callable
 from quill import diagnostics
 
 #: https:// address of the relay ("" = not deployed yet).
-SUPPORT_URL = ""
+SUPPORT_URL = "https://quill-support.sadmicrowave.workers.dev"
 ISSUES_URL = "https://github.com/sadmicrowave/quill-dictation-app/issues"
 NEW_ISSUE_URL = ISSUES_URL + "/new"
 
