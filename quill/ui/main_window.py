@@ -429,6 +429,7 @@ class MainWindow:
         self._has_last_saved = False                       # the line shows only once a row has been saved
         self.last_label = ElidedLabel("")                  # one line however much was saved
         self.last_label.setProperty("note", True)          # smaller italic supporting text
+        self.last_label.setObjectName("lastSaved")         # (and muted further: see the theme)
         self.last_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         # "Needs sorting (3)": filled in the accent colour, the count as an inline pill.
@@ -1593,7 +1594,7 @@ class MainWindow:
             self._keep_minimum()
 
     def set_last_saved(self, row: str, record: dict[str, object] | None = None) -> None:
-        """Show the last saved row as a short summary at the right of the footer: ``Row 7 · 4 Fields``.
+        """Show the last saved row as a short, muted summary at the right of the footer: ``Last Saved: Row 7 · 4 Fields``.
 
         Only the count is shown; the tooltip lists every field (capped at a screenful).
         """
@@ -1604,7 +1605,7 @@ class MainWindow:
             count = len(items)
             parts.append(f"{count} Field{'s' if count != 1 else ''}")
             tip = f"{row}\n{tooltip_lines(items)}"
-        self.last_label.setFullText(" · ".join(p for p in parts if p), tip)
+        self.last_label.setFullText("Last Saved: " + " · ".join(p for p in parts if p), tip)
         self._has_last_saved = True
         self._refresh_visibility()
 

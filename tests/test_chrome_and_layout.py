@@ -306,19 +306,19 @@ class TestLastSaved(unittest.TestCase):
 
     def test_short_row_reads_naturally(self):
         self.w.set_last_saved("Row 4", {"Type": "Fern", "Price": 12.0})
-        self.assertEqual(self.w.last_label.full_text, "Row 4 · 2 Fields")                # just the summary; the tooltip has the fields
+        self.assertEqual(self.w.last_label.full_text, "Last Saved: Row 4 · 2 Fields")                # just the summary; the tooltip has the fields
         self.assertIn("Type: Fern", self.w.last_label.toolTip())
 
     def test_one_field_is_singular(self):
         self.w.set_last_saved("Row 4", {"Type": "Fern"})
-        self.assertEqual(self.w.last_label.full_text, "Row 4 · 1 Field")
+        self.assertEqual(self.w.last_label.full_text, "Last Saved: Row 4 · 1 Field")
 
     def test_a_huge_row_is_still_just_the_short_summary(self):
         record = {f"Column {n}": "a fairly long spoken value " * 3 for n in range(40)}
         self.w.set_last_saved("Row 9", record)
         label = self.w.last_label
-        self.assertEqual(label.full_text, "Row 9 · 40 Fields")
-        self.assertEqual(label.text(), "Row 9 · 40 Fields")
+        self.assertEqual(label.full_text, "Last Saved: Row 9 · 40 Fields")
+        self.assertEqual(label.text(), "Last Saved: Row 9 · 40 Fields")
 
     def test_the_tooltip_has_the_fields_capped_at_a_screenful(self):
         record = {f"Column {n}": str(n) for n in range(100)}
@@ -335,7 +335,7 @@ class TestLastSaved(unittest.TestCase):
 
     def test_row_only_form_still_works(self):
         self.w.set_last_saved("Row 4")
-        self.assertEqual(self.w.last_label.full_text, "Row 4")
+        self.assertEqual(self.w.last_label.full_text, "Last Saved: Row 4")
 
     def test_elided_label_follows_its_width(self):
         label = ElidedLabel()

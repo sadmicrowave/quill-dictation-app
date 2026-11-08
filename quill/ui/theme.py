@@ -345,6 +345,7 @@ QPushButton[accent="true"] QFrame[listenPill="true"] QLabel {{ color: {t['on_acc
 QLabel[placeholder="true"] {{ font-style: italic; color: {t['muted']}; }}
 QTextEdit, QPlainTextEdit {{ placeholder-text-color: {t['muted']}; }}
 QLabel[note="true"] {{ font-style: italic; color: {t['muted']}; }}
+QLabel#lastSaved {{ color: {rgba(t['text'], 0.5)}; }}
 QPushButton[accent="true"] QLabel {{ background: transparent; color: {t['on_accent']}; font-weight: 600; }}
 QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.78)}; font-style: italic; font-weight: 400; }}
 QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
