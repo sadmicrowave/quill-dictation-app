@@ -10,6 +10,7 @@ Options:
 """
 from __future__ import annotations
 import argparse
+import os
 import sys
 
 
@@ -38,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     from quill.demo import demo_requested, make_demo_workbook
     demo = demo_requested(args.demo)
     if demo:
-        args.workbook = str(make_demo_workbook())
+        args.workbook = str(make_demo_workbook(os.environ.get("QUILL_DEMO_DIR") or None))   # (a fixed folder lets a recording open the same file in a spreadsheet first)
     try:
         bridge = startup_bridge(settings, args.workbook)
     except NotImplementedError as exc:

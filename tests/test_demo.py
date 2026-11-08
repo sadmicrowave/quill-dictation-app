@@ -42,7 +42,7 @@ class TestDemoScenarios(AppCase):
 
     def test_menu_lists_every_scenario(self):
         self.assertEqual([label for label, _ in self.demo.scenarios()],
-                         ["A Row Being Dictated", "Terms To Sort", "A Saved Row", "Everything", "Reset"])
+                         ["A Row Being Dictated", "Terms To Sort", "A Saved Row", "Everything", "Promo Story (about 30 s)", "Reset"])
 
     def test_every_scenario_runs(self):
         for _, action in self.demo.scenarios():

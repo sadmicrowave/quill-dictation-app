@@ -96,6 +96,7 @@ class Demo:
             ("Terms To Sort", self.terms_to_sort),
             ("A Saved Row", self.saved_row),
             ("Everything", self.everything),
+            ("Promo Story (about 30 s)", self.promo),
             ("Reset", self.reset),
         ]
 
@@ -157,7 +158,51 @@ class Demo:
             (self._delay, lambda: self._partial("black jeans men levi")),
         ])
 
+    def promo(self) -> None:
+        """The story for the promo video, in real time: Start, a row spoken word by word with the voice lines moving, Next Row (it
+        appears in the open spreadsheet), a second row with words Quill does not know, and the Term Helper answering them by voice."""
+        self.reset()
+        row_one = "black t-shirt large nike good condition purchase price thirty five dollars bought it yesterday"
+        row_two = "teal hoodie medium nineties vintage"
+        words_one = row_one.split()
+        steps: list[tuple[int, Callable[[], None]]] = [(0, self._listen), (900, lambda: self._speak(6200))]
+        for n in range(1, len(words_one) + 1):
+            steps.append((560 if n > 1 else 300, lambda n=n: self._partial(" ".join(words_one[:n]))))
+        steps.append((500, lambda: self._phrase(row_one)))
+        steps.append((900, lambda: self._speak(900)))
+        steps.append((500, lambda: self._say_command("next row")))
+        steps.append((1800, lambda: self._speak(3000)))
+        words_two = row_two.split()
+        for n in range(1, len(words_two) + 1):
+            steps.append((520 if n > 1 else 200, lambda n=n: self._partial(" ".join(words_two[:n]))))
+        steps.append((500, lambda: self._phrase(row_two)))
+        steps.append((900, lambda: self._speak(900)))
+        steps.append((500, lambda: self._say_command("next row")))
+        self._steps(steps)
+
     # ------------------------------------------------------------------ #
+
+    def _speak(self, ms: int) -> None:
+        """Move the voice lines for *ms* like a person talking: a level every 70 ms that rises and falls, then silence. It ends by
+        itself (demo only)."""
+        import math
+        import time
+        start = time.monotonic()
+        timer = QTimer()
+        timer.setInterval(70)
+
+        def tick() -> None:
+            t = time.monotonic() - start
+            if t * 1000 >= ms:
+                timer.stop()
+                self._app.relay.level.emit(0.0)
+                return
+            syllable = abs(math.sin(t * 9.0)) * (0.65 + 0.35 * math.sin(t * 2.1))
+            self._app.relay.level.emit(min(1.0, 0.42 + 0.55 * syllable))
+
+        timer.timeout.connect(tick)
+        timer.start()
+        self._timers.append(timer)
 
     def _steps(self, steps: list[tuple[int, Callable[[], None]]]) -> None:
         """Run *steps* one after another; each delay counts from the end of the previous step."""
