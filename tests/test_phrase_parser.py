@@ -187,6 +187,14 @@ class TestProseUseOfHeaderWords(unittest.TestCase):
     def test_list_column_word_after_determiner_still_a_field_word(self):
         self.assertEqual(self.parse("the type t-shirt").updates, {"Type": "T-Shirt"})
 
+    def test_stand_in_nouns_are_not_glued_to_the_new_value(self):
+        for said in ("this ones teal", "these ones teal", "something teal", "this kind teal"):
+            result = self.parse(said)
+            self.assertEqual([c.term for c in result.candidates], ["teal"], said)
+
+    def test_a_stand_in_noun_after_the_value_is_dropped_too(self):
+        self.assertEqual([c.term for c in self.parse("the teal ones").candidates], ["teal"])
+
     def test_filler_adverbs_are_not_values(self):
         result = self.parse("mainly mostly probably roughly t-shirt")
         self.assertEqual(result.candidates, [])

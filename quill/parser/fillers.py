@@ -10,7 +10,8 @@ words: adjectives and nouns (and words that can be a condition or a status, such
 
 from __future__ import annotations
 
-#: Pronouns, articles, prepositions, conjunctions and other small words.
+#: Pronouns, articles, prepositions, conjunctions and other small words. The stand-ins for a noun ("ones", "something", "kind") are here
+#: too: "this ones teal" has the value "teal"; if they were not skipped they would be glued to it as "ones teal".
 _FUNCTION_WORDS = """
 a an the and or but nor so yet for of to in on at by from with without within into onto upon over under
 above below across along around about against between through during before after since until while as
@@ -21,6 +22,8 @@ such own same only just even also still already again once twice ever never alwa
 usually maybe perhaps probably actually really very quite rather pretty too enough almost nearly
 up down out off away back apart together forward ahead aside inside outside
 exactly mainly mostly roughly around approximately basically simply totally completely
+ones something anything everything nothing someone anyone everyone somebody anybody everybody
+whatever whichever whoever things kind kinds
 """.split()
 
 #: Everyday verbs and their forms (what a speaker says *about* the item, not a property of it).

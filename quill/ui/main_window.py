@@ -98,6 +98,9 @@ ROW_MAX_MINI = 66
 #: Space left below the "Log" heading when the log is minimized, in pixels.
 LOG_BOTTOM_MARGIN = 3
 
+#: The room the layout keeps at the bottom for the footer: its height (22), the gap above it and the margin below it.
+FOOTER_ROOM = 22 + 3 + LOG_BOTTOM_MARGIN
+
 #: Pixels the grip of the heard-words box sits below that box's bottom edge: over the middle of the gap to the box under it.
 ROW_GRIP_DROP = 5
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
@@ -106,7 +109,7 @@ MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user drags it to another)
 LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
 #: Gap (px) between the log box and the footer under it.
-LOG_FOOTER_GAP = 0
+LOG_FOOTER_GAP = 3
 MIN_CONTENT_WIDTH = 405     # the content (everything but the side panel) is never dragged narrower than this
 
 #: Lines kept in the log before the oldest are dropped.
@@ -240,6 +243,7 @@ class MainWindow:
         self._stream_done = False            # the row ended: the next words start a fresh stream
         self._classify_words = lambda words: [WordMatch(False) for _ in words]
         self._sorting_animation: QVariantAnimation | None = None
+        self._countdown_share: float | None = None
         self._next_animation: QVariantAnimation | None = None             # the Next Row button easing in or out beside Start
         self._window: QMainWindow | None = None
         self.root: QWidget | None = None       # the widget that paints the background (set in setup)
@@ -458,11 +462,11 @@ class MainWindow:
         self.export_log_button = FooterButton("export", "Export the log to a text file", checkable=False)
         self.export_log_button.setVisible(False)                          # shown only while the log is open
         self.export_log_button.clicked.connect(self.export_log)
-        self.footer = QFrame()
+        self.footer = QFrame(central)                       # (placed by hand at the bottom: the layout only reserves its room)
         self.footer.setObjectName("windowFooter")
         self.footer.setProperty("keepMargins", True)
         footer_row = QHBoxLayout(self.footer)
-        footer_row.setContentsMargins(0, 3, 0, 0)
+        footer_row.setContentsMargins(0, 0, 0, 0)
         footer_row.setSpacing(6)
         footer_row.setProperty("keepSpacing", True)
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
@@ -475,11 +479,11 @@ class MainWindow:
         self.log.document().setUndoRedoEnabled(False)
         log_block = QVBoxLayout()                           # the heading sits close to its box, in either spacing
         log_block.setContentsMargins(0, 0, 0, 0)
-        log_block.setSpacing(LOG_FOOTER_GAP)
+        log_block.setSpacing(0)
         log_block.setProperty("keepSpacing", True)
         log_block.addWidget(self.log)
-        log_block.addWidget(self.footer)
         layout.addLayout(log_block)
+        central.installEventFilter(_FooterPlacer(central, self.footer, self))
         layout.addStretch(0)         # soaks up spare height in the compact mini view (and while it grows back), so nothing drifts down
         self._spacer_index = layout.count() - 1
 
@@ -848,7 +852,19 @@ class MainWindow:
         """The footer is the last thing in the window: only a small margin may follow it."""
         if not self._view_mini and self._window is not None:
             m = self._layout.contentsMargins()
-            self._layout.setContentsMargins(m.left(), m.top(), m.right(), LOG_BOTTOM_MARGIN)
+            # The footer is not in the flow: the layout keeps its room at the bottom (its height, the gap above it, the margin
+            # below it), so the gap above it is the same small one whether the log is open or shut.
+            self._layout.setContentsMargins(m.left(), m.top(), m.right(), FOOTER_ROOM)
+            self.place_footer()
+
+    def place_footer(self) -> None:
+        """Put the footer at the bottom of the window, under whatever the layout ends with."""
+        if self._window is None or self._view_mini:
+            return
+        root, m = self.root, self._layout.contentsMargins()
+        height = self.footer.sizeHint().height()
+        self.footer.setGeometry(m.left(), root.height() - LOG_BOTTOM_MARGIN - height, root.width() - m.left() - m.right(), height)
+        self.footer.raise_()
 
     def _place_sorting_button(self, mini: bool) -> None:
         """In the mini view the Needs-sorting count sits in the status row; otherwise on its own row."""
@@ -1702,14 +1718,16 @@ class MainWindow:
         step(animation.startValue())
         animation.start()
 
-    def set_quiet_countdown(self, seconds: int | None) -> None:
-        """Show how many seconds are left before Quill stops listening because it is quiet (None hides it)."""
+    def set_quiet_countdown(self, seconds: int | None, share: float | None = None) -> None:
+        """Show how many seconds are left before Quill stops listening because it is quiet (None hides it); *share* is the exact
+        part of the quiet time left (0 to 1), which the ring empties by smoothly."""
         self._countdown_seconds = seconds
+        self._countdown_share = share
         self._render_countdown()
 
     def _render_countdown(self) -> None:
         seconds = self._countdown_seconds
-        self.toggle_button.set_countdown(seconds)
+        self.toggle_button.set_countdown(seconds, self._countdown_share)
 
     def add_demo_menu(self, scenarios) -> None:
         """Add a **Demo** menu with one entry per ``(label, action)`` (only in demo mode; see :mod:`quill.demo`)."""
@@ -1811,6 +1829,19 @@ class _SizeKeeper(QObject):
                 self._owner.restore_after_reshow()
             elif event.type() == QEvent.Type.Resize:
                 self._owner.fit_panel()
+        return False
+
+
+class _FooterPlacer(QObject):
+    """Keeps the footer at the bottom of the window as it is resized."""
+
+    def __init__(self, root: QWidget, footer: QWidget, owner: "MainWindow") -> None:
+        super().__init__(root)
+        self._owner = owner
+
+    def eventFilter(self, obj, event) -> bool:                      # noqa: N802 (Qt name)
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show, QEvent.Type.LayoutRequest):
+            self._owner.place_footer()
         return False
 
 

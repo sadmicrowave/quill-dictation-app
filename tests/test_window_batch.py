@@ -208,6 +208,16 @@ class TestVoiceReactiveWave(unittest.TestCase):
             graph._tick()
         self.assertEqual(self.swing(graph), 0.0)
 
+    def test_the_ring_follows_the_exact_share_left_not_whole_seconds(self):
+        from quill.ui.listen_button import ListenButton
+        button = ListenButton()
+        button.set_countdown(7, 1.0)
+        self.assertEqual(button.icon_label.ring, 1.0)
+        button.set_countdown(7, 0.93)
+        self.assertAlmostEqual(button.icon_label.ring, 0.93)           # still "7s", but the ring has moved on
+        button.set_countdown(7)
+        self.assertAlmostEqual(button.icon_label.ring, 1.0)             # no share: whole seconds, as before
+
     def test_new_sound_enters_at_the_left_and_moves_right(self):
         graph = self.graph()
         graph.set_level(1.0)

@@ -673,9 +673,9 @@ class SortingWindow:
         self.voice_status.setText(pillify(text))
         self.voice_status.setVisible(bool(text))
 
-    def set_voice_countdown(self, seconds: int | None) -> None:
-        """Show the seconds left before voice sorting stops because it is quiet (None hides it)."""
-        self.voice_button.set_countdown(seconds if self._voice_active else None)
+    def set_voice_countdown(self, seconds: int | None, share: float | None = None) -> None:
+        """Show the seconds left before voice sorting stops because it is quiet (None hides it); *share* is the exact part left."""
+        self.voice_button.set_countdown(seconds if self._voice_active else None, share)
 
     def _render_voice(self) -> None:
         self.voice_button.set_active(self._voice_active)

@@ -107,7 +107,7 @@ class TestConnectionChip(unittest.TestCase):
         _app.processEvents()
         button = w.toggle_button
         height = button.height()
-        self.assertEqual(height, button.HEIGHT)
+        self.assertEqual(height, button.minimumHeight())                  # (two lines of text tall; it does not stretch with the window)
         icon_x = button.icon_label.mapTo(button, button.icon_label.rect().topLeft()).x()
         text_x = button.text_pill.mapTo(button, button.text_pill.rect().topLeft()).x()
         screen_x = button.screen.mapTo(button, button.screen.rect().topLeft()).x()
@@ -154,14 +154,18 @@ class TestLogAtTheBottom(unittest.TestCase):
         self.assertEqual(lowest, w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y())
 
     def test_the_footer_keeps_the_same_small_margin_whether_the_log_is_open_or_not(self):
+        from quill.ui.main_window import FOOTER_ROOM, LOG_FOOTER_GAP
         w = window(log_collapsed=True)
-        self.assertEqual(w.root.layout().contentsMargins().bottom(), LOG_BOTTOM_MARGIN)
+        self.assertEqual(w.root.layout().contentsMargins().bottom(), FOOTER_ROOM)       # (the layout keeps the footer's room)
         w.log_toggle.click()
         _app.processEvents()
-        self.assertEqual(w.root.layout().contentsMargins().bottom(), LOG_BOTTOM_MARGIN)     # (the footer is last either way)
+        self.assertEqual(w.root.layout().contentsMargins().bottom(), FOOTER_ROOM)       # (the footer is last either way)
         w.log_toggle.click()
         _app.processEvents()
-        self.assertEqual(w.root.layout().contentsMargins().bottom(), LOG_BOTTOM_MARGIN)
+        self.assertEqual(w.root.layout().contentsMargins().bottom(), FOOTER_ROOM)
+        grid_bottom = w.row_table.mapTo(w.root, w.row_table.rect().bottomLeft()).y()
+        footer_top = w.footer.mapTo(w.root, w.footer.rect().topLeft()).y()
+        self.assertEqual(footer_top - grid_bottom - 1, LOG_FOOTER_GAP)                  # shut: as close to the grid as to the log
 
     def test_the_window_has_no_spare_space_under_the_log_heading(self):
         w = window(log_collapsed=True)
@@ -416,7 +420,7 @@ class TestResizingKeepsAlignment(unittest.TestCase):
         self.assertGreater(w.row_table.height(), small + 200)                 # the watched box grows
         bottom = w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y()
         self.assertEqual(w.root.height() - bottom - 1, LOG_BOTTOM_MARGIN)       # Log hugs the bottom edge
-        self.assertEqual(w.toggle_button.height(), w.toggle_button.HEIGHT)
+        self.assertEqual(w.toggle_button.height(), w.toggle_button.minimumHeight())
 
     def test_the_log_heading_stays_with_its_box_when_open(self):
         w = window(log_collapsed=False)

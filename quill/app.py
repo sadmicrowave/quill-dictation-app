@@ -244,8 +244,8 @@ class QuillApp:
         self._quiet_timer = QTimer()                  # stops listening after a spell of silence (see "auto_stop")
         self._quiet_timer.setSingleShot(True)
         self._quiet_timer.timeout.connect(self._quiet_for_too_long)
-        self._countdown_timer = QTimer()              # redraws the seconds left, four times a second
-        self._countdown_timer.setInterval(250)
+        self._countdown_timer = QTimer()              # redraws the seconds left and the ring (ten times a second, only while counting)
+        self._countdown_timer.setInterval(100)
         self._countdown_timer.timeout.connect(self._show_countdown)
         qapp.setWindowIcon(app_icon())               # the Dock / taskbar / window icon
         self.settings = settings
@@ -2333,8 +2333,9 @@ class QuillApp:
         if self._quiet_timer.isActive():
             limit = int(self.settings.preferences["auto_stop_seconds"])
             seconds = min(max(-(-self._quiet_timer.remainingTime() // 1000), 0), limit)   # rounded up, never above the setting
-            self.window.set_quiet_countdown(seconds)
-            self.sorting.set_voice_countdown(seconds)
+            share = max(0.0, min(1.0, self._quiet_timer.remainingTime() / (limit * 1000.0))) if limit else 0.0
+            self.window.set_quiet_countdown(seconds, share)
+            self.sorting.set_voice_countdown(seconds, share)
             if not self._countdown_timer.isActive():
                 self._countdown_timer.start()
         else:

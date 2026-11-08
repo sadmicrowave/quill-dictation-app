@@ -357,8 +357,12 @@ class ListenButton(QPushButton):
         self._show_text()
         self._style()
 
-    def set_countdown(self, seconds: int | None) -> None:
-        """Show the seconds left, "7s", and the ring that empties with them (None hides both)."""
+    def set_countdown(self, seconds: int | None, share: float | None = None) -> None:
+        """Show the seconds left, "7s", and the ring that empties with them (None hides both).
+
+        *share* (0 to 1) is how much of the quiet time is left, exactly; with it the ring empties smoothly instead of in whole
+        seconds. Without it the ring follows the whole seconds.
+        """
         self.countdown_label.setVisible(seconds is not None)
         if seconds is None:
             self._count_total = 0
@@ -366,7 +370,7 @@ class ListenButton(QPushButton):
         else:
             self._count_total = max(self._count_total, seconds, 1)
             self.countdown_label.setText(f"{seconds}s")
-            self.icon_label.ring = seconds / self._count_total
+            self.icon_label.ring = max(0.0, min(1.0, share)) if share is not None else seconds / self._count_total
         self.icon_label.update()
 
     def set_compact(self, compact: bool) -> None:
