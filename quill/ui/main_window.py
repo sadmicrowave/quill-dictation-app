@@ -65,10 +65,10 @@ from quill.ui.main_widgets import (
 )
 from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.side_panel import FILE_PAGE, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH, SidePanel, TURN_PAGE
+from quill.ui.listen_button import NOT_CONNECTED_TEXT, ListenButton
 from quill.ui.widgets import (
     ElidedLabel,
     FooterButton,
-    ListenButton,
     Pill,
     ResizeGrip,
     connection_tip,
@@ -82,7 +82,6 @@ COLOR_ACTIVE = "#34c759"
 HELP_TOPIC = "welcome"
 
 #: The chip that replaces the sheet name while no spreadsheet is connected, and its tooltip.
-NOT_CONNECTED_TEXT = "File not connected"
 NOT_CONNECTED_HINT = (
     "No spreadsheet is connected, so there is nothing to read lists from or write rows to.\n"
     "Quill works through a workbook open in your spreadsheet program (it attaches automatically within a few seconds of "
@@ -194,6 +193,7 @@ class MainWindow:
         self._undo_count = 0
         self._sorting_count = 0
         self._not_connected = False
+        self._not_connected_tip = connection_tip()                   # what hovering the "File not connected" button says
         self._native_settings_button = False
         self._native_file_button = False
         self._native_turn_button = False
@@ -354,9 +354,6 @@ class MainWindow:
         # --- file
         # No file picker in the window: the folder icon (title bar on macOS, status row elsewhere) opens one.
         # While no spreadsheet is connected a technical warning chip says so (the mini view has its own).
-        self.connection_chip = self._make_chip(None)          # sits inside the Start button, right of the play icon
-        self.mini_chip = self.connection_chip                 # (the same one in both views)
-        self.toggle_button.set_chip(self.connection_chip)
         self.open_file_button = QPushButton()                   # just a folder icon; refresh_icons() draws it
         self.open_file_button.setProperty("iconOnly", True)
         self.open_file_button.setAccessibleName("Open File")
@@ -497,17 +494,6 @@ class MainWindow:
         self.set_listening_indicator(False)
         fill_missing_tips(window)
         fill_missing_tips(self.panel.settings)
-
-    @staticmethod
-    def _make_chip(parent: QWidget | None) -> QLabel:
-        """The "File not connected" chip: a fixed-height pill that never stretches."""
-        chip = QLabel(NOT_CONNECTED_TEXT, parent)
-        chip.setProperty("chip", "warn")
-        chip.setToolTip(connection_tip())
-        chip.setFixedHeight(CHIP_HEIGHT)
-        chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-        chip.setVisible(False)
-        return chip
 
     @staticmethod
     def _heading(text: str) -> QLabel:
@@ -663,10 +649,9 @@ class MainWindow:
             QTimer.singleShot(0, lambda: self.open_panel(page))
 
     def set_not_connected(self, not_connected: bool, hint: str | None = None) -> None:
-        """Show the "File not connected" chip (instead of the sheet name) while there is no spreadsheet."""
+        """Say "File not connected" in the Start button (and explain it on hover) while there is no spreadsheet."""
         self._not_connected = not_connected
-        if hint:
-            self.connection_chip.setToolTip(connection_tip(hint))
+        self._not_connected_tip = connection_tip(hint) if hint else self._not_connected_tip
         self._refresh_visibility()
 
     def set_native_file_button(self, native: bool) -> None:
@@ -1033,17 +1018,16 @@ class MainWindow:
             return
         full = not self._view_mini
         self._render_countdown()
-        self.connection_chip.setVisible(self._not_connected)
-        self.toggle_button.set_notice(self._not_connected, self.connection_chip.toolTip())
+        self.toggle_button.set_notice(self._not_connected, self._not_connected_tip)
         self.open_file_button.setVisible(full and not self._native_file_button)
         self.turn_button.setVisible(full and not self._native_turn_button)
         self.next_button.setVisible(self._listening)                          # only while a turn is going on
         self.error_button.setVisible(self._view_mini and bool(self._mini_error))
+        self.toggle_button.set_compact(self._view_mini)                      # (first: the Next Row button below is as tall as it)
         tall = self.sorting_button.fontMetrics().height() * 2 + 4
         self.toggle_button.setMinimumHeight(0 if self._view_mini else tall)
         beside = max(tall if full else 0, self.toggle_button.sizeHint().height())
         self.next_button.setFixedSize(beside + 14, beside)                    # as tall as the Start button
-        self.toggle_button.set_compact(self._view_mini)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
         self.footer.setVisible(full)

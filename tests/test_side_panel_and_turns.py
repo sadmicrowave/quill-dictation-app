@@ -1326,7 +1326,7 @@ class TestMiniKeepsThePill(unittest.TestCase):
         w.set_mini(True)
         w.widget.show()
         _app.processEvents()
-        self.assertTrue(w.toggle_button.pill.isVisibleTo(w.widget))
+        self.assertTrue(w.toggle_button.screen.isVisibleTo(w.widget))                  # the whole button, graph included
         self.assertTrue(w.toggle_button.text_pill.isVisibleTo(w.widget))
         self.assertEqual(w.toggle_button.text_pill.text(), "Start Listening")
         w.widget.close()
@@ -1770,7 +1770,7 @@ class TestNotConnectedPill(unittest.TestCase):
         self.assertEqual(NOT_CONNECTED_TEXT, "File not connected")
         w = MainWindow()
         w.setup()
-        self.assertNotIn("stream", w.connection_chip.text().lower())
+        self.assertNotIn("stream", w.toggle_button.notice_text.lower() + w.toggle_button.text_pill.text().lower())
 
     def test_the_pill_follows_the_accent_colour(self):
         from quill.ui import theme
@@ -2842,12 +2842,13 @@ class TestOneStyleForTooltipsEverywhere(unittest.TestCase):
         from quill.ui.widgets import CenteredToolTips, connection_tip
         w = MainWindow()
         w.setup()
-        tip = w.connection_chip.toolTip()
+        w.set_not_connected(True)
+        tip = w.toggle_button.toolTip()
         self.assertEqual(tip, connection_tip())
         self.assertIsNotNone(CenteredToolTips.position(__import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(10, 10), tip))
         self.assertFalse(("<" in tip and ">" in tip))
         w.set_not_connected(True, "A longer reason that has to be wrapped over several lines so it reads as a block " * 2)
-        self.assertNotIn("<", w.connection_chip.toolTip())
+        self.assertNotIn("<", w.toggle_button.toolTip())
 
     def test_a_multi_line_tip_is_measured_by_its_widest_line_and_stays_on_screen(self):
         from PySide6.QtCore import QPoint

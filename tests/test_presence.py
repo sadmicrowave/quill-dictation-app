@@ -110,15 +110,15 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
     def test_window_explains_what_to_do(self):
         quill = self.make_app()
         self.assertFalse(quill.connected)
-        self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
-        self.assertIn("Not connected", quill.window.connection_chip.toolTip())
+        self.assertTrue(quill.window.toggle_button.notice)
+        self.assertIn("Not connected", quill.window.toggle_button.toolTip())
 
     def test_start_button_informs_user_everywhere(self):
         quill = self.make_app()
         quill.window.toggle_button.click()
         self.assertFalse(quill.controller.session.listening)
         self.assertFalse(quill.window.listening)
-        self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
+        self.assertTrue(quill.window.toggle_button.notice)
         quill.tray.notify.assert_called_with(NO_WORKBOOK_HELP)
         self.assertEqual(self.speaker.said, [])                    # the popup shows it; nothing is spoken
 
@@ -126,7 +126,7 @@ class TestStartingWithNoWorkbook(AppPresenceCase):
         quill = self.make_app()
         quill.window.toggle_button.shake_ms = 0                    # (no swing in a test: only the blink)
         quill.window.toggle_button.click()
-        self.assertIn("255, 59, 48", quill.window.toggle_button.styleSheet())
+        self.assertTrue(quill.window.toggle_button.alerting)
 
     def test_no_file_is_not_an_error_the_files_panel_is_the_answer(self):
         quill = self.make_app()
@@ -171,7 +171,7 @@ class TestWatcher(AppPresenceCase):
         self.assertFalse(quill.window.listening)
         self.assertFalse(quill.tray.listening)
         self.assertIn("was closed", quill.window.log.toPlainText())
-        self.assertTrue(quill.window.connection_chip.isVisibleTo(quill.window.widget))
+        self.assertTrue(quill.window.toggle_button.notice)
 
     def test_reattaches_when_it_returns(self):
         make_workbook(self.path)
@@ -332,7 +332,7 @@ class TestStartAlert(unittest.TestCase):
     def setUp(self):
         from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout
         self._app = QApplication.instance() or QApplication([])
-        from quill.ui.widgets import ListenButton
+        from quill.ui.listen_button import ListenButton
         self.holder = QWidget()
         self.holder.resize(300, 60)
         row = QHBoxLayout(self.holder)
@@ -345,9 +345,9 @@ class TestStartAlert(unittest.TestCase):
         from PySide6.QtTest import QTest
         self.button.shake_ms = 0
         self.button.alert()
-        self.assertIn("255, 59, 48", self.button.styleSheet())
+        self.assertTrue(self.button.alerting)
         QTest.qWait(self.button.ALERT_MS + 150)
-        self.assertEqual(self.button.styleSheet(), "")
+        self.assertFalse(self.button.alerting)
 
     def test_it_swings_sideways_and_comes_back(self):
         from PySide6.QtTest import QTest

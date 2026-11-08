@@ -114,6 +114,13 @@ class TestMiniWindow(unittest.TestCase):
         self.assertTrue(self.w.wave.active)
         self.assertTrue(shown(self.w, "wave"))
 
+    def test_next_row_is_as_tall_as_the_start_button_in_both_views(self):
+        self.w.set_listening_indicator(True)
+        for mini in (False, True, False):
+            self.w.set_mini(mini)
+            _app.processEvents()
+            self.assertEqual(self.w.next_button.height(), self.w.toggle_button.sizeHint().height())
+
     def test_the_buttons_shrink_to_icons(self):
         self.w.set_mini(True)
         self.assertEqual(self.w.toggle_button.text(), "")

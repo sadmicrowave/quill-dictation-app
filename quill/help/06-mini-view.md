@@ -12,9 +12,9 @@ A small box that floats over your spreadsheet.
 
 ## 👀 What stays
 
-- The **Start / Stop** button and its sound lines
+- The **Start / Stop** button and its voice graph
 - A **Term Helper** badge with the count
-- The quiet countdown ("7s")
+- The quiet countdown ("7s" and the ring around the stop icon)
 
 - A red **!** when something went wrong (the Log and its footer are hidden here). Hover it to read the message; click it to return to the full window with the **Log** open. It goes away when the next row is saved.
 

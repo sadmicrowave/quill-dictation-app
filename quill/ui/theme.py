@@ -349,6 +349,8 @@ QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.7
 QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; border-color: {t['border']}; }}
 QPushButton[outline="true"][iconOnly="true"] {{ border-color: {t['accent']}; }}
+/* The Start button paints itself (see listen_button.py): nothing from the style sheet. */
+QPushButton[listenButton="true"] {{ background: transparent; border: none; padding: 0; }}
 /* The window's footer: flat icon buttons that fill with the accent while their panel is open. */
 QPushButton[footerButton="true"] {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 0; }}
 QPushButton[footerButton="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}

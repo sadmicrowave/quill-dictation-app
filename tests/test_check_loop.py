@@ -128,7 +128,7 @@ class TestStartChecksFirst(PanelApp):
         self.assertFalse(self.app.connected)
         self.assertFalse(panel.closed_note.isHidden())
         self.assertEqual(panel.closed_title.text(), "plants.xlsx was closed")
-        self.assertIn("255, 59, 48", self.app.window.toggle_button.styleSheet())  # Start blinked red
+        self.assertTrue(self.app.window.toggle_button.alerting)  # Start blinked red
         self.assertEqual(self.app.window.panel_page, "file")                      # the Files panel is open
         self.assertEqual(os.path.realpath(self.app._closed_file), os.path.realpath(self.plants))
 

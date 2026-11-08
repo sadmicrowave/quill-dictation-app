@@ -57,24 +57,27 @@ class TestStartButton(unittest.TestCase):
                 if image.pixelColor(x, y).alpha() > 200:
                     return image.pixelColor(x, y).name().upper()
 
-    def test_the_play_icon_follows_the_theme_colour(self):
-        self.assertEqual(self.icon_colour(), "#7A55C2")
+    def test_the_play_icon_is_drawn_in_the_colour_used_on_the_accent(self):
+        self.assertEqual(self.icon_colour(), "#FFFFFF")
 
-    def test_the_wave_is_muted_and_still_until_listening_then_green_and_moving(self):
-        from quill.ui.main_window import COLOR_ACTIVE
+    def test_the_graph_is_a_still_flat_line_until_listening_then_streams(self):
         wave = self.w.wave
         self.assertFalse(wave.active)
-        self.assertFalse(wave._timer.isActive())
-        idle = wave.bar_heights()
+        self.assertFalse(wave._timer.isActive())                    # (an idle window runs nothing)
+        self.assertEqual(wave.trace(), [])
         self.w.set_listening_indicator(True)
         self.assertTrue(wave.active and wave._timer.isActive())
-        self.assertEqual(wave._live.name().lower(), COLOR_ACTIVE)
+        wave.set_level(0.8)
         wave._tick()
-        self.assertNotEqual(idle, wave.bar_heights())               # it moves
+        for _ in range(6):
+            wave._tick()
+        first = [p.y() for p in wave.trace()]
+        for _ in range(5):
+            wave._tick()
+        self.assertNotEqual(first[3:8], [p.y() for p in wave.trace()[3:8]])          # it moves
         self.w.set_listening_indicator(False)
         self.assertFalse(wave._timer.isActive())
-        self.assertEqual(idle, wave.bar_heights())                  # and is back to rest
-        self.assertLess(wave._idle.alpha(), 255)                    # muted
+        self.assertEqual(wave.trace(), [])                                              # and is back to rest
 
     def test_there_is_no_listening_text_any_more(self):
         self.assertFalse(hasattr(self.w, "state_label"))
@@ -176,30 +179,53 @@ if __name__ == "__main__":
 
 
 class TestVoiceReactiveWave(unittest.TestCase):
-    def test_a_quiet_room_is_a_short_loop_and_a_voice_makes_it_taller(self):
-        wave = WaveMeter()
-        wave.set_active(True)
-        for _ in range(12):
-            wave._tick()
-        quiet = max(wave.bar_heights())
-        for _ in range(12):
-            wave.set_level(1.0)
-            wave._tick()
-        loud = max(wave.bar_heights())
-        self.assertLess(quiet, 0.5)
-        self.assertGreater(loud, quiet + 0.3)
-        self.assertLessEqual(loud, 1.0)
+    def graph(self):
+        graph = StreamGraph()
+        graph.resize(160, 30)
+        graph.set_active(True)
+        return graph
+
+    def swing(self, graph):
+        return max(abs(p.y() - graph.height() / 2) for p in graph.trace())
+
+    def test_a_quiet_room_is_a_small_ripple_and_a_voice_makes_peaks_and_troughs(self):
+        graph = self.graph()
+        for _ in range(40):
+            graph._tick()
+        quiet = self.swing(graph)
+        for _ in range(40):
+            graph.set_level(1.0)
+            graph._tick()
+        loud = self.swing(graph)
+        self.assertLess(quiet, graph.height() / 2 * 0.3)
+        self.assertGreater(loud, quiet * 3)
+        self.assertLessEqual(loud, graph.height() / 2)
+
+    def test_new_sound_enters_at_the_left_and_moves_right(self):
+        graph = self.graph()
+        graph.set_level(1.0)
+        graph._tick()
+        newest = graph._samples[0]
+        for _ in range(5):
+            graph._tick()
+        self.assertEqual(graph._samples[5], newest)                 # five readings later it is five steps to the right
+        self.assertEqual(graph.trace()[5].x(), 5 * graph.STEP)
+
+    def test_it_never_keeps_more_readings_than_the_graph_is_wide(self):
+        graph = self.graph()
+        for _ in range(500):
+            graph._tick()
+        self.assertLessEqual(len(graph._samples), int(graph.width() / graph.STEP) + 2)
 
     def test_it_falls_back_when_the_voice_stops(self):
-        wave = WaveMeter()
-        wave.set_active(True)
-        wave.set_level(1.0)
+        graph = self.graph()
+        graph.set_level(1.0)
         for _ in range(3):
-            wave._tick()
-        high = wave.level
+            graph._tick()
+        high = graph.level
         for _ in range(40):
-            wave._tick()
-        self.assertLess(wave.level, high / 3)
+            graph._tick()
+        self.assertLess(graph.level, high / 3)
 
     def test_the_listener_measures_loudness(self):
         import struct
@@ -212,7 +238,7 @@ class TestVoiceReactiveWave(unittest.TestCase):
         self.assertEqual(Listener.loudness(b""), 0.0)
 
 
-from quill.ui.widgets import WaveMeter  # noqa: E402
+from quill.ui.listen_button import StreamGraph  # noqa: E402
 
 
 class TestTermHelperSoundsSetting(unittest.TestCase):
@@ -242,40 +268,46 @@ class TestTermHelperSoundsSetting(unittest.TestCase):
 
 class TestListenButtonLayout(unittest.TestCase):
     def setUp(self):
-        from quill.ui.widgets import ListenButton
+        from quill.ui.listen_button import ListenButton
         self.b = ListenButton()
-        self.b.resize(420, 40)
+        self.b.resize(420, 48)
         self.b.show()
         _app.processEvents()
 
-    def test_the_icon_is_inside_the_pill_at_its_start_and_the_pill_is_at_the_left(self):
-        pill = self.b.pill
-        self.assertTrue(pill.isAncestorOf(self.b.icon_label))
-        self.assertLess(self.b.icon_label.x(), self.b.text_pill.x())
-        self.assertLess(pill.mapTo(self.b, pill.rect().topLeft()).x(), 20)
+    def x_of(self, widget):
+        return widget.mapTo(self.b, widget.rect().topLeft()).x()
 
-    def test_the_pill_has_a_border_and_no_fill(self):
-        from quill.ui import theme
-        sheet = theme.stylesheet_for(False)
-        rule = sheet[sheet.index('QFrame[listenPill="true"] {'):]
-        rule = rule[:rule.index("}")]
-        self.assertIn("background: transparent", rule)
-        self.assertIn("border: 1px solid", rule)
+    def test_from_the_left_the_disc_with_the_icon_then_the_words_then_the_screen(self):
+        self.assertLess(self.x_of(self.b.icon_label), 12)
+        self.assertLess(self.x_of(self.b.icon_label), self.x_of(self.b.text_pill))
+        self.assertLess(self.x_of(self.b.text_pill), self.x_of(self.b.screen))
+        self.assertTrue(self.b.screen.isAncestorOf(self.b.wave))
 
-    def test_the_countdown_is_right_of_the_pill_not_inside_it(self):
+    def test_the_screen_takes_the_room_after_the_words(self):
+        screen = self.b.screen
+        self.assertGreater(screen.width(), 150)
+        self.assertGreater(screen.mapTo(self.b, screen.rect().topRight()).x(), self.b.width() - 20)     # (to near the right edge)
+        self.assertLess(screen.height(), self.b.height())                                               # (inset, not against the edges)
+
+    def test_the_countdown_is_inside_the_screen_after_the_graph_and_the_ring_follows_it(self):
         self.b.set_active(True)
         self.b.set_countdown(7)
         _app.processEvents()
-        self.assertFalse(self.b.pill.isAncestorOf(self.b.countdown_label))
-        self.assertGreater(self.b.countdown_label.x(), self.b.pill.x() + self.b.pill.width() - 1)
+        self.assertTrue(self.b.screen.isAncestorOf(self.b.countdown_label))
+        self.assertGreater(self.x_of(self.b.countdown_label), self.x_of(self.b.wave))
         self.assertEqual(self.b.countdown_label.text(), "7s")
+        self.assertEqual(self.b.icon_label.ring, 1.0)
+        self.b.set_countdown(3)
+        self.assertAlmostEqual(self.b.icon_label.ring, 3 / 7)
+        self.b.set_countdown(None)
+        self.assertIsNone(self.b.icon_label.ring)
+        self.assertFalse(self.b.countdown_label.isVisibleTo(self.b))
 
-    def test_the_notice_chip_replaces_the_pill_at_the_left(self):
-        from PySide6.QtWidgets import QLabel
-        chip = QLabel("File not connected")
-        self.b.set_chip(chip)
-        chip.show()
-        self.b.set_notice(True)
+    def test_the_notice_replaces_start_listening_in_the_same_button(self):
+        self.b.set_notice(True, "Why")
         _app.processEvents()
-        self.assertFalse(self.b.pill.isVisibleTo(self.b))
-        self.assertLess(chip.x(), 20)
+        self.assertEqual(self.b.text_pill.text(), "File not connected")
+        self.assertEqual(self.b.toolTip(), "Why")
+        self.assertTrue(self.b.isEnabled())                        # (it can still be pressed: that is how it says no)
+        self.b.set_notice(False)
+        self.assertEqual(self.b.text_pill.text(), "Start Listening")

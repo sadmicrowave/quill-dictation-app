@@ -45,7 +45,8 @@ from quill.ui.chrome import SYMBOL_HELP, SYMBOL_UNDO, add_titlebar_button
 from quill.ui.hints import fill_missing_tips
 from quill.ui.settings_widgets import FlatCombo
 from quill.ui.theme import FLASH_STYLES, install_backdrop, apply_spacing
-from quill.ui.widgets import ListenButton, pill, pillify
+from quill.ui.listen_button import ListenButton
+from quill.ui.widgets import pill, pillify
 
 #: Called with (key, decision, corrected words) when the user decides.
 ResolveCallback = Callable[[TermKey, Decision, str], None]

@@ -55,7 +55,7 @@ class FileCase(unittest.TestCase):
 class TestOpeningAFile(FileCase):
     def test_starts_without_a_workbook_when_there_is_no_excel(self):
         self.assertFalse(self.app.connected)
-        self.assertTrue(self.app.window.connection_chip.isVisibleTo(self.app.window.widget))
+        self.assertTrue(self.app.window.toggle_button.notice)                    # (the Start button says File not connected)
 
     def test_the_help_text_points_at_the_file_menu(self):
         self.assertIn("Open File", NO_WORKBOOK_HELP)

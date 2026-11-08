@@ -10,7 +10,7 @@
 2. **Press Start** (the wide button at the top).
 3. **Describe an item:** *"black t-shirt, large, good, appraisal thirty five"*. Watch your words appear in the box under the Start button.
 4. **Say "next row"** to save it and start the next.
-5. **Say "stop listening"** when you're done. If you forget, Quill stops by itself after 10 quiet seconds. A small **…s** countdown (the seconds left) shows to the right of the **Stop Listening** pill (change the time in [Settings](help:settings)).
+5. **Say "stop listening"** when you're done. If you forget, Quill stops by itself after 10 quiet seconds. The button's screen shows the seconds left (for example **7s**) and a green ring around the stop icon empties as they run out (change the time in [Settings](help:settings)).
 
 > 💡 First launch: allow the **microphone** (and on a Mac, **Automation** for your spreadsheet program). That's it. There's nothing to set up.
 

@@ -12,7 +12,7 @@ from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
 from quill.platforms.macos import chrome
 from quill.ui.main_window import MainWindow
-from quill.ui.widgets import WaveMeter
+from quill.ui.listen_button import StreamGraph
 from tests.test_app import FakeListener, FakeSpeaker
 
 _app = QApplication.instance() or QApplication([])
@@ -183,25 +183,23 @@ class TestLeavingMiniDoesNotDrift(unittest.TestCase):
         self.assertLessEqual(max(tops) - min(tops), 2)           # it used to slide 150 px down and jump back up
 
 
-class TestWaveIsThinner(unittest.TestCase):
-    def test_the_lines_are_two_pixels_wide(self):
-        wave = WaveMeter()
-        from PySide6.QtGui import QImage
-        image = QImage(wave.size(), QImage.Format.Format_ARGB32)
+class TestGraphIsThin(unittest.TestCase):
+    def test_the_idle_line_is_two_pixels_thick_and_the_grid_is_faint(self):
+        from PySide6.QtGui import QColor, QImage
+        graph = StreamGraph()
+        graph.resize(160, 30)
+        graph.set_colors(QColor("#FFFFFF"), QColor("#FFFFFF"), QColor(255, 255, 255, 18))
+        image = QImage(graph.size(), QImage.Format.Format_ARGB32)
         image.fill(0)
         from PySide6.QtCore import QPoint
         from PySide6.QtGui import QRegion
         from PySide6.QtWidgets import QWidget
-        wave.render(image, QPoint(0, 0), QRegion(), QWidget.RenderFlag.DrawChildren)
-        row = image.height() // 2
-        run = best = 0
-        for x in range(image.width()):
-            if image.pixelColor(x, row).alpha() > 128:
-                run += 1
-                best = max(best, run)
-            else:
-                run = 0
-        self.assertLessEqual(best, 2)
+        graph.render(image, QPoint(0, 0), QRegion(), QWidget.RenderFlag.DrawChildren)      # (no window background)
+        x = 3                                                          # (away from the grid's columns)
+        thick = sum(1 for y in range(image.height()) if image.pixelColor(x, y).alpha() > 128)
+        self.assertLessEqual(thick, 3)
+        faint = max(image.pixelColor(graph.width() // 7, y).alpha() for y in range(4, 10))
+        self.assertLess(faint, 60)                                     # a grid column is nearly invisible
 
 
 if __name__ == "__main__":
@@ -338,7 +336,8 @@ class TestOneClickWithADropDownOpen(unittest.TestCase):
         from PySide6.QtGui import QMouseEvent
         from PySide6.QtTest import QTest
         from PySide6.QtWidgets import QComboBox, QVBoxLayout, QWidget
-        from quill.ui.widgets import ListenButton, PopupClickThrough
+        from quill.ui.listen_button import ListenButton
+        from quill.ui.widgets import PopupClickThrough
         host = QWidget()
         layout = QVBoxLayout(host)
         combo = QComboBox()

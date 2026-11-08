@@ -2,8 +2,8 @@
 
 ## 🚦 Quick checks
 
-1. Is the button filled and are its sound lines green and moving? (Still and grey means Quill is not listening.)
-2. Is a spreadsheet open? (no *File not connected* pill)
+1. Is the button the darker purple, with a green edge on its screen and moving lines in it? (A flat line and the words *Start Listening* mean Quill is not listening.)
+2. Is a spreadsheet open? (the button does not say *File not connected*)
 3. Is Quill allowed to use the **microphone**?
 4. Is your volume up?
 

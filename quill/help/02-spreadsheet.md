@@ -72,7 +72,7 @@ Always the sheet that is **open** (the active tab). Quill never tries another sh
 
 ![Not connected](images/not-connected.png)
 
-- **File not connected**: shown inside the **Start** button, beside the play icon, while no sheet is found. Pressing **Start** then opens the **Files** panel so you can pick a file. Hover it for what to do.
+- **File not connected**: said by the **Start** button itself (a grey button with a flat line in its screen) while no sheet is found. Pressing **Start** then opens the **Files** panel so you can pick a file. Hover it for what to do.
 - **The box that says "Words you say appear here…"**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
 - **The row grid** under it: each known word, placed in its column as it is heard. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover it).
 - **Last Saved**: the row written last, on the right of the footer (the strip along the bottom of the window). It only appears after the first save.

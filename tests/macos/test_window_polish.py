@@ -40,24 +40,31 @@ def right(widget, root):
 
 
 class TestConnectionChip(unittest.TestCase):
-    def test_says_file_stream_not_connected(self):
+    """"File not connected" is said by the Start button itself (the old separate pill is gone)."""
+
+    def test_says_file_not_connected(self):
         self.assertEqual(NOT_CONNECTED_TEXT, "File not connected")
         w = window()
-        self.assertEqual(w.connection_chip.text(), "File not connected")
+        w.set_not_connected(True)
+        self.assertEqual(w.toggle_button.text_pill.text(), "File not connected")
+        self.assertEqual(w.toggle_button.notice_text, "File not connected")
 
-    def test_shown_in_place_of_the_empty_sheet_message(self):
+    def test_shown_in_place_of_start_listening_until_connected(self):
         w = window()
-        self.assertFalse(w.connection_chip.isVisibleTo(w.widget))         # until a failure is reported
+        self.assertFalse(w.toggle_button.notice)                              # until a failure is reported
+        self.assertEqual(w.toggle_button.text_pill.text(), "Start Listening")
         w.set_not_connected(True)
         _app.processEvents()
-        self.assertTrue(w.connection_chip.isVisibleTo(w.widget))
+        self.assertTrue(w.toggle_button.notice)
+        self.assertEqual(w.toggle_button.text_pill.text(), "File not connected")
 
-    def test_hidden_again_once_connected(self):
+    def test_back_to_start_listening_once_connected(self):
         w = window()
         w.set_not_connected(True)
         w.set_not_connected(False)
         _app.processEvents()
-        self.assertFalse(w.connection_chip.isVisibleTo(w.widget))
+        self.assertFalse(w.toggle_button.notice)
+        self.assertEqual(w.toggle_button.text_pill.text(), "Start Listening")
 
     def test_the_tooltip_explains_in_technical_third_person_terms(self):
         hint = NOT_CONNECTED_HINT
@@ -66,7 +73,9 @@ class TestConnectionChip(unittest.TestCase):
         self.assertIn("spreadsheet program", hint)
         self.assertIn(".xlsx", hint)
         self.assertIn("File > Open File", hint)
-        tip = window().connection_chip.toolTip()
+        w = window()
+        w.set_not_connected(True)
+        tip = w.toggle_button.toolTip()
         self.assertFalse(FIRST_PERSON.search(tip), FIRST_PERSON.search(tip))
         for part in ("Not connected", "read lists from", "write rows to"):
             self.assertIn(part, tip)
@@ -80,54 +89,41 @@ class TestConnectionChip(unittest.TestCase):
     def test_a_custom_hint_replaces_the_tooltip(self):
         w = window()
         w.set_not_connected(True, "Custom hint")
-        for chip in (w.connection_chip, w.mini_chip):
-            self.assertIn("Custom hint", chip.toolTip())
+        self.assertIn("Custom hint", w.toggle_button.toolTip())
 
-    def test_still_shown_in_the_mini_view_where_the_sheet_name_is_not(self):
+    def test_still_said_in_the_mini_view_where_the_sheet_name_is_not(self):
         w = window()
         w.set_not_connected(True)
         w.set_mini(True)
         _app.processEvents()
-        self.assertTrue(w.mini_chip.isVisibleTo(w.widget))                 # the same chip, inside the Start button
-        self.assertTrue(w.toggle_button.isAncestorOf(w.mini_chip))
+        self.assertTrue(w.toggle_button.notice)
+        self.assertEqual(w.toggle_button.text_pill.text(), "File not connected")
 
-    def test_the_chip_stays_a_fixed_height_pill_at_the_left_of_the_button(self):
+    def test_the_words_sit_between_the_icon_disc_and_the_screen_and_the_button_keeps_its_height(self):
         w = window()
         w.set_not_connected(True)
         w.widget.show()
         w.widget.resize(360, 900)
         _app.processEvents()
-        chip = w.connection_chip
-        self.assertTrue(chip.isVisibleTo(w.widget))
-        self.assertEqual(chip.height(), CHIP_HEIGHT)
-        self.assertTrue(w.toggle_button.isAncestorOf(chip))                # inside the Start button ...
-        self.assertLess(chip.mapTo(w.toggle_button, chip.rect().topLeft()).x(), 20)   # ... at its left edge
-        self.assertFalse(w.toggle_button.text_pill.isVisibleTo(w.widget))      # (the Start Listening pill steps aside)
+        button = w.toggle_button
+        height = button.height()
+        self.assertEqual(height, button.HEIGHT)
+        icon_x = button.icon_label.mapTo(button, button.icon_label.rect().topLeft()).x()
+        text_x = button.text_pill.mapTo(button, button.text_pill.rect().topLeft()).x()
+        screen_x = button.screen.mapTo(button, button.screen.rect().topLeft()).x()
+        self.assertLess(icon_x, 12)                                                 # the disc is at the left edge
+        self.assertLess(icon_x, text_x)
+        self.assertLess(text_x, screen_x)
         w.widget.resize(360, 400)
         _app.processEvents()
-        self.assertEqual(chip.height(), CHIP_HEIGHT)
-        self.assertEqual(w.mini_chip.height(), CHIP_HEIGHT)
+        self.assertEqual(button.height(), height)                                   # (a taller or shorter window changes nothing)
 
     def test_nothing_about_the_connection_appears_at_the_bottom(self):
         w = window()
         w.set_not_connected(True)
-
-    def test_chip_style_is_a_pill_in_the_theme_colour_in_both_themes(self):
-        for dark in (False, True):
-            sheet = theme.stylesheet_for(dark)
-            start = sheet.index('QLabel[chip="warn"]')
-            rule = sheet[start: sheet.index("}", start)]
-            accent = theme.colors_for(dark, "violet")["accent"]                  # the theme's accent, not an amber warning colour
-            self.assertIn(theme.rgba(accent, 0.6), rule)
-            self.assertNotIn(theme.rgba(theme.WARNING_DARK if dark else theme.WARNING_LIGHT, 0.5), rule)
-            self.assertIn("border-radius: 11px", rule)
-            self.assertIn("rgba(", rule)
-
-    def test_the_chip_is_a_pill_not_the_full_width(self):
-        w = window()
-        w.set_not_connected(True)
         _app.processEvents()
-        self.assertLess(w.connection_chip.width(), w.widget.width() - 80)
+        from PySide6.QtWidgets import QLabel
+        self.assertNotIn("not connected", " ".join(label.text().lower() for label in w.footer.findChildren(QLabel)))
 
 
 class TestLogAtTheBottom(unittest.TestCase):
@@ -138,7 +134,7 @@ class TestLogAtTheBottom(unittest.TestCase):
         self.assertFalse(w.log.isVisibleTo(w.widget))
 
     def gap(self, w):
-        return w.root.height() - w.log_toggle.geometry().bottom() - 1
+        return w.root.height() - w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y() - 1
 
     def test_only_a_small_margin_below_log_when_minimized(self):
         for spacing in ("compact", "comfortable"):
@@ -157,14 +153,12 @@ class TestLogAtTheBottom(unittest.TestCase):
                      for child in w.root.children() if hasattr(child, "isVisibleTo") and child.isVisibleTo(w.root))
         self.assertEqual(lowest, w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y())
 
-    def test_opening_the_log_restores_the_normal_margin_and_closing_shrinks_it_again(self):
+    def test_the_footer_keeps_the_same_small_margin_whether_the_log_is_open_or_not(self):
         w = window(log_collapsed=True)
-        compact = w.root.layout().contentsMargins().bottom()
-        self.assertEqual(compact, LOG_BOTTOM_MARGIN)
+        self.assertEqual(w.root.layout().contentsMargins().bottom(), LOG_BOTTOM_MARGIN)
         w.log_toggle.click()
         _app.processEvents()
-        opened = w.root.layout().contentsMargins().bottom()
-        self.assertNotEqual(opened, LOG_BOTTOM_MARGIN)
+        self.assertEqual(w.root.layout().contentsMargins().bottom(), LOG_BOTTOM_MARGIN)     # (the footer is last either way)
         w.log_toggle.click()
         _app.processEvents()
         self.assertEqual(w.root.layout().contentsMargins().bottom(), LOG_BOTTOM_MARGIN)
@@ -422,16 +416,16 @@ class TestResizingKeepsAlignment(unittest.TestCase):
         self.assertGreater(w.row_table.height(), small + 200)                 # the watched box grows
         bottom = w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y()
         self.assertEqual(w.root.height() - bottom - 1, LOG_BOTTOM_MARGIN)       # Log hugs the bottom edge
-        self.assertEqual(w.connection_chip.height(), CHIP_HEIGHT)
+        self.assertEqual(w.toggle_button.height(), w.toggle_button.HEIGHT)
 
     def test_the_log_heading_stays_with_its_box_when_open(self):
         w = window(log_collapsed=False)
         w.widget.resize(360, 1000)
         _app.processEvents()
-        heading_bottom = w.log_toggle.mapTo(w.root, w.log_toggle.rect().bottomLeft()).y()
-        log_top = w.log.mapTo(w.root, w.log.rect().topLeft()).y()
-        self.assertLess(log_top - heading_bottom, 12)
-        self.assertLess(w.root.height() - (w.log.mapTo(w.root, w.log.rect().bottomLeft()).y() + 1), 20)
+        log_bottom = w.log.mapTo(w.root, w.log.rect().bottomLeft()).y()
+        footer_top = w.footer.mapTo(w.root, w.footer.rect().topLeft()).y()
+        self.assertLess(footer_top - log_bottom, 12)                              # the footer sits right under the log
+        self.assertLess(w.root.height() - (w.footer.mapTo(w.root, w.footer.rect().bottomLeft()).y() + 1), 20)
 
     def test_the_sections_above_stay_put_when_the_window_grows(self):
         w = window(log_collapsed=False)
