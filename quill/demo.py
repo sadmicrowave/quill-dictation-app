@@ -109,6 +109,10 @@ class Demo:
             ("A Saved Row", self.saved_row),
             ("Everything", self.everything),
             ("Promo Story (about 30 s)", self.promo),
+            ("Clip: Dictate", self.clip_dictate),
+            ("Clip: Term Helper", self.clip_helper),
+            ("Clip: It Learns", self.clip_learns),
+            ("Clip: Mini View", self.clip_mini),
             ("Reset", self.reset),
         ]
 
@@ -211,6 +215,69 @@ class Demo:
         steps.append((2600, lambda: self._app.open_settings("Learned Words")))
         self._steps(steps)
         self._hush(90_000)
+
+    # ------------------------------------------------------------------ #
+    # Clips: one short, self-contained scenario per feature, recorded on its own (see quill-website/promo)   #
+    # ------------------------------------------------------------------ #
+
+    def _say_row(self, steps: list, text: str, lead_ms: int = 900, pace_ms: int = 400, next_row: bool = True) -> None:
+        """Append the steps of one row spoken word by word (the voice lines move while it is said), then, optionally, "next row"."""
+        words = text.split()
+        steps.append((lead_ms, lambda: self._speak(int(len(words) * pace_ms + 700))))
+        for n in range(1, len(words) + 1):
+            steps.append((pace_ms if n > 1 else 250, lambda n=n: self._partial(" ".join(words[:n]))))
+        steps.append((500, lambda: self._phrase(text)))
+        if next_row:
+            steps.append((900, lambda: self._speak(900)))
+            steps.append((500, lambda: self._say_command("next row")))
+
+    def clip_dictate(self) -> None:
+        """Two rows of known words, spoken and saved: they appear in the open spreadsheet as they are said (no Term Helper)."""
+        self.reset()
+        steps: list[tuple[int, Callable[[], None]]] = [(0, self._listen)]
+        self._say_row(steps, "black t-shirt men nike good condition purchase price thirty five dollars bought it yesterday", 700)
+        self._say_row(steps, "navy sweater women patagonia excellent condition", 1500)
+        steps.append((2500, lambda: None))
+        self._steps(steps)
+        self._hush(60_000)
+
+    def clip_helper(self) -> None:
+        """A row with words Quill does not know; the Term Helper opens and they are answered by voice."""
+        self.reset()
+        steps: list[tuple[int, Callable[[], None]]] = [(0, self._listen)]
+        self._say_row(steps, "teal hoodie women large patagonia vintage excellent condition", 700)
+        steps.append((1700, self._app.toggle_voice_sorting))
+        for text, gap in (("color", 1300), ("yes", 1000), ("ignore", 1000), ("same as l", 1000)):
+            steps.append((gap, lambda: self._speak(650)))
+            steps.append((700, lambda text=text: self._say_command(text)))
+        steps.append((2500, lambda: None))
+        self._steps(steps)
+        self._hush(60_000)
+
+    def clip_learns(self) -> None:
+        """A slurred word is trimmed off a term (Quill learns to skip it), a word is taught by voice, and Settings lists both."""
+        self.reset()
+        steps: list[tuple[int, Callable[[], None]]] = [(0, self._listen)]
+        self._say_row(steps, "kinda cream sweater small carhartt good condition", 700)
+        steps.append((2600, lambda: self._trim_term("kinda cream", "cream", "Color")))
+        steps.append((1900, lambda: self._click_term("small", "match_button")))
+        steps.append((2400, lambda: self._speak(1500)))
+        steps.append((300, lambda: self._say_command("sold means sale date")))
+        steps.append((2600, lambda: self._app.open_settings("Learned Words")))
+        steps.append((6500, lambda: None))
+        self._steps(steps)
+        self._hush(60_000)
+
+    def clip_mini(self) -> None:
+        """The mini view: a slim strip beside the spreadsheet while two rows are spoken and saved."""
+        self.reset()
+        self._app.window.set_mini(True)
+        steps: list[tuple[int, Callable[[], None]]] = [(1500, self._listen)]
+        self._say_row(steps, "black jeans men levis good condition purchase price twenty dollars", 700)
+        self._say_row(steps, "white dress women adidas excellent condition", 1200)
+        steps.append((2500, lambda: None))
+        self._steps(steps)
+        self._hush(60_000)
 
     def _row(self, words: str):
         return next((r for r in self._app.sorting.rows if r.key[1] == words), None)

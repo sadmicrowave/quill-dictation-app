@@ -65,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
         autorun = os.environ.get("QUILL_DEMO_AUTORUN")             # (for a recording: the promo story starts by itself this many seconds after launch)
         if autorun:
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(int(float(autorun) * 1000), quill.demo.promo)
+            scenario = getattr(quill.demo, os.environ.get("QUILL_DEMO_SCENARIO", "promo"), quill.demo.promo)      # (QUILL_DEMO_SCENARIO=clip_helper ...)
+            QTimer.singleShot(int(float(autorun) * 1000), scenario)
     return app.exec()
 
 
