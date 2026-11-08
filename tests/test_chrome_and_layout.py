@@ -202,20 +202,36 @@ class TestCollapsibleLog(unittest.TestCase):
         self.w.setup()
         self.w.widget.show()
 
-    def test_starts_open_with_an_up_arrow(self):
+    def test_starts_open_with_the_bug_button_selected_and_no_words(self):
         self.assertFalse(self.w.log_collapsed)
         self.assertTrue(self.w.log.isVisible())
-        self.assertIn("▴", self.w.log_toggle.text())
-        self.assertTrue(self.w.log_toggle.text().startswith("Log"))
+        self.assertTrue(self.w.log_toggle.isChecked())                 # selected while the log is open
+        self.assertEqual(self.w.log_toggle.text(), "")                  # an icon, not the word "Log"
+        self.assertFalse(self.w.log_toggle.icon().isNull())
 
     def test_clicking_the_heading_collapses_and_expands(self):
         self.w.log_toggle.click()
         self.assertTrue(self.w.log_collapsed)
         self.assertFalse(self.w.log.isVisible())
-        self.assertIn("▾", self.w.log_toggle.text())
+        self.assertFalse(self.w.log_toggle.isChecked())                # back to the plain style when the log is closed
         self.w.log_toggle.click()
         self.assertTrue(self.w.log.isVisible())
+        self.assertTrue(self.w.log_toggle.isChecked())
         self.assertEqual(self.toggled, [True, False])
+
+    def test_a_press_that_only_toggles_the_button_still_opens_and_closes_the_log(self):
+        self.w.log_toggle.toggle()                                      # what an accessibility "press" does: no click is made
+        self.assertTrue(self.w.log_collapsed)
+        self.w.log_toggle.toggle()
+        self.assertFalse(self.w.log_collapsed)
+        self.assertEqual(self.toggled, [True, False])
+
+    def test_the_menu_and_the_button_agree(self):
+        self.w.set_log_collapsed(True, notify=True)
+        self.assertFalse(self.w.log_toggle.isChecked())
+        self.w.set_log_collapsed(False, notify=True)
+        self.assertTrue(self.w.log_toggle.isChecked())
+        self.assertEqual(self.toggled, [True, False])                   # (each change was reported once)
 
     def test_the_log_keeps_collecting_while_collapsed(self):
         self.w.log_toggle.click()
@@ -228,7 +244,7 @@ class TestCollapsibleLog(unittest.TestCase):
         w.setup()
         w.widget.show()
         self.assertFalse(w.log.isVisible())
-        self.assertIn("▾", w.log_toggle.text())
+        self.assertFalse(w.log_toggle.isChecked())
 
 
 class TestLastSaved(unittest.TestCase):

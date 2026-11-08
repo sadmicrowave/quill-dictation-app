@@ -2630,17 +2630,15 @@ class TestLogGripAndHeading(PanelApp):
         _app.processEvents()
         self.assertFalse(self.w.log_grip.isVisibleTo(self.w.widget))
 
-    def test_the_log_heading_sits_close_to_its_box_in_both_spacings(self):
-        from quill.ui.main_window import LOG_HEADING_GAP
+    def test_the_footer_sits_close_under_the_log_in_both_spacings(self):
+        from quill.ui.main_window import LOG_FOOTER_GAP
         for spacing in ("compact", "comfortable"):
             self.app.settings.preferences["spacing"] = spacing
             self.app.apply_settings(quiet=True)
             _app.processEvents()
-            gap = self.w.log.geometry().top() - self.w.log_toggle.geometry().bottom()
-            heading = self.w.log_toggle.mapTo(self.w.root, self.w.log_toggle.rect().bottomLeft()).y()
-            box = self.w.log.mapTo(self.w.root, self.w.log.rect().topLeft()).y()
-            self.assertLessEqual(box - heading, LOG_HEADING_GAP + 6, spacing)
-            self.assertIsNotNone(gap)
+            box_bottom = self.w.log.mapTo(self.w.root, self.w.log.rect().bottomLeft()).y()
+            footer_top = self.w.footer.mapTo(self.w.root, self.w.footer.rect().topLeft()).y()
+            self.assertLessEqual(footer_top - box_bottom, LOG_FOOTER_GAP + 6, spacing)
 
 
 class TestSettingsRound5(unittest.TestCase):

@@ -32,6 +32,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFontMetrics, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (
+    QFrame,
     QMenu,
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -66,7 +67,7 @@ from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.side_panel import FILE_PAGE, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH, SidePanel, TURN_PAGE
 from quill.ui.widgets import (
     ElidedLabel,
-    HeadingToggle,
+    FooterButton,
     ListenButton,
     Pill,
     ResizeGrip,
@@ -100,8 +101,8 @@ MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
 MIN_WINDOW = (453, 383)      # the full window never gets smaller than this, and opens at it the first time
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user drags it to another)
 LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
-#: Gap (px) between the "Log" heading and the log box.
-LOG_HEADING_GAP = 1
+#: Gap (px) between the log box and the footer under it.
+LOG_FOOTER_GAP = 6
 MIN_CONTENT_WIDTH = 405     # the content (everything but the side panel) is never dragged narrower than this
 
 #: Lines kept in the log before the oldest are dropped.
@@ -447,19 +448,29 @@ class MainWindow:
 
         # --- log (last). The Current Row box takes extra height when the window grows (and shares it with
         # the log while that is open), so no gaps open between sections and "Log" stays at the bottom.
-        self.log_toggle = self._section_toggle("Show or hide the log.")
-        footer_row = QHBoxLayout()                          # "Log" on the left, the last saved row on the right
+        # The window's footer sits below everything, log included: icon buttons of one size on the left (the bug opens and closes
+        # the log; others can join it), the last saved row on the right.
+        self.log_toggle = FooterButton("bug", "Show the log")
+        self.log_toggle.toggled.connect(self._log_button_toggled)        # (toggled, not clicked: an accessibility "press" only toggles)
+        self.footer = QFrame()
+        self.footer.setObjectName("windowFooter")
+        self.footer.setProperty("keepMargins", True)
+        footer_row = QHBoxLayout(self.footer)
+        footer_row.setContentsMargins(0, 5, 0, 0)
+        footer_row.setSpacing(6)
+        footer_row.setProperty("keepSpacing", True)
         footer_row.addWidget(self.log_toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        footer_row.addSpacing(4)
         footer_row.addWidget(self.last_label, 1)
         self.log = QTextEdit()                # (not the plain-text kind: it can hang a long line's wrap under the message)
         self.log.setReadOnly(True)
         self.log.document().setUndoRedoEnabled(False)
         log_block = QVBoxLayout()                           # the heading sits close to its box, in either spacing
         log_block.setContentsMargins(0, 0, 0, 0)
-        log_block.setSpacing(LOG_HEADING_GAP)
+        log_block.setSpacing(LOG_FOOTER_GAP)
         log_block.setProperty("keepSpacing", True)
-        log_block.addLayout(footer_row)
         log_block.addWidget(self.log)
+        log_block.addWidget(self.footer)
         layout.addLayout(log_block)
         self.log_grip = ResizeGrip(central)         # drag the bottom edge of the log: it and the window grow or shrink together
         self.log_grip.dragged.connect(self._log_grip_dragged)
@@ -482,6 +493,7 @@ class MainWindow:
             self.set_mini(True)
         else:
             self._refresh_visibility()
+            self._set_margins(False)                           # (the footer is the last thing: a small margin follows it)
         self.set_listening_indicator(False)
         fill_missing_tips(window)
         fill_missing_tips(self.panel.settings)
@@ -841,8 +853,8 @@ class MainWindow:
             self._log_bottom_margin()
 
     def _log_bottom_margin(self) -> None:
-        """With the log minimized "Log" is the last thing in the window: only a small margin may follow it."""
-        if self._log_collapsed and not self._view_mini and self._window is not None:
+        """The footer is the last thing in the window: only a small margin may follow it."""
+        if not self._view_mini and self._window is not None:
             m = self._layout.contentsMargins()
             self._layout.setContentsMargins(m.left(), m.top(), m.right(), LOG_BOTTOM_MARGIN)
 
@@ -1034,7 +1046,7 @@ class MainWindow:
         self.toggle_button.set_compact(self._view_mini)
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
         self.settings_button.setVisible(full and not self._native_settings_button)
-        self.log_toggle.setVisible(full)
+        self.footer.setVisible(full)
         detail = full or self._mini_detail                                   # the mini view shows them only when tall
         self.stream.setVisible(detail)
         self.row_table.setVisible(detail)
@@ -1062,11 +1074,11 @@ class MainWindow:
         self._keep_minimum()
         self.sorting_button.setToolTip("Term Helper: terms that were heard but not placed yet.")
 
-    def _section_toggle(self, tip: str) -> HeadingToggle:
-        button = HeadingToggle()
-        button.setToolTip(tip)
-        button.clicked.connect(lambda: self._set_collapsed("log", not self._log_collapsed, notify=True))
-        return button
+    def _log_button_toggled(self, selected: bool) -> None:
+        """The footer's bug button was switched (a click, or an accessibility press): open or close the log to match. A switch the
+        window made itself (it already agrees) changes nothing."""
+        if selected != (not self._log_collapsed):
+            self._set_collapsed("log", not selected, notify=True)
 
     # ------------------------------------------------------------------ #
     # Remembering the size                                                 #
@@ -1181,8 +1193,9 @@ class MainWindow:
             self._close_log(window)
         else:
             self._open_log(window)
-        self.log_toggle.setText(f"Log  {'▾' if collapsed else '▴'}")
+        self.log_toggle.setChecked(not collapsed)                 # selected while the log is open
         self.log_toggle.setToolTip("Show the log" if collapsed else "Hide the log")
+        self.log_toggle.setAccessibleName("Show the log" if collapsed else "Hide the log")
         if notify:
             self._on_log_toggled(collapsed)
 
@@ -1653,6 +1666,7 @@ class MainWindow:
         self.panel.set_colors(text_color, accent)
         self.row_grip.set_color(text_color)
         self.log_grip.set_color(text_color)
+        self.log_toggle.set_colors(text_color, on_accent)
         self._render_stream()
         self.mini_button.setIcon(make_icon("maximize" if self._view_mini else "minimize", text_color, 16))
         self.mini_button.setToolTip("Back to the Full Window" if self._view_mini else "Mini View")

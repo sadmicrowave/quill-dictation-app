@@ -33,4 +33,4 @@
 
 ## ↕️ Sizing the boxes
 
-Drag the three dots at the bottom edge of the matched-words box up or down: with the **Log** open the two boxes trade height; with it hidden the window grows or shrinks. Quill remembers the log's height and the window's size.
+Drag the three dots at the bottom edge of the matched-words box up or down: with the **Log** open (the bug button in the footer is filled) the two boxes trade height; with it hidden the window grows or shrinks. Quill remembers the log's height and the window's size.

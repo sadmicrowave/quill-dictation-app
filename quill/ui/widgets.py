@@ -606,6 +606,40 @@ class Pill(QLabel):
         painter.end()
 
 
+class FooterButton(QPushButton):
+    """An icon button of the window's footer. All of them are the same size; one that is *on* (its panel is open) is drawn
+    selected, in the accent colour, and goes back to the plain look when it is off.
+
+    Args:
+        icon_name: The icon (see :mod:`quill.ui.icons`).
+        tip: What it does; the words are kept off the button, so the footer can hold several.
+    """
+
+    SIZE = (36, 28)
+    ICON = 16
+
+    def __init__(self, icon_name: str, tip: str = "") -> None:
+        super().__init__()
+        self._icon_name = icon_name
+        self._colors = ("#1F1E1D", "#FFFFFF")                         # icon colour plain, and while selected (on the accent)
+        self.setProperty("footerButton", True)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(*self.SIZE)
+        self.setIconSize(QSize(self.ICON, self.ICON))
+        self.setToolTip(tip)
+        self.setAccessibleName(tip)
+        self.toggled.connect(lambda _: self._draw())
+        self._draw()
+
+    def set_colors(self, plain: str, selected: str) -> None:
+        self._colors = (plain, selected)
+        self._draw()
+
+    def _draw(self) -> None:
+        self.setIcon(make_icon(self._icon_name, self._colors[1] if self.isChecked() else self._colors[0], self.ICON))
+
+
 class HeadingToggle(QLabel):
     """A clickable heading ("Log  v"): plain text that starts exactly at the content's left edge.
 

@@ -349,6 +349,12 @@ QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.7
 QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; border-color: {t['border']}; }}
 QPushButton[outline="true"][iconOnly="true"] {{ border-color: {t['accent']}; }}
+/* The window's footer: flat icon buttons that fill with the accent while their panel is open. */
+QPushButton[footerButton="true"] {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 0; }}
+QPushButton[footerButton="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
+QPushButton[footerButton="true"]:checked {{ background: {t['accent']}; border-color: {t['accent']}; }}
+QPushButton[footerButton="true"]:checked:hover {{ background: {t['accent_hover']}; border-color: {t['accent_hover']}; }}
+QFrame#windowFooter {{ background: transparent; border: none; border-top: 1px solid {t['border']}; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t['border']}; }}
 QSlider::sub-page:horizontal {{ height: 4px; border-radius: 2px; background: {t['accent']}; }}
 QSlider::handle:horizontal {{ width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;

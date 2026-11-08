@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from PySide6.QtWidgets import QApplication, QLabel, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSystemTrayIcon
 
 from quill.config.settings import Settings
 from quill.ui import theme
@@ -162,8 +162,9 @@ class TestLogCollapseResizes(unittest.TestCase):
         self.w.log_toggle.click()
         _app.processEvents()
         window = self.w.widget
-        bottom = max(child.geometry().bottom() for child in window.centralWidget().findChildren(
-            QLabel) if child.isVisible())
+        controls = window.centralWidget().findChildren(QLabel) + window.centralWidget().findChildren(QPushButton)
+        bottom = max(child.mapTo(window.centralWidget(), child.rect().bottomLeft()).y() for child in controls
+                     if child.isVisible())                                  # (the footer's button is the last control)
         self.assertLessEqual(window.height() - bottom, 80)
 
     def test_starting_collapsed_gives_a_compact_window(self):
