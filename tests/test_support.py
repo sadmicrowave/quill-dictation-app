@@ -143,10 +143,13 @@ class TestDialog(ReportCase):
         dialog.send_clicked()
         dialog.finished(support.SendResult(False, error="Couldn't reach the support service."))
         self.assertTrue(dialog.send_button.isEnabled())
-        self.assertIn("reach", dialog.status.text())
+        self.assertEqual(dialog.notice.kind, "error")                   # a red notice, not a line of text
+        self.assertIn("reach", dialog.notice.label.text())
         dialog.send_clicked()
+        self.assertEqual(dialog.notice.kind, "")                        # the old outcome goes while sending again
         dialog.finished(support.SendResult(True, "#7"))
-        self.assertIn("#7", dialog.status.text())
+        self.assertEqual(dialog.notice.kind, "ok")                      # a green notice
+        self.assertIn("#7", dialog.notice.label.text())
         self.assertFalse(dialog.send_button.isEnabled())
 
     def test_a_crash_report_says_why_it_opened(self):

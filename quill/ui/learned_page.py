@@ -104,6 +104,14 @@ class _ListDelegate(QStyledItemDelegate):
         return mix(t["surface"], "#D9A12B", 0.28), t["text"]
 
 
+class _ShrinkingCombo(FlatCombo):
+    """A flat drop-down that is as wide as its longest choice when there is room and narrower (its text cut short) when
+    there is not, so a row of them never forces the page wider than the window and shows a sideways scroll bar."""
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(112, super().minimumSizeHint().height())
+
+
 class LearnedWordsPanel(QWidget):
     """Search, filter, group and forget learned words.
 
@@ -128,34 +136,35 @@ class LearnedWordsPanel(QWidget):
         layout.setContentsMargins(0, 6, 0, 0)
         layout.setSpacing(8)
 
-        controls = QHBoxLayout()
-        controls.setSpacing(8)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
         self.search.setToolTip("Search words, columns and file names.")
         self.search.setMinimumWidth(140)
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.refresh)
-        controls.addWidget(self.search, 1)
-        self.scope = FlatCombo()
+        layout.addWidget(self.search)                            # its own row: the page never needs to be wider than the window
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        self.scope = _ShrinkingCombo()
         self.scope.addItem("All Files", "all")
         self.scope.addItem("This File", "file")
         self.scope.setToolTip("All Files: every learned word. This File: words learned in the active file, and words for "
                               "columns it has.")
         self.scope.currentIndexChanged.connect(self.refresh)
         controls.addWidget(self.scope)
-        self.grouping = FlatCombo()
+        self.grouping = _ShrinkingCombo()
         for key, label in GROUPINGS:
             self.grouping.addItem(label, key)
         self.grouping.currentIndexChanged.connect(self.refresh)
         controls.addWidget(self.grouping)
-        self.order = FlatCombo()
+        self.order = _ShrinkingCombo()
         for key, label in ORDERS:
             self.order.addItem(label, key)
         self.order.setToolTip("The order of the groups. Most Recent First puts the file (or column) something was last "
                               "learned in at the top. Click a heading to sort the words inside each group.")
         self.order.currentIndexChanged.connect(self.refresh)
         controls.addWidget(self.order)
+        controls.addStretch(1)
         layout.addLayout(controls)
 
         self.tree = QTreeWidget()

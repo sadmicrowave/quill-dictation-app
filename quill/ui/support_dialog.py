@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdi
                                QVBoxLayout, QWidget)
 
 from quill import support
+from quill.ui.notice import Notice
 
 
 class SupportDialog(QDialog):
@@ -37,7 +38,7 @@ class SupportDialog(QDialog):
         self.setObjectName("supportDialog")
         self.setWindowTitle("Report a Problem")
         self.setModal(True)
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(560)
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self._send, self._kind, self._log_folder = send, kind, log_folder
         self._configured = bool(support.SUPPORT_URL) if configured is None else configured
@@ -57,6 +58,7 @@ class SupportDialog(QDialog):
         links = QLabel('<a href="known">Check the known problems first</a> &nbsp;·&nbsp; <a href="privacy">What is sent and what isn\'t</a>')
         links.setProperty("panelNote", True)
         links.setTextFormat(Qt.TextFormat.RichText)
+        links.setWordWrap(True)                                   # (never cut off at the edge when the text size is large)
         links.linkActivated.connect(lambda key: QDesktopServices.openUrl(QUrl(support.ISSUES_URL)) if key == "known" else open_privacy())
         layout.addWidget(links)
 
@@ -75,10 +77,6 @@ class SupportDialog(QDialog):
         self.include_log.setChecked(True)
         self.include_log.toggled.connect(self._changed)
         layout.addWidget(self.include_log)
-        log_note = QLabel("Only fixed wording: never file names, sheet names, words or values.")
-        log_note.setWordWrap(True)
-        log_note.setProperty("panelNote", True)
-        layout.addWidget(log_note)
 
         self.preview_link = QLabel('<a href="toggle">Show exactly what will be sent</a>')
         self.preview_link.setProperty("panelNote", True)
@@ -91,13 +89,15 @@ class SupportDialog(QDialog):
         self.preview.setVisible(False)
         layout.addWidget(self.preview)
 
-        self.status = QLabel("")
+        self.status = QLabel("")                                  # quiet progress: "Sending…", "Copied."
         self.status.setWordWrap(True)
         self.status.setProperty("muted", True)
         if not self._configured:
             self.status.setText("Sending isn't set up in this version yet. Copy Diagnostics puts the report on your clipboard; "
                                 "paste it into an e-mail or the GitHub issues page.")
         layout.addWidget(self.status)
+        self.notice = Notice()                                    # the outcome: green when it was sent, red when it was not
+        layout.addWidget(self.notice)
 
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -147,11 +147,13 @@ class SupportDialog(QDialog):
 
     def copy_diagnostics(self) -> None:
         QGuiApplication.clipboard().setText(self.report().text())
+        self.notice.clear()
         self.status.setText("Copied. Paste it into an e-mail or the GitHub issues page.")
 
     def send_clicked(self) -> None:
         self.send_button.setEnabled(False)
         self.copy_button.setEnabled(False)
+        self.notice.clear()
         self.status.setText("Sending…")
         self._send(self.report().payload())
 
@@ -161,10 +163,12 @@ class SupportDialog(QDialog):
         if result.ok:
             self._sent = True
             ref = f" Your reference is {result.reference}." if result.reference else ""
-            self.status.setText("Thank you: the report was sent." + ref)
+            self.status.setText("")
+            self.notice.show_ok("Thank you: your report was sent." + ref)
             self.send_button.setText("Sent")
             self.cancel_button.setText("Close")
             self.send_button.setEnabled(False)
         else:
-            self.status.setText(result.error)
+            self.status.setText("")
+            self.notice.show_error(result.error)
             self._changed()

@@ -60,6 +60,12 @@ NO_FILE_TEXT = "Open File"
 NO_OTHERS_TEXT = "No open spreadsheet files detected."
 NO_MATCH_TEXT = "No files match."
 TITLES = {"file": "Files", "turn": "Turn Options"}
+#: What hovering a panel's title explains (the text that used to sit under it all the time).
+TITLE_TIPS = {
+    "file": "",
+    "turn": "Settings to control how each speak-match-write iteration (known as a 'Turn') is handled. They can also be voice "
+            "controlled: see Settings > Keywords.",
+}
 AUTOMATIC = "Automatic"
 #: How long (ms) the Open File button's blink stays on.
 FLASH_MS = 700
@@ -426,7 +432,6 @@ class SidePanel(QFrame):
     width_dragged = Signal(int)                 # the edge was dragged: pixels to the right (positive makes the panel narrower)
     width_released = Signal()
     settings_requested = Signal()               # the gear button (the window shows the overlay)
-    keywords_requested = Signal()               # the Keywords link on the turn page
     learned_words_requested = Signal()          # the Learned Words link under the active file's facts
 
     def __init__(self) -> None:
@@ -680,13 +685,14 @@ class SidePanel(QFrame):
         layout.addSpacing(4)
         heading_line = QHBoxLayout()
         heading_line.setContentsMargins(0, 0, 0, 0)
-        heading_line.addWidget(_heading("Open Spreadsheets"), 1)
+        self.open_heading = _heading("Open Spreadsheets")
+        self.open_heading.setToolTip("Spreadsheet files currently open on your computer.")      # (not a line of text: the room is for the list)
+        heading_line.addWidget(self.open_heading, 1)
         self.refresh_button = self._chrome_button("Look for open spreadsheets now. The list also refreshes by itself.",
                                                   "Refresh the List")
         self.refresh_button.clicked.connect(lambda: self.start_refresh(True))
         heading_line.addWidget(self.refresh_button, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(heading_line)
-        layout.addWidget(_note("Spreadsheet files currently open on your computer."))
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search")
         self.search.setClearButtonEnabled(True)
@@ -713,16 +719,6 @@ class SidePanel(QFrame):
     def _build_turn_page(self) -> QWidget:
         page = QWidget()
         layout = self._page_layout(page)
-        self.turn_intro = QLabel("Settings to control how each speak-match-write iteration (known as a 'Turn') is handled.<br><br>"
-                                 "These settings can be voice controlled within <a href=\"keywords\">Settings &gt; Keywords</a>.")
-        self.turn_intro.setProperty("panelNote", True)
-        self.turn_intro.setTextFormat(Qt.TextFormat.RichText)
-        self.turn_intro.setWordWrap(True)
-        self.turn_intro.setOpenExternalLinks(False)
-        self.turn_intro.setProperty("hoverLinkTips", True)          # only the link has hover text, while it is hovered
-        self.turn_intro.linkActivated.connect(lambda _: self.keywords_requested.emit())
-        self.turn_intro.linkHovered.connect(lambda link: self.turn_intro.setToolTip("Open the Keywords settings." if link else ""))
-        layout.addWidget(self.turn_intro)
         layout.addSpacing(4)
         layout.addWidget(_rule())
         layout.addSpacing(4)
@@ -780,7 +776,9 @@ class SidePanel(QFrame):
     def show_page(self, page: str) -> None:
         """Show the ``"file"`` or the ``"turn"`` page."""
         self.stack.setCurrentIndex(1 if page == TURN_PAGE else 0)
-        self.title_label.setText(TITLES[TURN_PAGE if page == TURN_PAGE else FILE_PAGE])
+        key = TURN_PAGE if page == TURN_PAGE else FILE_PAGE
+        self.title_label.setText(TITLES[key])
+        self.title_label.setToolTip(TITLE_TIPS[key])
 
     @property
     def page(self) -> str:

@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from quill.bridge import libreoffice_mirror as L
-from quill.bridge.libreoffice_mirror import LibreOfficeMirror, change_fields, file_addresses, profile_scripts_dir
+from quill.bridge.libreoffice_mirror import SCRIPT_NAME, LibreOfficeMirror, change_fields, file_addresses, profile_scripts_dir
 
 
 class Case(unittest.TestCase):
@@ -35,7 +35,7 @@ class Case(unittest.TestCase):
 
     def mirror(self, **kw):
         defaults = dict(runner=self.runner, scripts_dir=self.scripts, base=self.base, running=lambda: True,
-                        soffice="/x/soffice", wait_s=1)
+                        soffice="/x/soffice", wait_s=1, use_live=False)
         defaults.update(kw)
         return LibreOfficeMirror(**defaults)
 
@@ -60,7 +60,7 @@ class TestPushing(Case):
         self.assertTrue(result.ok)
         self.assertEqual(self.calls[0][0], "/x/soffice")
         self.assertIn("--headless", self.calls[0])                   # (else each call shows a Dock icon for a moment)
-        self.assertIn("quill_mirror.py$apply", self.calls[0][-1])
+        self.assertIn(f"{SCRIPT_NAME}$apply", self.calls[0][-1])
         self.assertEqual(self.job["changes"], [["Sheet1", 4, 2, "s", "teal"], ["Sheet1", 4, 3, "n", "3.5"]])
         self.assertTrue(any(u.endswith("a.xlsx") for u in self.job["urls"]))
 
@@ -107,7 +107,7 @@ class TestInstallingTheScript(Case):
     def test_it_is_written_once_and_rewritten_only_when_it_changes(self):
         m = self.mirror()
         self.assertTrue(m.install())
-        target = self.scripts / "quill_mirror.py"
+        target = self.scripts / SCRIPT_NAME
         self.assertIn(repr(str(self.base)), target.read_text())
         self.assertTrue(m.installed_note)
         m.installed_note = False
@@ -116,6 +116,25 @@ class TestInstallingTheScript(Case):
         target.write_text("old")
         self.assertTrue(m.install())
         self.assertIn("Quill live-rows helper", target.read_text())
+
+    def test_older_quill_helpers_are_removed_and_other_scripts_are_left_alone(self):
+        m = self.mirror()
+        self.scripts.mkdir(parents=True)
+        old = self.scripts / "quill_mirror.py"
+        old.write_text("# Quill live-rows helper (version 4). Installed by Quill\n")
+        older = self.scripts / "quill_mirror_v3.py"
+        older.write_text("# Quill live-rows helper (version 3). Installed by Quill\n")
+        mine = self.scripts / "quill_mirror_notes.py"                  # starts like the name but is somebody else's file
+        mine.write_text("print('my own script')\n")
+        other = self.scripts / "other.py"
+        other.write_text("x = 1\n")
+        self.assertTrue(m.install())
+        self.assertFalse(old.exists() or older.exists())
+        self.assertTrue(mine.exists() and other.exists() and (self.scripts / SCRIPT_NAME).exists())
+
+    def test_the_helper_file_name_carries_its_version_so_a_running_libreoffice_loads_it_fresh(self):
+        from quill.bridge.libreoffice_mirror import SCRIPT_VERSION
+        self.assertEqual(SCRIPT_NAME, f"quill_mirror_v{SCRIPT_VERSION}.py")
 
     def test_without_a_profile_nothing_is_written(self):
         m = self.mirror(scripts_dir=self.dir / "nowhere" / "4" / "user" / "Scripts" / "python")

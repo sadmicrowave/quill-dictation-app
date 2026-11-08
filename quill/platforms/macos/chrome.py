@@ -591,11 +591,12 @@ class TitlebarButton:
         except Exception:
             pass
 
-    def set_panel_title(self, text: str) -> None:
-        """The side panel's title, drawn in the title bar."""
+    def set_panel_title(self, text: str, tip: str = "") -> None:
+        """The side panel's title, drawn in the title bar; hovering it shows *tip* (what the page is for)."""
         try:
             if self._panel is not None:
                 self._panel.title.setStringValue_(text)
+                self._panel.title.setToolTip_(tip or None)
                 self._panel.title.sizeToFit()
                 self._panel.place(self._inset)
         except Exception:

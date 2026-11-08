@@ -1091,20 +1091,19 @@ class TestFilePanelDetails(Dir):
         field.editingFinished.emit()
         self.assertEqual(seen, [4, 0])
 
-    def test_the_turn_page_starts_with_the_description_and_a_keywords_link_then_a_rule(self):
-        from PySide6.QtWidgets import QFrame
-        intro = self.panel.turn_intro
-        self.assertIn("Settings to control how each speak-match-write iteration (known as a 'Turn') is handled.", intro.text())
-        self.assertIn('href="keywords"', intro.text())
-        asked = []
-        self.panel.keywords_requested.connect(lambda: asked.append(1))
-        intro.linkActivated.emit("keywords")
-        self.assertEqual(asked, [1])
+    def test_the_turn_page_starts_with_a_rule_and_its_description_is_the_titles_tooltip(self):
+        from quill.ui.side_panel import TITLE_TIPS
         turn_page = self.panel.stack.widget(1).widget()
         order = [turn_page.layout().itemAt(i).widget() for i in range(turn_page.layout().count()) if turn_page.layout().itemAt(i).widget()]
-        self.assertIs(order[0], intro)
-        self.assertTrue(order[1].property("panelRule"))
-        self.assertEqual(order[1].height(), 1)
+        self.assertTrue(order[0].property("panelRule"))                  # the description no longer takes room above the choices
+        self.assertEqual(order[0].height(), 1)
+        self.assertFalse(hasattr(self.panel, "turn_intro"))
+        self.assertIn("Settings to control how each speak-match-write iteration (known as a 'Turn') is handled.", TITLE_TIPS["turn"])
+        self.assertIn("Settings > Keywords", TITLE_TIPS["turn"])
+        self.panel.show_page(TURN_PAGE)
+        self.assertEqual(self.panel.title_label.toolTip(), TITLE_TIPS["turn"])
+        self.panel.show_page(FILE_PAGE)
+        self.assertEqual(self.panel.title_label.toolTip(), "")
         titles = [l.text() for l in turn_page.findChildren(QLabel) if l.property("panelHeading")]
         self.assertNotIn("Each Turn", titles)
 
@@ -1126,7 +1125,8 @@ class TestFilePanelDetails(Dir):
     def test_the_available_files_section_has_its_title_description_and_search(self):
         texts = [l.text() for l in self.panel.findChildren(QLabel)]
         self.assertIn("Open Spreadsheets", texts)
-        self.assertIn("Spreadsheet files currently open on your computer.", texts)
+        self.assertNotIn("Spreadsheet files currently open on your computer.", texts)      # a tooltip on the heading, not a line of text
+        self.assertEqual(self.panel.open_heading.toolTip(), "Spreadsheet files currently open on your computer.")
         self.assertEqual(self.panel.search.placeholderText(), "Search")
 
     def test_the_edge_line_is_one_pixel(self):
@@ -1602,13 +1602,6 @@ class TestToolTips(unittest.TestCase):
 
 
 class TestKeywordsLinkAndOverlay(PanelApp):
-    def test_the_keywords_link_opens_settings_on_the_keywords_page(self):
-        self.app.window.panel.keywords_requested.emit()
-        dialog = self.app._settings_dialog
-        self.assertIsNotNone(dialog)
-        self.assertEqual(dialog.nav.currentItem().data(Qt.ItemDataRole.UserRole), "Keywords")
-        dialog.close_now()
-
     def test_it_switches_an_already_open_settings_window_to_keywords(self):
         self.app.open_settings()
         self.app.open_settings("Keywords")
@@ -1714,11 +1707,6 @@ class TestEverythingClickableHasHoverText(unittest.TestCase):
         w.setup()
         w.panel.set_available([("a.xlsx", "/x/a.xlsx", None)])
         self.assertTrue(w.panel.available.item(0).toolTip())
-        self.assertEqual(w.panel.turn_intro.toolTip(), "")                      # (it appears only while a link is hovered)
-        w.panel.turn_intro.linkHovered.emit("keywords")
-        self.assertEqual(w.panel.turn_intro.toolTip(), "Open the Keywords settings.")
-        w.panel.turn_intro.linkHovered.emit("")
-        self.assertEqual(w.panel.turn_intro.toolTip(), "")
         from quill.ui.settings_dialog import SettingsDialog
         dialog = SettingsDialog(Settings.defaults())
         dialog.build()
@@ -1800,7 +1788,7 @@ class TestNextButtonLooksDisabled(unittest.TestCase):
             sheet = theme.stylesheet_for(dark)
             t = theme.colors_for(dark, "violet")
             start = sheet.index('QPushButton[outline="true"]:disabled')
-            self.assertIn(t["border"], sheet[start: sheet.index("}", start)])
+            self.assertIn(t["off_fill"], sheet[start: sheet.index("}", start)])
             self.assertGreater(start, sheet.index('QPushButton[outline="true"] {'))      # later, so it wins over the purple border
         w = MainWindow()
         w.setup()
@@ -1820,18 +1808,6 @@ class TestOverlayOrderAndWording(unittest.TestCase):
         order = [layout.itemAt(i).widget() for i in range(layout.count()) if layout.itemAt(i).widget() is not None]
         headings = [x.text() for x in order if isinstance(x, QLabel) and x.property("panelHeading")]
         self.assertEqual(headings, ["Headings Row", "Starting Row", "Sheet Layout"])
-
-    def test_the_turn_description_is_two_sentences_with_a_blank_line_between_and_a_link_to_settings_keywords(self):
-        w = MainWindow()
-        w.setup()
-        text = w.panel.turn_intro.text()
-        self.assertIn("is handled.<br><br>These settings can be voice controlled within", text)
-        self.assertTrue(text.endswith('<a href="keywords">Settings &gt; Keywords</a>.'))
-
-    def test_only_the_link_is_a_pointer_not_the_whole_description(self):
-        w = MainWindow()
-        w.setup()
-        self.assertNotEqual(w.panel.turn_intro.cursor().shape(), Qt.CursorShape.PointingHandCursor)
 
     def test_the_gear_is_an_icon_button_drawn_with_the_gear_shape(self):
         from quill.ui.icons import SHAPES
@@ -2826,7 +2802,7 @@ class TestTitleBarIconStates(unittest.TestCase):
         try:
             calls = []
             app.app._titlebar = type("T", (), {"set_extra_active": lambda s, i, on: calls.append((i, on)),
-                                               "set_panel_title": lambda s, t: None, "set_inset": lambda s, w: None})()
+                                               "set_panel_title": lambda s, t, tip="": None, "set_inset": lambda s, w: None})()
             app.app._panel_toggled(TURN_PAGE)
             app.app._panel_toggled(FILE_PAGE)
             app.app._panel_toggled("")

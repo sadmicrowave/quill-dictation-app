@@ -8,7 +8,7 @@ Quill works with the spreadsheet app **you already use**. You don't pick one or 
 |---|---|---|
 | **Excel** (Mac, Windows) | Live: rows appear as you speak | Nothing |
 | **Numbers** | Works on the Excel file (`.xlsx`) open in Numbers **and shows every row in Numbers as it is written** (no reload) | Open an `.xlsx` (for a `.numbers` sheet: **File > Export To > Excel** once). The first time, allow Quill to control Numbers |
-| **LibreOffice Calc** | Works on the open `.xlsx` file **and shows every row in LibreOffice as it is written** (no reload) | Open an `.xlsx`. Quill adds a small script (`quill_mirror.py`) to LibreOffice's user scripts folder the first time; it is safe to delete |
+| **LibreOffice Calc** | Works on the open `.xlsx` file **and shows every row in LibreOffice as it is written** (no reload) | Open an `.xlsx`. Quill adds a small script (`quill_mirror_v…py`) to LibreOffice's user scripts folder the first time (and replaces it when Quill updates it); it is safe to delete. The script also keeps a private link to LibreOffice open (on your computer only), so Quill **follows you to another sheet at once**, and when you add a new sheet it saves the file in LibreOffice for you and goes there. No click needed |
 | **Others, Google Drive copies** | Works on the `.xlsx` file | Reopen the file to see new rows |
 
 > 💡 Quill looks for an open sheet every few seconds. Open one at any time and Quill finds it.

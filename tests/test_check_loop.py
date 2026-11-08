@@ -339,7 +339,7 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             commands = []
             mirror = LibreOfficeMirror(runner=lambda args: commands.append(list(args)) or 0, base=pathlib.Path(folder),
-                                       running=lambda: True, soffice="/x/soffice", wait_s=0.1,
+                                       running=lambda: True, soffice="/x/soffice", wait_s=0.1, use_live=False,
                                        scripts_dir=pathlib.Path(folder) / "scripts")
             (pathlib.Path(folder) / "user").mkdir()
             for path in self.NASTY:
@@ -444,6 +444,78 @@ class TestSheetNotSavedYet(PanelApp):
         self.app.refresh_active_sheet()
         self.assertTrue(any("did not save" in text for _, text in self.logged))
         self.assertTrue(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+
+    # --- LibreOffice: saved and followed with no click -------------------------------------------------------------
+
+    def libreoffice_holds_the_file(self, saves):
+        self.app._program_holding = lambda path: "libreoffice"
+        self.app.lo_mirror = type("M", (), {"save": lambda s, path: saves.append(path) or True})()
+        self.looks = []
+        self.app.refresh_open_files = lambda **kw: self.looks.append(kw)
+        self.app.controller.refresh = lambda: self.looks.append("reread")
+
+    def test_a_new_sheet_in_libreoffice_is_saved_and_followed_without_any_click_or_alert(self):
+        saves = []
+        self.libreoffice_holds_the_file(saves)
+        self.app.run_in_background = lambda work, done: done(work())
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.assertEqual(len(saves), 1)
+        self.assertEqual(self.looks, ["reread", {"manual": False, "announce": False}])
+        self.assertEqual(self.app.window.file_alert, "")                  # no red dot: nothing asked of the user
+        self.assertFalse(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+        self.assertEqual([lvl for lvl, _ in self.logged if lvl == "warning"], [])
+        self.assertTrue(any("saved so Quill could follow" in text for _, text in self.logged))
+
+    def test_every_look_while_it_saves_waits_instead_of_saving_again_or_alerting(self):
+        saves, pending = [], []
+        self.libreoffice_holds_the_file(saves)
+        self.app.run_in_background = lambda work, done: pending.append((work, done))
+        for _ in range(3):
+            self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(self.app.window.file_alert, "")
+        work, done = pending[0]
+        done(work())
+        self.assertEqual(len(saves), 1)
+
+    def test_when_libreoffice_will_not_save_the_red_dot_asks_once_and_nothing_loops(self):
+        calls = []
+        self.app._program_holding = lambda path: "libreoffice"
+        self.app.lo_mirror = type("M", (), {"save": lambda s, path: calls.append(path) or False})()
+        self.app.run_in_background = lambda work, done: done(work())
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.assertEqual(len(calls), 1)                                   # it did not try again at every look
+        self.assertIn("Sheet Nine", self.app.window.file_alert)
+        self.assertTrue(self.app.window.panel.fact_rows["Sheet"][0]._dot)
+
+    def test_other_programs_still_ask_for_the_click(self):
+        saves = []
+        self.libreoffice_holds_the_file(saves)
+        self.app._program_holding = lambda path: "numbers"
+        self.app._apply_sheet("Sheet Nine", quiet=True)
+        self.assertEqual(saves, [])
+        self.assertIn("Sheet Nine", self.app.window.file_alert)
+
+    def test_libreoffice_telling_quill_makes_a_look_at_once(self):
+        looks = []
+        self.app.refresh_open_files = lambda **kw: looks.append(kw)
+        for kind in ("sheet", "opened", "closed"):
+            self.app._lo_event(kind, "file:///x.xlsx", "Sheet2")
+        self.assertEqual(len(looks), 3)
+        self.app._lo_event("lost", "", "")                                  # a dropped link is not news about a document
+        self.assertEqual(len(looks), 3)
+
+    def test_the_events_come_from_the_mirror_through_the_windows_own_thread(self):
+        from quill.bridge.libreoffice_mirror import LibreOfficeMirror
+        got = []
+        self.app.lo_mirror = LibreOfficeMirror(use_live=False)
+        self.app._wire_lo_events()
+        self.app.relay.lo_event.disconnect()
+        self.app.relay.lo_event.connect(lambda *a: got.append(a))
+        self.app.lo_mirror.on_event("sheet", "file:///x.xlsx", "Sheet2")            # (as the link's thread calls it)
+        self.assertEqual(got, [("sheet", "file:///x.xlsx", "Sheet2")])
 
     def test_following_the_program_to_another_sheet_puts_the_dot_on_the_folder_icon(self):
         answers = [True]

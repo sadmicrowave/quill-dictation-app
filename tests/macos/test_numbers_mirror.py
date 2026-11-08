@@ -444,7 +444,7 @@ class TestAskingWhetherAProgramHasTheFile(unittest.TestCase):
             return 0
 
         mirror = LibreOfficeMirror(runner=runner, scripts_dir=tmp / "LibreOffice/4/user/Scripts/python", base=tmp / "mirror",
-                                   running=lambda: True, soffice="/x/soffice", wait_s=1)
+                                   running=lambda: True, soffice="/x/soffice", wait_s=1, use_live=False)
         with unittest.mock.patch.dict("os.environ", {}, clear=False):
             os.environ.pop("QUILL_NO_HOSTS", None)
             self.assertTrue(mirror.has_document("/x/a.xlsx"))
@@ -489,7 +489,7 @@ class TestAskingWhichSheetIsOpen(unittest.TestCase):
             return 0
 
         mirror = LibreOfficeMirror(runner=runner, scripts_dir=tmp / "LibreOffice/4/user/Scripts/python", base=tmp / "mirror",
-                                   running=lambda: True, soffice="/x/soffice", wait_s=1)
+                                   running=lambda: True, soffice="/x/soffice", wait_s=1, use_live=False)
         self.assertEqual(mirror.active_sheet("/x/a.xlsx"), "Plants")
         self.assertTrue(seen["job"]["sheet"])
         self.assertEqual(seen["job"]["changes"], [])

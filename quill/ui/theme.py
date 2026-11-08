@@ -32,9 +32,11 @@ _SCHEMES = {
 #: Colour tokens per scheme. Warm neutrals with one accent.
 TOKENS = {
     "light": dict(bg="#FAF9F5", surface="#FFFFFF", hover="#F1EFE8", pressed="#E8E5DC",
-                  border="#E3E0D6", text="#1F1E1D", muted="#5E5C56", disabled="#B4B1A8", warn="#A8610C"),
+                  border="#E3E0D6", text="#1F1E1D", muted="#5E5C56", disabled="#B4B1A8", warn="#A8610C",
+                  off_fill="#E6E3DA", ok="#2E7D46", error="#C93C41"),
     "dark":  dict(bg="#262624", surface="#30302E", hover="#3A3A37", pressed="#444441",
-                  border="#44443F", text="#ECEBE6", muted="#A19F98", disabled="#6B6A64", warn="#F0B957"),
+                  border="#44443F", text="#ECEBE6", muted="#A19F98", disabled="#6B6A64", warn="#F0B957",
+                  off_fill="#3F3F3B", ok="#66D983", error="#F0777B"),
 }
 
 #: Accent colours: name -> (label, light scheme (accent, hover), dark scheme (accent, hover)).
@@ -262,12 +264,14 @@ QPushButton {{ background: {surf}; color: {t['text']}; border: 1px solid {t['acc
               border-radius: 8px; padding: {d['button']}; }}
 QPushButton:hover {{ background: {t['hover']}; }}
 QPushButton:pressed {{ background: {t['pressed']}; }}
-QPushButton:disabled {{ color: {t['disabled']}; background: {win}; border-color: {t['border']}; }}
 QPushButton:checked, QPushButton[accent="true"] {{ background: {t['accent']}; color: {t['on_accent']};
               border-color: {t['accent']}; font-weight: 600; }}
 QPushButton:checked:hover, QPushButton[accent="true"]:hover {{ background: {t['accent_hover']}; }}
 QPushButton[danger="true"] {{ background: #E5484D; color: #FFFFFF; border-color: #E5484D; }}
 QPushButton[danger="true"]:hover {{ background: #CD3A3F; border-color: #CD3A3F; }}
+/* One look for every disabled button (the primary and the red one included): a flat neutral fill, never the accent. Last, so it wins. */
+QPushButton:disabled, QPushButton[accent="true"]:disabled, QPushButton[danger="true"]:disabled, QPushButton:checked:disabled {{
+              color: {t['disabled']}; background: {t['off_fill']}; border-color: {t['off_fill']}; font-weight: 400; }}
 QLabel#confirmTitle {{ font-weight: 600; }}
 QPushButton::menu-indicator {{ width: 0; }}
 
@@ -363,7 +367,7 @@ QLabel[staticHeading="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight
 QLabel[info="true"] {{ background: {rgba(t['accent'], 0.12)}; color: {t['text']}; border: 1px solid {rgba(t['accent'], 0.38)};
               border-radius: 12px; padding: 8px 14px; }}
 QPushButton[outline="true"] {{ border: 1px solid {t['accent']}; }}
-QPushButton[outline="true"]:disabled {{ border-color: {t['border']}; }}
+QPushButton[outline="true"]:disabled {{ border-color: {t['off_fill']}; }}
 QPushButton[outline="true"]:hover {{ background: {rgba(t['accent'], 0.14)}; }}
 QLabel[headingToggle="true"]:hover {{ color: {t['accent']}; }}
 QTreeWidget#helpNav {{ background: transparent; border: none; outline: none; padding: 0; }}
@@ -401,6 +405,9 @@ QRadioButton::indicator:checked {{ background: {t['accent']}; border: 1px solid 
 QFrame#sidePanel {{ background: transparent; border: none; }}
 QFrame[panelEdge="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}
 QFrame[closedNote="true"] {{ background: {rgba(t['warn'], 0.14)}; border: 1px solid {rgba(t['warn'], 0.55)}; border-radius: 10px; }}
+QFrame[notice="ok"] {{ background: {rgba(t['ok'], 0.14)}; border: 1px solid {rgba(t['ok'], 0.55)}; border-radius: 10px; }}
+QFrame[notice="error"] {{ background: {rgba(t['error'], 0.14)}; border: 1px solid {rgba(t['error'], 0.55)}; border-radius: 10px; }}
+QLabel[noticeText="true"] {{ background: transparent; color: {t['text']}; }}
 QLabel[closedTitle="true"] {{ background: transparent; color: {t['text']}; font-weight: 600; }}
 QLabel[closedBody="true"] {{ background: transparent; color: {t['text']}; }}
 QFrame[panelRule="true"] {{ background: {rgba(t['text'], 0.14)}; border: none; }}

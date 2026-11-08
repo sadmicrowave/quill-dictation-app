@@ -392,6 +392,7 @@ class SettingsDialog:
 
         self._build_pages()
         self._fill_nav()
+        self._fit_minimum_width(dialog)
 
         footer = QWidget()
         footer.setObjectName("settingsFooter")
@@ -567,6 +568,12 @@ class SettingsDialog:
             first = next(t for _, titles in self._groups for t in titles if t in shown)
             self.nav.setCurrentRow(self._nav_row(first))
         return total
+
+    def _fit_minimum_width(self, dialog: QDialog) -> None:
+        """The window cannot be made narrower than its widest page needs, so no page ever needs a sideways scroll bar."""
+        widest = max((scroll.widget().minimumSizeHint().width() + scroll.verticalScrollBar().sizeHint().width()   # (a tall page
+                      for scroll in self.pages.findChildren(QScrollArea) if scroll.widget() is not None), default=0)   # also has its bar)
+        dialog.setMinimumWidth(max(dialog.minimumWidth(), SIDEBAR_WIDTH + widest))
 
     # ------------------------------------------------------------------ #
     # Pages                                                                #

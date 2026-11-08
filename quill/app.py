@@ -77,7 +77,7 @@ from quill.ui.main_window import MainWindow
 from quill.ui.menus import MenuState, QuillMenus
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog, open_log_folder
-from quill.ui.side_panel import APPEND_TO, FILE_PAGE, NEXT_ROW, TITLES, TURN_PAGE
+from quill.ui.side_panel import APPEND_TO, FILE_PAGE, NEXT_ROW, TITLE_TIPS, TITLES, TURN_PAGE
 from quill.ui.sorting_window import SortingWindow
 from quill.ui.support_dialog import SupportDialog
 from quill.ui.theme import (
@@ -116,6 +116,7 @@ class Relay(QObject):
     progress = Signal(int, int)
     model_ready = Signal(object)   # pathlib.Path on success, None on failure
     background_done = Signal(object, object)   # (callback, result) of a task that ran off the GUI thread
+    lo_event = Signal(str, str, str)           # (kind, document address, sheet) LibreOffice told Quill about (opened, closed, sheet, lost)
 
 
 log = logging.getLogger("quill.app")
@@ -200,6 +201,9 @@ class QuillApp:
         self.lo_mirror = lo_mirror or LibreOfficeMirror()      # ... and in an open LibreOffice Calc document
         self._mirror_warned = False
         self._lo_noted = False
+        self._auto_saving = False                    # LibreOffice is being saved so Quill can follow a new sheet
+        self._auto_save_failed = ""                  # the sheet LibreOffice would not save for (the red dot then asks the user)
+        self._wire_lo_events()
         self._settings_dialog: SettingsDialog | None = None    # the open Settings window, if any
         self._model_busy, self._model_note = False, ""          # the speech model download, shown in Settings
         self._quitting = False
@@ -303,6 +307,7 @@ class QuillApp:
         self.relay.partial.connect(self._on_partial_heard)
         self.relay.level.connect(self._on_level)
         self.relay.background_done.connect(lambda callback, result: callback(result))
+        self.relay.lo_event.connect(self._lo_event)
         self.relay.transcript.connect(self.controller.handle_transcript)
         self.relay.error.connect(self._on_error)
         self.relay.progress.connect(self._on_progress)
@@ -515,7 +520,7 @@ class QuillApp:
             if isinstance(result, MirrorResult) and result.ok:
                 if self.lo_mirror.installed_note and not self._lo_noted:
                     self._lo_noted = True
-                    self.window.append_log("Quill added a small script to LibreOffice (quill_mirror.py in its user scripts folder) so "
+                    self.window.append_log("Quill added a small script to LibreOffice (quill_mirror_v… in its user scripts folder) so "
                                            "rows can appear there as they are written. It is safe to delete.", safe="Added the LibreOffice script")
                 return                                              # the program has them: nothing to reload
             if isinstance(result, MirrorResult) and result.reason == "denied" and not self._mirror_warned:
@@ -650,11 +655,55 @@ class QuillApp:
         if not quiet and not changed:
             self.window.append_log(f"Checked: sheet '{bridge.active_sheet_name()}' is the one open.", safe="Checked the open sheet")
 
+    def _wire_lo_events(self) -> None:
+        """Let LibreOffice's news (from the live link's thread) reach the window's own thread through a signal."""
+        if hasattr(self.lo_mirror, "on_event"):                       # (a pretend mirror in tests has no link)
+            self.lo_mirror.on_event = lambda kind, url, sheet: self.relay.lo_event.emit(kind, url, sheet)
+
+    def _lo_event(self, kind: str, url: str, sheet: str) -> None:
+        """LibreOffice said something happened in it (a document opened or closed, or moved to another sheet): look at once,
+        instead of at the next timed look."""
+        if kind in ("opened", "closed", "sheet"):
+            self.refresh_open_files(manual=False, announce=False)
+        elif kind == "lost":
+            diagnostics.syslog().info("The LibreOffice live link was lost")
+            self.lo_mirror._live_logged = False                       # (said again when it comes back)
+
+    def _auto_follow_unsaved(self, sheet: str) -> bool:
+        """LibreOffice shows a sheet the saved file lacks: save it for the user and follow, with no click (True: that is under
+        way or was the answer; False: it would not save, so the red dot asks the user as before)."""
+        path = self.controller.bridge.workbook_path
+        if self._auto_saving:
+            return True
+        if self._program_holding(path) != "libreoffice" or self._auto_save_failed == sheet:
+            return False
+        self._auto_saving = True
+
+        def done(saved: bool | None) -> None:
+            self._auto_saving = False
+            if not saved:
+                self._auto_save_failed = sheet
+                self._warn_sheet_not_saved(sheet)                    # the older way: the red dot and the refresh icon
+                return
+            self._auto_save_failed = ""
+            self.window.append_log("LibreOffice was saved so Quill could follow the new sheet.",
+                                   safe="LibreOffice was saved to follow a new sheet")
+            try:
+                self.controller.refresh()
+            except BridgeError:
+                pass                                                 # (being written still: the next look picks it up)
+            self.refresh_open_files(manual=False, announce=False)
+
+        self.run_in_background(lambda: self.lo_mirror.save(path), done)
+        return True
+
     def _warn_sheet_not_saved(self, sheet: str) -> None:
         """The program shows a sheet that the saved file does not have (added or renamed since the last save)."""
         names = getattr(self.controller.bridge, "sheet_names", lambda: [])()
         if sheet in names or self._unsaved_sheet == sheet:
             return                                                       # (said once per sheet, not at every look)
+        if self._auto_follow_unsaved(sheet):
+            return
         self._unsaved_sheet = sheet
         program = next((f.app for f in self._open_files if f.path and os.path.realpath(f.path) == os.path.realpath(
             getattr(self.controller.bridge, "workbook_path", "") or "")), "your spreadsheet program")
@@ -676,6 +725,7 @@ class QuillApp:
 
     def _clear_sheet_alert(self) -> None:
         """The program and the file agree on the sheet again: put the red dot and the note away."""
+        self._auto_save_failed = ""
         if self._unsaved_sheet:
             self._unsaved_sheet = ""
             self.window.clear_file_alert()
@@ -1134,7 +1184,6 @@ class QuillApp:
         panel.new_row_requested.connect(self.controller.start_new_row)
         panel.start_row_changed.connect(self.controller.set_start_row)
         panel.headings_row_changed.connect(self.controller.set_headings_row)
-        panel.keywords_requested.connect(lambda: self.open_settings("Keywords"))
         panel.learned_counter = lambda path: len(self.settings.links.for_file(path, self.controller.vocab.headers()))
         panel.learned_words_requested.connect(lambda: self.open_settings("Learned Words", this_file=True))
         self._sync_turn_panel()
@@ -1222,7 +1271,7 @@ class QuillApp:
         self.request_menu_sync()
         self._show_titlebar_panel(page)
         if page and self._titlebar is not None:
-            self._titlebar.set_panel_title(TITLES[page])
+            self._titlebar.set_panel_title(TITLES[page], TITLE_TIPS[page])
         self._panel_toggled_pages(page)
 
     def _panel_toggled_pages(self, page: str) -> None:

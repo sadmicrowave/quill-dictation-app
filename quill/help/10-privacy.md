@@ -5,7 +5,7 @@ Quill is built so that your voice and your spreadsheets stay on your computer. T
 ## 🏠 What stays on your computer
 
 - **Your voice.** Speech is turned into text by a model that runs on your computer. No audio is recorded to a file and none is sent anywhere.
-- **Your spreadsheets.** Quill reads and writes only the files you open, using your spreadsheet program or the file itself. Their contents, names and sheet names are never sent.
+- **Your spreadsheets.** Quill reads and writes only the files you open, using your spreadsheet program or the file itself. Their contents, names and sheet names are never sent. Quill's link to LibreOffice (a small script inside it) works only on your own computer, is protected by a secret that only Quill's own folder holds, and answers nothing but a short list of fixed requests.
 - **What Quill remembers.** Your settings, the words Quill learned from you (*Settings > Learned Words*) and the speech models live in your own user folders. *Settings > Learned Words* lets you forget any of it.
 - **The log.** Quill keeps a small log of what it did (*Help > Open the Log Folder*) so problems can be understood. It can contain file names and words, so **the log itself is never sent**. Each line is labelled **USR** (may contain your things, stays here) or **SYS** (fixed wording only: counts, program names, error kinds). Only SYS lines can be part of a report.
 
