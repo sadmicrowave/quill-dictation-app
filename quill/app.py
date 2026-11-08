@@ -206,6 +206,9 @@ class QuillApp:
         self.numbers_link = numbers_link if numbers_link is not None else (link_class() if link_class else None)   # what is open in Numbers, watched
         self._mirror_warned = False
         self._lo_noted = False
+        self._numbers_timer = QTimer()               # a quicker look at Numbers, only while listening (ends with the listening)
+        self._numbers_timer.setInterval(self.NUMBERS_LOOK_MS)
+        self._numbers_timer.timeout.connect(self._look_at_numbers)
         self._lo_changed_timer = QTimer()            # coalesces LibreOffice's "edited" news into one re-read
         self._lo_changed_timer.setSingleShot(True)
         self._lo_changed_timer.timeout.connect(self._check_workbook_changes)
@@ -674,9 +677,8 @@ class QuillApp:
         """Let LibreOffice's news (from the live link's thread) reach the window's own thread through a signal."""
         if hasattr(self.lo_mirror, "on_event"):                       # (a pretend mirror in tests has no link)
             self.lo_mirror.on_event = lambda kind, url, sheet: self.relay.lo_event.emit(kind, url, sheet)
-        if self.numbers_link is not None:                             # Numbers' news is the same kind, from its own watcher
+        if self.numbers_link is not None:                             # Numbers' news is the same kind (it is made by the looks the app takes)
             self.numbers_link.on_event = lambda kind, url, sheet: self.relay.lo_event.emit(kind, url, sheet)
-            self.numbers_link.start()
 
     def _lo_event(self, kind: str, url: str, sheet: str) -> None:
         """LibreOffice said something happened in it (a document opened or closed, or moved to another sheet): look at once,
@@ -1384,6 +1386,8 @@ class QuillApp:
             live = bridge if hasattr(bridge, "open_workbook_files") else self._live_bridge_factory()
             return live.open_workbook_files()
 
+        if self.numbers_link is not None:
+            self.numbers_link.look()                                      # (news for the live link; nothing if Numbers is not running)
         running = self.hosts.running()
         self._viewer_running = bool(running)                              # (any spreadsheet program is running at all)
         found = self.hosts.open_files(excel_files, prefer=(active,) if active else (), running=running)
@@ -1986,8 +1990,7 @@ class QuillApp:
         log.info("shutting down")
         diagnostics.syslog().info("Shutting down")
         self._watcher.stop()
-        if self.numbers_link is not None:
-            self.numbers_link.stop()
+        self._numbers_timer.stop()
         self._flush_timer.stop()
         self._flush_held(final=True)
         self._host_reload.stop()
@@ -2218,7 +2221,21 @@ class QuillApp:
         except BridgeError:
             return "–"
 
+    #: Milliseconds between looks at Numbers while Quill is listening (the one check loop looks every few seconds otherwise).
+    NUMBERS_LOOK_MS = 3000
+
+    def _look_at_numbers(self) -> None:
+        """The quick look while listening: one small question to Numbers, off the window's thread, and only if it runs."""
+        if self.numbers_link is None or self._quitting:
+            self._numbers_timer.stop()
+            return
+        self.run_in_background(self.numbers_link.look, lambda _: None)
+
     def _set_listening(self, active: bool) -> None:
+        if active and self.numbers_link is not None and not os.environ.get("QUILL_NO_HOSTS"):
+            self._numbers_timer.start()
+        else:
+            self._numbers_timer.stop()
         self.request_menu_sync()
         self.window.set_listening_indicator(active)
         self.tray.set_listening(active)

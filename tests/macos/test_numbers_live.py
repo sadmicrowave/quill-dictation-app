@@ -193,6 +193,29 @@ class TestTheNews(unittest.TestCase):
         self.assertIsNone(self.link.request("state"))
         self.assertEqual(self.runner.calls, [])
 
+    def test_a_look_never_overlaps_another_and_nothing_runs_on_its_own(self):
+        import threading
+        self.assertFalse(hasattr(self.link, "start"))                                   # (no thread, no timer of its own)
+        inside = []
+
+        def slow_runner(args, timeout):
+            inside.append(self.link._looking.locked())
+            self.link.look()                                                            # a second look while one is under way
+            return 0, json.dumps(state({})), ""
+
+        self.link._run = slow_runner
+        self.link.look()
+        self.assertEqual(inside, [True])                                                 # (the second look did nothing)
+
+    def test_every_question_has_a_time_limit(self):
+        self.runner.answers.append({"ok": True})
+        self.link.request("state", timeout=3.0)
+        self.assertEqual(self.runner.calls[0][-2:], ["state", "{}"])
+        runner_timeouts = []
+        self.link._run = lambda args, timeout: (runner_timeouts.append(timeout), (0, '{"ok": true}', ""))[1]
+        self.link.request("read")
+        self.assertEqual(runner_timeouts, [numbers_live.ASK_TIMEOUT_S])
+
     def test_document_names(self):
         self.assertEqual(document_names("/a/Plants.xlsx"), ["Plants", "Plants.numbers"])
 
@@ -247,12 +270,24 @@ class TestTheBridge(unittest.TestCase):
             self.bridge()
         self.assertIn("Numbers is not answering", str(caught.exception))
 
-    def test_a_pop_up_menu_cannot_be_extended_from_quill(self):
+    def test_a_typed_menu_is_extended_in_the_file_because_numbers_will_not_say_what_a_menu_holds(self):
         bridge = self.bridge()
-        source = next(iter(bridge._discovery.sources.values()))
+        source = bridge._discovery.sources["Species"]
+        bridge._add_inline(source, "Orca")
+        rules = [r.formula1 for r in openpyxl.load_workbook(self.path)["Data"].data_validations.dataValidation]
+        self.assertEqual(rules, ['"Fern,Moss,Orca"'])
+        self.assertEqual(bridge._discovery.sources["Species"].items, ("Fern", "Moss", "Orca"))
+        self.assertNotIn("apply", [c for c, _ in self.asked])                              # (nothing is asked of Numbers)
+
+    def test_a_menu_the_file_does_not_have_is_left_alone_and_the_person_is_told(self):
+        bridge = self.bridge()
+        source = bridge._discovery.sources["Species"]
+        from quill.bridge.introspect import ListSource
+        stale = ListSource(column="Species", items=("Other", "Items"))
         with self.assertRaises(BridgeError) as caught:
-            bridge._add_inline(source, "Orca")
-        self.assertIn("pop-up menu", str(caught.exception))
+            bridge._add_inline(stale, "Orca")
+        self.assertIn("Add 'Orca' to the menu in Numbers", str(caught.exception))
+        self.assertEqual([r.formula1 for r in openpyxl.load_workbook(self.path)["Data"].data_validations.dataValidation], ['"Fern,Moss"'])
 
     def test_a_row_goes_into_numbers_and_then_into_the_file_in_one_save(self):
         bridge = self.bridge()
@@ -272,6 +307,29 @@ class TestTheBridge(unittest.TestCase):
         bridge._grid.write("Data", 2, 1, "Moss")
         bridge._after_write()
         self.assertEqual(openpyxl.load_workbook(self.path)["Data"]["A2"].value, "Moss")
+
+
+class TestWhoLooksAndWhen(PanelApp):
+    """The quick look at Numbers exists only while listening."""
+
+    def test_the_quick_timer_runs_only_while_listening_and_not_in_tests(self):
+        self.app.numbers_link = NumbersLink(runner=FakeRunner([]), running=lambda: False)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("QUILL_NO_HOSTS", None)
+            self.app._set_listening(True)
+            self.assertTrue(self.app._numbers_timer.isActive())
+            self.assertEqual(self.app._numbers_timer.interval(), self.app.NUMBERS_LOOK_MS)
+            self.app._set_listening(False)
+            self.assertFalse(self.app._numbers_timer.isActive())
+            os.environ["QUILL_NO_HOSTS"] = "1"
+            self.app._set_listening(True)
+            self.assertFalse(self.app._numbers_timer.isActive())
+        self.app._set_listening(False)
+
+    def test_the_timer_is_stopped_when_the_app_shuts_down(self):
+        self.app._numbers_timer.start()
+        self.app.shutdown()
+        self.assertFalse(self.app._numbers_timer.isActive())
 
 
 class TestAppTakesOverTheOpenNumbersDocument(PanelApp):

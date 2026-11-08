@@ -31,3 +31,7 @@ Size limits, a per-minute limit per connection (and an optional hourly one with 
 node --test relay/worker.test.mjs
 ```
 
+
+## Deploying changes
+
+The app only knows the relay's address, so **a new build of Quill never needs a redeploy**. Redeploy only when something in `relay/` changes (a new route, a changed limit). By hand: `npx wrangler deploy` in this folder. Automatically: `.github/workflows/relay.yml` tests and deploys it on every push to `main` that touches `relay/`; it needs the repository secrets `CLOUDFLARE_API_TOKEN` (an API token with "Edit Cloudflare Workers") and `CLOUDFLARE_ACCOUNT_ID`. The `GITHUB_TOKEN` secret stays in Cloudflare across deploys.

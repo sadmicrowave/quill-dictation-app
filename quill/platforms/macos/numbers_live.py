@@ -2,10 +2,15 @@
 
 Numbers cannot tell anyone what happens in it, and it keeps no connection open, so this is the Numbers counterpart of
 :mod:`quill.bridge.libreoffice_live` built the other way round: a small JavaScript for Automation script answers one
-question per launch (about 80 ms), and a watcher thread asks one cheap question a second while Numbers runs, then turns
-the differences into the same news LibreOffice sends (``opened``, ``closed``, ``sheet``, ``changed``, ``lost``).
+question per launch (about 0.1 s of processor time), and :meth:`NumbersLink.look` turns the difference between two answers
+into the same news LibreOffice sends (``opened``, ``closed``, ``sheet``, ``changed``, ``lost``).
 
-* :class:`NumbersLink`: the watcher and the questions; it looks like the LibreOffice link (``find``, ``request``,
+There is **no thread and no timer of its own** here. Who looks, and how often, is the app's decision (see ``QuillApp``): the
+one check loop looks every few seconds while Numbers runs, and a quicker look runs only while Quill is listening, which
+ends by itself when it goes quiet. Nothing is asked while Numbers is not running, a look never overlaps another, and every
+question has a time limit after which its process is killed.
+
+* :class:`NumbersLink`: the questions and the comparison of two looks; it looks like the LibreOffice link (``find``, ``request``,
   ``connected``) so the same bridge code works over it.
 * :class:`NumbersBridge`: the workbook bridge over the open document. Its drop-down rules come from the file (Numbers
   does not let a script read a pop-up menu's items); its headings, sheets, lists kept in cells and every row come live.
@@ -38,8 +43,6 @@ log = logging.getLogger("quill.numbers")
 
 #: Seconds one question may take (a big table can keep Numbers busy a moment).
 ASK_TIMEOUT_S = 8.0
-#: Seconds between two looks at what is open in Numbers.
-POLL_S = 1.0
 #: Failed looks in a row before the link is called lost.
 LOST_AFTER = 3
 #: ``Called with (kind, document name, sheet)``: ``opened``, ``closed``, ``sheet``, ``changed`` or ``lost``.
@@ -194,27 +197,24 @@ def document_names(path: str | os.PathLike) -> list[str]:
 
 
 class NumbersLink:
-    """Questions to Numbers, and what is open there, kept up to date by a watcher thread.
+    """Questions to Numbers, and what is open there as of the last look.
 
     Args:
-        on_event: Called on the watcher thread for every piece of news; keep it quick (the app hands it to the window's thread).
+        on_event: Called, on whatever thread made the look, for every piece of news; keep it quick (the app hands it to the window's thread).
         runner: ``runner(args, timeout)`` returning ``(exit code, output, error)`` (tests).
         running: Says whether Numbers runs (tests).
-        poll_s: Seconds between looks.
     """
 
     def __init__(self, on_event: EventCallback | None = None, runner: Runner | None = None,
-                 running: Callable[[], bool] | None = None, poll_s: float = POLL_S) -> None:
+                 running: Callable[[], bool] | None = None) -> None:
         self.on_event = on_event
         self._run = runner or _system
         self._running = running or _numbers_running
-        self._poll_s = poll_s
         self.docs: dict[str, dict] = {}
         self._connected = False
         self._failures = 0
         self._lock = threading.Lock()
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._looking = threading.Lock()                 # one look at a time
 
     # ------------------------------------------------------------------ #
 
@@ -222,18 +222,6 @@ class NumbersLink:
     def connected(self) -> bool:
         """Is Numbers answering? (False while it is not running, and after it stopped answering.)"""
         return self._connected
-
-    def start(self) -> None:
-        """Begin watching (once)."""
-        if os.environ.get("QUILL_NO_HOSTS") or self._thread is not None:
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._watch, name="quill-numbers-link", daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-        self._thread = None
 
     def find(self, urls: list[str]) -> dict | None:
         """What is known of the open document called any of *urls* (``{"url", "sheet", "sheets", "modified"}``), or None."""
@@ -258,12 +246,17 @@ class NumbersLink:
 
     # ------------------------------------------------------------------ #
 
-    def _watch(self) -> None:
-        while not self._stop.wait(self._poll_s):
-            self.look()
-
     def look(self) -> None:
-        """One look at what is open now (the watcher's step; also called directly in tests)."""
+        """One look at what is open now, and the news that follows from it. Does nothing if Numbers is not running (and says
+        so, once, if it just quit) or if another look is still under way. May take a moment: call it off the window's thread."""
+        if os.environ.get("QUILL_NO_HOSTS") or not self._looking.acquire(blocking=False):
+            return
+        try:
+            self._look()
+        finally:
+            self._looking.release()
+
+    def _look(self) -> None:
         if not self._running():
             self._news(None)
             return
@@ -421,7 +414,26 @@ class NumbersBridge(LibreOfficeBridge):
                 workbook.defined_names[name] = copy.copy(defined)
 
     def _add_inline(self, source, value: str) -> None:
-        raise BridgeError(f"Numbers does not let Quill change a pop-up menu. Add '{value}' to the '{source.column}' menu in Numbers.")
+        """Add *value* to a typed drop-down list. Numbers' scripting cannot read or change what a pop-up menu holds (checked:
+        its dictionary names the format "pop up menu" and nothing more), so the list is changed where it can be: in the
+        file's rule, which Numbers reads when the file is opened. The open document keeps its old menu until then (the value
+        itself can still be written into a cell)."""
+        if self._path is None or not self._path.is_file():
+            raise BridgeError(f"Quill can't change the '{source.column}' menu while Numbers has it open and the file isn't saved. "
+                              f"Add '{value}' to the menu in Numbers.")
+        try:
+            file = XlsxBridge(self._path)
+            file.connect()
+            file._discovery.sources[source.column] = source
+            file._add_inline(source, value)
+            changed = any(rule.type == "list" and (rule.formula1 or "").lstrip("=").strip() == '"' + ",".join([*source.items, value]) + '"'
+                          for ws in file._wb.worksheets for rule in ws.data_validations.dataValidation)
+            if not changed:
+                raise BridgeError(f"The '{source.column}' menu in the file is not the one Numbers shows. Add '{value}' to the menu in Numbers.")
+            file._after_write()
+        except OSError as exc:
+            raise BridgeError(f"Couldn't save the '{source.column}' menu to the file ({exc.strerror or exc}).") from exc
+        self._discovery.sources[source.column] = type(source)(column=source.column, items=(*source.items, value))
 
 
 __all__ = ["NumbersLink", "NumbersBridge", "NumbersGrid", "document_names", "change_fields", "DataValidation"]
