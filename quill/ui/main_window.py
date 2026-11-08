@@ -1593,20 +1593,18 @@ class MainWindow:
             self._keep_minimum()
 
     def set_last_saved(self, row: str, record: dict[str, object] | None = None) -> None:
-        """Show the last saved row as one line: ``Row 6 · 12 fields · Type: T-Shirt, …``.
+        """Show the last saved row as a short summary at the right of the footer: ``Row 7 · 4 Fields``.
 
-        However much was saved the line stays one line (it is shortened to fit);
-        the tooltip lists every field, capped at a screenful.
+        Only the count is shown; the tooltip lists every field (capped at a screenful).
         """
-        parts = [row] if row and row != "Row saved" else []        # (the label already says "Last Saved")
+        parts = [row] if row and row != "Row saved" else []
         tip = row
         if record:
             items = [(k, (v.isoformat() if isinstance(v, dt.date) else str(v)).replace("\n", ", ")) for k, v in record.items()]
             count = len(items)
-            parts.append(f"{count} field{'s' if count != 1 else ''}")
-            parts.append(", ".join(f"{k}: {v}" for k, v in items))
+            parts.append(f"{count} Field{'s' if count != 1 else ''}")
             tip = f"{row}\n{tooltip_lines(items)}"
-        self.last_label.setFullText("Last Saved: " + " · ".join(p for p in parts if p), tip)
+        self.last_label.setFullText(" · ".join(p for p in parts if p), tip)
         self._has_last_saved = True
         self._refresh_visibility()
 

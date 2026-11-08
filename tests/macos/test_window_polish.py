@@ -455,4 +455,4 @@ class TestLastSavedSitsAtTheRight(unittest.TestCase):
         self.assertAlmostEqual(top(w.last_label) + w.last_label.height() / 2,
                                top(w.log_toggle) + w.log_toggle.height() / 2, delta=3)   # the same line
         self.assertGreater(w.last_label.x(), w.log_toggle.x() + w.log_toggle.width() - 1)
-        self.assertEqual(w.last_label.full_text, "Last Saved: 1 field · Type: Fern")
+        self.assertEqual(w.last_label.full_text, "1 Field")
