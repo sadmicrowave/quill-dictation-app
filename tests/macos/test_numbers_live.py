@@ -92,6 +92,11 @@ class TestTheRealScript(unittest.TestCase):
         self.assertEqual(answer["docs"][0]["sheet"], "Data")
         self.assertEqual(answer["docs"][0]["sheets"], ["Data", "Config"])
 
+    def test_a_document_numbered_because_the_name_was_taken_is_the_same_document(self):
+        answer = run_script(a_book(title="Plants 2.numbers"), "used", {"urls": self.names, "sheet": "Data"})
+        self.assertEqual(answer, {"ok": True, "rows": 3, "cols": 3})                                  # "Plants 2.numbers" is "Plants"
+        self.assertEqual(run_script(a_book(title="Plants 2.numbers"), "state", {})["docs"][0]["url"], "Plants")
+
     def test_the_open_spreadsheets_list_comes_from_the_same_script(self):
         answer = run_script(a_book(), "list", {})
         self.assertEqual(answer["text"], "Plants.numbers\t\tData\n")                                 # name, file (none for an import), sheet

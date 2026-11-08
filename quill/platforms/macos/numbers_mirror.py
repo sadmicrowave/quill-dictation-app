@@ -46,6 +46,7 @@ function findDocument(app, docName) {
     let title = "";
     try { title = documents[i].name(); } catch (e) { continue; }
     if (title === docName || title.indexOf(docName + ".") === 0) return documents[i];
+    if (title.slice(-8) === ".numbers" && title.slice(0, -8).replace(/ \d+$/, "") === docName) return documents[i];   // "name 2.numbers"
   }
   return null;
 }

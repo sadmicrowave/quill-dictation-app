@@ -53,7 +53,9 @@ Runner = Callable[[list[str], float], tuple[int, str, str]]
 
 #: The script. ``argv[0]`` is the command, ``argv[1]`` its arguments as JSON; the answer is JSON.
 SCRIPT = r"""
-function titleKey(title) { return title.slice(-8) === ".numbers" ? title.slice(0, -8) : title; }
+// An imported workbook is called by its file name; once edited it is "name.numbers", and when a "name.numbers" already exists on the
+// disk Numbers numbers the new one ("name 2.numbers"): all of these are the same document.
+function titleKey(title) { return title.slice(-8) === ".numbers" ? title.slice(0, -8).replace(/ \d+$/, "") : title; }
 
 function findDocument(app, names) {
   const documents = app.documents();
