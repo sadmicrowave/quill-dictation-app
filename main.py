@@ -53,6 +53,10 @@ def main(argv: list[str] | None = None) -> int:
         from quill.demo import Demo
         quill.demo = Demo(quill)
         quill.window.add_demo_menu(quill.demo.scenarios())
+        autorun = os.environ.get("QUILL_DEMO_AUTORUN")             # (for a recording: the promo story starts by itself this many seconds after launch)
+        if autorun:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(int(float(autorun) * 1000), quill.demo.promo)
     return app.exec()
 
 
