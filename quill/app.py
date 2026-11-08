@@ -191,6 +191,7 @@ class QuillApp:
         hosts: SpreadsheetHosts | None = None,
         mirror=None,
         lo_mirror: LibreOfficeMirror | None = None,
+        numbers_link=None,
     ) -> None:
         self.qapp = qapp
         self._file_chooser = file_chooser or self._ask_for_file
@@ -200,6 +201,8 @@ class QuillApp:
         self._host: HostApp | None = None            # the program showing the file Quill is writing to
         self.mirror = mirror or platforms.offered(sys.platform, "NumbersMirror", NullMirror)()      # shows each turn's cells in an open Numbers document as they are written
         self.lo_mirror = lo_mirror or LibreOfficeMirror()      # ... and in an open LibreOffice Calc document
+        link_class = platforms.offered(sys.platform, "NumbersLink", None)
+        self.numbers_link = numbers_link if numbers_link is not None else (link_class() if link_class else None)   # what is open in Numbers, watched
         self._mirror_warned = False
         self._lo_noted = False
         self._lo_changed_timer = QTimer()            # coalesces LibreOffice's "edited" news into one re-read
@@ -669,6 +672,9 @@ class QuillApp:
         """Let LibreOffice's news (from the live link's thread) reach the window's own thread through a signal."""
         if hasattr(self.lo_mirror, "on_event"):                       # (a pretend mirror in tests has no link)
             self.lo_mirror.on_event = lambda kind, url, sheet: self.relay.lo_event.emit(kind, url, sheet)
+        if self.numbers_link is not None:                             # Numbers' news is the same kind, from its own watcher
+            self.numbers_link.on_event = lambda kind, url, sheet: self.relay.lo_event.emit(kind, url, sheet)
+            self.numbers_link.start()
 
     def _lo_event(self, kind: str, url: str, sheet: str) -> None:
         """LibreOffice said something happened in it (a document opened or closed, or moved to another sheet): look at once,
@@ -691,26 +697,44 @@ class QuillApp:
         """Working on an .xlsx that LibreOffice has open and tells Quill about: work in the open document itself, so a new
         sheet, a heading just typed or a list just added is seen at once, and no file is written under LibreOffice.
         (Not while listening: the switch stops listening, and it happens at the next look instead.)"""
+        link = self.lo_mirror.live_link if hasattr(self.lo_mirror, "live_link") else None
+        return self._attach_live("libreoffice", link, file_addresses, LibreOfficeBridge,
+                                 lambda: self.lo_mirror.live_link,
+                                 "Rows appear there and stay unsaved until you save in LibreOffice.")
+
+    def _attach_live_if_open_in_numbers(self) -> bool:
+        """The same for Numbers: its open document is read and written directly (its sheet, headings and lists are live),
+        and each row is also saved to the .xlsx file, which Numbers does not hold open."""
+        link = self.numbers_link
+        factory = platforms.offered(sys.platform, "NumbersBridge", None)
+        if link is None or factory is None:
+            return False
+        from quill.platforms.macos.numbers_live import document_names     # (the names Numbers gives a document)
+        return self._attach_live("numbers", link, document_names, factory, lambda: self.numbers_link,
+                                 "Rows appear there as you speak, and are saved to the .xlsx file too.")
+
+    def _attach_live(self, program: str, link, addresses, bridge_class, link_of, advice: str) -> bool:
+        """Swap the file bridge for *bridge_class* over *link* when *program* has the file open and the link knows the document."""
         bridge = self.controller.bridge
         if (not self.connected or not isinstance(bridge, XlsxBridge) or isinstance(bridge, (CsvBridge, LibreOfficeBridge))
                 or not bridge.workbook_path or self.controller.session.listening):
             return False
-        link = self.lo_mirror.live_link if hasattr(self.lo_mirror, "live_link") else None
         path = bridge.opened_as or bridge.workbook_path
-        if link is None or self._program_holding(path) != "libreoffice" or link.find(file_addresses(path)) is None:
+        if link is None or self._program_holding(path) != program or link.find(addresses(path)) is None:
             return False
         bridge.flush()                                                  # anything held goes to the file first
         self.controller.detach()
         self.connected = False
         self._set_listening(False)
-        self.controller.bridge = LibreOfficeBridge(path, lambda: self.lo_mirror.live_link)
+        self.controller.bridge = bridge_class(path, link_of)
         self.connect_workbook(quiet=True)
         if not self.connected:                                          # it would not answer: back to the file as it was
             self.controller.bridge = bridge
             self.connect_workbook(quiet=True)
             return False
-        self.window.append_log(f"LibreOffice has {pathlib.Path(path).name} open, so Quill now works in it directly. Rows appear there "
-                               "and stay unsaved until you save in LibreOffice.", safe="A file is open in LibreOffice: working in it directly")
+        program_name = getattr(bridge_class, "PROGRAM", "LibreOffice")
+        self.window.append_log(f"{program_name} has {pathlib.Path(path).name} open, so Quill now works in it directly. {advice}",
+                               safe=("A file is open in %s: working in it directly", program_name))
         return True
 
     def _back_to_the_file(self) -> None:
@@ -720,8 +744,9 @@ class QuillApp:
             return
         path = bridge.workbook_path
         if self.open_workbook_file(path, remember=False):
-            self.window.append_log("The link to LibreOffice was lost, so Quill works on the saved file again. Rows written in "
-                                   "LibreOffice and not saved there are not in the file.", "warning", safe="The LibreOffice link was lost: back on the file")
+            program = getattr(bridge, "PROGRAM", "LibreOffice")
+            self.window.append_log(f"The link to {program} was lost, so Quill works on the saved file again. Rows written in "
+                                   f"{program} and not saved there are not in the file.", "warning", safe=("The %s link was lost: back on the file", program))
 
     def _auto_follow_unsaved(self, sheet: str) -> bool:
         """LibreOffice shows a sheet the saved file lacks: save it for the user and follow, with no click (True: that is under
@@ -1469,6 +1494,7 @@ class QuillApp:
             self._start_wanted = False
             self._attach_live_if_open_in_excel()
             self._attach_live_if_open_in_libreoffice()
+            self._attach_live_if_open_in_numbers()
             self.controller.set_listening(True)
             return
         path = self.controller.bridge.workbook_path
@@ -1525,6 +1551,7 @@ class QuillApp:
                 self._attach_found_file()
         self._attach_live_if_open_in_excel()
         self._attach_live_if_open_in_libreoffice()
+        self._attach_live_if_open_in_numbers()
         self._show_open_files()
         for callback in thens:
             callback()
@@ -1899,6 +1926,8 @@ class QuillApp:
         log.info("shutting down")
         diagnostics.syslog().info("Shutting down")
         self._watcher.stop()
+        if self.numbers_link is not None:
+            self.numbers_link.stop()
         self._flush_timer.stop()
         self._flush_held(final=True)
         self._host_reload.stop()

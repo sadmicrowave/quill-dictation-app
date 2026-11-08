@@ -6,6 +6,7 @@ from quill.platforms.macos.processes import running_executables
 from quill.platforms.macos.speech import render_clip, speak
 from quill.platforms.macos.bridge import MacBridge
 from quill.platforms.macos.hosts import MacHosts
+from quill.platforms.macos.numbers_live import NumbersBridge, NumbersLink
 from quill.platforms.macos.numbers_mirror import NumbersMirror
 
 
@@ -31,4 +32,4 @@ def make_hosts(run, native: bool = False) -> MacHosts:
     return MacHosts(run, native)
 
 
-__all__ = ["GLOBAL_MENU_BAR", "OPACITY_THINS_BACKGROUND", "open_file", "render_clip", "speak", "chrome", "excel_com", "libreoffice", "running_executables", "MacBridge", "MacHosts", "NumbersMirror", "make_hosts", "new_live_bridge"]
+__all__ = ["GLOBAL_MENU_BAR", "OPACITY_THINS_BACKGROUND", "open_file", "render_clip", "speak", "chrome", "excel_com", "libreoffice", "running_executables", "MacBridge", "MacHosts", "NumbersMirror", "NumbersLink", "NumbersBridge", "make_hosts", "new_live_bridge"]

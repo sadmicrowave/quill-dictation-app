@@ -32,7 +32,7 @@ from quill.bridge.libreoffice_live import LiveLink
 from quill.bridge.libreoffice_mirror import change_fields, file_addresses
 from quill.bridge.xlsx_bridge import INLINE_LIST_LIMIT, XlsxBridge
 
-NOT_ANSWERING = "LibreOffice is not answering. Check that it is open, then try again."
+NOT_ANSWERING = "{program} is not answering. Check that it is open, then try again."
 #: Seconds to wait for LibreOffice on a question the dictation waits for.
 ASK_TIMEOUT_S = 5.0
 
@@ -45,28 +45,29 @@ class LiveDocument:
         urls: The ``file:///`` addresses LibreOffice may know the document by.
     """
 
-    def __init__(self, link: Callable[[], LiveLink | None], urls: list[str]) -> None:
-        self._link, self.urls = link, urls
+    def __init__(self, link: Callable[[], LiveLink | None], urls: list[str], program: str = "LibreOffice") -> None:
+        self._link, self.urls, self.program = link, urls, program
+        self._not_answering = NOT_ANSWERING.format(program=program)
 
     def info(self) -> dict:
         """What the link knows of the document now (``sheet``, ``sheets``, ``modified``)."""
         link = self._link()
         doc = link.find(self.urls) if link is not None and link.connected else None
         if doc is None:
-            raise BridgeError(NOT_ANSWERING)
+            raise BridgeError(self._not_answering)
         return doc
 
     def ask(self, command: str, timeout: float = ASK_TIMEOUT_S, **fields) -> dict:
         link = self._link()
         if link is None or not link.connected:
-            raise BridgeError(NOT_ANSWERING)
+            raise BridgeError(self._not_answering)
         answer = link.request(command, timeout=timeout, urls=self.urls, **fields)
         if answer is None:
-            raise BridgeError(NOT_ANSWERING)
+            raise BridgeError(self._not_answering)
         if not answer.get("ok"):
             if answer.get("error") == "nodoc":
-                raise BridgeError("The document is no longer open in LibreOffice.")
-            raise BridgeError(f"LibreOffice could not do that ({answer.get('error', 'unknown')}).")
+                raise BridgeError(f"The document is no longer open in {self.program}.")
+            raise BridgeError(f"{self.program} could not do that ({answer.get('error', 'unknown')}).")
         return answer
 
     def is_open(self) -> bool:
@@ -180,6 +181,10 @@ class LibreOfficeBridge(XlsxBridge):
         link: Returns the live link, or None.
     """
 
+    #: The program's name in what the user reads, and the grid class over its questions (a program with the same kind of link sets its own).
+    PROGRAM = "LibreOffice"
+    GRID = None                                                       # (None: LibreOfficeGrid, which is defined above)
+
     def __init__(self, path: str | pathlib.Path, link: Callable[[], LiveLink | None]) -> None:
         super().__init__(path)
         self._link = link
@@ -203,13 +208,13 @@ class LibreOfficeBridge(XlsxBridge):
     def connect(self, workbook: str | None = None) -> None:
         if self._path is None:
             raise BridgeError("No workbook path given")
-        document = LiveDocument(self._link, file_addresses(self._path))
+        document = LiveDocument(self._link, self.addresses, self.PROGRAM)
         if not document.is_open():
-            raise BridgeError(NOT_ANSWERING)
+            raise BridgeError(NOT_ANSWERING.format(program=self.PROGRAM))
         self._doc = document
         self._wb = None
         self._name = self._path.name
-        self._grid = LibreOfficeGrid(document)
+        self._grid = (self.GRID or LibreOfficeGrid)(document)
         self._list_edits = []
         self._load_structure()
 
@@ -259,5 +264,5 @@ class LibreOfficeBridge(XlsxBridge):
             raise BridgeError(f"The '{source.column}' list is too long to extend inline (the limit is {INLINE_LIST_LIMIT} characters).")
         answer = self._doc.ask("inline_list", old=list(source.items), new=new_items)
         if not answer.get("changed"):
-            raise BridgeError(f"LibreOffice could not find the '{source.column}' list to extend.")
+            raise BridgeError(f"{self.PROGRAM} could not find the '{source.column}' list to extend.")
         self._discovery.sources[source.column] = ListSource(column=source.column, items=tuple(new_items))

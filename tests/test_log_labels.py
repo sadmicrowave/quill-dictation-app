@@ -17,6 +17,7 @@ SAFE_ARGUMENTS = (
     r"^len\(.+\)$", r"^count$", r"^seconds$",              # counts
     r"^diagnostics\.exc_kind\(\w+\)$", r"^exc_kind\(\w+\)$",   # an error's class name
     r"^host_app\.name$",                                   # the spreadsheet program's name (a fixed list)
+    r"^program(_name)?$",                                  # the same, from a live bridge's PROGRAM (LibreOffice / Numbers)
     r"^(self\.)?QUALITY_LABELS\[.+\]$",                    # Quick / Broad / Careful
     r"^event\.kind$",                                      # a fixed list of event kinds
     r"^__version__$", r"^platform\.\w+\(\)$",              # version and system facts
