@@ -194,8 +194,54 @@ class Demo:
         for text, gap in (("color", 1300), ("yes", 1000), ("ignore", 1000), ("same as l", 1000)):
             steps.append((gap, lambda: self._speak(650)))
             steps.append((700, lambda text=text: self._say_command(text)))
+        # A third row: a slurred "kinda" is heard glued to the new colour. The user trims it off in the Term Helper (Quill learns to
+        # skip it from then on) and takes the suggested short code for the size; then a word is taught by voice and Settings shows both.
+        row_three = "kinda cream sweater small carhartt good condition"
+        words_three = row_three.split()
+        steps.append((2200, lambda: self._speak(3300)))
+        for n in range(1, len(words_three) + 1):
+            steps.append((420 if n > 1 else 200, lambda n=n: self._partial(" ".join(words_three[:n]))))
+        steps.append((500, lambda: self._phrase(row_three)))
+        steps.append((900, lambda: self._speak(800)))
+        steps.append((500, lambda: self._say_command("next row")))
+        steps.append((2600, lambda: self._trim_term("kinda cream", "cream", "Color")))      # (the helper has been open for a moment)
+        steps.append((1900, lambda: self._click_term("small", "match_button")))
+        steps.append((2400, lambda: self._speak(1500)))
+        steps.append((300, lambda: self._say_command("sold means sale date")))
+        steps.append((2600, lambda: self._app.open_settings("Learned Words")))
         self._steps(steps)
-        self._hush(45_000)
+        self._hush(90_000)
+
+    def _row(self, words: str):
+        return next((r for r in self._app.sorting.rows if r.key[1] == words), None)
+
+    def _trim_term(self, heard: str, kept: str, column: str) -> None:
+        """Take words off the front of a term in the Term Helper's text box one letter at a time, pick its column and press Add."""
+        row = self._row(heard)
+        if row is None:
+            return
+        cut = heard[: len(heard) - len(kept)]
+        row.edit.setFocus()
+        for n in range(1, len(cut) + 1):
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda n=n: row.edit.setText(heard[n:].lstrip().capitalize() if n == len(cut) else heard[n:]))
+            timer.start(150 * n)
+            self._timers.append(timer)
+        pick = QTimer()
+        pick.setSingleShot(True)
+        pick.timeout.connect(lambda: row.combo.setCurrentIndex(max(row.combo.findData(column), 0)))
+        pick.start(150 * len(cut) + 500)
+        press = QTimer()
+        press.setSingleShot(True)
+        press.timeout.connect(row.add_button.click)
+        press.start(150 * len(cut) + 1300)
+        self._timers += [pick, press]
+
+    def _click_term(self, heard: str, button: str) -> None:
+        row = self._row(heard)
+        if row is not None:
+            getattr(row, button).click()
 
     # ------------------------------------------------------------------ #
 

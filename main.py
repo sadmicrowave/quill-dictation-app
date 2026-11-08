@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         from quill.demo import Demo
         quill.demo = Demo(quill)
         quill.window.add_demo_menu(quill.demo.scenarios())
+        quill.window.set_log_collapsed(True)                       # (the log is shut by default in a shipped app: a demo or recording must not show it open)
         autorun = os.environ.get("QUILL_DEMO_AUTORUN")             # (for a recording: the promo story starts by itself this many seconds after launch)
         if autorun:
             from PySide6.QtCore import QTimer
