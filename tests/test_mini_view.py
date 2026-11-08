@@ -101,10 +101,21 @@ class TestMiniWindow(unittest.TestCase):
         self.assertEqual(reported[-1], (380, 280))
 
     def test_a_remembered_mini_size_is_used(self):
-        self.w.restore_mini_size(390, 310)
+        self.w.restore_mini_size(520, 310)
         self.w.set_mini(True)
         _app.processEvents()
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (390, 310))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (520, 310))
+
+    def test_the_mini_view_is_never_too_narrow_for_the_words_on_its_button(self):
+        self.w.restore_mini_size(300, 300)                           # a size remembered from before: too narrow for the button's words
+        self.w.set_listening_indicator(True)
+        self.w.set_mini(True)
+        _app.processEvents()
+        button = self.w.toggle_button
+        self.assertGreaterEqual(self.w.widget.width(), MainWindow.MINI_WIDTH)
+        self.assertGreaterEqual(button.width(), button.minimumWidth())
+        words = button.text_pill
+        self.assertGreaterEqual(words.width(), words.sizeHint().width())                # "Stop Listening" shows whole
 
     def test_the_wave_is_still_there_in_the_mini_view(self):
         self.w.set_mini(True)

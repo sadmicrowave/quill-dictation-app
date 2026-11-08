@@ -530,7 +530,7 @@ class MainWindow:
     # ------------------------------------------------------------------ #
 
     #: Width of the mini view, and how long a resize animation takes (ms; 0 = jump straight there).
-    MINI_WIDTH = 380
+    MINI_WIDTH = 470
     animation_ms = 240
 
     @property

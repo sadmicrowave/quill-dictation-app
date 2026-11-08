@@ -19,7 +19,7 @@ from collections import deque
 
 import shiboken6
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, QVariantAnimation
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from quill.ui.icons import make_icon
@@ -400,7 +400,21 @@ class ListenButton(QPushButton):
         self.setAccessibleName(text)
         height = self.HEIGHT_COMPACT if self._compact else self.HEIGHT
         self.icon_label.setFixedSize(height - 10, height - 10)
+        self.setMinimumWidth(self._least_width(height) if self._compact else 0)      # (the mini view: the words never get squeezed)
         self.screen.setFixedHeight(height - 14)                    # (the screen sits inside the capsule, not against its edges)
+
+    #: The narrowest the screen (the voice lines and the count-down) may be squeezed to.
+    SCREEN_LEAST = 64
+
+    def _least_width(self, height: int) -> int:
+        """The narrowest the button may be so its words always show whole (the longest of Start / Stop Listening and the not-connected
+        notice, in the bold the words are drawn in), with the tile before them and a little screen after."""
+        font = self.text_pill.font()
+        font.setWeight(QFont.Weight.DemiBold)
+        metrics = QFontMetrics(font)
+        words = max(metrics.horizontalAdvance(t) for t in (self._idle_text, self._live_text, NOT_CONNECTED_TEXT))
+        margins = self._row.contentsMargins()
+        return margins.left() + (height - 10) + 2 * self._row.spacing() + words + 6 + self.SCREEN_LEAST + margins.right()
 
     def _fills(self) -> dict:
         """Every colour for the state now (the capsule, the disc, the screen, the lines, the words)."""
