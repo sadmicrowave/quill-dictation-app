@@ -291,7 +291,7 @@ class ListenButton(QPushButton):
         row = QHBoxLayout(self)
         row.setSizeConstraint(QHBoxLayout.SizeConstraint.SetNoConstraint)
         row.setContentsMargins(6, 0, 12, 0)
-        row.setSpacing(10)
+        row.setSpacing(16)                                 # (room around the words: after the tile, and before the screen)
         row.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self.text_pill, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self.screen, 1, Qt.AlignmentFlag.AlignVCenter)
@@ -409,7 +409,7 @@ class ListenButton(QPushButton):
             disc = _alpha(on_accent, 0.22)
             screen = _mix(accent, "#000000", 0.30)
             screen_fg = QColor("#FFFFFF") if _luminance(screen) < 0.5 else QColor("#1F1E1D")
-            screen_rim = _alpha(LIVE_GREEN, 0.85) if state == "live" else _alpha(screen_fg, 0.35)
+            screen_rim = _alpha(screen_fg, 0.35)
         return dict(capsule=capsule, rim=rim, fg=fg, disc=disc, screen=screen, screen_fg=screen_fg, screen_rim=screen_rim,
                     state=state)
 
@@ -419,15 +419,15 @@ class ListenButton(QPushButton):
         state = f["state"]
         label_style = f"color: {f['fg'].name(QColor.NameFormat.HexArgb)}; background: transparent; font-weight: 600;"
         self.text_pill.setStyleSheet(label_style)
-        self.countdown_label.setStyleSheet(f"color: {_alpha(f['screen_fg'], 0.92).name(QColor.NameFormat.HexArgb)}; background: transparent; "
-                                           f"font-weight: 600; font-style: normal;")
+        self.countdown_label.setStyleSheet(f"color: {_alpha(f['screen_fg'], 0.6).name(QColor.NameFormat.HexArgb)}; background: transparent; "
+                                           f"font-size: 11px; font-weight: 500; font-style: normal;")
         self.icon_label.fill = f["disc"]
         self.icon_label.track = _alpha(f["fg"], 0.25)
         icon = make_icon("stop" if self._active else "play", f["fg"].name(), 14)
         self.icon_label.setPixmap(icon.pixmap(14, 14))
         self.screen.fill = f["screen"]
         self.screen.rim = f["screen_rim"]
-        self.screen.rim_width = 1.6 if state == "live" else 1.2
+        self.screen.rim_width = 1.2
         line = _alpha(f["screen_fg"], 0.95 if state == "live" else 0.55)
         self.wave.set_colors(line, _alpha(f["screen_fg"], 0.55 if state != "none" else 0.45), _alpha(f["screen_fg"], 0.07))
         for part in (self.icon_label, self.screen, self.wave):

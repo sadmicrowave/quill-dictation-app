@@ -2,7 +2,7 @@
 
 ## 🚦 Quick checks
 
-1. Is the button the darker purple, with a green edge on its screen and moving lines in it? (A flat line and the words *Start Listening* mean Quill is not listening.)
+1. Is the button the darker purple, with moving lines in its screen? (A flat line and the words *Start Listening* mean Quill is not listening.)
 2. Is a spreadsheet open? (the button does not say *File not connected*)
 3. Is Quill allowed to use the **microphone**?
 4. Is your volume up?
