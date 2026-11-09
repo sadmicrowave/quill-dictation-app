@@ -6,7 +6,7 @@ import math
 
 import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter
+from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -360,14 +360,16 @@ class FooterButton(QPushButton):
         icon_name: The icon (see :mod:`quill.ui.icons`).
         tip: What it does; the words are kept off the button, so the footer can hold several.
         checkable: True for a button that stays selected while its panel is open; False for one that only acts when pressed.
+        idle_opacity: How strongly the icon is drawn while the button is off (1 = full); it is drawn in full while selected.
     """
 
     SIZE = (30, 22)
     ICON = 14
 
-    def __init__(self, icon_name: str, tip: str = "", checkable: bool = True) -> None:
+    def __init__(self, icon_name: str, tip: str = "", checkable: bool = True, idle_opacity: float = 1.0) -> None:
         super().__init__()
         self._icon_name = icon_name
+        self._idle_opacity = idle_opacity
         self._colors = ("#1F1E1D", "#FFFFFF")                         # icon colour plain, and while selected (on the accent)
         self.setProperty("footerButton", True)
         self.setCheckable(checkable)
@@ -384,7 +386,19 @@ class FooterButton(QPushButton):
         self._draw()
 
     def _draw(self) -> None:
-        self.setIcon(make_icon(self._icon_name, self._colors[1] if self.isChecked() else self._colors[0], self.ICON))
+        on = self.isChecked()
+        icon = make_icon(self._icon_name, self._colors[1] if on else self._colors[0], self.ICON)
+        if not on and self._idle_opacity < 1.0:
+            pixmap = icon.pixmap(self.ICON, self.ICON)
+            faded = QPixmap(pixmap.size())
+            faded.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(faded)
+            painter.setOpacity(self._idle_opacity)
+            painter.drawPixmap(0, 0, pixmap)
+            painter.end()
+            faded.setDevicePixelRatio(pixmap.devicePixelRatio())
+            icon = QIcon(faded)
+        self.setIcon(icon)
 
 
 class HeadingToggle(QLabel):

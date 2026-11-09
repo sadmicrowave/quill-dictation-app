@@ -458,7 +458,7 @@ class MainWindow:
         # the log while that is open), so no gaps open between sections and "Log" stays at the bottom.
         # The window's footer sits below everything, log included: icon buttons of one size on the left (the bug opens and closes
         # the log; others can join it), the last saved row on the right.
-        self.log_toggle = FooterButton("bug", "Show the log")
+        self.log_toggle = FooterButton("bug", "Show the log", idle_opacity=0.45)
         self.log_toggle.toggled.connect(self._log_button_toggled)        # (toggled, not clicked: an accessibility "press" only toggles)
         self.export_log_button = FooterButton("export", "Export the log to a text file", checkable=False)
         self.export_log_button.setVisible(False)                          # shown only while the log is open
