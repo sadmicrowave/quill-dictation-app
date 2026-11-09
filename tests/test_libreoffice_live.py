@@ -3,6 +3,7 @@
 import json
 import pathlib
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -121,6 +122,7 @@ class TestServerAndLink(LiveCase):
         doc = link.find(file_addresses(self.path))
         self.assertEqual((doc["sheet"], doc["sheets"]), ("Sheet1", ["Sheet1", "Sheet2"]))
 
+    @unittest.skipIf(sys.platform == "win32", "Windows keeps it private with the profile folder's access list, not with file modes")
     def test_the_secret_and_address_are_in_a_file_only_the_owner_can_read(self):
         self.link()
         mode = (self.base / "live.json").stat().st_mode & 0o777

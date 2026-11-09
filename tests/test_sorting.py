@@ -247,7 +247,7 @@ class TestSortingWindow(unittest.TestCase):
         self.win.show()
         need = self.win.widget.minimumWidth()
         self.assertEqual(self.win.widget.width(), need)
-        self.assertLess(need, 520)
+        self.assertLess(need, 600)           # (about 520 on a Mac; Windows text is wider)
 
     def test_it_is_a_normal_window_that_stays_when_focus_leaves(self):
         from PySide6.QtCore import Qt
