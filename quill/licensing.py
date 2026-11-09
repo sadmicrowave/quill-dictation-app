@@ -49,7 +49,7 @@ DEFAULT_ACCOUNT: dict[str, object] = {
 }
 
 
-class NotAvailable(Exception):
+class NotAvailableError(Exception):
     """The licence service can't be reached or is not set up yet."""
 
 
@@ -111,7 +111,7 @@ class UnavailableTransport:
     """The stand-in used until the service exists: every request says it is not available."""
 
     def request(self, base_url: str, path: str, payload: dict, token: str = "") -> dict:  # nosec B107
-        raise NotAvailable("The account service is not available yet.")
+        raise NotAvailableError("The account service is not available yet.")
 
 
 @dataclass(frozen=True)
@@ -198,7 +198,7 @@ class LicenseService:
         return Standing(bool(account["email"]), str(account["email"]), plan, status, text, str(account["renews_on"]))
 
     # ------------------------------------------------------------------ #
-    # Actions (each raises NotAvailable until the service exists)          #
+    # Actions (each raises NotAvailableError until the service exists)          #
     # ------------------------------------------------------------------ #
 
     def sign_in(self, email: str, password: str) -> Standing:
@@ -235,7 +235,7 @@ class LicenseService:
 
     def _send(self, path: str, payload: dict, token: str = "") -> dict:  # nosec B107
         if not self.configured:
-            raise NotAvailable("The account service is not set up yet.")
+            raise NotAvailableError("The account service is not set up yet.")
         return self._transport.request(str(self.account["service_url"]), path, payload, token)
 
     def _apply(self, answer: dict, email: str = "") -> None:

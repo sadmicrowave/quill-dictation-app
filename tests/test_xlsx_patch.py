@@ -9,7 +9,7 @@ import zipfile
 import openpyxl
 
 from quill.bridge.xlsx_bridge import XlsxBridge
-from quill.bridge.xlsx_patch import Unsupported, patch_package
+from quill.bridge.xlsx_patch import UnsupportedError, patch_package
 from tests.fixtures import make_workbook
 
 
@@ -167,13 +167,13 @@ class TestFallsBackToAFullSave(PatchCase):
         self.assertFalse(self.bridge._grid.restructured)
 
     def test_patch_package_refuses_when_nothing_to_do(self):
-        with self.assertRaises(Unsupported):
+        with self.assertRaises(UnsupportedError):
             patch_package(self.path, self.path, self.bridge._wb, [])
 
     def test_a_package_that_is_not_a_zip(self):
         bad = self.path.with_name("bad.xlsx")
         bad.write_bytes(b"not a zip")
-        with self.assertRaises(Unsupported):
+        with self.assertRaises(UnsupportedError):
             patch_package(bad, bad, self.bridge._wb, [("Inventory", 4, 1)])
 
 

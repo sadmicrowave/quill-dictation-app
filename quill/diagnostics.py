@@ -23,6 +23,7 @@ import platform
 import re
 import threading
 import traceback
+import contextlib
 
 LOG_NAME = "quill.log"
 CRASH_NAME = "crash.flag"                    # written when the program fails; the next start offers a report
@@ -79,10 +80,8 @@ class _Formatter(logging.Formatter):
 
 def mark_crash(folder: pathlib.Path | None = None) -> None:
     """Remember that the program failed, so the next start can offer to send a report."""
-    try:
+    with contextlib.suppress(OSError):
         ((folder or log_dir()) / CRASH_NAME).write_text("1", encoding="utf-8")
-    except OSError:
-        pass
 
 
 def take_crash(folder: pathlib.Path | None = None) -> bool:

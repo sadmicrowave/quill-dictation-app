@@ -42,6 +42,7 @@ def demo_requested(flag: bool = False) -> bool:
 def make_demo_workbook(folder: pathlib.Path | None = None) -> pathlib.Path:
     """Write the sample workbook (an Inventory sheet with a few finished rows, and a Config sheet of lists)."""
     folder = pathlib.Path(folder) if folder else pathlib.Path(tempfile.mkdtemp(prefix="quill-demo-"))
+    folder.mkdir(parents=True, exist_ok=True)
     path = folder / "Demo Inventory.xlsx"
     wb = openpyxl.Workbook()
     inventory = wb.active

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QSizePolicy, QSlider, QSpinBox, QStyle,
     QStyledItemDelegate, QStyleOptionSlider, QToolButton, QVBoxLayout, QWidget,

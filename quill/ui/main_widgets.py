@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from quill.ui.widgets import CHIP_HEIGHT
 
 #: Where the hint text of an empty Voice Stream box and an empty row grid starts: (left, top, right, bottom) inside the box.
 PLACEHOLDER_MARGINS = (6, 4, 4, 0)

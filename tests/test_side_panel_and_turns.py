@@ -1766,7 +1766,7 @@ class TestStartupMessages(PanelApp):
 
 class TestNotConnectedPill(unittest.TestCase):
     def test_it_says_file_not_connected_without_the_word_stream(self):
-        from quill.ui.main_window import NOT_CONNECTED_TEXT
+        from quill.ui.listen_button import NOT_CONNECTED_TEXT
         self.assertEqual(NOT_CONNECTED_TEXT, "File not connected")
         w = MainWindow()
         w.setup()
@@ -2624,7 +2624,7 @@ class TestSettingsRound5(unittest.TestCase):
 
     def test_the_speech_model_has_its_own_page_under_voice_and_commands(self):
         from quill.ui.settings_dialog import GROUPS
-        caption, pages = GROUPS[1]
+        caption, pages = GROUPS[2]
         self.assertEqual(caption, "Voice and Commands")
         self.assertIn("Speech Model", pages)
         self.assertNotIn("Speech Model", [r.title for r in self.d._page_rows["General"]])

@@ -41,7 +41,7 @@ class TestLayout(DialogCase):
     def test_sidebar_has_a_search_box_and_grouped_pages(self):
         self.assertEqual(self.d.search.placeholderText(), "Search")
         names = [self.d.nav.item(i).text() for i in range(self.d.nav.count())]
-        self.assertEqual(names, ["Preferences", "General", "Appearance", "Sounds",
+        self.assertEqual(names, ["About", "About", "Preferences", "General", "Appearance", "Sounds",
                                  "Voice and Commands", "Keywords", "Speech Model", "Learned Words"])
         self.assertEqual([t for _, titles in GROUPS for t in titles], list(self.d._nav_items))
 
@@ -64,7 +64,7 @@ class TestLayout(DialogCase):
                           "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur", "Term Helper Follows Window Opacity",
                           "Confirm With", "Sound Set", "Spoken Word", "Stop Listening When Quiet",
                           "Quiet Time Before Stopping", "Quick", "Broad", "Careful", "Sounds for Term Helper Actions",
-                          "Corrections Before Learning", "Ask Before Learning"})
+                          "Corrections Before Learning", "Ask Before Learning", "Focus On Answers While Sorting", "Version", "Reduce Background Noise", "Words To Skip"})
 
     def test_the_keyword_table_gets_the_spare_height(self):
         self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))
@@ -103,7 +103,7 @@ class TestSearch(DialogCase):
         self.assertEqual(self.visible_pages(), [])
         self.assertEqual(self.d.filter(""), len(self.d.rows) + 1)           # +1: the keyword editor
         self.assertFalse(self.d.empty_label.isVisible())
-        self.assertEqual(self.visible_pages(), ["General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words"])
+        self.assertEqual(self.visible_pages(), ["About", "General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words"])
         self.assertTrue(all(not r.isHidden() for r in self.d.rows))
 
     def test_search_finds_a_keyword_phrase(self):
@@ -113,8 +113,8 @@ class TestSearch(DialogCase):
 
     def test_captions_hide_with_their_pages(self):
         self.d.filter("blur")
-        self.assertTrue(self.d._captions[1].isHidden())                      # "Voice and Commands"
-        self.assertFalse(self.d._captions[0].isHidden())
+        self.assertTrue(self.d._captions[2].isHidden())                      # "Voice and Commands"
+        self.assertFalse(self.d._captions[1].isHidden())                     # "Preferences"
 
     def test_typing_in_the_box_filters(self):
         self.d.search.setText("opacity")

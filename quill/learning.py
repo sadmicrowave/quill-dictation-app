@@ -143,7 +143,7 @@ class LinkStore:
         link = self._count(word, column, path, name)
         if link is None:
             return None
-        for other in [l for (w, c), l in self._links.items() if w == link.word and c != column and not l.taught]:
+        for other in [other_link for (w, c), other_link in self._links.items() if w == link.word and c != column and not other_link.taught]:
             other.count -= 1
             if other.count <= 0:
                 del self._links[(other.word, other.column)]
@@ -238,7 +238,7 @@ class LinkStore:
     def to_list(self) -> list[dict]:
         """Plain data for the settings file, oldest first."""
         out = []
-        for link in sorted(self._links.values(), key=lambda l: l.serial):
+        for link in sorted(self._links.values(), key=lambda each: each.serial):
             out.append({
                 "word": link.word, "shown": link.shown, "column": link.column, "count": link.count, "taught": link.taught,
                 "used": link.used,

@@ -7,7 +7,6 @@ do not use it on a workbook that is open and unsaved in Excel.
 
 from __future__ import annotations
 import logging
-import os
 import pathlib
 import subprocess
 import sys
@@ -19,8 +18,8 @@ from quill.bridge.base import BridgeError, BridgeLockedError
 from quill.bridge.grid import OpenpyxlGrid
 from quill.bridge.grid_bridge import GridBridge
 from quill.bridge.introspect import ListSource, discover
-from quill.bridge.xlsx_patch import Unsupported, patch_package
-from quill.diagnostics import exc_kind, syslog
+from quill.bridge.xlsx_patch import UnsupportedError, patch_package
+from quill.diagnostics import syslog
 
 log = logging.getLogger("quill.xlsx")
 #: Seconds the system's ``open`` may take to hand a file over (it only asks; it never waits for the program).
@@ -128,7 +127,7 @@ class XlsxBridge(GridBridge):
             try:
                 patch_package(self._path, target, self._wb, grid.unsaved, self._list_edits)
                 return
-            except Unsupported as why:
+            except UnsupportedError as why:
                 log.info("Saving %s in full instead of patching it: %s", self._path.name, why)
                 syslog().info("Saving a file in full instead of patching it")
         self._wb.save(target)

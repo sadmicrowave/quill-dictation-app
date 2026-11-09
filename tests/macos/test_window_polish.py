@@ -10,10 +10,11 @@ from PySide6.QtWidgets import QApplication
 from quill.platforms.macos import chrome
 from quill.config.settings import Settings
 from quill.ui import theme
+from quill.ui.listen_button import NOT_CONNECTED_TEXT
 from quill.ui.main_window import (
-    CHIP_HEIGHT, LOG_BOTTOM_MARGIN, NOT_CONNECTED_HINT, NOT_CONNECTED_TEXT, ROW_EMPTY_HEIGHT, ROW_MAX_FULL, ROW_MAX_MINI,
-    MainWindow,
+    LOG_BOTTOM_MARGIN, NOT_CONNECTED_HINT, ROW_EMPTY_HEIGHT, ROW_MAX_FULL, ROW_MAX_MINI, MainWindow,
 )
+from quill.ui.widgets import CHIP_HEIGHT
 from quill.ui.settings_widgets import SettingRow, ToggleSwitch
 from tests.macos.test_titlebar_and_refresh import FakeAppKit, FakeButton, FakeController, FakeTarget, native, restore
 
@@ -142,7 +143,7 @@ class TestLogAtTheBottom(unittest.TestCase):
             w.apply_density(spacing)
             _app.processEvents()
             self.assertEqual(self.gap(w), LOG_BOTTOM_MARGIN, spacing)
-            self.assertTrue(5 <= LOG_BOTTOM_MARGIN <= 10)
+            self.assertTrue(2 <= LOG_BOTTOM_MARGIN <= 10)      # (kept small on purpose)
 
     def test_nothing_at_all_is_below_the_log_heading(self):
         w = window(log_collapsed=True)

@@ -14,9 +14,7 @@ import logging
 import os
 import pathlib
 import re
-import subprocess
 import sys
-import tempfile
 import threading
 from typing import Callable
 from quill import platforms

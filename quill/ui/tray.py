@@ -18,7 +18,7 @@ import pathlib
 import sys
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QRectF, Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 from quill import platforms

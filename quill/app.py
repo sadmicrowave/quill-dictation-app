@@ -75,10 +75,10 @@ from quill.ui.chrome import (
     set_dock_icon_visible,
     watch_native_window,
 )
-from quill.ui.confirm import confirm, info
+from quill.ui.confirm import confirm
 from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import MainWindow
-from quill.ui.menus import MenuState, QuillMenus
+from quill.ui.menus import QuillMenus
 from quill.ui.player import SoundPlayer
 from quill.ui.settings_dialog import SettingsDialog, open_log_folder
 from quill.ui.side_panel import APPEND_TO, FILE_PAGE, NEXT_ROW, TITLE_TIPS, TITLES, TURN_PAGE
@@ -1942,7 +1942,8 @@ class QuillApp:
             on_update=self.update_now, on_about_seen=self._about_seen)
         self._show_model_state()
         self._settings_dialog.open(on_done=self._settings_closed)
-        self._settings_dialog.set_about_badge(bool(getattr(self, "_update_unseen", False)))
+        if self._settings_dialog is not None:                 # (it can already be closed again, and forgotten, by now)
+            self._settings_dialog.set_about_badge(bool(getattr(self, "_update_unseen", False)))
         if this_file:
             self._settings_dialog.show_learned_for_file()
         elif page:

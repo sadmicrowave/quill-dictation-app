@@ -14,7 +14,7 @@ import logging
 import re
 import threading
 from typing import Callable
-from quill.diagnostics import exc_kind, syslog
+from quill.diagnostics import syslog
 
 log = logging.getLogger("quill.whisper")
 

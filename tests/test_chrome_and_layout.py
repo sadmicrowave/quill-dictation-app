@@ -242,7 +242,7 @@ class TestCollapsibleLog(unittest.TestCase):
 
     def test_the_export_button_shows_only_while_the_log_is_open(self):
         self.assertTrue(self.w.export_log_button.isVisible())
-        self.assertEqual(self.w.export_log_button.toolTip(), "Export the log to a text file")
+        self.assertEqual(self.w.export_log_button.toolTip(), "Export the log to a text file.")
         self.w.log_toggle.click()
         self.assertFalse(self.w.export_log_button.isVisible())
         self.w.log_toggle.click()

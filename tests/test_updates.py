@@ -115,7 +115,7 @@ class TestInTheApp(PanelApp):
         self.app.window.append_log = lambda text, level="info", **kw: self.logged.append(text)
         self.titlebar = FakeTitlebar()
         self.app._titlebar = self.titlebar
-        patches = [mock.patch("quill.app.info", lambda *a, **k: self.shown.append(("info", a))),
+        patches = [mock.patch("quill.ui.confirm.info", lambda *a, **k: self.shown.append(("info", a))),
                    mock.patch("quill.app.confirm", lambda parent, title, message, action, *a, **k: self.shown.append(("confirm", title, message)) or False)]
         for patch in patches:
             patch.start()

@@ -13,11 +13,10 @@ import logging
 import os
 import pathlib
 import subprocess
-import sys
 
 from quill.bridge.hosts import SUPPORTED_SUFFIXES, files_named_in
 from quill.platforms.macos.processes import running_executables as _native_list
-from quill.diagnostics import exc_kind, syslog
+from quill.diagnostics import syslog
 
 log = logging.getLogger("quill.hosts")
 
@@ -155,7 +154,7 @@ class MacHosts:
         if app.key == "numbers":
             out = self._numbers_list() if self._numbers_list is not None else self._run(["osascript", "-l", "JavaScript", "-e", _LIST_NUMBERS])
             found: list[tuple[pathlib.Path, str]] = []
-            for line in (l.strip("\r\n") for l in out.splitlines() if l.strip()):
+            for line in (text.strip("\r\n") for text in out.splitlines() if text.strip()):
                 parts = line.split("\t")
                 name, path, sheet = (parts + ["", ""])[:3] if len(parts) > 1 else ("", parts[0], "")
                 if path.strip():

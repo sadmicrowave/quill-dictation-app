@@ -38,6 +38,7 @@ from quill.bridge.libreoffice_bridge import LibreOfficeBridge, LibreOfficeGrid, 
 from quill.bridge.libreoffice_mirror import change_fields
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.diagnostics import exc_kind, syslog
+import contextlib
 
 log = logging.getLogger("quill.numbers")
 
@@ -408,16 +409,12 @@ class ScriptWorker:
         if proc is None:
             return
         for stream in (proc.stdin, proc.stdout):
-            try:
+            with contextlib.suppress(OSError):
                 stream.close()
-            except OSError:
-                pass
         if proc.poll() is None:
             proc.kill()
-        try:
+        with contextlib.suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            pass
 
 
 class WorkerRunner:

@@ -57,7 +57,6 @@ from quill.ui.chrome import set_always_on_top
 from quill.ui.hints import fill_missing_tips
 from quill.ui.icons import make_icon
 from quill.ui.main_widgets import (
-    CHIP_HEIGHT,
     PLACEHOLDER_MARGINS,
     ROW_EMPTY_HEIGHT,
     STREAM_MIN_HEIGHT,
@@ -67,7 +66,7 @@ from quill.ui.main_widgets import (
 )
 from quill.ui.theme import install_backdrop, apply_spacing
 from quill.ui.side_panel import FILE_PAGE, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH, SidePanel, TURN_PAGE
-from quill.ui.listen_button import NOT_CONNECTED_TEXT, ListenButton
+from quill.ui.listen_button import ListenButton
 from quill.ui.widgets import (
     ElidedLabel,
     FooterButton,
@@ -460,7 +459,7 @@ class MainWindow:
         # the log; others can join it), the last saved row on the right.
         self.log_toggle = FooterButton("bug", "Show the log", idle_opacity=0.45)
         self.log_toggle.toggled.connect(self._log_button_toggled)        # (toggled, not clicked: an accessibility "press" only toggles)
-        self.export_log_button = FooterButton("export", "Export the log to a text file", checkable=False)
+        self.export_log_button = FooterButton("export", "Export the log to a text file.", checkable=False)
         self.export_log_button.setVisible(False)                          # shown only while the log is open
         self.export_log_button.clicked.connect(self.export_log)
         self.footer = QFrame(central)                       # (placed by hand at the bottom: the layout only reserves its room)

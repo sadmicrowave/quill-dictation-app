@@ -329,10 +329,11 @@ class Session:
             return []
 
         result = parse(text, self.vocab, self.today(), filled=set(self.record))
-        for column, value in result.updates.items():
+        for column, heard in result.updates.items():
             if column in result.additive and column in self.record:           # another value for it: under the first
-                value = merge_values(self.record[column], value)
-            self.record[column] = value
+                self.record[column] = merge_values(self.record[column], heard)
+            else:
+                self.record[column] = heard
         for column, words in result.context.items():
             if column in result.updates:
                 self.context[column] = words

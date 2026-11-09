@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from quill.config.settings import Settings
-from quill.licensing import (DEFAULT_ACCOUNT, LicenseService, NotAvailable, clean_account, is_secure_url)
+from quill.licensing import (DEFAULT_ACCOUNT, LicenseService, NotAvailableError, clean_account, is_secure_url)
 
 
 class FakeTransport:
@@ -78,12 +78,12 @@ class TestEntitlement(Case):
 
 class TestActions(Case):
     def test_nothing_works_until_a_secure_service_is_configured(self):
-        with self.assertRaises(NotAvailable):
+        with self.assertRaises(NotAvailableError):
             self.service().sign_in("a@b.co", "x")
 
     def test_the_default_transport_reports_not_available(self):
         self.settings.account["service_url"] = "https://api.example.com"
-        with self.assertRaises(NotAvailable):
+        with self.assertRaises(NotAvailableError):
             self.service().refresh()
 
     def test_sign_in_records_the_plan_and_sign_out_forgets_it(self):

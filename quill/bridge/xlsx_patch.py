@@ -7,7 +7,7 @@ the style table when a cell needs wrapping or a date format, and inline validati
 package (stored formula results, charts, pictures, macros, other sheets) is copied across untouched.
 
 What cannot be patched safely (a formula or other special cell being replaced, hidden rows from a filter, a part in
-an unexpected layout) raises :class:`Unsupported`, and the caller saves the whole workbook the old way instead.
+an unexpected layout) raises :class:`UnsupportedError`, and the caller saves the whole workbook the old way instead.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from defusedxml import ElementTree as SafeET
-from openpyxl.styles.numbers import BUILTIN_FORMATS, BUILTIN_FORMATS_REVERSE
+from openpyxl.styles.numbers import BUILTIN_FORMATS_REVERSE
 from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.utils.datetime import to_excel
 
@@ -47,7 +47,7 @@ _FORMULA1 = re.compile(r"(<formula1>)(.*?)(</formula1>)", re.S)
 _ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
-class Unsupported(Exception):
+class UnsupportedError(Exception):
     """The change cannot be patched into the package; save the whole workbook instead."""
 
 
@@ -63,13 +63,13 @@ def patch_package(source: Path, target: Path, wb, cells: Iterable[tuple[str, int
         list_edits: (old, new) inline validation list formulas, quotes included, as they were and should now be.
 
     Raises:
-        Unsupported: nothing was written; save the whole workbook instead.
+        UnsupportedError: nothing was written; save the whole workbook instead.
         OSError: the target could not be written (another program has it open).
     """
     cells = set(cells)
     list_edits = list(list_edits)
     if not cells and not list_edits:
-        raise Unsupported("nothing to patch")
+        raise UnsupportedError("nothing to patch")
     try:
         with zipfile.ZipFile(source) as package:
             parts = _sheet_parts(package)
@@ -82,7 +82,7 @@ def patch_package(source: Path, target: Path, wb, cells: Iterable[tuple[str, int
             for name in {*by_sheet, *(n for n in parts if list_edits)}:
                 part = parts.get(name)
                 if part is None:
-                    raise Unsupported(f"no part for sheet {name!r}")
+                    raise UnsupportedError(f"no part for sheet {name!r}")
                 original = xml = _read(package, part)
                 if name in by_sheet:
                     xml = _edit_cells(xml, wb[name], by_sheet[name], styles)
@@ -92,21 +92,21 @@ def patch_package(source: Path, target: Path, wb, cells: Iterable[tuple[str, int
                 if xml != original:
                     changed[part] = xml.encode("utf-8")
             if list_edits and not matched:
-                raise Unsupported("the inline list was not found in the sheets")
+                raise UnsupportedError("the inline list was not found in the sheets")
             if styles.changed:
                 changed["xl/styles.xml"] = styles.render().encode("utf-8")
             for part, data in changed.items():
                 SafeET.fromstring(data)                               # each part still has to be well-formed XML
             data = _rebuilt(package, changed)
     except (zipfile.BadZipFile, KeyError, FileNotFoundError) as exc:
-        raise Unsupported(f"the package could not be read: {exc}") from exc
+        raise UnsupportedError(f"the package could not be read: {exc}") from exc
     _replace(target, data, like=source)
 
 
 def _read(package: zipfile.ZipFile, name: str) -> str:
     info = package.getinfo(name)
     if info.file_size > MAX_PART_BYTES:
-        raise Unsupported(f"{name} is too large to patch")
+        raise UnsupportedError(f"{name} is too large to patch")
     return package.read(info).decode("utf-8-sig")
 
 
@@ -131,17 +131,17 @@ def _edit_cells(xml: str, ws, positions: list[tuple[int, int]], styles: "_Styles
     """The sheet's XML with each of *positions* rewritten from the cell in *ws*."""
     start = xml.find("<sheetData")
     if start < 0:
-        raise Unsupported("the sheet has no sheetData")
+        raise UnsupportedError("the sheet has no sheetData")
     open_end = xml.find(">", start)
     if open_end < 0:
-        raise Unsupported("the sheet data is not well-formed")
+        raise UnsupportedError("the sheet data is not well-formed")
     if xml[open_end - 1] == "/":                                      # <sheetData/>: an empty sheet
         head, body, tail = xml[:start], "", xml[open_end + 1:]
         opening, closing = "<sheetData>", "</sheetData>"
     else:
         end = xml.find("</sheetData>", open_end)
         if end < 0:
-            raise Unsupported("the sheet data is not closed")
+            raise UnsupportedError("the sheet data is not closed")
         head, body, tail = xml[:start], xml[open_end + 1:end], xml[end + len("</sheetData>"):]
         opening, closing = xml[start:open_end + 1], "</sheetData>"
 
@@ -157,7 +157,7 @@ def _edit_cells(xml: str, ws, positions: list[tuple[int, int]], styles: "_Styles
         attrs = dict(_ATTR.findall(match.group(1)))
         number = int(attrs.get("r", "0"))
         if number <= last_row:
-            raise Unsupported("rows are not in order")
+            raise UnsupportedError("rows are not in order")
         last_row = number
         while pending and pending[0] < number:                        # new rows that belong before this one
             row = pending.pop(0)
@@ -181,7 +181,7 @@ def _edit_row(match: re.Match, attrs: dict[str, str], edits: dict[int, tuple[int
               styles: "_Styles") -> str:
     inner = match.group(2) or ""
     if "<extLst" in inner:
-        raise Unsupported("a row has extensions")
+        raise UnsupportedError("a row has extensions")
     tag = match.group(1)
     tag = re.sub(r'\s+spans="[^"]*"', "", tag)                        # (an optional hint; stale once cells move)
     pieces: list[str] = []
@@ -192,10 +192,10 @@ def _edit_row(match: re.Match, attrs: dict[str, str], edits: dict[int, tuple[int
         cell_attrs = dict(_ATTR.findall(cell.group(1)))
         ref = _REF.match(cell_attrs.get("r", ""))
         if not ref:
-            raise Unsupported("a cell has no reference")
+            raise UnsupportedError("a cell has no reference")
         col = column_index_from_string(ref.group(1))
         if col <= last_col:
-            raise Unsupported("cells are not in order")
+            raise UnsupportedError("cells are not in order")
         last_col = col
         for new in sorted(c for c in edits if c < col and c not in placed):
             pieces.append(_render(ws, edits[new], None, styles))
@@ -204,7 +204,7 @@ def _edit_row(match: re.Match, attrs: dict[str, str], edits: dict[int, tuple[int
         pos = cell.end()
         if col in edits:
             if "<f" in (cell.group(2) or ""):
-                raise Unsupported("a formula cell is being replaced")
+                raise UnsupportedError("a formula cell is being replaced")
             pieces.append(_render(ws, edits[col], cell_attrs.get("s"), styles))
             placed.add(col)
         else:
@@ -236,17 +236,17 @@ def _render(ws, position: tuple[int, int], style: str | None, styles: "_Styles")
         body, type_attr = f"<v>{int(bool(value))}</v>", ' t="b"'
     elif kind == "n" and isinstance(value, (int, float)) and not isinstance(value, bool):
         if value != value or value in (float("inf"), float("-inf")):
-            raise Unsupported("a number that is not finite")
+            raise UnsupportedError("a number that is not finite")
         body, type_attr = f"<v>{value!r}</v>", ""
     elif kind == "d":
         try:
             serial = to_excel(value, ws.parent.epoch)
         except (TypeError, ValueError, OverflowError) as exc:
-            raise Unsupported(f"a date that cannot be stored: {exc}") from exc
+            raise UnsupportedError(f"a date that cannot be stored: {exc}") from exc
         body, type_attr = f"<v>{serial!r}</v>", ""
         number_format = cell.number_format
     else:
-        raise Unsupported(f"a {kind!r} cell")                         # formulas and errors: openpyxl's own save
+        raise UnsupportedError(f"a {kind!r} cell")                         # formulas and errors: openpyxl's own save
     wrap = bool(cell.alignment and cell.alignment.wrap_text)
     index = styles.derive(int(style) if style else 0, wrap=wrap, number_format=number_format)
     attr = f' s="{index}"' if index else ""
@@ -309,7 +309,7 @@ class _Styles:
         self._xml = xml
         block = re.search(r"<cellXfs\b[^>]*>(.*?)</cellXfs>", xml, re.S)
         if not block:
-            raise Unsupported("no cell formats in the style table")
+            raise UnsupportedError("no cell formats in the style table")
         self._block = block
         self._xfs = [m.group(0) for m in _XF.finditer(block.group(1))]
         self._known = len(self._xfs)
@@ -326,7 +326,7 @@ class _Styles:
     def derive(self, base: int, wrap: bool, number_format: str | None) -> int:
         """The index of the format *base* with wrapped text and/or *number_format*, added if it does not exist."""
         if base >= self._known:
-            raise Unsupported("a cell uses a format that is not in the style table")
+            raise UnsupportedError("a cell uses a format that is not in the style table")
         key = (base, wrap, number_format)
         if key in self._made:
             return self._made[key]
@@ -387,7 +387,7 @@ class _Styles:
             else:
                 root = re.search(r"<styleSheet\b[^>]*>", xml)
                 if not root:
-                    raise Unsupported("the style table has no root element")
+                    raise UnsupportedError("the style table has no root element")
                 xml = xml[:root.end()] + f'<numFmts count="{total}">{added}</numFmts>' + xml[root.end():]
         return xml
 
@@ -408,7 +408,7 @@ def _rebuilt(package: zipfile.ZipFile, changed: dict[str, bytes]) -> bytes:
             data = changed.get(info.filename)
             if data is None:
                 if info.file_size > MAX_PART_BYTES:
-                    raise Unsupported(f"{info.filename} is too large to copy")
+                    raise UnsupportedError(f"{info.filename} is too large to copy")
                 data = package.read(info)
             fresh = copy.copy(info)
             out.writestr(fresh, data, compress_type=info.compress_type)
@@ -450,7 +450,7 @@ def _create(target: Path, data: bytes, like: Path) -> None:
     try:
         handle, name = tempfile.mkstemp(prefix=".quill-", suffix=".tmp", dir=target.parent)
     except PermissionError as exc:                                    # a read-only folder
-        raise Unsupported(f"no room for a temporary file: {exc}") from exc
+        raise UnsupportedError(f"no room for a temporary file: {exc}") from exc
     temp = Path(name)
     try:
         with os.fdopen(handle, "wb") as out:

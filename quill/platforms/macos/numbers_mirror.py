@@ -132,9 +132,7 @@ def cell_argument(sheet: str, row: int, col: int, value: object) -> str:
         kind, text = "n", str(value)
     elif isinstance(value, float):
         kind, text = "n", f"{value:.12f}".rstrip("0").rstrip(".") or "0"
-    elif isinstance(value, dt.datetime):
-        kind, text = "d", value.strftime("%Y-%m-%d")
-    elif isinstance(value, dt.date):
+    elif isinstance(value, dt.date):      # (a datetime is a date too)
         kind, text = "d", value.strftime("%Y-%m-%d")
     else:
         kind, text = "s", str(value).replace(FIELD, " ")

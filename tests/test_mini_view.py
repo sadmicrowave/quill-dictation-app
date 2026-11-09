@@ -78,14 +78,14 @@ class TestMiniWindow(unittest.TestCase):
     def test_the_mini_view_comes_back_at_the_size_the_user_left_it(self):
         self.w.set_mini(True)
         _app.processEvents()
-        self.w.widget.resize(400, 300)
+        self.w.widget.resize(480, 300)
         _app.processEvents()
         self.w.report_size()
         self.w.set_mini(False)
         _app.processEvents()
         self.w.set_mini(True)
         _app.processEvents()
-        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (400, 300))
+        self.assertEqual((self.w.widget.width(), self.w.widget.height()), (480, 300))
         self.assertTrue(shown(self.w, "row_table"))
 
     def test_the_mini_size_is_reported_on_its_own(self):

@@ -9,7 +9,6 @@ transcribe its own voice: pass ``on_done=listener.drain`` to :meth:`say`.
 
 from __future__ import annotations
 import logging
-import subprocess
 import sys
 import threading
 import time

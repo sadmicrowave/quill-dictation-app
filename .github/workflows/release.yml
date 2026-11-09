@@ -1,0 +1,115 @@
+name: release
+
+# Builds the downloads and attaches them to a GitHub release.
+#
+#   git tag v0.1.0 && git push origin v0.1.0        (or: Actions tab > release > Run workflow, with the tag name)
+#
+# Three builds run on GitHub's own machines (PyInstaller cannot cross-compile): Windows, macOS on Apple Silicon and macOS on Intel.
+# They are attached to a DRAFT release: nothing is public, and the site's download buttons and the app's update check see
+# nothing, until you read the notes and press Publish release. The downloads are not signed with a paid certificate (see
+# packaging/README.md for what users see and how to open them).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (for example v0.1.0); the tag must already exist"
+        required: true
+
+permissions:
+  contents: write            # to create the draft release and attach the files
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows, os: windows-2025, file: "Quill-windows.zip" }
+          - { name: mac-apple-silicon, os: macos-26, file: "Quill-mac-apple-silicon.dmg" }
+          - { name: mac-intel, os: macos-15-intel, file: "Quill-mac-intel.dmg" }
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QUILL_NO_SOUND: "1"
+      QUILL_NO_HOSTS: "1"
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pytest
+      - name: The tag matches the version in the code
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          version = re.search(r'__version__ = "([^"]+)"', open("quill/__init__.py").read()).group(1)
+          tag = os.environ["TAG"].lstrip("v")
+          if version != tag:
+              sys.exit(f"Tag {tag} does not match __version__ {version}: bump quill/__init__.py first.")
+          PY
+      - name: Quick tests
+        shell: bash
+        run: python -m pytest -q --tb=short
+      - name: Build (Windows)
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          python tools/make_app_icon.py
+          pyinstaller --noconfirm packaging/quill_win.spec
+          Compress-Archive -Path dist/Quill.exe -DestinationPath "${{ matrix.file }}"
+      - name: Build (macOS)
+        if: startsWith(matrix.name, 'mac')
+        shell: bash
+        run: |
+          sh tools/build_mac.sh
+          rm -rf dmg && mkdir dmg && cp -R dist/Quill.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Quill" -srcfolder dmg -ov -format UDZO "${{ matrix.file }}"
+      - name: The download is a plausible size
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib
+          size = max(p.stat().st_size for p in pathlib.Path(".").glob("Quill-*") if p.is_file())
+          print("download size:", size // 1_000_000, "MB")
+          assert size > 20_000_000, "the download is suspiciously small"
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.file }}
+          if-no-files-found: error
+
+  publish:
+    name: draft release
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+          merge-multiple: true
+      - name: Checksums
+        run: cd downloads && shasum -a 256 Quill-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Create the draft release
+        run: |
+          gh release create "$TAG" downloads/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "Quill ${TAG#v}" \
+            --notes "Quill ${TAG#v}. Downloads: Windows (Quill-windows.zip), macOS Apple Silicon (Quill-mac-apple-silicon.dmg), macOS Intel (Quill-mac-intel.dmg). These builds are not signed with a paid certificate: see the first-run notes in the README."

@@ -53,8 +53,7 @@ FILLERS = frozenset({"as", "a", "an", "the", "to", "in", "is", "it", "its", "thi
 _SPELLED_MAX = 3
 
 
-_NUMBER_WORDS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen "
-                 "nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred").split()
+_NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred"]
 
 
 def expected_words(vocab, aliases: dict[str, dict[str, str]] | None = None) -> list[str]:

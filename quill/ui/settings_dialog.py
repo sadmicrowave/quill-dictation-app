@@ -41,7 +41,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -58,7 +57,7 @@ from quill.config.settings import (
 )
 from quill.feedback import ECHO_WORDS, MODE_LABELS, MODES, PACKS
 from quill.licensing import LicenseService
-from quill.listener.model import BETTER, STANDARD, WHISPER_NAME, fallback_choice
+from quill.listener.model import BETTER, STANDARD, WHISPER_NAME
 from quill.parser.commands import Action
 from quill.ui.chrome import apply_chrome
 from quill.ui.hints import fill_missing_tips
@@ -69,7 +68,6 @@ from quill.ui.settings_widgets import (
     ModelRow,
     PillField,
     FlatCombo,
-    GuardedCombo,
     GuardedSlider,
     GuardedSpinBox,
     SegmentedControl,
@@ -794,8 +792,8 @@ class SettingsDialog:
         logs.setToolTip("Quill writes what it does, and any error, to a log file here.")
         logs.clicked.connect(lambda: self._on_open_logs())
         self.open_with_combo = FlatCombo()
-        usable = [(k, l) for k, l in OPEN_WITH_CHOICES if self._program_available(k)]
-        missing = [(k, l) for k, l in OPEN_WITH_CHOICES if not self._program_available(k)]
+        usable = [(k, name) for k, name in OPEN_WITH_CHOICES if self._program_available(k)]
+        missing = [(k, name) for k, name in OPEN_WITH_CHOICES if not self._program_available(k)]
         for key, label in usable + missing:                    # every program is listed; the ones not installed are grey, last
             self.open_with_combo.addItem(label, key)
         for row in range(len(usable), len(usable) + len(missing)):

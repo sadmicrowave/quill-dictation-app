@@ -22,6 +22,7 @@ import pathlib
 import socket
 import threading
 from typing import Callable
+import contextlib
 
 log = logging.getLogger("quill.libreoffice")
 
@@ -78,10 +79,8 @@ class LiveLink:
                 return False
             sock.settimeout(None)
         except (OSError, ValueError):
-            try:
+            with contextlib.suppress(OSError):
                 sock.close()
-            except OSError:
-                pass
             return False
         with self._lock:
             self._sock = sock
@@ -165,10 +164,8 @@ class LiveLink:
                 return
             self._sock = None
             self.docs = {}
-        try:
+        with contextlib.suppress(OSError):
             sock.close()
-        except OSError:
-            pass
         for number, waiter in list(self._waiting.items()):          # nobody waits for an answer that cannot come
             waiter[0].set()
         if not quiet:

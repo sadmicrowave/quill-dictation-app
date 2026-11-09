@@ -11,9 +11,9 @@ from __future__ import annotations
 import shiboken6
 from quill.ui import glass
 from PySide6.QtCore import QEvent, QObject, QTimer
-import contextlib
 import sys
 from typing import Callable
+import contextlib
 
 def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | None = None,
                  opacity: int = 100, blur: int = 0) -> str | None:
@@ -1008,10 +1008,8 @@ class FileDialogWarmer:
         """Close the invisible window (also called before a real one is shown, so the two never meet)."""
         panel, self._panel = self._panel, None
         if panel is not None:
-            try:
+            with contextlib.suppress(Exception):
                 panel.cancel_(None)
-            except Exception:
-                pass
 
 
 def bring_app_forward(widget, platform: str | None = None, appkit=None) -> None:

@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import math
 
 import shiboken6
-from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
-    QFrame,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
@@ -21,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from quill.ui.icons import make_icon
 from quill.ui.listen_button import ListenButton
-from quill.ui.theme import FLASH_STYLES, PILL_BG, PILL_FG
+from quill.ui.theme import PILL_BG, PILL_FG
 
 #: Height of a pill notice ("File not connected", "Start Listening").
 CHIP_HEIGHT = 22
