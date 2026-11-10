@@ -101,6 +101,9 @@ class TransposedGrid(Grid):
     def active_sheet(self) -> str:
         return self._base.active_sheet()
 
+    def set_active(self, sheet: str) -> bool:
+        return self._base.set_active(sheet)               # (the sheet is the same whichever way the records run)
+
     def last_row(self, sheet: str) -> int:
         return self._base.last_col(sheet)
 

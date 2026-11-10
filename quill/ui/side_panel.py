@@ -23,7 +23,7 @@ import string
 
 import shiboken6
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIntValidator, QPainter, QPen
+from PySide6.QtGui import QColor, QIcon, QIntValidator, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -487,6 +487,7 @@ class SidePanel(QFrame):
         self.stack.addWidget(self._scrolled(self._build_file_page()))
         self.stack.addWidget(self._scrolled(self._build_turn_page()))
         self._explain()
+        self._draw_gear()                                        # (muted until a file is connected)
 
     @staticmethod
     def _chrome_button(tip: str, name: str) -> QToolButton:
@@ -786,7 +787,7 @@ class SidePanel(QFrame):
         from quill.ui.icons import make_icon
         self._colors = (text, accent)
         self.close_button.setIcon(make_icon("close", text, 16))
-        self.settings_button.setIcon(make_icon("gear", text, 16))
+        self._draw_gear()
         self.refresh_button.setIcon(make_icon("refresh", text, 16))
         self.sheet_refresh_button.setIcon(make_icon("refresh", text, 14))
         if not self.search.actions():
@@ -795,6 +796,33 @@ class SidePanel(QFrame):
             self.search.actions()[0].setIcon(make_icon("search", text, 15))
         self.new_row_button.setIcon(make_icon("next", accent, 16))
         self._draw_file_icon()
+
+    GEAR_TIP = "File settings: where the data starts and which way the headings run."
+    GEAR_OFF_TIP = "File settings are available once a file is connected."
+
+    def _draw_gear(self) -> None:
+        """The file settings gear: in the normal colour with a file connected; muted, and not clickable, without one (the settings
+        belong to that file's sheet)."""
+        from quill.ui.icons import make_icon
+        text, _ = self._colors
+        on = self._has_file
+        icon = make_icon("gear", text, 16)
+        if not on:
+            pixmap = icon.pixmap(16, 16)
+            faded = QPixmap(pixmap.size())
+            faded.setDevicePixelRatio(pixmap.devicePixelRatio())
+            faded.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(faded)
+            painter.setOpacity(0.35)
+            painter.drawPixmap(0, 0, pixmap)
+            painter.end()
+            icon = QIcon(faded)
+        self.settings_button.setIcon(icon)
+        self.settings_button.setEnabled(on)
+        self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor if on else Qt.CursorShape.ArrowCursor)
+        self.settings_button.setToolTip(self.GEAR_TIP if on else self.GEAR_OFF_TIP)
+        if not on and self.settings.isVisible():
+            self.settings.hide()                       # (a file was let go while its settings were open)
 
     def _draw_file_icon(self) -> None:
         from quill.ui.icons import make_icon
@@ -809,6 +837,7 @@ class SidePanel(QFrame):
         self.file_button.text_label.setFullText(name or NO_FILE_TEXT, path or name or "Choose a spreadsheet file.")
         self.file_button.setToolTip((path or name) + "\nClick to choose another file" if name else "Choose a spreadsheet file.")
         self._draw_file_icon()
+        self._draw_gear()
         facts: dict[str, tuple[str, str]] = {}
         if name:
             if sheet:
