@@ -7,7 +7,7 @@ import unittest
 import wave
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QLabel, QApplication
 
 from quill import feedback as fb
 from quill.config.settings import Settings
@@ -41,12 +41,13 @@ class TestLayout(DialogCase):
     def test_sidebar_has_a_search_box_and_grouped_pages(self):
         self.assertEqual(self.d.search.placeholderText(), "Search")
         names = [self.d.nav.item(i).text() for i in range(self.d.nav.count())]
-        self.assertEqual(names, ["About", "About", "Preferences", "General", "Appearance", "Sounds",
-                                 "Voice and Commands", "Keywords", "Speech Model", "Learned Words"])
+        self.assertEqual(names, ["About", "Preferences", "General", "Appearance", "Sounds",
+                                 "Voice and Commands", "Keywords", "Speech Model", "Learned Words", "Words To Skip"])
         self.assertEqual([t for _, titles in GROUPS for t in titles], list(self.d._nav_items))
 
     def test_captions_cannot_be_selected(self):
-        caption = self.d.nav.item(0)
+        caption = self.d.nav.item(1)                               # (About has no caption: it would repeat the page's name)
+        self.assertEqual(caption.text(), "Preferences")
         self.assertFalse(caption.flags() & Qt.ItemFlag.ItemIsSelectable)
 
     def test_picking_a_page_shows_it(self):
@@ -64,7 +65,7 @@ class TestLayout(DialogCase):
                           "Accent Colour", "Spacing", "Text Size", "Window Opacity", "Window Blur", "Term Helper Follows Window Opacity",
                           "Confirm With", "Sound Set", "Spoken Word", "Stop Listening When Quiet",
                           "Quiet Time Before Stopping", "Quick", "Broad", "Careful", "Sounds for Term Helper Actions",
-                          "Corrections Before Learning", "Ask Before Learning", "Focus On Answers While Sorting", "Version", "Reduce Background Noise", "Words To Skip"})
+                          "Corrections Before Learning", "Ask Before Learning", "Focus On Answers While Sorting", "Version", "Reduce Background Noise"})
 
     def test_the_keyword_table_gets_the_spare_height(self):
         self.d.nav.setCurrentRow(self.d._nav_row("Keywords"))
@@ -101,9 +102,9 @@ class TestSearch(DialogCase):
         self.d.filter("zzzz")
         self.assertTrue(self.d.empty_label.isVisible())
         self.assertEqual(self.visible_pages(), [])
-        self.assertEqual(self.d.filter(""), len(self.d.rows) + 1)           # +1: the keyword editor
+        self.assertEqual(self.d.filter(""), len(self.d.rows) + 2)           # +2: the keyword editor and the skipped-words list
         self.assertFalse(self.d.empty_label.isVisible())
-        self.assertEqual(self.visible_pages(), ["About", "General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words"])
+        self.assertEqual(self.visible_pages(), ["About", "General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words", "Words To Skip"])
         self.assertTrue(all(not r.isHidden() for r in self.d.rows))
 
     def test_search_finds_a_keyword_phrase(self):
@@ -183,12 +184,56 @@ class TestWidgets(DialogCase):
 
 
 class TestSkippedWords(DialogCase):
-    def test_the_words_to_skip_can_be_edited_and_are_saved_at_once(self):
-        self.d.skip_edit.setText("Gizmo, thingy ; gizmo")
-        self.d.skip_edit.editingFinished.emit()
+    def test_words_to_skip_is_its_own_page_after_learned_words_and_not_a_text_box_on_it(self):
+        self.assertFalse(hasattr(self.d, "skip_edit"))
+        titles = [t for _, ts in GROUPS for t in ts]
+        self.assertEqual(titles[titles.index("Learned Words") + 1], "Words To Skip")
+
+    def test_the_description_has_no_example_the_user_would_not_know(self):
+        text = " ".join(label.text() for label in self.d.skipped.parent().findChildren(QLabel))
+        self.assertNotIn("ones teal", text)
+        self.assertIn("Term Helper", text)
+
+    def test_a_word_is_added_with_enter_and_saved_at_once(self):
+        panel = self.d.skipped
+        panel.add_edit.setText("Gizmo, thingy ; gizmo")
+        panel.add_typed()
         self.assertEqual(self.settings.skip_words, ["gizmo", "thingy"])
         self.assertEqual(Settings.load(self.dir).skip_words, ["gizmo", "thingy"])
-        self.assertEqual(self.d.skip_edit.text(), "gizmo, thingy")
+        self.assertEqual(panel.add_edit.text(), "")
+        self.assertEqual(panel.tree.topLevelItemCount(), 2)
+
+    def test_selected_words_are_removed_and_saved(self):
+        panel = self.d.skipped
+        panel.add_edit.setText("one")
+        panel.add_typed()
+        panel.tree.topLevelItem(0).setSelected(True)
+        panel.remove_selected()                                  # (one word: no question)
+        self.assertEqual(self.settings.skip_words, [])
+        self.assertEqual(Settings.load(self.dir).skip_words, [])
+        self.assertFalse(panel.empty.isHidden())
+
+    def test_removing_all_asks_first(self):
+        from unittest import mock
+        panel = self.d.skipped
+        panel.add_edit.setText("one two")
+        panel.add_typed()
+        with mock.patch("quill.ui.skip_page.confirm", return_value=False) as ask:
+            panel.remove_shown()
+        self.assertTrue(ask.called)
+        self.assertEqual(self.settings.skip_words, ["one", "two"])
+        with mock.patch("quill.ui.skip_page.confirm", return_value=True):
+            panel.remove_shown()
+        self.assertEqual(self.settings.skip_words, [])
+
+    def test_search_narrows_the_list_and_the_settings_search_finds_the_page(self):
+        panel = self.d.skipped
+        panel.add_edit.setText("alpha beta")
+        panel.add_typed()
+        panel.search.setText("alp")
+        self.assertEqual(panel.tree.topLevelItemCount(), 1)
+        self.d.filter("skip")
+        self.assertFalse(self.d._nav_items["Words To Skip"].isHidden())
 
 
 class TestSaving(DialogCase):
@@ -472,7 +517,7 @@ class TestChoosingASoundPlaysIt(unittest.TestCase):
 
 class TestAboutPage(DialogCase):
     def test_about_is_the_first_page_with_the_version_a_button_and_the_start_up_switch(self):
-        self.assertEqual(GROUPS[0], ("About", ["About"]))
+        self.assertEqual(GROUPS[0], ("", ["About"]))
         self.d.show_page_named("About")
         self.assertEqual(self.d.update_button.text(), "Check for Updates")
         from quill import __version__

@@ -21,6 +21,8 @@ from PySide6.QtCore import (
     QSize,
     Qt,
     QTimer,
+    QVariantAnimation,
+    QEasingCurve,
     Signal,
 )
 from PySide6.QtGui import QColor, QPainter, QPen
@@ -42,6 +44,11 @@ PLACEHOLDER_MARGINS = (6, 4, 4, 0)
 #: Height (px) of the row grid when empty (the Voice Stream box is as tall), and of the stream's growth limit.
 ROW_EMPTY_HEIGHT = 42
 STREAM_MIN_HEIGHT = ROW_EMPTY_HEIGHT
+ROW_HINT = "Words you say that match to columns in the selected file appear here as they are heard."
+#: The grid's hint when the connected sheet has no columns Quill can find; both links open the file settings (where those options are).
+NO_COLUMNS_HINT = ('This sheet has no column headings that Quill can find. Check <a href="file-settings">Headings Row</a> or '
+                   '<a href="file-settings">Sheet Layout</a> in the file settings.')
+SHUFFLE_MS = 240            # a heard column slides to the top of the row grid in this time
 STREAM_MAX_LINES = 5        # the Voice Stream box grows to this many lines, then scrolls
 
 
@@ -127,17 +134,38 @@ class _ValuePills(QStyledItemDelegate):
         if not text:
             return
         table = self.parent()
+        if table.row_opacity(index.row()) <= 0.01:
+            return
         reach = option.rect.width() - self.MARGIN - table.DELETE_SIZE - table.DELETE_MARGIN - 6          # (clear of the delete button)
         metrics = option.fontMetrics
         shown = metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(reach - 2 * self.PAD_X, 20))
         width = metrics.horizontalAdvance(shown) + 2 * self.PAD_X
         height = min(metrics.height() + 2 * self.PAD_Y, option.rect.height() - 4)
-        box = QRect(option.rect.left() + self.MARGIN, option.rect.top() + (option.rect.height() - height) // 2, width, height)
+        box = QRect(option.rect.left() + self.MARGIN, option.rect.top() + (option.rect.height() - height) // 2 + round(table.row_offset(index.row())),
+                    width, height)                                            # (a line that is moving is drawn part-way between its places)
         painter.save()
+        painter.setOpacity(table.row_opacity(index.row()))
         painter.fillRect(box, self.fill)
         painter.setPen(self.ink)
         painter.setFont(option.font)
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, shown)
+        painter.restore()
+
+
+class _ColumnNames(QStyledItemDelegate):
+    """Draws the column names of the row grid. While the columns ease in, each name fades up and slides a few pixels from the left."""
+
+    SLIDE = 10          # px a name travels while it fades in
+
+    def paint(self, painter, option, index) -> None:
+        table = self.parent()
+        opacity = table.row_opacity(index.row())
+        if opacity <= 0.01:
+            return
+        painter.save()
+        painter.setOpacity(opacity)
+        painter.translate(-self.SLIDE * (1.0 - opacity), table.row_offset(index.row()))
+        super().paint(painter, option, index)
         painter.restore()
 
 
@@ -177,7 +205,24 @@ class RowTable(QTableWidget):
         self._button_fill = QColor("#7A55C2")    # the theme colour; set with :meth:`set_delete_colors`
         self._button_glyph = QColor("#FFFFFF")
         self._pills = _ValuePills(self)
+        self._active: set[str] = set()           # columns that have a value in the row: only their lines can be removed
+        self._revealed: float | None = None      # rows shown so far while the columns ease in (None: all of them, no animation)
+        self._reveal = QVariantAnimation(self)
+        self._reveal.setEasingCurve(QEasingCurve.Type.Linear)
+        self._reveal.valueChanged.connect(self._reveal_step)
+        self._reveal.finished.connect(self._reveal_done)
+        self._offsets: dict[int, float] = {}     # px each line is still short of its new place while the grid reshuffles
+        self._shuffle = QVariantAnimation(self)
+        self._shuffle.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._shuffle.setStartValue(0.0)
+        self._shuffle.setEndValue(1.0)
+        self._shuffle.setDuration(SHUFFLE_MS)
+        self._shuffle_progress = 1.0
+        self._shuffle.valueChanged.connect(self._shuffle_step)
+        self._shuffle.finished.connect(self._shuffle_done)
+        self._names = _ColumnNames(self)
         if columns >= 2:
+            self.setItemDelegateForColumn(0, self._names)
             self.setItemDelegateForColumn(1, self._pills)          # the values, in pills
 
     def set_pill_colors(self, fill: str, ink: str) -> None:
@@ -188,6 +233,77 @@ class RowTable(QTableWidget):
     def set_delete_colors(self, fill: str, glyph: str) -> None:
         """Colour the delete button: a filled circle in *fill* with an "x" in *glyph* (the theme's accent colours)."""
         self._button_fill, self._button_glyph = QColor(fill), QColor(glyph)
+        self.viewport().update()
+
+    def set_active(self, columns: set[str]) -> None:
+        """The columns that have a value in the row now (only their lines show the delete button)."""
+        self._active = set(columns)
+        self.viewport().update()
+
+    def row_opacity(self, row: int) -> float:
+        """How visible *row* is: 1 once shown, rising from 0 as the columns ease in from the top, one after the other."""
+        if self._revealed is None:
+            return 1.0
+        return max(0.0, min(1.0, self._revealed - row))
+
+    def row_offset(self, row: int) -> float:
+        """How far (px, vertically) *row* is from the place it is moving to: 0 when it is not moving."""
+        return self._offsets.get(row, 0.0) * (1.0 - self._shuffle_progress)
+
+    def line_positions(self) -> dict[str, int]:
+        """Where each line is now (its top, in viewport pixels), by column name: taken before a refill, for :meth:`slide_from`."""
+        return {item.text(): self.rowViewportPosition(r) for r in range(self.rowCount()) if (item := self.item(r, 0)) is not None}
+
+    def slide_from(self, before: dict[str, int], animate: bool = True) -> None:
+        """The lines were just refilled in a new order: slide each one from where it was (*before*, see :meth:`line_positions`) to
+        where it is now. A line that was not there before does not move. Runs about a quarter of a second, then stops by itself."""
+        self._shuffle.stop()
+        self._offsets = {}
+        self._shuffle_progress = 1.0
+        if animate and self._revealed is None:                    # (while the columns ease in, they are not moving)
+            for r in range(self.rowCount()):
+                item = self.item(r, 0)
+                if item is not None and item.text() in before:
+                    gap = before[item.text()] - self.rowViewportPosition(r)
+                    if gap:
+                        self._offsets[r] = float(gap)
+        if self._offsets:
+            self._shuffle_progress = 0.0
+            self._shuffle.start()
+        self.viewport().update()
+
+    def _shuffle_step(self, value) -> None:
+        self._shuffle_progress = float(value)
+        self.viewport().update()
+
+    def _shuffle_done(self) -> None:
+        self._offsets, self._shuffle_progress = {}, 1.0
+        self.viewport().update()
+
+    def ease_in_rows(self, animate: bool = True) -> None:
+        """Show the rows one after the other from the top, each fading and sliding in (about a second at most, then it stops by itself)."""
+        self._reveal.stop()
+        rows = self.rowCount()
+        if not animate or rows == 0:
+            self._revealed = None
+            self.viewport().update()
+            return
+        stagger = 45                                         # ms between one row starting and the next
+        fade = 260                                           # ms one row takes to appear
+        total = min(fade + stagger * (rows - 1), 1100)
+        self._revealed = 0.0
+        self._reveal.setDuration(total)
+        self._reveal.setStartValue(0.0)
+        self._reveal.setEndValue(float(rows) + fade / stagger)        # (the last row has its whole fade left to run)
+        self._reveal.start()
+        self.viewport().update()
+
+    def _reveal_step(self, value) -> None:
+        self._revealed = float(value)                        # rows revealed, with a fractional part for the one fading in
+        self.viewport().update()
+
+    def _reveal_done(self) -> None:
+        self._revealed = None
         self.viewport().update()
 
     def set_changeable(self, columns: set[str]) -> None:
@@ -214,8 +330,13 @@ class RowTable(QTableWidget):
         row = self.rowAt(point.y())
         return row if 0 <= row < self.rowCount() and self.item(row, 0) is not None else -1
 
+    def _removable(self, row: int) -> bool:
+        """Can the line at *row* be removed? Only a line that has a value in the row."""
+        item = self.item(row, 0) if row >= 0 else None
+        return item is not None and item.text() in self._active
+
     def _over_button(self, point: QPoint) -> bool:
-        return self._hovered_row >= 0 and self.delete_button_rect(self._hovered_row).contains(point)
+        return self._removable(self._hovered_row) and self.delete_button_rect(self._hovered_row).contains(point)
 
     def mouseMoveEvent(self, event) -> None:                         # noqa: N802 (Qt name)
         super().mouseMoveEvent(event)
@@ -245,7 +366,7 @@ class RowTable(QTableWidget):
     def mousePressEvent(self, event) -> None:                        # noqa: N802
         point = event.position().toPoint()
         row = self._row_at(point)
-        if (event.button() == Qt.MouseButton.LeftButton and row >= 0
+        if (event.button() == Qt.MouseButton.LeftButton and self._removable(row)
                 and self.delete_button_rect(row).contains(point)):
             self._hovered_row, self._button_hot = -1, False
             self.viewport().setToolTip("")
@@ -272,7 +393,9 @@ class RowTable(QTableWidget):
             painter.drawLine(divider, 0, divider, bottom - 1)        # between the two columns
             for row in range(self.rowCount() - 1):     # no line under the last row
                 y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
+                painter.setOpacity(self.row_opacity(row) * (self._shuffle_progress if self._offsets else 1.0))      # (the lines fade back after a shuffle)
                 painter.drawLine(0, y, self.viewport().width() - 1, y)
+            painter.setOpacity(1.0)
         if self._hovered_row >= 0 and self.item(self._hovered_row, 0) is not None \
                 and self.item(self._hovered_row, 0).text() in self._changeable:          # a small arrow after the name: it opens a menu
             row = self._hovered_row
@@ -282,7 +405,7 @@ class RowTable(QTableWidget):
             painter.setPen(QPen(self.palette().placeholderText().color(), 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(QPointF(x - 3.5, y - 1.5), QPointF(x, y + 2))
             painter.drawLine(QPointF(x, y + 2), QPointF(x + 3.5, y - 1.5))
-        if self._hovered_row >= 0:
+        if self._removable(self._hovered_row):
             box = QRectF(self.delete_button_rect(self._hovered_row))
             centre = box.center()                      # the exact middle, so the "x" is centred in the circle
             painter.setPen(Qt.PenStyle.NoPen)

@@ -17,7 +17,7 @@ from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.grid import OpenpyxlGrid, TransposedGrid
 from quill.bridge.hosts import OpenFile, SpreadsheetHosts
 from quill.bridge.xlsx_bridge import XlsxBridge
-from quill.config.settings import Settings
+from quill.config.settings import Settings, SheetLayout
 from quill.controller import Controller
 from quill.ui.main_window import MainWindow
 from quill.ui.side_panel import APPEND_TO, FILE_PAGE, NEXT_ROW, PANEL_WIDTH, TURN_PAGE
@@ -698,8 +698,9 @@ class TestTurnsInTheController(Dir):
 
     def test_the_vertical_layout_is_applied_on_connecting_and_names_columns(self):
         vertical = make_vertical(self.dir / "stock.xlsx")
-        self.settings.preferences["vertical_layout"] = True
-        controller = Controller(XlsxBridge(vertical), self.settings, on_event=self.events.append)
+        bridge = XlsxBridge(vertical)
+        self.settings.set_layout(str(bridge.workbook_path), "Stock", SheetLayout(0, 0, True))       # (the layout belongs to that sheet)
+        controller = Controller(bridge, self.settings, on_event=self.events.append)
         controller.connect()
         self.assertEqual(controller.vocab.fields(), ["Fruit", "Color", "Qty"]) if hasattr(controller.vocab, "fields") else None
         controller.handle_transcript("start listening")
@@ -1436,9 +1437,11 @@ class TestControllerMessagesFollowTheLayout(Dir):
     def run_layout(self, vertical):
         path = make_vertical(self.dir / "v.xlsx") if vertical else make_workbook(self.dir / "h.xlsx")
         settings = Settings.load(self.dir / ("cfg-v" if vertical else "cfg-h"))
-        settings.preferences["vertical_layout"] = vertical
+        bridge = XlsxBridge(path)
+        if vertical:
+            settings.set_layout(str(bridge.workbook_path), "Stock", SheetLayout(0, 0, True))
         events = []
-        controller = Controller(XlsxBridge(path), settings, on_event=events.append)
+        controller = Controller(bridge, settings, on_event=events.append)
         controller.connect()
         controller.set_start_row(3)
         controller.set_headings_row(2)
@@ -1501,8 +1504,9 @@ class TestCursorFollowsTheTurn(Dir):
 
     def test_a_vertical_sheet_moves_the_cursor_across_columns(self):
         vertical = make_vertical(self.dir / "v.xlsx")
-        self.settings.preferences["vertical_layout"] = True
-        controller = Controller(XlsxBridge(vertical), self.settings, on_event=lambda e: None)
+        bridge = XlsxBridge(vertical)
+        self.settings.set_layout(str(bridge.workbook_path), "Stock", SheetLayout(0, 0, True))
+        controller = Controller(bridge, self.settings, on_event=lambda e: None)
         controller.connect()
         controller.handle_transcript("start listening")
         controller.handle_transcript("banana")

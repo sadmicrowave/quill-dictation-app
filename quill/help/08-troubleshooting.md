@@ -23,6 +23,7 @@
 | A row is in LibreOffice but not in the file | Quill writes into the **open LibreOffice document** and leaves saving to you, as with Excel. Press **Save** in LibreOffice (keep the `.xlsx` format) |
 | Mac asks about controlling your spreadsheet program | Choose **OK**. To undo: *System Settings > Privacy & Security > Automation* |
 | Quill doesn't know my lists | **Save** the sheet; Quill re-reads it. Lists must be real drop-downs (*Data > Data Validation > List*) |
+| *"This sheet has no column headings Quill can find"* | Quill looks for the headings in the first rows of the active sheet (the row with the most text). Click **Headings Row** or **Sheet Layout** in the grid's message (or press the **gear** beside **Active File**) and set the headings row (or the layout, if the headings run down the first column), or add a row of headings. Quill remembers the choice for that sheet of that file. Until then nothing you say can be understood, and the row grid says so |
 | *"The … list is full"* | Add empty cells below that list in your sheet |
 | Word goes to the wrong column | Say the **column name first**: *"color black"* |
 | A word keeps showing in Term Helper | Choose **Add** or **Same As…** once; Quill remembers |

@@ -88,7 +88,7 @@ class TestSettingsNeverScrollSideways(unittest.TestCase):
         dialog.resize(width, 740)
         APP.processEvents()
         result = {}
-        for name in ("General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words"):
+        for name in ("General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words", "Words To Skip"):
             controller.show_page_named(name)
             APP.processEvents()
             page = next(s for s in dialog.findChildren(QScrollArea) if s.isVisible() and s.objectName() == "settingsPage")

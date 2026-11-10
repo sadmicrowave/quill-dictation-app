@@ -388,12 +388,12 @@ class FooterButton(QPushButton):
         if not on and self._idle_opacity < 1.0:
             pixmap = icon.pixmap(self.ICON, self.ICON)
             faded = QPixmap(pixmap.size())
+            faded.setDevicePixelRatio(pixmap.devicePixelRatio())      # (before painting: else the icon is drawn at half size in a corner)
             faded.fill(Qt.GlobalColor.transparent)
             painter = QPainter(faded)
             painter.setOpacity(self._idle_opacity)
             painter.drawPixmap(0, 0, pixmap)
             painter.end()
-            faded.setDevicePixelRatio(pixmap.devicePixelRatio())
             icon = QIcon(faded)
         self.setIcon(icon)
 

@@ -36,6 +36,7 @@ from quill.bridge.mirror import MirrorResult, NullMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.parser.fillers import FILLER_WORDS
+from quill.parser.phrase_parser import merge_values, parse
 from quill.sorting_voice import expected_words
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
@@ -271,6 +272,9 @@ class QuillApp:
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
+        self.controller.on_columns = self._columns_read                 # the grid lists the sheet's columns once it is connected
+        self.controller.on_layout = self._sync_turn_panel                # the panel shows the layout of the sheet that is open
+        self._no_columns_told = False                                   # (the log says a sheet has no columns once, not at every refresh)
         self._refresh_after_batch = self._reveal_after_batch = False      # (see refresh_sorting)
         self.controller.on_batch_done = self._batch_done
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
@@ -364,6 +368,7 @@ class QuillApp:
         self._rebuild_watchers = [watch_native_window(w, self._native_rebuilt)
                                   for w in (self.window.widget, self.sorting.widget) if w is not None]
         self.window.set_stream_classifier(self._match_heard_words)
+        self.window.set_stream_previewer(self._preview_heard_words)
         self.window.restore_panel_width(int(self.settings.preferences["panel_width"]))
         self.window.set_panel_size_listener(self._panel_size_changed)
         self.window.restore_log_height(int(self.settings.preferences["log_height"]))
@@ -2126,6 +2131,29 @@ class QuillApp:
     def _match_heard_words(self, words: list[str]):
         """What Quill makes of each word heard (understood words are drawn as pills in the Voice Stream)."""
         return match_words(words, self.controller.vocab, self.controller.session.matcher)
+
+    def _columns_read(self, columns: list[str]) -> None:
+        """The active sheet's columns were read: show them; if a file is connected but has none, say so (once) and say what to check."""
+        self.window.set_columns(columns)
+        empty = not columns and self.controller.connected
+        self.window.set_no_columns(empty)
+        if empty and not self._no_columns_told:
+            self.window.append_log("This sheet has no column headings Quill can find. It looks in the first rows: check Headings Row "
+                                   "and Sheet Layout in the file settings (the gear beside Active File).", "warning",
+                                   safe="This sheet has no column headings Quill can find")
+        self._no_columns_told = empty
+
+    def _preview_heard_words(self, words: list[str]) -> dict[str, object]:
+        """What the words heard so far in the phrase still being spoken would put in the row, read by the parser that fills it (so the
+        row grid shows the values as they are heard, and the finished phrase then confirms them)."""
+        session = self.controller.session
+        if not words or not session.listening:
+            return {}
+        result = parse(" ".join(words), self.controller.vocab, session.today(), filled=set(session.record))
+        fields: dict[str, object] = {}
+        for column, heard in result.updates.items():
+            fields[column] = merge_values(session.record[column], heard) if column in result.additive and column in session.record else heard
+        return fields
 
     def _answering(self) -> bool:
         """Is what is being said an answer (to the Term Helper by voice, or to a question Quill asked) and not dictation? Answers are

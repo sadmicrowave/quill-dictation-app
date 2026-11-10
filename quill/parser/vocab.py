@@ -144,6 +144,11 @@ class Vocabulary:
     # Querying                                                             #
     # ------------------------------------------------------------------ #
 
+    @property
+    def has_columns(self) -> bool:
+        """True if the sheet has any column at all (a heading or a drop-down list); False for a sheet whose headings were not found."""
+        return bool(self._fields or self._by_column)
+
     def columns(self) -> list[str]:
         """Return all column names that have at least one value."""
         return list(self._by_column.keys())

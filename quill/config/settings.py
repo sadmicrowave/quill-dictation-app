@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 import json
 import pathlib
 
@@ -144,7 +145,22 @@ def _defaults_path() -> pathlib.Path:
 NEW_ACTIONS = (Action.OPEN_TERM_HELPER, Action.APPEND_ON, Action.APPEND_OFF, Action.ROWS_DOWN_ON, Action.ROWS_DOWN_OFF)
 #: Most skipped words kept (the oldest go first).
 MAX_SKIP_WORDS = 200
+#: Most workbook-and-sheet layouts kept (the oldest go first).
+MAX_LAYOUTS = 500
 KEYWORDS_VERSION = 3          # raised whenever shipped commands are added
+
+
+@dataclass(frozen=True)
+class SheetLayout:
+    """Where one sheet's data is: it belongs to that sheet of that workbook, not to the user (the next sheet may be laid out differently)."""
+
+    headings_row: int = 0       # the row (column, when headings run down) that holds the headings; 0 = find it
+    start_row: int = 0          # first row (column) a turn may write to; 0 = the first empty one
+    vertical: bool = False      # headings run down the first column
+
+    @property
+    def is_default(self) -> bool:
+        return self == SheetLayout()
 
 
 def _parse_keywords(table: dict) -> dict[str, Action]:
@@ -200,6 +216,7 @@ class Settings:
         self.preferences: dict[str, object] = {**DEFAULT_PREFERENCES, **(preferences or {})}
         self.account: dict[str, object] = clean_account(None)    # licence / subscription facts (licensing.py)
         self.links = LinkStore()          # words the user taught Quill to read as a column (learning.py)
+        self.layouts: dict[tuple[str, str], SheetLayout] = {}   # (workbook path, sheet name) -> where its data is (only those that differ from the default)
         self.skip_words: list[str] = []   # words the user trimmed off terms: Quill never makes them part of a new value
         self._config_dir = config_dir
 
@@ -248,6 +265,16 @@ class Settings:
         settings.preferences["prefs_version"] = int(DEFAULT_PREFERENCES["prefs_version"])
         settings.account = clean_account(data.get("account") if isinstance(data.get("account"), dict) else None)
         settings.links = LinkStore.from_list(data.get("links"))
+        for entry in data.get("layouts") or []:
+            if isinstance(entry, dict) and isinstance(entry.get("path"), str) and isinstance(entry.get("sheet"), str):
+                try:
+                    layout = SheetLayout(max(0, min(1_048_576, int(entry.get("headings_row", 0)))),
+                                         max(0, min(1_048_576, int(entry.get("start_row", 0)))), bool(entry.get("vertical", False)))
+                except (TypeError, ValueError):
+                    continue
+                if not layout.is_default:
+                    settings.layouts[(entry["path"], entry["sheet"])] = layout
+        settings.layouts = dict(list(settings.layouts.items())[-MAX_LAYOUTS:])
         raw_skips = data.get("skip_words")
         if isinstance(raw_skips, list):
             settings.skip_words = [str(w).lower() for w in raw_skips if isinstance(w, str) and w.strip()][-MAX_SKIP_WORDS:]
@@ -365,6 +392,20 @@ class Settings:
             self.aliases.pop(column, None)
         return previous
 
+    def layout_for(self, path: str, sheet: str) -> SheetLayout:
+        """Where the data of *sheet* in the workbook at *path* is (the default, headings found by themselves across the first row, when
+        nothing was set for it)."""
+        return self.layouts.get((path, sheet), SheetLayout())
+
+    def set_layout(self, path: str, sheet: str, layout: SheetLayout) -> None:
+        """Remember *layout* for *sheet* of the workbook at *path* (not yet saved); a layout equal to the default is not kept."""
+        key = (path, sheet)
+        self.layouts.pop(key, None)
+        if not layout.is_default and path and sheet:
+            self.layouts[key] = layout
+            while len(self.layouts) > MAX_LAYOUTS:
+                del self.layouts[next(iter(self.layouts))]
+
     def add_skip_words(self, words: list[str]) -> list[str]:
         """Remember words Quill must never make part of a new value (not yet saved); returns the ones that were new."""
         new = [w for w in dict.fromkeys(w.strip().lower() for w in words) if w and w not in self.skip_words]
@@ -398,6 +439,10 @@ class Settings:
             sources = ", ".join(f"{{ path = {_toml_string(src['path'])}, name = {_toml_string(src['name'])}, count = {src['count']}, last = {float(src.get('last', 0.0))!r} }}"
                                 for src in entry["sources"])
             lines.append(f"sources = [{sources}]\n")
+        for (path, sheet), layout in self.layouts.items():
+            lines.append("\n[[layouts]]\n")
+            lines.append(f"path = {_toml_string(path)}\nsheet = {_toml_string(sheet)}\nheadings_row = {layout.headings_row}\n"
+                         f"start_row = {layout.start_row}\nvertical = {_toml_value(layout.vertical)}\n")
         for column, mapping in sorted(self.aliases.items()):
             if mapping:
                 lines.append(f"\n[aliases.{_toml_string(column)}]\n")
