@@ -472,7 +472,7 @@ class TestChoosingASoundPlaysIt(unittest.TestCase):
 
 class TestAboutPage(DialogCase):
     def test_about_is_the_first_page_with_the_version_a_button_and_the_start_up_switch(self):
-        self.assertEqual(GROUPS[0], ("About", ["About"]))
+        self.assertEqual(GROUPS[0], ("", ["About"]))
         self.d.show_page_named("About")
         self.assertEqual(self.d.update_button.text(), "Check for Updates")
         from quill import __version__
