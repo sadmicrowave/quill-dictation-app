@@ -202,13 +202,9 @@ class TestNumbersDocumentsReportedByNameOnly(unittest.TestCase):
 
 
 class TestReload(unittest.TestCase):
-    def test_numbers_is_asked_to_reload_the_saved_file(self):
-        runner = FakeRunner({"osascript": "ok\n"})
-        self.assertTrue(SpreadsheetHosts("darwin", runner).reload(NUMBERS, '/a/"b".xlsx'))
-        self.assertEqual(runner.calls[0][-1], '/a/"b".xlsx')                   # the path is an argument, never part of the script
-        self.assertNotIn('"b"', runner.calls[0][2])
+    """(What a reload does to the documents Numbers has open is in test_numbers_reload.py, against a stand-in that behaves like Numbers.)"""
 
-    def test_a_failed_script_reports_false(self):
+    def test_a_script_that_fails_reports_false(self):
         self.assertFalse(SpreadsheetHosts("darwin", FakeRunner({"osascript": "no"})).reload(NUMBERS, "/a.xlsx"))
 
     def test_programs_that_cannot_be_asked_report_false_without_running_anything(self):

@@ -64,9 +64,46 @@ class MacHosts:
         command = ["open", "-g", *(["-a", chosen] if chosen else []), str(path)]
         return subprocess.run(command, capture_output=True, timeout=COMMAND_TIMEOUT_S, check=False).returncode == 0   # noqa: S603
 
-    def reload(self, app, path) -> bool:
-        """Ask *app* (Numbers) to load *path* again after Quill saved it."""
-        return bool(self._run(["osascript", "-l", "JavaScript", "-e", _RELOAD_NUMBERS, str(path)]).strip() == "ok")
+    #: What :meth:`reload` answers when the document has unsaved changes in the program, so Quill left it alone.
+    KEPT = "kept"
+    #: ... and when the program does not have the file open at all (there is nothing to refresh).
+    NOT_OPEN = "not open"
+
+    def reload(self, app, path):
+        """Ask *app* (Numbers) to load *path* again after Quill saved it, without ever leaving a second copy open.
+
+        Numbers opens another document every time it is asked to open a file, and it reports an imported workbook by name only
+        (no file). So Quill looks at what Numbers has open first: documents that are the file (by file, or by name) are closed
+        and the file is opened once; if one of them has unsaved changes nothing is touched (:attr:`KEPT`); if none is open,
+        nothing is opened (:attr:`NOT_OPEN`: the user closed it). Returns True when reloaded, False when Numbers could not be
+        asked, else one of those two words.
+        """
+        target = pathlib.Path(path)
+        documents = self._numbers_documents()
+        if documents is None:
+            return False
+        same = [d for d in documents if (d[1] and _same_file(d[1], target)) or d[0] in (target.stem, target.name)]
+        if not same:
+            return self.NOT_OPEN
+        if any(d[2] for d in same):
+            return self.KEPT
+        indices = sorted((d[3] for d in same), reverse=True)                      # highest first: closing one never moves the next
+        if self._run(["osascript", "-l", "JavaScript", "-e", _CLOSE_NUMBERS, *map(str, indices)]).strip() != "ok":
+            return False
+        self._run(["open", "-g", "-a", "Numbers", str(target)])                   # (once: the copies it replaces are closed)
+        return True
+
+    def _numbers_documents(self) -> list[tuple[str, str, bool, int]] | None:
+        """``(name, file, has unsaved changes, position)`` of every document Numbers has open; None if it could not be asked."""
+        out = self._run(["osascript", "-l", "JavaScript", "-e", _LIST_NUMBERS_FOR_RELOAD])
+        if out.strip() == "no":
+            return None
+        found = []
+        for line in out.splitlines():
+            parts = line.rstrip("\r").split("\t")
+            if len(parts) >= 4 and parts[3].strip().isdigit():
+                found.append((parts[0].strip(), parts[1].strip(), parts[2].strip() == "1", int(parts[3])))
+        return found
 
     #: Where a file found by name is not taken from (the Trash, and programs' own cache, support, container and mail folders;
     #: cloud drives, which live under ``Library/CloudStorage``, are fine).
@@ -198,22 +235,45 @@ function run() {
 }
 """
 
-_RELOAD_NUMBERS = """
+_LIST_NUMBERS_FOR_RELOAD = """
+function run() {
+  try {
+    const app = Application("Numbers");
+    if (!app.running()) return "";
+    const documents = app.documents();
+    let out = "";
+    for (let i = 0; i < documents.length; i++) {
+      let name = "", path = "", modified = "0";
+      try { name = documents[i].name(); } catch (e) {}
+      try { const file = documents[i].file(); if (file) path = String(file); } catch (e) {}
+      try { if (documents[i].modified()) modified = "1"; } catch (e) {}
+      out += name + "\\t" + path + "\\t" + modified + "\\t" + i + "\\n";
+    }
+    return out;
+  } catch (e) {
+    return "no";
+  }
+}
+"""
+
+_CLOSE_NUMBERS = """
 function run(argv) {
-  const target = argv[0];
   try {
     const app = Application("Numbers");
     const documents = app.documents();
-    for (let i = 0; i < documents.length; i++) {
-      try {
-        const file = documents[i].file();
-        if (file && String(file) === target && !documents[i].modified()) app.close(documents[i], {saving: "no"});
-      } catch (e) {}
-    }
-    app.open(Path(target));
+    for (const position of argv) app.close(documents[Number(position)], {saving: "no"});
     return "ok";
   } catch (e) {
     return "no";
   }
 }
 """
+
+
+def _same_file(reported: str, target: pathlib.Path) -> bool:
+    """Is the file Numbers reports (a path or a file URL) the one at *target*?"""
+    text = reported[len("file://"):] if reported.startswith("file://") else reported
+    try:
+        return os.path.realpath(text) == os.path.realpath(target)
+    except OSError:
+        return text == str(target)

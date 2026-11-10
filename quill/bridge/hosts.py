@@ -230,9 +230,13 @@ class SpreadsheetHosts:
             log.debug("could not launch %s: %s", path, exc)
             return False
 
-    def reload(self, app: HostApp, path: str | pathlib.Path) -> bool:
-        """Ask *app* to load *path* again after Quill saved it. False when that is not possible."""
-        return bool(app.reloads) and bool(self._os.reload(app, path))
+    def reload(self, app: HostApp, path: str | pathlib.Path) -> bool | str:
+        """Ask *app* to load *path* again after Quill saved it. False when that is not possible; a word (``"kept"``: the document
+        has unsaved changes and was left alone, ``"not open"``) when the program had a reason not to."""
+        if not app.reloads:
+            return False
+        answer = self._os.reload(app, path)
+        return answer if isinstance(answer, str) else bool(answer)
 
     def find_by_name(self, name: str, prefer: tuple[str, ...] = ()) -> pathlib.Path | None:
         """The spreadsheet file a program calls *name* when it reports the document by name only (Numbers, for a workbook
