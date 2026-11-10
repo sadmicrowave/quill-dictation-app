@@ -273,6 +273,7 @@ class QuillApp:
             mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
         self.controller.on_columns = self._columns_read                 # the grid lists the sheet's columns once it is connected
+        self.controller.on_layout = self._sync_turn_panel                # the panel shows the layout of the sheet that is open
         self._no_columns_told = False                                   # (the log says a sheet has no columns once, not at every refresh)
         self._refresh_after_batch = self._reveal_after_batch = False      # (see refresh_sorting)
         self.controller.on_batch_done = self._batch_done

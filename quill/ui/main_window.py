@@ -404,7 +404,9 @@ class MainWindow:
         self.row_placeholder.setProperty("placeholder", True)        # same look as the Voice Stream box's placeholder
         self.row_placeholder.setWordWrap(True)
         self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)     # (until it holds links: see _refresh_grid)
+        self.row_placeholder.setOpenExternalLinks(False)
+        self.row_placeholder.linkActivated.connect(lambda _href: self.open_file_settings())
         self.row_table.viewport().setProperty("keepMargins", True)     # the spacing setting must not resize this layout's margins
         holder = QVBoxLayout(self.row_table.viewport())
         holder.setContentsMargins(*PLACEHOLDER_MARGINS)   # the same place the Voice Stream box's hint starts
@@ -759,6 +761,22 @@ class MainWindow:
 
     def _panel_animation_running(self) -> bool:
         return self._panel_animation is not None and self._panel_animation.state() == QVariantAnimation.State.Running
+
+    def open_file_settings(self) -> None:
+        """Open the Files panel (if it is not open) and show the file settings overlay under its gear: where the headings row and
+        the sheet layout are chosen. The overlay waits for the panel to finish sliding, since it hangs from the gear."""
+        if self._window is None or not self._workbook_name:
+            return
+        slow = self._mini or self._view_mini                          # (the full window has to come back first)
+        if self._panel_open and self._panel_page == FILE_PAGE and not slow:
+            self.show_file_settings()
+            return
+        self.open_panel(FILE_PAGE)
+        QTimer.singleShot(self.animation_ms * (3 if slow else 1) + 150, self._show_file_settings_later)
+
+    def _show_file_settings_later(self) -> None:
+        if self._panel_open and self._panel_page == FILE_PAGE:
+            self.show_file_settings()
 
     def show_file_settings(self) -> None:
         """Open the file settings overlay under the gear button of the Files page."""
@@ -1513,7 +1531,11 @@ class MainWindow:
         before = table.line_positions() if slide else {}
         self._grid_shown = shown
         table.setRowCount(len(lines))
+        self.row_placeholder.setTextFormat(Qt.TextFormat.RichText if self._no_columns else Qt.TextFormat.PlainText)
         self.row_placeholder.setText(NO_COLUMNS_HINT if self._no_columns else ROW_HINT)
+        self.row_placeholder.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse if self._no_columns
+                                                     else Qt.TextInteractionFlag.NoTextInteraction)
+        self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not self._no_columns)
         self.row_placeholder.setVisible(not lines)
         palette = table.palette()
         for r, (column, text, heard) in enumerate(lines):

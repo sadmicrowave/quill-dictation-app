@@ -29,7 +29,7 @@ A file you pick this way that no program has open yet is **started in its own pr
 
 ### Where the data starts
 
-Press the **gear** at the right of **Active File** for the **file settings** (an overlay): **Headings Row** (**Automatic** finds the headings), **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), and **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
+Press the **gear** at the right of **Active File** for the **file settings** (an overlay; the gear is greyed out until a file is connected, and greys out again if the file is let go). These settings belong to the **sheet** you have open, in that workbook: another sheet, or another file, has its own, and Quill remembers each one next time you open that file. They are: **Headings Row** (**Automatic** finds the headings), **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), and **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
 
 ### Several programs at once
 

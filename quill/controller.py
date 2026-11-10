@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from quill.bridge.base import BridgeError, BridgeLockedError, WorkbookBridge
-from quill.config.settings import Settings
+from quill.config.settings import SheetLayout, Settings
 from quill.history import History
 from quill.learning import link_word
 from quill.parser.commands import NO_WORDS, YES_WORDS, Action, CommandMatcher
@@ -110,6 +110,8 @@ class Controller:
         self._sheet = ""
         self.sheet_headers: list[str] = []
         """The active sheet's columns in sheet order (empty when no workbook is connected)."""
+        self.on_layout: Callable[[], None] = lambda: None
+        """Told when the layout in force (headings row, starting row, headings direction) changed because the sheet or workbook did."""
         self.on_columns: Callable[[list[str]], None] = lambda columns: None
         """Told the active sheet's columns whenever they are read (and ``[]`` when the workbook is let go)."""
         self.connected = False
@@ -146,15 +148,13 @@ class Controller:
         self._redo = None
         self.history.clear()   # undo steps belong to the workbook they were made in
         self._append_target = None
-        if hasattr(self.bridge, "set_vertical"):
-            self.bridge.set_vertical(bool(self.settings.preferences["vertical_layout"]))
-            self.bridge.set_start_row(int(self.settings.preferences["start_row"]))
-            self.bridge.set_headings_row(int(self.settings.preferences["headings_row"]))
+        self._give_layout(SheetLayout())                   # (the last workbook's layout means nothing here: its own is applied once the sheet is known)
         self.bridge.connect(workbook)
         here = str(getattr(self.bridge, "workbook_path", "") or workbook or "")
         if self._connected_to and here != self._connected_to:
             self.session.forget_terms()                    # other workbook: what was heard for the last one means nothing here
         self._connected_to = here
+        self._apply_layout_for(self.bridge.active_sheet_name())
         self.reload_vocab()
         self.connected = True
         self.on_columns(list(self.sheet_headers))          # (again, now that it is connected: a sheet with no columns is told apart from no file)
@@ -188,6 +188,37 @@ class Controller:
         self._sheet = self.bridge.active_sheet_name()
         self.sheet_headers = list(self.bridge.get_headers())
         self.on_columns(list(self.sheet_headers))
+
+    # ------------------------------------------------------------------ #
+    # Where a sheet's data is (kept per workbook and sheet)                #
+    # ------------------------------------------------------------------ #
+
+    def _layout_now(self) -> SheetLayout:
+        prefs = self.settings.preferences
+        return SheetLayout(int(prefs["headings_row"]), int(prefs["start_row"]), bool(prefs["vertical_layout"]))
+
+    def _give_layout(self, layout: SheetLayout) -> None:
+        """Make *layout* the one in force: the preferences the panel shows, and the bridge that reads and writes."""
+        prefs = self.settings.preferences
+        prefs["headings_row"], prefs["start_row"], prefs["vertical_layout"] = layout.headings_row, layout.start_row, layout.vertical
+        bridge = self.bridge
+        if hasattr(bridge, "set_vertical"):
+            bridge.set_vertical(layout.vertical)
+            bridge.set_start_row(layout.start_row)
+            bridge.set_headings_row(layout.headings_row)
+
+    def _apply_layout_for(self, sheet: str) -> None:
+        """The workbook or its open sheet changed: use the layout saved for *that* sheet of *that* workbook (the default if none)."""
+        layout = self.settings.layout_for(self._connected_to, sheet)
+        if layout != self._layout_now() or sheet != self._sheet:
+            self._give_layout(layout)
+            self._append_target = None
+            self.on_layout()
+
+    def _remember_layout(self) -> None:
+        """The layout was changed for the sheet that is open: keep it for that sheet of that workbook."""
+        if self._connected_to and self._sheet:
+            self.settings.set_layout(self._connected_to, self._sheet, self._layout_now())
 
     def _apply_learning(self) -> None:
         """Give the vocabulary what the user taught Quill about words and columns (and how soon to use it)."""
@@ -309,6 +340,7 @@ class Controller:
             return Event("turn_on" if on else "turn_off",
                          detail=f"Each turn adds to the same {self._unit()}" if on else f"Each turn is written to a new {self._unit()}")
         prefs["vertical_layout"] = on
+        self._remember_layout()
         self.settings.save()
         self.history.clear()                   # row numbers mean something else now
         try:
@@ -326,6 +358,7 @@ class Controller:
         if number == int(self.settings.preferences["start_row"]):
             return
         self.settings.preferences["start_row"] = number
+        self._remember_layout()
         self.settings.save()
         self._append_target = None
         if hasattr(self.bridge, "set_start_row"):
@@ -338,6 +371,7 @@ class Controller:
         if number == int(self.settings.preferences["headings_row"]):
             return
         self.settings.preferences["headings_row"] = number
+        self._remember_layout()
         self.settings.save()
         self._append_target = None
         try:
@@ -712,6 +746,7 @@ class Controller:
         except BridgeError:
             return
         if current != self._sheet:
+            self._apply_layout_for(current)
             self.reload_vocab()
             self._on_event(Event("ignored", detail=f"Now on sheet '{current}'"))
 

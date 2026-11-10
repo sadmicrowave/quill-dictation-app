@@ -2,6 +2,7 @@
 in a turn turns to the normal colour at once and comes to the top, in the order the words were said."""
 import unittest
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from quill.stream import WordMatch
@@ -132,6 +133,23 @@ class TestASheetWithNoColumns(AppCase):
         window = self.quill.window
         self.assertFalse(window.row_placeholder.isHidden())
         self.assertIn("no column headings", window.row_placeholder.text())
+
+    def test_both_names_in_the_hint_are_links_that_open_the_file_settings(self):
+        from PySide6.QtTest import QTest
+        self.blank()
+        window = self.quill.window
+        hint = window.row_placeholder
+        self.assertEqual(hint.text().count('href="file-settings"'), 2)
+        self.assertFalse(hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+        hint.linkActivated.emit("file-settings")
+        QTest.qWait(500)
+        self.assertEqual(window.panel_page, "file")
+        self.assertTrue(window.panel.settings.isVisible())
+
+    def test_the_usual_hint_is_plain_and_does_not_catch_the_mouse(self):
+        hint = self.quill.window.row_placeholder
+        self.assertTrue(hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+        self.assertNotIn("href", hint.text())
 
     def test_nothing_is_queued_for_the_term_helper_without_columns(self):
         self.blank()
