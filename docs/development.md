@@ -28,30 +28,32 @@ Real users double-click an app; nothing is run from a command line. So: a log fi
 
 - **Day to day: run from source** (`python main.py`) with the test suite: instant feedback, no rebuild.
 - **Build the packaged app now, once, as a smoke test, then at milestones** (`sh tools/build_mac.sh`, `tools\build_win.bat`). Packaging fails in ways source runs never show: missing hidden imports (PyObjC, Vosk's native libraries), data files not found inside the bundle (`sys._MEIPASS`: model zip, sounds, assets, `defaults.json`), per-user folders, and **permissions**. When run from a terminal, macOS attributes the microphone and Excel-automation prompts to Terminal / Python; the packaged app has its own identity and must be tested getting them itself (reset with `tccutil reset Microphone com.quill.app` and `tccutil reset AppleEvents com.quill.app`).
-- **First build results (2026-10-30)**: the app bundle is about 196 MB; launching it exposed two defects that source runs hide (spec paths relative to the wrong folder; `xlwings` not installed in the dev environment so the bundle had no Excel bridge), both fixed. Check `~/Library/Logs/Quill/quill.log` after any test launch.
+- **A packaged build is about 440 MB** (Qt, Vosk and the 68 MB unpacked speech model). Packaging has caught defects that source runs hide (spec paths relative to the wrong folder; a dependency missing from the bundle), so launch the build and check `~/Library/Logs/Quill/quill.log` after any test launch.
 - **Rebuild when something packaging-related changes** (a new dependency, data file, `Info.plist` key, icon, entitlement) and before anyone else tries it. Not after every code edit.
 - **Always test the packaged app by double-clicking it**, never from a terminal, because that is what a user does.
-- **Before release**: a clean build, then sign with a Developer ID certificate and notarise (macOS) or sign the `.exe` (Windows); otherwise Gatekeeper / SmartScreen warn. Expect an app of roughly 300 MB (Qt, Vosk, the 68 MB unpacked model).
+- **Releasing**: bump `__version__` in `quill/__init__.py`, merge `develop` into `main`, and push a tag that equals the version (`git tag v0.1.0 && git push origin v0.1.0`). The **release** workflow builds the Windows zip and the two macOS disk images (Apple chip and Intel) on GitHub's runners, checks the tag against the version, and attaches them, with checksums, to a **draft** release; nothing is public until you publish it. The builds are not signed with a paid certificate (macOS: ad-hoc signed; Windows: unsigned), so people see the first-run warnings described in the [README](../README.md#get-quill) and in [`packaging/README.md`](../packaging/README.md). The minimum macOS (26.0) is set in `packaging/quill_mac.spec`; the Windows build carries a version resource.
 - Optional: on macOS, `py2app -A` ("alias mode") builds a real `.app` that points back at the source files, so code edits take effect without rebuilding while still giving the app its own bundle identity for permissions. Not set up yet.
 
 ## Setting up for development
 
     pip install -r requirements-dev.txt
-    python -m pytest          # ~400 tests, headless, a few seconds
+    python -m pytest          # the quick suite, headless
+    python -m pytest --full   # every test (about 2,000 of them)
 
 Tests need no Excel, microphone or speech model (Qt runs `offscreen`; a fake
-xlwings, fake recogniser and file bridge stand in). Two tests skip on the
-offscreen platform (system tray, colour scheme).
+xlwings, fake recogniser and file bridge stand in). A few tests skip where the platform
+cannot run them (the system tray and colour scheme offscreen, file permissions on Windows).
 
 ## Status and limits
 
-Built and unit-tested: introspection, parser, keywords and settings, window, tray, sorting window (clicks and voice), search, workbook watcher.
-**Not yet verified**: against real Excel on macOS or Windows (including the AutoFilter calls and bring-to-front), with a real microphone and Vosk model, the tray on a real desktop, and PyInstaller builds. See `$ To Do.md`.
-Not built: Linux, free-text "contains" search, date comparisons in search, a file picker for non-Excel users.
+- **Automated**: the whole suite runs in GitHub Actions on macOS 26, macOS 15 and macOS 15 Intel, and Windows Server 2025 and 2022 (quick tests on every push; the full suite on pull requests, on `main` and every week). Windows 11 on Arm is tried as an experiment only.
+- **By hand**: what needs a real screen, microphone and spreadsheet program (Excel, Numbers and LibreOffice live links, permissions, the look of the windows, the packaged builds) is checked with the End-to-End Test Checklist, which lives outside this repository with the other planning notes. The Windows build has had the least hands-on testing.
+- **Not built**: Linux, a free-text "contains" search, and a file picker for people who do not use a spreadsheet program.
+- **Known gaps** are tracked in the planning notes (`$ To Do.md`), not here.
 
 ## Testing
 
-- `pytest` runs the **quick** suite (about a minute and a half): the ~320 tests that take 0.25 s or more (listed in `tests/slow_tests.txt`) are left out. `pytest --full` (or `QUILL_FULL=1`) runs everything (about 4.5 minutes); do that before a commit or a build, or when something broad changed. A test named on the command line is always run. `python tools/make_slow_list.py` rewrites the list.
+- `pytest` runs the **quick** suite: the ~320 tests that take 0.25 s or more (listed in `tests/slow_tests.txt`) are left out. `pytest --full` (or `QUILL_FULL=1`) runs everything (a little under 7 minutes); do that before a commit or a build, or when something broad changed. A test named on the command line is always run. `python tools/make_slow_list.py` rewrites the list.
 - On a real screen: `tools/verify_window_effects.py` (opacity and blur basics) and `tools/verify_control_opacity.py` (every control, window, theme, spacing; about 25 minutes, leave the screen alone), both macOS only.
 
 ## Troubleshooting for developers
