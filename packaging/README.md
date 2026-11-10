@@ -33,6 +33,12 @@ folder. To bundle one instead, unpack it to:
 and add `("quill/model", "quill/model")` to `datas` in the spec. The model
 directory is git-ignored (see .gitignore).
 
+## Minimum macOS
+
+The app declares macOS 26.0 (`LSMinimumSystemVersion` in `quill_mac.spec`): the PySide6 6.12 libraries it bundles are built for
+macOS 26, while Qt itself needs only 14.4. To support older systems, pin an older PySide6 (6.8 to 6.10), run the full tests, look at
+every screen, have a tester on that macOS confirm it, and only then lower the number (and the site's download page, which says it).
+
 ## Releasing
 
     # bump __version__ in quill/__init__.py, merge to main, then:

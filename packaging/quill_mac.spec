@@ -29,8 +29,21 @@ a = Analysis(
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Quill", console=False)
 coll = COLLECT(exe, a.binaries, a.datas, name="Quill")
+import re
+VERSION = re.search(r'__version__ = "([^"]+)"', open(r("quill", "__init__.py")).read()).group(1)     # (one place to bump it)
+FILES = "Quill reads and writes the spreadsheets you choose, so it can fill in your rows."
 app = BUNDLE(coll, name="Quill.app", icon=r("quill", "assets", "Quill.icns"), bundle_identifier="com.quill.app",
-    info_plist={"CFBundleShortVersionString":"0.1.0",
+    info_plist={"CFBundleShortVersionString": VERSION, "CFBundleVersion": VERSION,
+        "CFBundleDisplayName": "Quill", "CFBundleName": "Quill", "CFBundleDevelopmentRegion": "en",
+        "LSApplicationCategoryType": "public.app-category.productivity",
+        "NSHumanReadableCopyright": "Copyright (c) 2026 Corey Farmer",
+        # 26.0: the PySide6 6.12 libraries inside are built for macOS 26 (Qt itself needs 14.4). Lower it only after a tester on an
+        # older macOS confirms the app runs there (possibly with an older PySide6 pinned).
+        "LSMinimumSystemVersion": "26.0",
         # no LSUIElement: Quill shows in the Dock and the menu bar; Settings has "Hide the Dock Icon"
-        "NSMicrophoneUsageDescription":"Quill needs the microphone to hear your voice.",
-        "NSAppleEventsUsageDescription":"Quill needs to control your spreadsheet program to read your lists and fill in your rows."})
+        "NSMicrophoneUsageDescription": "Quill needs the microphone to hear your voice.",
+        "NSAppleEventsUsageDescription": "Quill needs to control your spreadsheet program to read your lists and fill in your rows.",
+        # the words macOS shows when a spreadsheet lives in one of these places (without them it shows a generic sentence)
+        "NSDocumentsFolderUsageDescription": FILES, "NSDesktopFolderUsageDescription": FILES,
+        "NSDownloadsFolderUsageDescription": FILES, "NSRemovableVolumesUsageDescription": FILES,
+        "NSNetworkVolumesUsageDescription": FILES})
