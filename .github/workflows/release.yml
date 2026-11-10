@@ -112,4 +112,4 @@ jobs:
         run: |
           gh release create "$TAG" downloads/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "Quill ${TAG#v}" \
-            --notes "Quill ${TAG#v}. Downloads: Windows (Quill-windows.zip), macOS Apple Silicon (Quill-mac-apple-silicon.dmg), macOS Intel (Quill-mac-intel.dmg). These builds are not signed with a paid certificate: see the first-run notes in the README."
+            --notes "Quill ${TAG#v}. Windows: Quill-windows.zip. Mac, Apple chip (M1 or newer): Quill-mac-apple-silicon.dmg. Mac, Intel chip: Quill-mac-intel.dmg. First run: these downloads are not signed with a paid certificate, so each system asks once (see packaging/README.md: edit these notes before publishing)."
