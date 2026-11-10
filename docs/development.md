@@ -53,6 +53,8 @@ cannot run them (the system tray and colour scheme offscreen, file permissions o
 
 ## Testing
 
+How the layers fit together (unit tests, journeys with invariants, random walks, on-screen journeys) is in [Testing](testing.md). Running them:
+
 - `pytest` runs the **quick** suite: the ~320 tests that take 0.25 s or more (listed in `tests/slow_tests.txt`) are left out. `pytest --full` (or `QUILL_FULL=1`) runs everything (a little under 7 minutes); do that before a commit or a build, or when something broad changed. A test named on the command line is always run. `python tools/make_slow_list.py` rewrites the list.
 - On a real screen: `tools/verify_window_effects.py` (opacity and blur basics) and `tools/verify_control_opacity.py` (every control, window, theme, spacing; about 25 minutes, leave the screen alone), both macOS only.
 

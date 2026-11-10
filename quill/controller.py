@@ -152,6 +152,8 @@ class Controller:
         self.bridge.connect(workbook)
         here = str(getattr(self.bridge, "workbook_path", "") or workbook or "")
         if self._connected_to and here != self._connected_to:
+            for event in self.session.drop_row("another file was chosen"):
+                self._on_event(event)
             self.session.forget_terms()                    # other workbook: what was heard for the last one means nothing here
         self._connected_to = here
         self._apply_layout_for(self.bridge.active_sheet_name())
@@ -172,6 +174,8 @@ class Controller:
         self.connected = False
         self.sheet_headers = []
         self.on_columns([])
+        for event in self.session.drop_row("the file was closed"):      # its row was for that file: it must not be written into the next one
+            self._on_event(event)
         with contextlib.suppress(BridgeError):
             self.bridge.disconnect()
         if self.session.listening:

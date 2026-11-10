@@ -42,8 +42,9 @@ def pytest_collection_modifyitems(config, items):
     slow = {line.strip() for line in SLOW_LIST.read_text().splitlines() if line.strip() and not line.startswith("#")}
     if config.args and any("::" in a for a in config.args):
         return                                          # a test named on the command line is always run
-    kept = [item for item in items if item.nodeid not in slow]
-    dropped = [item for item in items if item.nodeid in slow]
+    journeys = "tests/journeys/"                       # the end-to-end journeys (see tests/journeys/harness.py) always belong to the full run
+    kept = [item for item in items if item.nodeid not in slow and not item.nodeid.startswith(journeys)]
+    dropped = [item for item in items if item.nodeid in slow or item.nodeid.startswith(journeys)]
     if dropped:
         items[:] = kept
         config.hook.pytest_deselected(items=dropped)

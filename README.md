@@ -88,6 +88,7 @@ More in the app under **Help > Troubleshooting**.
 |---|---|
 | [Using Quill](docs/usage.md) | What to say, searching, the Term Helper, voice sorting and undo, working with workbooks |
 | [The window and settings](docs/interface.md) | The main window, mini view, settings, appearance, sounds, speech models |
+| [Testing](docs/testing.md) | How Quill is tested: journeys, invariants and random walks |
 | [Development](docs/development.md) | Running from source, tests, building the app, releasing |
 | [Architecture](docs/architecture.md) | How the code is organised and how a spoken phrase becomes a row |
 | [Development history](docs/development-history.md) | Notes from each phase of the project |

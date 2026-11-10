@@ -418,6 +418,15 @@ class Session:
         self.context.clear()
         return [Event("discarded", record=row, detail="Row discarded")]
 
+    def drop_row(self, why: str) -> list[Event]:
+        """Throw away the row being built because the place it was going to is gone (the file was closed or another was chosen).
+        Nothing is said when there is no row."""
+        if not self.record and not self.row_terms:
+            return []
+        events = self._discard()
+        events[0].detail = f"Row discarded: {why}"
+        return events
+
     def _ask_if_needed(self) -> list[Event]:
         """Move newly heard terms to pending and announce them."""
         if not self.pool and not self._reask:
