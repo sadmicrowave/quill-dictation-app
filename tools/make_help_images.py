@@ -86,7 +86,9 @@ def shoot(app: QApplication, theme: str) -> None:
     main_window.set_listening_indicator(True)
     colors = colors_for(dark, "violet")
     main_window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
-    main_window.set_stream_classifier(lambda words: [WordMatch(w in ('black', 't-shirt', 'large', 'good', 'appraisal', 'thirty', 'five'), 'Color') for w in words])
+    heard_in = {"black": "Color", "t-shirt": "Type", "large": "Size", "good": "Condition", "appraisal": "Appraisal", "thirty": "Appraisal", "five": "Appraisal"}
+    main_window.set_columns(["Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])        # (the sheet's columns, listed from the start)
+    main_window.set_stream_classifier(lambda words: [WordMatch(w in heard_in, heard_in.get(w), span=list(heard_in).index(w) if w in heard_in else None) for w in words])
     main_window.add_stream_text('this next one is a black t-shirt large good appraisal thirty five')
     main_window.update_current_row(row)
     main_window.set_last_saved("Row 6", {"Type": "Blouse", "Color": "Navy", "Size": "M"})
@@ -97,6 +99,7 @@ def shoot(app: QApplication, theme: str) -> None:
     mini.setup()
     mini.set_mini(True)
     mini.set_listening_indicator(True)
+    mini.set_columns(["Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])
     mini.update_current_row(row)
     mini.set_sorting_count(2)
     mini.widget.resize(340, 190)

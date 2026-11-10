@@ -108,6 +108,10 @@ class Controller:
         self.vocab = Vocabulary()
         self.session = Session(self.vocab, CommandMatcher(settings.keywords), today=today)
         self._sheet = ""
+        self.sheet_headers: list[str] = []
+        """The active sheet's columns in sheet order (empty when no workbook is connected)."""
+        self.on_columns: Callable[[list[str]], None] = lambda columns: None
+        """Told the active sheet's columns whenever they are read (and ``[]`` when the workbook is let go)."""
         self.connected = False
         """True while attached to a workbook."""
         self.voice_sorter: VoiceSorter | None = None
@@ -165,6 +169,8 @@ class Controller:
     def detach(self) -> None:
         """Let go of a workbook that was closed; closes the gate if it was open."""
         self.connected = False
+        self.sheet_headers = []
+        self.on_columns([])
         with contextlib.suppress(BridgeError):
             self.bridge.disconnect()
         if self.session.listening:
@@ -179,6 +185,8 @@ class Controller:
         self._apply_aliases()
         self._apply_learning()
         self._sheet = self.bridge.active_sheet_name()
+        self.sheet_headers = list(self.bridge.get_headers())
+        self.on_columns(list(self.sheet_headers))
 
     def _apply_learning(self) -> None:
         """Give the vocabulary what the user taught Quill about words and columns (and how soon to use it)."""

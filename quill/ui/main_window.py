@@ -236,7 +236,9 @@ class MainWindow:
         self._on_field_options = on_field_options or (lambda column: [])      # the other columns a line's value could go in
         self._on_field_changed = on_field_changed or (lambda column, to: None)
         self._on_learn_answer = on_learn_answer or (lambda answer: None)      # True: yes, False: no, None: no answer in time
-        self._row_fields: dict[str, object] = {}   # what the row grid shows now
+        self._row_fields: dict[str, object] = {}   # the values of the row being built (what the grid shows beside their names)
+        self._sheet_columns: list[str] = []        # the active sheet's columns, in sheet order (the grid lists them all, muted, from the start)
+        self._grid_shown: tuple = ()               # what the grid was last filled with (it is only refilled when this changes)
         self._stream_words: list[tuple[str, WordMatch]] = []     # what was heard (final), with what Quill made of each word
         self._stream_partial: list[tuple[str, WordMatch]] = []   # the phrase still being spoken
         self._stream_done = False            # the row ended: the next words start a fresh stream
@@ -505,6 +507,7 @@ class MainWindow:
         self.set_listening_indicator(False)
         fill_missing_tips(window)
         fill_missing_tips(self.panel.settings)
+        self._refresh_grid()                                   # (columns read before the window was built)
 
     @staticmethod
     def _heading(text: str) -> QLabel:
@@ -1383,9 +1386,9 @@ class MainWindow:
 
     def _row_table_height(self) -> int:
         """How tall the Current Row box should be: small when empty, growing with its rows up to a cap."""
-        rows = self.row_table.rowCount()
+        rows = sum(1 for line in self._grid_shown[0] if line[2]) if self._grid_shown else 0       # (the lines that were heard)
         if rows == 0:
-            return ROW_EMPTY_HEIGHT
+            return ROW_EMPTY_HEIGHT                    # (the muted columns below the heard ones scroll, they never ask for room)
         cap = ROW_MAX_MINI if self._view_mini else ROW_MAX_FULL
         self._size_rows()
         total = sum(self.row_table.rowHeight(r) for r in range(rows))
@@ -1423,19 +1426,80 @@ class MainWindow:
             self._resize_to(window.width(), self._height_now() + shortfall)
 
     def update_current_row(self, fields: dict[str, object]) -> None:
-        """Show the record being built, one column per line (the box grows with the fields, then scrolls)."""
+        """Show the record being built: the values of the columns heard so far (the box grows with them, then scrolls)."""
         self._row_fields = dict(fields)
+        self.row_table.set_active(set(fields))
         self.row_table.set_changeable({c for c in fields if self._on_field_options(c)})
-        self.row_table.setRowCount(len(fields))
-        self.row_placeholder.setVisible(not fields)
-        for r, (column, value) in enumerate(fields.items()):
-            text = value.isoformat() if isinstance(value, dt.date) else str(value)
+        self._refresh_grid()
+
+    def set_columns(self, columns: list[str]) -> None:
+        """The active sheet's columns (empty: no file is connected).
+
+        The grid lists all of them, in the sheet's order and muted, so the user can see Quill is connected to the right sheet; they
+        ease in from the top when the list is new. Heard columns then come to the top (see :meth:`_refresh_grid`).
+        """
+        columns = list(columns)
+        if columns == self._sheet_columns:
+            return                                               # the same sheet, read again: nothing to show
+        self._sheet_columns = columns
+        if self._window is None:
+            return                                               # (not built yet: setup shows them)
+        self._refresh_grid()
+        window = self._window
+        self.row_table.ease_in_rows(animate=bool(columns) and self.animation_ms > 0 and window is not None and window.isVisible())
+
+    def _heard_columns(self) -> list[str]:
+        """The columns the words in the Voice Stream filled, in the order they were first heard (live: partial words count)."""
+        found: list[str] = []
+        if self._stream_done:
+            return found                                         # the row is over: what is left in the box belongs to it, not to the next turn
+        for _, match in self._stream_words + self._stream_partial:
+            if match.column and match.column not in found:
+                found.append(match.column)
+        return found
+
+    def _grid_lines(self) -> list[tuple[str, str, bool]]:
+        """What the grid shows, top to bottom: ``(column, value text, heard)``.
+
+        The columns heard in this turn come first, in the order they were said (a column's value shows once it is understood, at the
+        end of the phrase); then every other column of the sheet, muted, in the sheet's order.
+        """
+        heard = self._heard_columns()
+        for column in self._row_fields:                          # (a value set another way, e.g. by changing a line's column)
+            if column not in heard:
+                heard.append(column)
+        lines = []
+        for column in heard:
+            value = self._row_fields.get(column)
+            lines.append((column, "" if value is None else (value.isoformat() if isinstance(value, dt.date) else str(value)), True))
+        lines += [(column, "", False) for column in self._sheet_columns if column not in heard]
+        return lines
+
+    def heard_lines(self) -> list[tuple[str, str]]:
+        """The grid's lines in the normal colour (the columns heard in this turn): ``(column, value text)``, top to bottom."""
+        return [(column, text) for column, text, heard in (self._grid_shown[0] if self._grid_shown else ()) if heard]
+
+    def _refresh_grid(self) -> None:
+        """Fill the grid from :meth:`_grid_lines`: heard columns in the normal colour at the top, the rest muted below them."""
+        if self._window is None:
+            return                                               # not built yet
+        lines = self._grid_lines()
+        shown = (tuple(lines), self._text_color)
+        if shown == self._grid_shown:
+            return
+        self._grid_shown = shown
+        table = self.row_table
+        table.setRowCount(len(lines))
+        self.row_placeholder.setVisible(not lines)
+        palette = table.palette()
+        for r, (column, text, heard) in enumerate(lines):
             for c, content in enumerate((column, text)):
                 item = QTableWidgetItem(content)
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)            # not selectable
                 if c == 0:
-                    item.setForeground(self.row_table.palette().placeholderText())
-                self.row_table.setItem(r, c, item)
+                    item.setForeground(palette.text() if heard else palette.placeholderText())
+                table.setItem(r, c, item)
+        table.scrollToTop()
         self._size_rows()
         self._fit_row_table()
 
@@ -1519,6 +1583,7 @@ class MainWindow:
     def end_stream(self) -> None:
         """The row ended (saved, discarded or listening stopped): the next words start a new stream."""
         self._stream_done = True
+        self._refresh_grid()                           # (the words stay in the box, but the grid starts over)
 
     def sorting_finished(self) -> None:
         """The Term Helper closed with everything answered: bring this window back and, if the row it was
@@ -1578,6 +1643,7 @@ class MainWindow:
         self.stream.fit()
         bar = self.stream.verticalScrollBar()
         bar.setValue(bar.maximum())                    # keep the newest words in view once it scrolls
+        self._refresh_grid()                           # a column just heard comes to the top of the grid, as the word is heard
 
     def _stream_height_changed(self, old: int, new: int) -> None:
         """The stream grew or shrank: take the room from the Current Row box, growing the window only if it has none."""
