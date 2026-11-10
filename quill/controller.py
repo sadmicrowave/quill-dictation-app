@@ -157,6 +157,7 @@ class Controller:
         self._connected_to = here
         self.reload_vocab()
         self.connected = True
+        self.on_columns(list(self.sheet_headers))          # (again, now that it is connected: a sheet with no columns is told apart from no file)
 
     def try_connect(self, workbook: str | None = None) -> bool:
         """Like :meth:`connect` but returns False instead of raising."""

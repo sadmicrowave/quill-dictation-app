@@ -57,8 +57,10 @@ from quill.ui.chrome import set_always_on_top
 from quill.ui.hints import fill_missing_tips
 from quill.ui.icons import make_icon
 from quill.ui.main_widgets import (
+    NO_COLUMNS_HINT,
     PLACEHOLDER_MARGINS,
     ROW_EMPTY_HEIGHT,
+    ROW_HINT,
     STREAM_MIN_HEIGHT,
     ResizeWatcher,
     RowTable,
@@ -242,6 +244,7 @@ class MainWindow:
         self._stream_words: list[tuple[str, WordMatch]] = []     # what was heard (final), with what Quill made of each word
         self._stream_partial: list[tuple[str, WordMatch]] = []   # the phrase still being spoken
         self._stream_done = False            # the row ended: the next words start a fresh stream
+        self._no_columns = False                   # connected, but the sheet's headings were not found
         self._live_fields: dict[str, object] = {}  # what the words still being spoken would put in the row (shown as they are heard)
         self._live_stale = False                   # a phrase just ended: its live values stay until the row's own values arrive
         self._preview_values = lambda words: {}
@@ -397,7 +400,7 @@ class MainWindow:
         self.row_table.setMinimumHeight(ROW_EMPTY_HEIGHT)           # starts small; grows with the fields heard
         self._row_target = ROW_EMPTY_HEIGHT
         # a hint shown while no fields have been heard yet
-        self.row_placeholder = QLabel("Words you say that match to columns in the selected file appear here as they are heard.", self.row_table.viewport())
+        self.row_placeholder = QLabel(ROW_HINT, self.row_table.viewport())
         self.row_placeholder.setProperty("placeholder", True)        # same look as the Voice Stream box's placeholder
         self.row_placeholder.setWordWrap(True)
         self.row_placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -1435,6 +1438,14 @@ class MainWindow:
         self.row_table.set_changeable({c for c in fields if self._on_field_options(c)})
         self._refresh_grid()
 
+    def set_no_columns(self, on: bool) -> None:
+        """A file is connected but its sheet has no columns Quill could find: the empty grid says so (instead of its usual hint)."""
+        if on != self._no_columns:
+            self._no_columns = on
+            if self._window is not None:
+                self._grid_shown = ()
+                self._refresh_grid()
+
     def set_columns(self, columns: list[str]) -> None:
         """The active sheet's columns (empty: no file is connected).
 
@@ -1502,6 +1513,7 @@ class MainWindow:
         before = table.line_positions() if slide else {}
         self._grid_shown = shown
         table.setRowCount(len(lines))
+        self.row_placeholder.setText(NO_COLUMNS_HINT if self._no_columns else ROW_HINT)
         self.row_placeholder.setVisible(not lines)
         palette = table.palette()
         for r, (column, text, heard) in enumerate(lines):

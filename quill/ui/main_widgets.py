@@ -44,6 +44,9 @@ PLACEHOLDER_MARGINS = (6, 4, 4, 0)
 #: Height (px) of the row grid when empty (the Voice Stream box is as tall), and of the stream's growth limit.
 ROW_EMPTY_HEIGHT = 42
 STREAM_MIN_HEIGHT = ROW_EMPTY_HEIGHT
+ROW_HINT = "Words you say that match to columns in the selected file appear here as they are heard."
+NO_COLUMNS_HINT = ("This sheet has no column headings that Quill can find. Check Headings Row or Sheet Layout in the file settings "
+                   "(the gear beside Active File).")
 SHUFFLE_MS = 240            # a heard column slides to the top of the row grid in this time
 STREAM_MAX_LINES = 5        # the Voice Stream box grows to this many lines, then scrolls
 

@@ -337,6 +337,8 @@ class Session:
         for column, words in result.context.items():
             if column in result.updates:
                 self.context[column] = words
+        if not self.vocab.has_columns:
+            result.candidates = []                                   # (no column to put a new value in: nothing to ask about)
         for cand in result.candidates:
             key = (cand.column, cand.term)
             self.pool[key] = self.pool.get(key, 0) + 1

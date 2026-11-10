@@ -116,6 +116,40 @@ class TestTheColumnsAreListed(AppCase):
         self.assertFalse(window.row_placeholder.isHidden())
 
 
+class TestASheetWithNoColumns(AppCase):
+    def blank(self):
+        import openpyxl
+        path = self.dir / "blank.xlsx"
+        openpyxl.Workbook().save(path)
+        self.quill.controller.connect(str(path))
+
+    def test_the_log_says_so_once_and_the_grid_hint_says_what_to_check(self):
+        self.blank()
+        self.assertEqual(self.log().count("has no column headings Quill can find"), 1)
+        self.assertIn("Headings Row", self.log())
+        self.quill.controller.reload_vocab()                       # (a refresh does not repeat it)
+        self.assertEqual(self.log().count("has no column headings Quill can find"), 1)
+        window = self.quill.window
+        self.assertFalse(window.row_placeholder.isHidden())
+        self.assertIn("no column headings", window.row_placeholder.text())
+
+    def test_nothing_is_queued_for_the_term_helper_without_columns(self):
+        self.blank()
+        self.hear("start listening", "fern small")
+        self.assertFalse(self.quill.controller.session.pending)
+
+    def test_a_sheet_with_columns_again_brings_the_usual_hint_back(self):
+        self.blank()
+        self.quill.controller.connect(str(self.path))
+        self.assertNotIn("no column headings", self.quill.window.row_placeholder.text())
+        self.assertEqual(names(self.quill.window), HEADERS)
+
+    def test_letting_go_of_a_file_is_not_a_sheet_with_no_columns(self):
+        self.quill.controller.detach()
+        self.assertNotIn("no column headings", self.log())
+        self.assertNotIn("no column headings", self.quill.window.row_placeholder.text())
+
+
 class TestTheColumnsEaseIn(unittest.TestCase):
     def setUp(self):
         self.window = MainWindow()
