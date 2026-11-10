@@ -272,7 +272,8 @@ class QuillApp:
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
-        self.controller.on_columns = self.window.set_columns            # the grid lists the sheet's columns once it is connected
+        self.controller.on_columns = self._columns_read                 # the grid lists the sheet's columns once it is connected
+        self._no_columns_told = False                                   # (the log says a sheet has no columns once, not at every refresh)
         self._refresh_after_batch = self._reveal_after_batch = False      # (see refresh_sorting)
         self.controller.on_batch_done = self._batch_done
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,
@@ -2129,6 +2130,17 @@ class QuillApp:
     def _match_heard_words(self, words: list[str]):
         """What Quill makes of each word heard (understood words are drawn as pills in the Voice Stream)."""
         return match_words(words, self.controller.vocab, self.controller.session.matcher)
+
+    def _columns_read(self, columns: list[str]) -> None:
+        """The active sheet's columns were read: show them; if a file is connected but has none, say so (once) and say what to check."""
+        self.window.set_columns(columns)
+        empty = not columns and self.controller.connected
+        self.window.set_no_columns(empty)
+        if empty and not self._no_columns_told:
+            self.window.append_log("This sheet has no column headings Quill can find. It looks in the first rows: check Headings Row "
+                                   "and Sheet Layout in the file settings (the gear beside Active File).", "warning",
+                                   safe="This sheet has no column headings Quill can find")
+        self._no_columns_told = empty
 
     def _preview_heard_words(self, words: list[str]) -> dict[str, object]:
         """What the words heard so far in the phrase still being spoken would put in the row, read by the parser that fills it (so the
