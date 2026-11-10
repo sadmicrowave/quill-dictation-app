@@ -86,7 +86,7 @@ BINDABLE_ACTIONS = [a for a in Action if a is not Action.NONE]
 #: Width of the Settings page list: wide enough for the bold group caption "Voice and Commands" in full.
 SIDEBAR_WIDTH = 270
 
-GROUPS = [("About", ["About"]),
+GROUPS = [("", ["About"]),                      # (no caption: it would only repeat the page's own name)
           ("Preferences", ["General", "Appearance", "Sounds"]),
           ("Voice and Commands", ["Keywords", "Speech Model", "Learned Words"])]
 
@@ -527,11 +527,13 @@ class SettingsDialog:
 
     def _fill_nav(self) -> None:
         for caption, titles in self._groups:
-            head = QListWidgetItem(caption)
-            head.setFlags(Qt.ItemFlag.NoItemFlags)           # a caption, not selectable
-            head.setData(Qt.ItemDataRole.UserRole, None)
-            head.setData(Qt.ItemDataRole.AccessibleDescriptionRole, "caption")
-            self.nav.addItem(head)
+            head = None
+            if caption:
+                head = QListWidgetItem(caption)
+                head.setFlags(Qt.ItemFlag.NoItemFlags)       # a caption, not selectable
+                head.setData(Qt.ItemDataRole.UserRole, None)
+                head.setData(Qt.ItemDataRole.AccessibleDescriptionRole, "caption")
+                self.nav.addItem(head)
             for title in titles:
                 item = QListWidgetItem(title)
                 item.setData(Qt.ItemDataRole.UserRole, title)
@@ -616,7 +618,8 @@ class SettingsDialog:
             total += hits
         shown = {t for t, item in self._nav_items.items() if not item.isHidden()}
         for head, (_, titles) in zip(self._captions, self._groups):
-            head.setHidden(not any(t in shown for t in titles))
+            if head is not None:
+                head.setHidden(not any(t in shown for t in titles))
         self.empty_label.setVisible(bool(query) and total == 0)
         current = self.nav.currentItem()
         if query and (current is None or current.isHidden()) and shown:
