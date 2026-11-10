@@ -5,7 +5,7 @@ name: tests
 # (slow tests too) runs once a week and on demand (Actions tab > tests > Run workflow). Quill's tests run on Qt's
 # "offscreen" platform: no screen is needed. A newer push to the same branch cancels the run still going for the old one.
 #
-# Documentation never starts a run: the README files are read by nothing. Everything else counts, the bundled help pages
+# Documentation never starts a run: the README files and the docs folder are read by nothing. Everything else counts, the bundled help pages
 # (quill/help) and UI_STYLE.md included, because tests read them. (A new documentation file that no test reads goes in
 # the list below; a file a test starts reading comes off it.)
 on:
@@ -15,12 +15,14 @@ on:
       - "**"
       - "!README.md"
       - "!**/README.md"
+      - "!docs/**"
   pull_request:
     branches: [main]
     paths:
       - "**"
       - "!README.md"
       - "!**/README.md"
+      - "!docs/**"
   workflow_dispatch:
     inputs:
       full:

@@ -1,659 +1,99 @@
 # Quill
 
-A hands-free dictation utility for Excel. Open any workbook, open Quill, say
-"start listening", then speak rows in. Quill learns its vocabulary from the
-workbook's own drop-down lists and column headers, so it works with any kind
-of catalog: clothing, plants, parts, coins.
-
-Speech recognition is offline ([Vosk](https://alphacephei.com/vosk/)); nothing leaves your machine.
-
-> New to Quill? The plain-language guide is `$ Overview.md` in the parent
-> folder. This README is the reference for people running or changing the code.
-
-## Contents
-
-- [Quick start](#quick-start) · [Speaking to Quill](#speaking-to-quill) · [Search](#search)
-- [Terms Quill doesn't recognise](#terms-quill-doesnt-recognise-the-needs-sorting-window)
-- [The window, the tray icon and settings](#the-window-the-tray-icon-and-settings)
-- [Working with workbooks](#working-with-workbooks) · [Troubleshooting](#troubleshooting)
-- [Development](#development) · [Architecture](#architecture) · [Status and limits](#status-and-limits)
-
-## Quick start
-
-    python3 -m venv .venv && source .venv/bin/activate
-    pip install -r requirements.txt
-    python main.py                       # drives the Excel workbook that is open
-    python main.py --workbook file.xlsx  # edits a file directly (no Excel needed)
-
-1. Nothing to download: the speech model ships in the repo as a zip (`quill/model/`, about 41 MB) and is unpacked once, on first launch. If it is ever missing, press **Download speech model**.
-2. Open a workbook in Excel (before or after Quill; Quill notices).
-3. Say **"start listening"**, or press **Start** in the window / menu bar icon.
-4. Speak a row, then say **"next row"**. Say **"stop listening"** when done.
-
-To try it without a workbook of your own, build the demo:
-
-    python examples/make_demo_workbook.py "Quill Demo Inventory.xlsx"
-
-then say, for example: *"this item is a black t-shirt in good condition, appraisal thirty five dollars, next row"*. Say something Quill doesn't know ("a large one", "from the nineties") and it lands in the Needs-sorting window, where *Same as 1990s* teaches it.
-
-## Speaking to Quill
-
-Speech is ignored until the gate is open ("start listening"), so conversation
-nearby never reaches your sheet.
-
-| You say | What happens |
-|---------|--------------|
-| a list value: `fern`, `bright` | Fills the column whose drop-down list holds it. A leading "the" is optional; close spellings are accepted |
-| column + value: `size large`, `color navy blue` | Fills that column (also settles values that are in several lists) |
-| column + amount: `appraisal thirty five`, `price twelve dollars and fifty cents` | Number |
-| amount with money words, no column: `thirty five dollars` | Goes to the sheet's money-like number column; the log says which |
-| column + date: `acquired today`, `date october thirty`, `march 3 2025` | Date (`today`, `yesterday`, or `<month> <day> [year]`) |
-| column + text: `notes needs repotting` | Text up to the next column word. Columns named note/notes/comment(s)/description/remarks/details are always text |
-| `next row` (or `new record`) | Writes the row to the next empty row of the active sheet |
-| `cancel` / `delete row` | Discards the row being built |
-| `stop listening` | Closes the gate |
-
-Details worth knowing:
-
-- Whole sentences are fine. Filler words (`this`, `next`, `item`, `is`, `an`, `made`, `mainly`, `could`, …) are skipped.
-- A header word right after "this/the/a/next…" is treated as an ordinary word, so *"this next item is…"* doesn't mean "set the Item column". A column with a list, or a notes-style column, is never skipped.
-- Several values can follow one another. A value found in more than one list goes to the earlier column and the log shows an "Assumed:" line; say the column name first to choose.
-- Computed (formula) columns and stray cells beside the table never block a row; the row goes to the first row whose own columns are empty.
-- `search for`, `clear search` and the other keywords can be renamed in **Settings**. A keyword can't be a bare yes/no answer word, duplicates are rejected, and Start and Stop must keep at least one phrase each.
-
-### Default keywords
-
-| Say | Action |
-|-----|--------|
-| start listening | Open the gate |
-| stop listening | Close the gate |
-| next row · new record | Commit the row |
-| delete row · cancel | Discard the row |
-| search for … | Filter the sheet (see below) |
-| clear search · reset filters | Remove the filter |
-| sort terms | Start answering the Needs-sorting list by voice |
-
-If you saved keywords before a default existed, add it in Settings or press *Restore defaults*.
-
-## Search
-
-`search for black blouses under 50` turns on AutoFilter on the active sheet's
-header row: `black` → Color, `blouses` → Type (plurals work), `under 50` →
-a number column `< 50`. Words not in your lists are reported in the log, never
-guessed. `clear search` shows every row again and returns you to the cell you
-were on before the first search.
-
-- Different columns are AND; several values in one column are OR (`black or navy skirts`).
-- Comparisons: `under / below / less than` (<), `at most / up to / no more than` (≤), `over / above / more than` (>), `at least` (≥), `exactly` (=). Two on one column work (`price over 20 under 50`).
-- A number applies to a column you name just before it (`sale price under 20`). Otherwise it uses the first money-like number column (header contains price, cost, amount, total, paid, value, fee, msrp, appraisal, worth or estimate, or numeric data) and says which in the log.
-- Matching is exact (case-insensitive) against list values, not "contains"; dates aren't compared.
-
-## Terms Quill doesn't recognise: the Needs-sorting window
-
-Anything that matches no list value, header or keyword is collected while you
-build the row. When the row ends (`next row`) or you stop listening, the
-**Needs sorting** window opens: small, resizable, scrollable, one line per term.
-
-    You said ‘90s’ — is that an Era?
-    [ 90s ] [ Era ▾ ] [Add] [Same as… ▾] [Ignore]
-
-    You said ‘teal’ — which column is that?
-    [ teal ] [ Choose column… ▾ ] [Add] [Same as… ▾] [Ignore]
-
-- **Suggested column** appears when Quill can tell: you said the column name (`color teal`), the term looks like the values of exactly one list (a pattern like `1990s`), or only one list column is still empty in this row. Otherwise it asks "which column is that?" and never guesses.
-- **Add** puts the term (capitalised) in the chosen column's drop-down list.
-- **Same as…** says the term is another name for an existing value ("extra large" means whichever value of that list you pick, say XL in a clothing sheet). Saved in your settings, so it works next time.
-- **Ignore** drops it.
-- You can correct the words first (a run like "mainly teal" can be trimmed to "teal").
-- If the term was heard in a row that's already saved, deciding **fills that row's empty cell** (never overwriting anything). Terms from an unsaved or discarded row aren't back-filled.
-- **Add all with a column** / **Ignore all** act on every line.
-- When every term has a suggestion Quill also asks aloud ("Gucci isn't in the Brand list. Add it? Say yes or no."): `yes` accepts the suggestions, `no` ignores them. If nobody answers, the terms stay in the window.
-- A **Needs sorting (n)** button in the main window reopens the list.
-
-### Sorting by voice
-
-Click the first term (or **🎤 Sort by voice**, or say **"sort terms"**) and just talk. Everything
-Quill hears is then read as sort commands applied to the **top** term; it leaves the list, the
-next one moves up (the highlighted row), and the stream continues. Chain several in one breath:
-*"same as <value>, color, same as <value>"*, where a value is anything from your own lists. The window shows `Heard ‘…’ → what happened` as it goes.
-
-| Say | Does |
-|-----|------|
-| `yes` · `add` · `ok` | Add the term to its suggested column |
-| a column name (`color`) · `add to color` | Add it to that column |
-| `same as <value>` | It's another name for an existing value from your lists, whatever your sheet holds: "same as fern", "same as XL", "same as walnut" (the column is found from the value when only one list has it; spelled letters like "x l" work) |
-| `same` … then the value in the next phrase | Same, in two steps |
-| `<column> same as <value>` | Alias, naming the column ("size same as XL") |
-| `undo` · `oops` | Take back the last answer; `undo three` steps back three |
-| `ignore` · `no` · `drop` · `forget it` | Forget the term |
-| `later` · `skip` · `pass` · `next` | Keep it; move it to the end |
-| `add all` · `ignore all` | Every term (add all: only those with a column) |
-| `done` · `stop` | Leave voice sorting (the rest stay listed) |
-
-While voice sorting is on, speech goes only to the list (nothing is dictated into the sheet). It ends by itself when the list is empty.
-If "yes" is said for a term with no suggested column Quill answers "Which column is ‘teal’? Say a column name." and keeps the term. If a *same as* value isn't found it says so and keeps the term.
-"`color same as 1990s`" means *add to Color, then the next term is the same as 1990s* unless 1990s is a Color value.
-Turn on **Start voice sorting automatically when terms need sorting** in Settings to skip the click.
-
-Example, speaking: *"this next item is an extra large t-shirt made in the 90s, mainly teal, could sell for thirty five dollars"* → Type = T-Shirt and Appraisal = 35 are written at once; "90s", "teal" and "extra large" are listed. Choosing *Era → Same as 1990s*, *Color → Add*, *Size → Same as XL* fills the row's other three cells.
-
-### Undo
-
-Every answer you give (add, same as, ignore, later; the bulk buttons and "add all" / "ignore all" count as one) goes into a running history of the **last 100 actions**; the oldest quietly drops off, so it never grows without end. Step backwards through it with:
-
-- the **↶ Undo (n)** button in the Needs-sorting window or the main window (press repeatedly to keep going back),
-- the spoken keyword **`undo`** while dictating (a default keyword; add it under Settings if your keywords were saved earlier), or `undo` / `oops` / `undo three` while voice sorting. Undo is also understood in the same breath as the answers: *"ignore ignore oops"*.
-
-An undo puts the term back where it was in the list and reverses everything the answer did: the value is removed from the workbook list (unless it was already there), the synonym is forgotten, and the cell that was back-filled is emptied again, but only if it still holds what Quill wrote (if you've changed it since, it is left alone and the log says so). The history is cleared when you connect to a different workbook. Only sorting answers are undoable; a saved row is an ordinary Excel row (use Excel's own undo or edit it).
-
-### Sounds and spoken confirmations
-
-Quill confirms what it did without you looking at the screen. **Settings → Confirm with** picks one of:
-
-- **Short sounds** (default). Choose a **Sound set**: Chime, Marimba, Glass, Digital or Walkie-talkie.
-- **Spoken word**. Quill says a word instead. Choose what it says for success: *Okay*, *Done* or *Got it*. Other cues say "Ignored" / "Undone" / "Deleted", "Please sort" and "Problem".
-- **Off**.
-
-| Cue | When |
-|-----|------|
-| **success** (rising) | A row saved with nothing left to sort; a term added or aliased; a search run or cleared |
-| **sort** (three rising notes) | Terms need sorting. The Needs-sorting window also comes to the front |
-| **dismiss** (falling) | Ignore, undo, delete row |
-| **error** (low, buzzy) | Something failed or wasn't understood, including an unclear voice-sort command |
-
-When one breath triggers several (a voice-sort chain answering five terms), only the most important cue plays, so you hear one sound, not a burst. The microphone is muted while a cue plays so Quill never hears itself. A spoken sorting question waits for the sort cue to finish. **Play sample** in Settings previews the unsaved choice. Sounds are generated by `tools/make_sounds.py` into `quill/sounds/<pack>/<cue>.wav`; to add a sound set, add a pack to that script, then to `feedback.PACKS`.
-
-### Look
-
-A custom theme (`quill/ui/theme.py`): Qt's cross-platform Fusion style plus a palette and style sheet built from one colour table, in warm light and dark variants with rounded controls and an accent colour. *Auto* follows the OS and restyles live. Two more choices in **Settings**: an **accent colour** (Violet, the default, Terracotta, Ocean, Forest or Rose, each tuned for light and dark with readable text on it) and **spacing**: *Compact* (the original, packed look) or *Comfortable* (roomier padding, margins and gaps). Both apply as soon as you press OK. Colours and spacing live in the tables `ACCENTS` and `DENSITIES` in `ui/theme.py`; layout margins can't be set from a style sheet, so `apply_spacing()` sets them on each window's layouts (new Needs-sorting rows pick up the current choice). Cost: about 25 ms at startup and under 1 ms per repaint, measured. Third-party packages were considered and not used: `qt-material` (Material Design look), `pyqtdarktheme` (unmaintained), `qdarkstyle` (dark only), `PyQt-Fluent-Widgets` (GPL or paid licence). Screenshots are in the project's `Screenshots/` folder.
-
-### Window frame, log, last-saved line, text size and drop-downs
-
-- **Native window chrome** (`ui/chrome.py`). "Chrome" is the frame around a window: title bar, buttons, border. Quill keeps the OS's own frame (dragging, snapping, accessibility) and tints it to the theme. *macOS*: transparent title bar in the window colour plus the matching light/dark appearance (PyObjC; verified against a real Cocoa window). *Windows 11*: dark title bar in dark mode, title bar and border in the theme colours, rounded corners (DWM calls through `ctypes`; **not yet run on Windows**). Best effort: a missing PyObjC or an older Windows build leaves the normal frame, and under the headless `offscreen` plugin nothing is applied (a fake window id would crash PyObjC). Translucent vibrancy (macOS) and the Mica backdrop (Windows) are not used because Quill's windows are opaque.
-- **Collapsible log.** Click **Log ▴** to hide it (the arrow turns to ▾ and points the way it will open). It keeps collecting while hidden, and the choice is remembered.
-- **Last saved** is always one line: `Last saved: Row 6 · 12 fields · Type: T-Shirt, Appraisal: 35.0, Notes: ve…`, shortened to the window width. The tooltip lists every field (up to 40, then "…and n more"). The live row above it scrolls on its own.
-- **Text size** in Settings (9 to 20 pt, default 12). The "You said ‘teal’ — which column is that?" question is shown 3 pt larger than body text.
-- **Drop-downs and number boxes** use custom chevrons drawn in the theme's colours (generated SVGs, light/dark and disabled variants), padding for the arrow, and a list that opens below the box with roomy, rounded items.
-
-### Count badges, icon buttons and see-through windows
-
-- **Menu bar / tray badge.** While terms wait, the icon carries a round badge with the count ("9+" past nine) in the **accent colour**, like the unread count on other menu bar apps. The tray menu also gets a **Needs sorting (n)…** line that opens the list. Both vanish at zero.
-- **Needs sorting button.** Filled with the accent colour (like Start/Stop) while terms wait, with the count as an inline **pill** in the sentence: `Needs sorting (3)`. The pill is painted by hand (`ui/widgets.Pill`) because a style-sheet radius was square on macOS.
-- **Start / Stop is one button** (`toggle_button`): the light, a play or stop glyph and the sound lines (`WaveMeter`: grey and still when idle, green and moving while listening, in place of the old Listening / Not Listening text) live inside it, and it fills with the accent colour while listening. The file row's **Open File** is an icon-only folder button the height of the picker.
-- **Icons.** Settings is an icon-only (sliders) button with a tooltip and accessible name. The icons are SVG redrawn in the theme's colours (`ui/icons.py`).
-- **Last saved** is a smaller italic supporting note (2 pt under the text size, muted colour).
-- **Window opacity** (Settings, 55 to 100 %, default 100) fades the *whole* window (`setWindowOpacity`): text, inputs, buttons, selection boxes and text areas all follow it together.
-- **Blur behind windows** (Settings checkbox, on by default). The windows are created translucent (`WA_TranslucentBackground`). With blur on, the window background becomes a light tint (72 % opaque, cards 86 %) over a blur of whatever is behind it. *macOS*: an `NSVisualEffectView` (Sidebar material, always active) is added behind Qt's view and removed again when you turn blur off; checked against a real window's view hierarchy. *Windows 11*: the acrylic backdrop (`DWMWA_SYSTEMBACKDROP_TYPE`) plus `DwmExtendFrameIntoClientArea`; needs 22H2 or later, **never run on Windows**. Turning blur off gives solid windows.
-- **Hover and selection** in drop-down lists and menus is a soft accent tint with the normal text colour, never the white-on-light combination (a test checks the contrast for every accent in light and dark).
-- **Checkboxes** are rounded boxes that fill with the accent and show a tick (generated SVG, `on_accent` colour). **Headings** ("Current row", "Log") are regular weight in the muted colour.
-- **Tray icon clicks** only ever open the menu; they never start or stop listening (a left click pops the menu up on Windows, where it otherwise shows only on right click).
-- **Play sample** plays only the selected sound set's chime (or says only the selected word); choosing a sound set or word also plays it once.
-- **Collapsing the log** shrinks the window to fit (the empty footer is hidden too) and reopening restores the earlier height.
-
-### Settings window
-
-A sidebar of groups (**General**, **Appearance**, **Sounds**, **Keywords**) with a **search box** at the top, and rows of *name, muted help text, control*, in the style of Claude's own settings. Search filters the rows of every group (it matches names, help text and extra keywords, and a keyword phrase finds the Keywords page) and hides groups with no match. Controls: toggle switches, a three-icon **Theme** selector (Auto / Light / Dark), plain-text drop-downs with a chevron (no box), sliders with a live percentage, and the keyword table on its own page, which takes all the spare height. Built from `ui/settings_widgets.py` (`SettingRow`, `ToggleSwitch`, `SegmentedControl`, `FlatCombo`) and `ui/settings_dialog.py`. The Settings window itself always stays solid, so it can be read even when the main window is made very transparent.
-
-- **Window opacity**: 10 to 100 %. **100 % is completely solid**, whatever the blur. Lower values fade the whole window (background, controls and text together) so what is behind it shows through.
-- **Window blur**: 0 to 100 %. Frosts what shows through the window; at 100 % opacity there is nothing to see through, so blur only matters once opacity is lowered (macOS: the `NSVisualEffectView`'s alpha; Windows 11: acrylic on/off, since its strength cannot be set).
-- **Current row** can be collapsed like the log (arrow beside the heading; remembered). The window gives back the height of whatever you collapse and takes it again when you reopen it.
-
-- **Live updates.** Every control applies as you change it (theme, accent, spacing, text size, opacity, blur, sounds, undo cap and so on) so you can see the result before deciding; **Cancel** (or closing the window) restores the settings exactly as they were, and **OK** saves. Nothing is written to disk until OK; keyword edits take effect only on OK.
-- **Scrolling is safe.** Drop-downs, number boxes and sliders ignore the mouse wheel until clicked into, so scrolling a page cannot change a setting by accident (this once silently changed a saved keyword's action while scrolling the table). All clickable controls show a pointing hand.
-- The Settings window follows the opacity setting but never goes below 70 % so it stays readable.
-
-### Sounds
-
-The five sets now differ in instrument *and* melody, not just pitch: **Chime** (bells, rising fifth), **Marimba** (wooden mallet knocks, a roll for sorting, one low knock to dismiss), **Glass** (high long-ringing pings, an octave pair, a falling cascade), **Digital** (8-bit square waves: a fast arpeggio, a siren, a pitch dive, a buzz), **Walkie-talkie** (radio beeps in a puff of static). A test checks that every pair of sets differs for every cue.
-
-### App icon ideas
-
-`tools/make_icon_ideas.py` draws twenty concepts (`--more` for ideas 11 to 20, `--new` for 21 to 40, `--mix` for 41 to 50: the parts that were liked, recombined; `--ring` for 51 to 56: the record ring with vertical sound lines in purples; `--clip` for 57 to 59: idea 47 (the clipboard) on purples; `--sheet` for 60 to 63: the Excel-style tiled sheet in purples with white sound lines on top; `--offset` for 64 to 67: the Excel layout, an offset sheet behind a small front box that holds the sound lines; `--all` for one sheet of the first forty) in the modern macOS manner: a flat colour with only a hint of depth (a faint light-to-dark shift, a hairline top highlight, a faint shade on the bottom edge, a flat white glyph at 72 % of the box with a very soft shadow), like the Mail or Arduino icons in the Dock. An earlier, heavily embossed version was too much. They are written into `assets/icon-ideas/` (a full-colour app icon and a one-colour menu bar glyph for each, as SVG) and an optional contact sheet. They are ideas, not final art.
-
-### Main window layout
-
-- **Not-connected chip.** While no spreadsheet is connected the line that would read `Sheet: –` shows an amber pill, **File stream not connected.**, instead. Hovering it explains, in plain technical wording with no first person, that there is nothing to read lists from or write rows to, that Quill works through a workbook open in Excel (it attaches automatically) or an `.xlsx` chosen with File > Open Spreadsheet File, and what to do. The old sentence at the bottom of the window is gone. The chip also shows in the mini view, where the sheet name does not. Once connected the line shows `Sheet: <name>` again.
-- **Log is minimized by default** (a click on **Log** opens it; the choice is remembered). **Nothing is below the Log heading**: status messages (the model download) sit above it, and with the log closed only a 12 px margin remains beneath it (`LOG_BOTTOM_MARGIN`), in compact and comfortable spacing alike.
-- **Settings and the resize icon sit in the title bar** (macOS), left of one another at the right end, as a single title-bar accessory; the status button fills the rest of the row. The icons are 30 / 22 pt wide with a 14 pt gap, so they sit nearer the window edge and further apart. Elsewhere the two icons stay in the window beside Start.
-- **Current Row** (the row grid) lists every column of the active sheet as soon as a file is connected, muted and in sheet order (`MainWindow.set_columns`, fed by `Controller.on_columns`; the lines ease in from the top, `RowTable.ease_in_rows`). A column heard in the turn (live, from the Voice Stream's matches, not at the end of the phrase) turns normal and moves to the top in the order it was said (`MainWindow._grid_lines`); its value shows live too (`QuillApp._preview_heard_words` runs the same parser on the words still being spoken, shown through `MainWindow._live_fields`, never written to the row; the finished phrase replaces it, and `_drop_live` clears it after 400 ms if nothing confirms it). The same live words come from the Quick, Broad and Careful models alike; Careful only re-reads the finished phrase, so a value can change when you pause. When the order changes the lines slide (`RowTable.slide_from`, 240 ms, nothing when animations are off). A misheard value can be caught before "next row" saves it (or "cancel" throws it away); "next row" resets the grid to the muted list. A file whose sheet has no columns Quill can find shows a different hint (`NO_COLUMNS_HINT`, its two links open the file settings through `MainWindow.open_file_settings`), the log warns once (`QuillApp._columns_read`), and no terms are queued for the Term Helper (`Vocabulary.has_columns`). Without a connected file it is a small box with a hint ("Fields appear here as they are heard"). It grows with its heard lines up to 150 px (66 px in the mini view) and then scrolls inside itself; the window grows and shrinks with it, animated, unless the section is collapsed.
-- **Alignment.** The file picker and Open File… row, the sheet line, the Current Row box and the status row share the same left and right edges (the picker starts under the status light, Open File… ends under Start). Widgets that manage their own padding carry a `keepMargins` property so the spacing setting no longer adds margins to them; headings are labels, not buttons, so they sit flush with the edge.
-
-### Working without Excel: Open Spreadsheet File
-
-**File > Open Spreadsheet File… (Ctrl/Cmd+O)**, the folder button beside the workbook picker, or **Open Spreadsheet File…** in the menu bar icon's menu opens a standard file picker for an `.xlsx`. Quill then works on that file directly through the file bridge (`XlsxBridge`), with no Excel and no terminal: the lists and columns are learned from it, dictated rows are written into it and it is saved after every change, so close it in other programs while dictating (or reopen it afterwards to see the new rows; changes saved elsewhere are picked up within a few seconds). The choice is remembered (`workbook_file` in the settings) and used again at the next launch if the file is still there; **File > Use Open Excel Workbook** goes back to live Excel and forgets the file. A file never switches itself back to Excel. Macro-enabled `.xlsm` files are refused because saving them this way would drop their macros. Switching files closes the listening gate; an unreadable file leaves the previous workbook working. The `--workbook` command-line option remains for developers, takes priority and is not remembered.
-
-### Auto-refresh
-
-There is no Refresh button. Every 3 seconds Quill compares the workbook file's modification time with the last one it saw and, if you have saved a change in Excel (a new column, a new drop-down value), re-reads the lists and columns. Quill's own writes (rows, taught values, filters) record the new time straight away so they are never mistaken for outside changes, and a file caught mid-save is simply retried on the next tick. The log says "Workbook changed: lists and columns re-read".
-
-### App icon
-
-The chosen design (the quill feather: one white feather with a sweeping notch on an accent-violet squircle, drawn from smooth curves in `quill/ui/feather.py`; the earlier concept sheets are in `Icon Mocks/`) is built by `tools/make_app_icon.py` into `quill/assets/`: `icon.svg`, `icon-small.svg`, `icon-16` to `icon-1024.png`, `Quill.icns` (macOS, through `iconutil`) and `Quill.ico` (Windows, seven PNG sizes written directly). The same drawing is used at every size (a few big shapes need no simplified version). `QuillApp` sets it as the application icon (this is the Dock icon on macOS, verified on a real run) and both PyInstaller specs use it and ship `quill/assets`. The menu bar icon is the same feather as a one-colour glyph (see below). The packaged macOS app shows in both the Dock and the menu bar (no `LSUIElement`).
-
-### Dock icon
-
-macOS shows Quill in the Dock and the menu bar. **Settings > General > Hide the Dock Icon** (off by default, remembered) turns Quill into a menu bar app, live, without restarting (`NSApp.setActivationPolicy_`: regular or accessory; verified on a real run). With the Dock icon hidden you open Quill from the menu bar icon (**Open Quill**), or by opening the app again: clicking its Dock icon or reopening it from Finder with no window showing brings the window back (`QuillApp._app_state_changed`). Closing the window never quits Quill.
-
-### Running as a packaged app (no terminal)
-
-Real users double-click an app; nothing is run from a command line. So: a log file replaces the console (`quill/diagnostics.py`: `quill.log` in the per-user log folder, rotating, with every log line and any uncaught error from the main or a background thread; **Settings > General > Open Log Folder** shows it); first launch unpacks the speech model by itself; settings, aliases and the model live in per-user folders (`platformdirs`); and the macOS `Info.plist` carries the microphone and Apple Events (Excel) usage descriptions that the permission prompts need.
-
-### Development workflow
-
-- **Day to day: run from source** (`python main.py`) with the test suite: instant feedback, no rebuild.
-- **Build the packaged app now, once, as a smoke test, then at milestones** (`sh tools/build_mac.sh`, `tools\build_win.bat`). Packaging fails in ways source runs never show: missing hidden imports (PyObjC, Vosk's native libraries), data files not found inside the bundle (`sys._MEIPASS`: model zip, sounds, assets, `defaults.json`), per-user folders, and **permissions**. When run from a terminal, macOS attributes the microphone and Excel-automation prompts to Terminal / Python; the packaged app has its own identity and must be tested getting them itself (reset with `tccutil reset Microphone com.quill.app` and `tccutil reset AppleEvents com.quill.app`).
-- **First build results (2026-10-30)**: the app bundle is about 196 MB; launching it exposed two defects that source runs hide (spec paths relative to the wrong folder; `xlwings` not installed in the dev environment so the bundle had no Excel bridge), both fixed. Check `~/Library/Logs/Quill/quill.log` after any test launch.
-- **Rebuild when something packaging-related changes** (a new dependency, data file, `Info.plist` key, icon, entitlement) and before anyone else tries it. Not after every code edit.
-- **Always test the packaged app by double-clicking it**, never from a terminal, because that is what a user does.
-- **Before release**: a clean build, then sign with a Developer ID certificate and notarise (macOS) or sign the `.exe` (Windows); otherwise Gatekeeper / SmartScreen warn. Expect an app of roughly 300 MB (Qt, Vosk, the 68 MB unpacked model).
-- Optional: on macOS, `py2app -A` ("alias mode") builds a real `.app` that points back at the source files, so code edits take effect without rebuilding while still giving the app its own bundle identity for permissions. Not set up yet.
-
-Titles, labels, buttons, menu items, setting names and the like use Title Case throughout: two-word titles have both words capitalised (**Last Saved**, **Current Row**, **Not Listening**, **Needs Sorting**, **Sound Set**), and longer ones capitalise every word except small joining words (**Sort by Voice Automatically**, **Keep the Mini View on Top**). Descriptions, tooltips and log sentences stay sentence case.
-
-### Mini view
-
-Press the resize icon in the title bar (on the right) to shrink Quill to a small overlay: a status row (light, the **Listening / Not Listening** text, the **Needs Sorting** count and an icon-only **Start / Stop**); the resize icon sits in the **title bar** itself, on the right, opposite the red / yellow / green buttons (macOS; elsewhere a bare icon inside the window) and the **row being built** in a small box beneath. The log, the saved-row line, the workbook picker, the sheet name, Undo, the footer and Settings are hidden. The window **animates** (about 0.25 s, eased; `MainWindow.animation_ms`; the size moves first and the contents swap at the end when shrinking or at the start's end when growing, so it visibly shrinks and grows instead of snapping) to 340 px wide and about 120 px tall and **floats above other windows** (Settings has a switch, *Keep the mini view on top*) so it can sit beside or over a spreadsheet. The arrows button turns into the way back and restores the previous size, and which view you left it in is remembered. Collapsed sections keep their state across a round trip. Dictation, the microphone and the tray all work from the mini view. The stay-on-top level is changed in place with the OS (`NSWindow.setLevel_` on macOS, `SetWindowPos` on Windows) because changing Qt's window flag destroys and recreates the native window, which is what made the first version jump; Qt's flag is only a fallback.
-
-### Speech model
-
-The Vosk small US-English model (`vosk-model-small-en-us-0.15`, Apache 2.0) ships **compressed** as `quill/model/vosk-model-small-en-us-0.15.zip` (41 MB; 68 MB unpacked), so a fresh clone works with no download and the repository stays smaller. `ensure_model` (in `quill/listener/model.py`) uses a model you configured or one already unpacked, and otherwise unpacks the zip once into the per-user data folder (`.../Quill/model`). An unpacked copy beside the zip is also used and is git-ignored. Plain git is enough (the zip is under GitHub's 100 MB limit); move it to Git LFS if the repository should stay small.
-
-### Microphone
-
-The microphone is **only open while Quill is listening** (plus while a spoken answer is expected: a yes / no question or voice sorting). At launch the speech model loads in the background but the microphone stays off until you press Start, so the macOS microphone indicator is off whenever Quill is idle. The log says "Microphone on" / "Microphone off". Because a closed microphone cannot hear "start listening", there is a setting, **Keep the microphone open when not listening** (off by default), for people who want to start by voice. Implementation: `Listener.preload()` loads the model without opening a stream; `QuillApp.mic_wanted()` / `_sync_mic()` start and stop the stream after every event.
-
-## The window, the tray icon and settings
-
-- **Main window**: status light, Start/Stop, Settings, workbook picker, current sheet, the row being built, last saved row, a log, and a footer for status messages (such as the model download).
-- **Tray / menu bar icon**: the quill feather of the app icon: an **outline when idle, solid with its rib and notch cut out when listening** (a template image, so the system tints it for light and dark menu bars; with a Needs Sorting count it becomes a coloured image with the count badge). There is no Mini View item in this menu; the mini view is toggled from the window. Menu: Start/Stop Listening, Open Quill, Quit. While listening it begins with `Editing: <workbook>` and the workbook's folder (`~` for home, long paths shortened); click either line to bring the workbook to the front. On Windows a left click toggles listening; on macOS use the menu.
-- **Settings**: editable keyword table (add, remove, restore defaults), appearance (auto / light / dark), accent colour, spacing (compact / comfortable), text size, window opacity and blur, "read questions aloud", automatic voice sorting, **Undo remembers** (5 to 500 actions, default 100), and the **feedback** choices below. Stored in the OS config folder as `keywords.toml` (also holds your synonyms and the last-used workbook).
-
-Quill mutes the microphone while it speaks so it can't hear itself.
-
-## Working with workbooks
-
-- **Which lists it finds**: validation lists typed inline (`"A,B,C"`), pointing at a range (`Config!$A$2:$A$20`, quoted sheet names fine), or a defined name; plus any column on a sheet named Config or Settings whose header ends `_list`. Header row: the first Excel table, otherwise the text-richest of the first 10 rows.
-- **Live Excel** reads cell values live but reads list *structure* from the saved file: save after adding a validation rule and Quill re-reads it within a few seconds (the file's modification time is checked every 3 seconds; Quill's own writes are not mistaken for outside changes).
-- **Lists can grow** only if their range has spare empty slots (or is a `*_list` column). A full fixed range reports an error; an inline `"A,B,C"` list can't be extended in live Excel (it can in file mode) — keep lists on a Config sheet.
-- **No workbook open?** Quill says so (window, notification, spoken) and keeps watching every 3 seconds: when a workbook opens it attaches by itself (it doesn't start listening — you still say "start listening"); when it closes Quill lets go and stops listening.
-- **Several workbooks**: use the picker; the last one used is re-selected on launch.
-- **File mode** (`--workbook`) is for testing and for sheets not open in Excel. It saves after each change, so don't use it on a file that is open and unsaved elsewhere.
-
-## Troubleshooting
-
-| Symptom | Try |
-|---------|-----|
-| "No speech model found" | `quill/model/` was removed. Restore it from git, press **Download speech model**, or set `model_path` to a Vosk model folder |
-| Nothing happens when I speak | Is the light green? Say "start listening". Check the OS microphone permission for Quill (macOS: Privacy & Security > Microphone) |
-| "Can't find an open spreadsheet" | Open a workbook in desktop Excel; Quill attaches within a few seconds |
-| macOS asks to control Excel | Choose OK (Privacy & Security > Automation). If you declined, re-enable it there |
-| My drop-downs aren't picked up | Save the workbook (Quill re-reads it by itself within a few seconds); check the validation is a list pointing at a single column |
-| "list is full" | Extend the list's range in the workbook (leave spare empty cells) |
-| A column word is ignored | It must match the header text; say it just before the value |
-| Search says nothing to filter on | Use values that exist in your lists, e.g. `search for fern under 20` |
-| Quill hears itself | Turn off *Read questions aloud* in Settings, or use headphones |
-
-## Development
-
-    pip install -r requirements-dev.txt
-    python -m pytest          # ~400 tests, headless, a few seconds
-
-Tests need no Excel, microphone or speech model (Qt runs `offscreen`; a fake
-xlwings, fake recogniser and file bridge stand in). Two tests skip on the
-offscreen platform (system tray, colour scheme).
-
-### Architecture
-
-| Package | Role |
-|---------|------|
-| `quill/bridge/` | Workbook access: `introspect.py` (finds lists), `grid.py` (cell-level read/write/filter over openpyxl or xlwings), `grid_bridge.py` (shared logic), `xlsx_bridge.py` (file), `xlwings_bridge.py` + `win_bridge.py`/`mac_bridge.py` (live Excel), `filters.py` |
-| `quill/parser/` | `tokens`, `numbers` (numbers, money, dates), `vocab` (values, field words, aliases), `phrase_parser`, `commands` (keyword matcher) |
-| `quill/sorting_voice.py` | Voice sorting: chained spoken commands applied to the top pending term |
-| `quill/bridge/hosts.py` | Which spreadsheet program is in use (Excel live; Numbers / LibreOffice / WPS through the `.xlsx` file): detects running programs and their open files, asks Numbers to reload after a save |
-| `quill/licensing.py` | Account / subscription back end (not exposed yet): `[account]` settings, `LicenseService`, token store and transport interfaces, HTTPS-only addresses |
-| `quill/session.py` | Pure state machine: gate, row building, terms to sort and their decisions |
-| `quill/search.py` | Spoken search → per-column filters |
-| `quill/controller.py` | Carries Session events out to the bridge and speaker; back-fills cells, saves synonyms |
-| `quill/listener/`, `quill/speaker/` | Vosk microphone loop and model download; text-to-speech |
-| `quill/ui/`, `quill/app.py` | PySide6: main window, tray, settings, Needs-sorting window; app wiring and the workbook watcher |
-| `quill/config/` | Shipped defaults and user settings (TOML) |
-| `examples/` | `make_demo_workbook.py` |
-
-Data flow: microphone → `Listener` (thread) → Qt signal → `Controller.handle_transcript` → `Session.feed` → events → bridge writes / speech / window updates.
-The Session never does I/O, so the dictation logic is tested without Excel, audio or Qt. Packaging notes: `packaging/README.md`.
-
-## Status and limits
-
-Built and unit-tested: introspection, parser, keywords and settings, window, tray, sorting window (clicks and voice), search, workbook watcher.
-**Not yet verified**: against real Excel on macOS or Windows (including the AutoFilter calls and bring-to-front), with a real microphone and Vosk model, the tray on a real desktop, and PyInstaller builds. See `$ To Do.md`.
-Not built: Linux, free-text "contains" search, date comparisons in search, a file picker for non-Excel users.
-
-### Phase 30 notes (status button, chip inside the picker, stable resizing)
-- The default accent is **Violet**. Start / Stop, the light and the state text are one button.
-- **File stream not connected** is a fixed-height chip laid over the empty workbook picker (a sibling of the combo box, since a label inside a combo box ignores the style sheet); the mini view, which has no picker, shows its own copy. Its tooltip is wrapped to about 52 characters (`widgets.wrap_tip`).
-- **Resizing:** a spring above the Log heading (stretch 1 while the Log is minimized, 0 while it is open and takes the height itself) soaks up extra height, so sections keep their spacing and sizes and Log stays at the bottom with a 7 px margin.
-- **Tooltips** have rounded corners and a soft border: the tooltip window is made transparent by an app event filter (`theme._TooltipRounder`) so the style sheet's radius shows.
-
-### Phase 31 notes
-- **Start / Stop button:** outlined in the accent colour while idle, filled while listening; the play / stop glyph is at the left, the light and state text at the right. Violet's dark-scheme accent is the same darker `#7A55C2` (white text on it); the dark-scheme text colour on an accent is chosen by contrast (`theme._text_on`).
-- **Current Row** is not collapsible (the `row_collapsed` setting and `on_row_toggled` callback are gone). The box is the stretchy part of the main layout (stretch 1; 2 against the open log's 1), with its content height as its *minimum* (`_RowTable` reports that as its size hint), and the window only grows when a new field would not otherwise fit.
-- **Needs Sorting** button reads `? Terms (n)`. The pill's tooltip is rich text (`widgets.connection_tip`): bold, italics, icons, 155% line height, letter spacing.
-- **Sorting window** is a normal window (`Qt.Window`), not a tool window: tool windows hide when the app loses focus and have a third-size title bar. It opens wide enough for a whole row, has 12 px margins, no scroll-area frame, and the voice-status line only appears for what was just heard.
-- **Dock icon:** banded grid (alternating light / mid rows, grid lines) and a white inlay inside the front box (`make_icon_ideas.tiled_sheet(banded=True)`, `offset_box(border=True)`).
-
-### Phase 32 notes
-- The dock icon's front box has a lighter-purple inlay (`shade(color, 0.5)`) instead of white.
-- The workbook picker (`_WorkbookCombo`) is a drop-down only with two or more workbooks; with none (the not-connected notice) or one, it shows no arrow and does not open.
-- The sorting window is created with the main window as its parent (`setup(parent=...)`), so it stays above that window and only it, and falls back with the app when Quill is not frontmost.
-- Its guidance is a full-width info box (`QLabel[info="true"]`); each row uses the Settings controls (`FlatCombo`, 34 px high), keeps a 5 px gap under its question, and, while voice sorting highlights it, shows what to say (the column names when it has none yet). The column list is shown inline rather than auto-opened as a popup, which would sit over the row and need closing as each term is answered.
-
-### Phase 33 notes
-- **Term Helper** replaces the "Needs Sorting" wording everywhere (button, window title `Term Helper (n)`, tray). The button is just the text and the count pill.
-- **Undo** is a title-bar icon (greyed out when there is nothing to undo, no count) left of Settings; elsewhere it is an icon-only button in the status row. The title-bar icons use a button class (`chrome._button_class`) that shows the pointing hand and reports hover.
-- **The "?" help** is a title-bar icon on the left of the Term Helper window (`add_titlebar_button(..., side="left", hover=...)`); hovering it shows `sorting_window.HELP_HTML` as a rich tooltip.
-- **Code pills** (`widgets.pill`, `pillify`) mark spoken words and commands: `You said bit …`, the "Say …" hints and the "Heard …" line.
-- A row that needs a column opens its Choose Column list when it becomes the active voice row.
-- Voice status sits under the Sort by Voice button, which keeps its size; nothing is shown once voice sorting is off.
-- Tooltip windows lose the OS shadow (`chrome.no_window_shadow`), which showed a faint square corner.
-- The main window re-applies its minimum size whenever widgets appear or disappear, so sections can no longer overlap.
-
-### Phase 34 notes (help, sorting animation, plain titles)
-- **Help** is Markdown: each `quill/help/NN-slug.md` is a topic (first `# ` line = title, `## ` lines = its sections, pictures in `quill/help/images/`). `helpdocs.load_topics()` reads them; `ui/help_window.HelpWindow` shows a Settings-style sidebar with search and a `QTextBrowser` reader (headings, code pills, tables and quotes styled after `setMarkdown`). `HelpWindow.show(topic, section)` selects and scrolls to the place; the ? icons (main window `welcome`, Term Helper `term-helper`, Settings `settings`) all call it. Adding a page is adding a file; the PyInstaller specs bundle the folder.
-- **Term Helper rows** flash green, ease shut one after another (`SortingWindow.FLASH_MS`, `animation_ms`) and the window closes after the last; rows still waiting are kept, not rebuilt, so edits in them survive. Undo and ? are title-bar icons on the window's left.
-- **Plain titles:** `chrome.plain_title` hides the bold system title and draws the same text, regular weight and centred, in the title bar.
-- The spoken "I need help sorting n terms" is gone: a confirm without suggested columns is shown but not spoken (the sorting cue says it).
-
-### Phase 35 notes (help rewrite, other spreadsheet apps, account back end)
-- **Help** pages were rewritten as short wiki-style walkthroughs (steps, tables, emoji, pictures). `tools/make_help_images.py` regenerates the pictures in `quill/help/images/` (offscreen, sample data); `help_window` keeps picture blocks at their natural height and uses a quiet table border.
-- **Other spreadsheet programs:** `bridge/hosts.py` finds running programs (System Events on macOS, `tasklist` on Windows) and the `.xlsx` files they have open. With no Excel workbook open, `QuillApp._attach_host_file` works on that file by itself (not remembered as a chosen file); after Quill saves, `_reload_host` (1.5 s after the last write) asks Numbers to reload it, or logs one line of advice for programs that can't be asked (LibreOffice: File > Reload). The setting `spreadsheet_app` ("auto") is reserved for a picker. The Numbers / LibreOffice commands are best effort and were not run against the real programs; the tests use a fake runner (`QUILL_NO_HOSTS` stops tests asking the system).
-- **Accounts and subscriptions (not shown yet):** `Settings.account` (`[account]` table: `enforce`, `service_url`, `site_url`, plan, status, renewal, device id) is validated on load (https only). `licensing.LicenseService` has `entitled()` (always true while `enforce` is off; offline grace of 7 days), `sign_in/sign_out/refresh`, checkout and billing links; the session token goes to a `TokenStore` (memory for now, keychain later), never the settings file; requests go through a `Transport` (default: "not available yet"). The Settings window has a built wireframe Account page behind `SettingsDialog.SHOW_ACCOUNT = False`.
-- **Title bar:** Help and Undo sit on the left right after the close / minimise / zoom buttons (main window and Term Helper); Settings and the mini-view icon stay on the right. **Last Saved** only appears once a row has been saved.
-
-### Phase 36 notes (log slides up, remembered size, gradient icon)
-- **Log:** opening it no longer animates the window frame. The log slides up from the bottom (`LOG_OPEN_HEIGHT`, a `QVariantAnimation` on its fixed height) and the Current Row box gives up the room; only if that box has no height to spare does the window grow, by the shortfall (`_log_grew`), which closing gives back. Extra height always goes to the Current Row box; the log keeps its height.
-- **Window size:** `window_width` / `window_height` preferences. `MainWindow` reports the full window's size once resizing has settled for 400 ms (`_ResizeWatcher`, `report_size`; never in the mini view or mid-animation, and once more when Quill quits); `restore_size` uses it at launch, trimmed to the screen, and it is also the size the mini view returns to.
-- **Dock icon:** the sheet's rows now darken step by step from top to bottom (like the Excel icon) instead of alternating; thin, faint grid lines remain.
-
-### Phase 37 notes (Voice Stream, mini view, type-checked columns)
-- **Voice Stream:** the "Current Row" heading is now "Voice Stream" with an italic, read-only box under it that grows (up to 5 lines, then scrolls) as words arrive. `Listener` reports partial results (`set_partial_callback`, 0.25 s audio blocks); `QuillApp._hearing` / `_heard` feed them to `MainWindow.set_stream_partial` / `add_stream_text`, and `quill/stream.py:recognized_words` marks the words Quill understands (column names, list values, numbers, dates, command phrases) so they draw as theme-coloured pills. The row grid below still fills as before. A finished row (saved, discarded, listening stopped) stays on screen until the next words start a new stream.
-- **Mini view:** at its compact size it has no stream or row grid; dragging it taller (`_mini_detail_need`) shows them. Its size is remembered separately (`mini_width` / `mini_height`) and used the next time it is entered. When the first term needs sorting the Start button eases narrower while the Term Helper button grows in (`_slide_sorting_in`).
-- **Small fixes:** "File stream not connected" uses the theme colour; the Log heading is smaller; the sheet name is small, italic and muted, tight under the file box; the row grid has no line at its far right and its cells can't be selected.
-- **Type-checked columns:** `Vocabulary.column_kind` / `accepts` / `columns_for`: a list of only numbers or only dates is never offered for a word like "teal" (the Term Helper's Choose Column list and the "Say a column" hint, and the parser's guesses).
-- **Help:** emoji stay in page and section headings and in 💡 / ⚠️ call-outs; body text no longer uses emoji as stand-ins for UI elements.
-
-### Phase 38 notes (app sanity check)
-- **Security:** the model download is https-only with a pinned SHA-256, size and member limits and a timeout; settings are written with correct TOML escaping (an emoji in a column name used to make the file unreadable) and saved atomically; formula-like values and comma / quote values are refused for list cells; `defusedxml` guards against XML bombs; `say` gets `--` before the text.
-- **Robustness:** program detection no longer asks System Events and runs off the GUI thread (`QuillApp.run_in_background`, 6 s command limit); a listener that dies resets the mic state and closes the gate; the microphone and timers stop on quit (`QuillApp.shutdown`).
-- **Debugging:** `python main.py --verbose` or `QUILL_DEBUG=1` logs debug detail to the log file and the terminal.
-- **Structure:** `ui/main_widgets.py` holds the main window's small widgets; docstrings added. Dev tools (ruff, bandit, vulture) are in `requirements-dev.txt`. The review checklist and the Mermaid UML are in the outer folder (`App Sanity Check.md`, `Quill Architecture (UML).md`).
-
-### Phase 39 notes (smarter interpretation, deletable row lines)
-- **Interpretation:** `parser/fillers.py` (function words, everyday verbs, time words: never sorted; nothing that could be a condition or status such as "used", "worn", "sold"); `parser/sounds.py` (`sound_key`, `sounds_like`: a small Metaphone plus spelling ratio, so "waste" is taken as the column "Waist" when nothing matched exactly and there is a single clear candidate; `initials_match`: "medium" spells M, "extra large" spells XL); `Vocabulary.sound_alike_at` / `abbreviation_for`. The parser now reports token `spans` (which words filled which column) and `corrections`. A run of unknown words is split at a sound-alike hit, so "medium" is sorted alone. A term that spells a short code becomes a Term Helper suggestion ("Same As M" button, a spoken "yes" means the alias) and is never written without that answer.
-- **Voice Stream:** `quill/stream.py:match_words` runs the same parser, so a pill is exactly what was understood and carries its column. Words in progress use the normal text colour; unresolved final words are muted.
-- **Deletable lines:** hovering a grid line shows a round delete button (`RowTable.row_remove_requested`); removing it calls `Controller.remove_field` (the value is dropped from the row being built, so it is never written; nothing is written to the workbook before "next row"), un-colours the stream words of that column and logs it.
-- The two empty boxes under "Voice Stream" are checked to the pixel by a test (`TestPlaceholdersMatchToThePixel`).
-- Next levels, not built: a user-editable filler list; learning from the user's Term Helper answers across sessions (already done for aliases); an optional small on-device language model for ambiguous phrases.
-
-### Phase 40 notes (dates, live sorting button, quiet timer, polish)
-- **Dates:** `parser/numbers.parse_date` reads relative days, "n days / weeks / months / years ago", last / next / this + weekday or week / month / year, bare weekdays, and calendar dates in either order with spoken years; a month and day with no year mean this year, or last year when more than 30 days ahead. `Vocabulary.date_columns` (from `bridge.date_columns()`: columns of dates, or empty columns headed "date") and `date_column_for` choose the column: the nearest verb decides (bought / got / picked → purchase-like headers, sold / listed → sale-like), else the first empty non-sale date column, with a note listing the others. The parser writes the real `datetime.date`. A date inside free text ends the text. Time words that name a date are no longer in the filler list.
-- **Live Term Helper button:** a word that was not understood goes onto `Session.pending` as soon as its phrase is final (the button and badge update at once); the sound, spoken question and Term Helper window still wait for the row to end. A term answered before "next row" is put into the row being built (`Session.resolve`). New values are always capitalised (`display_name`, also used to fill the sort box).
-- **Blink colours** of an answered Term Helper row: green accepted, grey ignored, red error (`TermRow.FLASH_STYLES`, `SortingWindow.note_outcome`).
-- **Row grid delete button:** centred "x", red and with a tooltip while the pointer is over it.
-- **Keywords:** "next" and "stop" mean "next row" only as the last word said (`CommandMatcher._ends_speech_only`).
-- **Quiet timer:** `auto_stop` (default on) and `auto_stop_seconds` (default 10, 3 to 3600) in Settings > General; `QuillApp._quiet_timer` restarts whenever something is heard or Quill finishes speaking, and is not applied while a spoken answer is awaited or voice sorting is on.
-- **Layout:** the "Voice Stream" title is gone; both boxes' hints are the same kind of label (`PLACEHOLDER_MARGINS`; the spacing setting no longer squeezes them); "Sheet:" is right-aligned under the file box; "Last Saved" is right-aligned on the Log line and has no "Row saved" prefix.
-
-### Phase 41 notes (no built-in subject words, command words, quiet timer everywhere)
-- **Date columns are chosen from the sheet, not from a vocabulary:** `Vocabulary.date_column_for` matches a word spoken near the date to a word in a date column's heading (`sounds.stem` / `same_subject`: "departed" ~ "Departure"), nearest word first; otherwise the first empty date column in sheet order, with a note listing the others. The buying / selling verb lists are gone. A word like "observed" directly before a date is treated as a verb leading into it (never a value to sort); an English-wide filler list (`parser/fillers.py`) remains, since it is about the language, not any subject.
-- **Command words:** "next", "next item" and "stop" end the row only as the last words (and not after "this", "the", "a" ...). `CommandMatcher.command_positions` tells the Voice Stream which words are commands; they are dropped from the display, so "next item" is heard as part of the last turn and then disappears. A phrase that is only a command leaves a finished row's text alone.
-- **Quiet timer** now covers every reason the microphone is open for Quill: listening, a spoken answer being awaited, voice sorting. On expiry it stops listening, ends voice sorting and the wait (questions stay on the Term Helper list), in that order so nothing reopens the wait. The "keep the microphone open" setting is the user's choice and has no countdown.
-- Language model plan: see `Language Model Plan.md` in the outer folder.
-
-### Phase 42 notes (quiet countdown; learned links designed, not built)
-- **Countdown:** `MainWindow.countdown_label` (property `countdown`, styled small, muted, italic in `theme.py`) sits left of the light inside the Start / Stop button and reads "Stops in 7s" (just "7s" in the mini view). `QuillApp._show_countdown` redraws it four times a second from the quiet timer's remaining time (rounded up) while the timer runs; it is hidden when the timer is not running.
-- **Learned links:** design only, in `Learned Links Design.md` (outer folder).
-
-### Phase 43 notes (system speech only for Term Helper prompts)
-- Quill no longer speaks the "no spreadsheet" guidance (it is shown as a popup and chip only). The setting `speak_prompts` (default on) became `speak_sort_prompts` (**default off**; the old key in an existing settings file is ignored, so nobody keeps the old default). When on, `Controller.speak` says each Term Helper row's `TermRow.guidance()` as it becomes the active row (once per row) plus the existing add-it question when a row ends. `Controller._say` skips everything, including muting the microphone, when the speaker is disabled.
-- The optional "spoken word" confirmation (`Confirm With`) still uses system speech when chosen; it is off unless selected.
-
-### Phase 44 notes (which sheet a row goes to; a failed save is reported as one)
-- A row used to be written only to the active sheet, so with a dashboard in front the save failed, yet the window still said "Saved Row" and showed it as last saved, while the grid kept the restored fields. Now `Controller._target_sheet` picks the sheet: the open one if it has all the row's columns, else the only other sheet that does (`bridge.sheets_with_columns`, which skips sheets that only hold drop-down lists and sheets whose first data row is mostly formulas, unless that sheet is the open one), else the sheet the last row went to, else it says which sheets fit and asks the user to open one. Nothing is guessed between equals.
-- A save that fails now turns the "committed" event into an error event (error cue, no "Last Saved", the Voice Stream is not marked finished), and the message is shown in the window's footer (not only in the hidden log); it clears when the next row saves.
-
-### Phase 45 notes (settings: pop-up lists, matching controls, faster opening)
-- **Drop-down lists squeezed in Comfortable mode:** `apply_spacing` used `findChildren(QLayout)`, which also reaches layouts of windows that are *children* of the window being spaced: the Settings window (a child of the main window) and every drop-down's pop-up list (a window of its own). Changing the spacing therefore squeezed the list to one clipped item and altered the rows' text gaps. It now skips layouts owned by another window. `GuardedCombo.showPopup` also sizes the list to its longest item and lines it up with the control's right edge.
-- **Matching controls:** every value control on a settings row (drop-down, number box, slider) is `CONTROL_WIDTH` x `CONTROL_HEIGHT` and flat; number boxes (`QSpinBox[flat]`) are drawn like the drop-downs. Tests (`TestStyleInEveryMode`) check size, right edge, row text gaps and pop-up lists in light / dark x compact / comfortable.
-- **Opening time:** about 0.96 s down to about 0.3 s (measured on macOS). The cost was `SettingRow` calling `setVisible(True)` on a word-wrapped label (a full layout pass, about 20 ms a row); the Keywords page (a drop-down on every row) is now built only when opened or searched (`build(lazy=True)`); the pointer is held steady with an override cursor while the window is made.
-- The grid's first column re-takes its colour when the theme changes.
-
-### Phase 46 notes (opacity and theme switching, instant voice, quitting, Settings details)
-- **Opacity:** the old way (a `QGraphicsOpacityEffect` on each window's root widget) left ghost copies of the text and stale pieces of the previous theme on macOS when the theme changed with the window see-through. `theme.apply_opacity` is now the window's own opacity (`setWindowOpacity`, done by the compositor), so everything fades together. Blur needs a see-through background: windows paint their own background (`install_backdrop`, `_BackdropPainter`) with `backdrop_alpha(opacity, blur)`, which only thins when blur is on and the window is faded; changing it repaints the roots and never re-styles the application. Blur is therefore a light effect.
-- **Instant spoken words:** the system voice took 1 to 3 s per word (`say` start-up and synthesis, measured at about 1.9 s for "Okay"). `quill/speaker/clips.py` renders each confirmation word once (`say -o` then `afconvert`; pyttsx3 on Windows) on a background thread into the user cache folder; `QuillApp._speak_word` plays the clip like any sound, and speaks live only for a word with no clip yet. `SoundPlayer.preload` loads every pack's sounds at start.
-- **Quitting:** `QuillApplication` turns the system quit request (Dock menu, Cmd-Q) into `QuillApp.quit_app`, which closes an open Settings window and every other window, releases the microphone and timers, quits, and has a fail-safe (`quit_failsafe_ms`). The tray's Quit uses it too. Settings opens once at a time.
-- **Settings:** remembers the open page and size (`settings_page`, `settings_width/height`), the Theme icons are redrawn in the current text colour, number boxes keep their text clear of the edges, and toggling **Hide the Dock Icon** gives the focus back to the window that had it.
-
-### Phase 47 notes (blur, sample data, Sheet label)
-- **Blur** is now a frosted-glass window: the translucent attribute is set before the native window exists (`main_window` setup), `apply_opacity` runs before `apply_chrome`, and the macOS blur layer is an `NSVisualEffectView`. With blur above 0 the background fades but controls stay crisp; with blur 0 the whole window fades.
-- **Picking a sound plays it** (no Play Sample row); clips for every spoken word render in the background at start.
-- **Settings is non-modal**, so the Dock's Quit always reaches `QuillApp.quit_app`.
-- **Sheet label** is left-aligned and roomier in comfortable mode.
-- **Demo mode** (`python main.py --demo`, `QUILL_DEMO=1`, or `tools/quill-demo.command`): opens a sample workbook and adds a **Demo** menu (`quill/demo.py`) whose scenarios feed text through the same relay a spoken phrase uses, so the real screens fill with pills, the row grid, Term Helper terms and Last Saved without recording anything.
-
-### Phase 48 notes (chrome on reopen, opacity, controls, Term Helper)
-- **Closing to the tray rebuilds the macOS native window**, which lost the title bar icons, title and styling. `chrome.watch_native_window` notices a window shown on a rebuilt native window (the title bar label from `plain_title` is missing) and `QuillApp._native_rebuilt` styles it and adds the icons again; it covers the Term Helper too.
-- **Frosted glass covers the title bar**: the vibrancy view fills the whole frame, and a strip in the window colour (`TINT_ID`) over the title bar fades with the opacity setting, so the title bar no longer shows the sharp desktop. The frosted layer's own strength scales with opacity so a dark window does not stay dark at low opacity.
-- **Start button**: light, play / stop icon, then the "Stops in Ns" countdown (readable colour, also in the mini view); the Term Helper's voice button has the same countdown, the same sound lines and reads "Click to Stop".
-- **Term Helper stays solid** unless `sorting_follows_opacity` (Settings > Appearance); its root has the `quillSolid` property and is applied with opacity 100 / blur 0.
-- **Voice sorting context**: `sounds.closest_choice` reads an unrecognised word against the Choose Column list ("sighs" is Size). `Controller.note_choice` announces the pick (`choice` event) so the list lights the column green, then the row blinks (`TermRow.choose`, `CHOICE_MS`).
-- **Controls**: one text inset (`theme.TEXT_INSET`) for drop-downs and number boxes; `GuardedSlider` jumps and drags from anywhere along a 30 px tall target.
-- **One text size**: no style rule sets a font size any more (notes, countdowns, Log, Term Helper question and page titles use the app's size); spoken-word pills use the app font instead of a monospace one. Help-page headings still scale.
-- **Microphone permission**: `tools/build_mac.sh` signs with the requirement `designated => identifier "com.quill.app"`, so a granted permission survives rebuilds.
-
-### Phase 49 notes (open sheet only, typed log, thinner blinks)
-- **Rows go to the open sheet only**: `Controller._target_sheet` and `sheets_with_columns` are gone; `_write_row` uses `active_sheet_name()`. A sheet without the columns gives "Could not save the row: ... Open the sheet you are filling in, then say next row again." and the row is kept.
-- **Log messages have a type** (`MainWindow.append_log(text, level)`, levels in `LOG_LEVELS`): warnings and errors say so after the time and are coloured (one red for every error, amber for warnings); an error opens a collapsed log (not saved as the user's choice). Errors that used to appear in the footer (listener errors, save failures, "Can't open") now go to the log; the footer is gone (phase 50).
-- The blink borders (success, ignore, error, picked column) are 1 px.
-
-### Phase 50 notes (csv files, log columns, minimum size)
-- **`.csv` / `.tsv` files** (`quill/bridge/csv_bridge.py`, `CsvBridge(XlsxBridge)`): read into an in-memory sheet with every cell kept as text (saving never reformats what was there), appended rows are written back atomically (temp file, then `os.replace`), the delimiter, line endings and BOM are kept, and new dates use the layout the column already uses. Lists are learned from the data: a text column whose entries repeat becomes a list (distinct entries); numbers, dates, long text and mostly-unique columns do not. A column with no data yet is an empty list (money and date headings excepted), so words for it go to the Term Helper. Search raises a plain "can't be searched" error. `get_bridge` picks the bridge by suffix; `host_reload = False` skips the "ask the program to reload" step. `GridBridge._is_number/_is_date` are the hooks that let a text-only bridge classify columns.
-- **Log** is a `QTextEdit` with a hanging indent per line (left margin = time column, negative text indent, one tab stop), so a long message wraps under the message, not the time; the 500-line cap is applied by hand.
-- **Main window**: the "Sheet:" label and the footer (with its Download button) are gone. The speech-model download is **Settings > General > Speech Model** (`SettingsDialog.set_model_state`, `QuillApp._show_model_state`); a missing model is a warning in the log.
-- **Window size**: `MIN_WINDOW = (453, 383)` is the full window's default and minimum (remembered sizes are raised to it); the minimum is applied when the window is first shown.
-- **Settings Cancel** now restores only the preferences the window edits (`EDITED_PREFERENCES`); it used to put back the whole snapshot, which also undid a mini-view/size change made while Settings was open. The view is also saved on the way out (`QuillApp._remember_view`).
-- Row grid: the delete "x" is smaller (stroke 0.2 of the circle), no line under the last row; the Start button's play icon uses the accent colour and the "Listening" label is set to the on-accent colour directly.
-
-### Phase 51 notes (file icon, wave on both buttons, mini "!")
-- **No file box or picker in the window.** `MainWindow.update_workbook(s)` only records the name (`workbook_name`) and calls `on_file_state(has, name)`; the folder icon (`open_file_button`; title bar on macOS through `TitlebarButton.set_extra_image`, the status row elsewhere) is muted and closed with no file and solid and open with one (`folder` / `folder-open` icons; the title bar draws them as template PNGs). `ChipPlacer`, `WorkbookCombo` and `QuillApp.select_workbook` are gone; the connection chip is its own row.
-- **Start with no file** (`QuillApp.toggle_listening`): if connecting fails the file window opens, and listening starts only if a file was chosen. Voice "start listening" never opens it. Tests stub `QFileDialog` (`tests/conftest.py`).
-- **Sound lines (`WaveMeter`)** are 2 px wide, the green/grey dot is gone, and the Term Helper's voice button uses the same widget ("Sort by Voice" / "Click to Stop").
-- **Mini view "!"** (`error_button`): shown in the mini status row after an error, tooltip = the message, click = full window with the Log open; cleared when a row is saved or the full view returns.
-- **No drift leaving mini**: a stretch spacer at the bottom of the layout (stretch 1 only in the compact mini view) keeps the mini contents at the top while the window grows back; before, the Start button slid about 150 px down and then jumped up.
-
-### Phase 52 notes (shared Start button, Term Helper batches)
-- **`ListenButton`** (`quill/ui/widgets.py`) is the Start / Stop Listening button for both the main window and the Term Helper: play / stop icon, notice chip (the "File stream not connected" pill now lives here), countdown, centred "Start Listening" / "Stop Listening" text (dropped in the mini view and while the chip shows), `WaveMeter` at the right, vertically centred. `isChecked()` means "listening".
-- **Folder icon hover** names the file and the open sheet (`MainWindow.set_active_sheet`, refreshed on each workbook poll).
-- **User-facing text no longer names Excel** (bridge errors, hints, menu, log lines); help keeps Excel only in the list of supported programs.
-- **Term Helper batches**: Add All / Ignore All rows flash and collapse together (`_retire_together`); when the window closes it calls `on_done` and the main window comes to the front and clears a finished row's heard words (`MainWindow.sorting_finished`).
-- **Start while voice sorting** (`Controller.set_listening(True)`) ends voice sorting, so speech goes to the row (before, it was still being taken as Term Helper answers).
-- **Two values for one column in one phrase**: the parser keeps the first and notes the second (`_take_value`).
-
-### Phase 53 notes (sub rows, next arrow, voice-reactive lines)
-- **Several values for one column** go in one cell, one per line (`merge_values`; the parser marks `additive` columns; `Session` merges across phrases). The grid sizes a row to its lines (`_size_rows`); the xlsx/xlwings grids turn on wrap text. Saying the column name still replaces.
-- **Next arrow** (`next_button`, shown only while listening) = "next row" plus clearing the heard words (`QuillApp.next_row`, `Controller.next_row`). **"Open term helper" / "term helper"** keywords (`Action.OPEN_TERM_HELPER`; older keyword files get them once, via `keywords_version`).
-- **Mini collapse bug**: the Voice Stream's height callback and the row grid resized the window mid-animation, which cut the mini transition short (`_switching_view` now blocks that).
-- **Start button**: "Start Listening" and the "File stream not connected" notice are pills centred in the button (`text_pill`, warning-coloured notice); title-bar icons and the title are full strength (`labelColor`), and the right-hand icons are nudged (`_RIGHT_NUDGE`) to line up with the button's right edge.
-- **Sound lines follow the voice**: `Listener.loudness` per audio chunk (blocksize 1600) -> `Relay.level` -> `WaveMeter.set_level`; short loop when quiet, taller and faster with the voice.
-
-### Phase 54 notes
-- Help pictures come in `-light` and `-dark` versions (`tools/make_help_images.py` draws both); `HelpWindow._render` rewrites `images/x.png` to the current theme's file.
-- `sorting_sounds` preference (default on) silences the confirmation sound for Term Helper answers (`feedback.SORTING_KINDS`); Settings > Sounds.
-- `PopupClickThrough` (one per application): a click on a `ListenButton` while a drop-down is open closes it and presses the button.
-- The Term Helper's `ListenButton` can shrink to the room it has (no minimum width), so it never passes the margin.
-
-### Phase 55 notes (speech quality)
-- `quill/listener/model.py` now has a catalog (`ModelSpec`, `STANDARD`, `BETTER` = vosk-model-en-us-0.22-lgraph, about 130 MB, 214 MB unpacked) with `find_spec_model` and `download_spec`. The preference `speech_quality` ("standard" | "better") picks the model; `QuillApp._find_model` uses Better when it is installed, else falls back to Standard with a log warning; changing it in Settings reloads the listener (`_reload_listener`).
-- The Better archive's SHA-256 was computed from the official download on 1 Nov 2026 (there is no published checksum to compare with); the downloader still insists on https and checks it.
-- Found while doing this: the app's default downloader was the raw `download_model`, whose second argument is the URL, so the Download button passed it the progress callback. It is now `download_spec`.
-- Quick check with a synthetic phrase: Standard heard "ninety nineties", Better "nineteen nineties". A fair comparison needs recorded real phrases.
-
-### Phase 56 notes (Best speech model, button and icon)
-- **Best = Whisper second pass** (`quill/listener/whisper_refiner.py`): Vosk Standard still shows live words and finds phrase ends; `Listener` keeps each phrase's audio (`set_refiner`, capped at 30 s) and, when Vosk finishes it, `WhisperRefiner.refine` (faster-whisper, `base.en`, int8 on CPU) returns the text that replaces Vosk's (lower-cased, punctuation removed, `normalize`). The sheet's own list values are the Whisper prompt (`QuillApp._whisper_hint`). Any failure or empty result keeps Vosk's text. Measured with a synthetic phrase: +0.4 s, "nineteen nineties" came out as "1990s" and "ninety nineties" was fixed.
-- Files (`download_whisper`): four HTTPS downloads, each SHA-256 checked, moved into `<user model dir>/faster-whisper-base.en` together. `faster-whisper` is optional (`requirements.txt`; the PyInstaller specs bundle it when installed, about 200 MB of libraries). Without it "Best" says it is not available.
-- **Start button**: the pill is border-only with the icon inside at its start, all three left-aligned (Start, Stop, the not-connected notice); "Stops in Ns" sits right of the pill; descendants are re-polished when the button changes state.
-- **Title bar**: the left icons no longer go through the nudge holder (they were dropped low); the folder icon is drawn with finer lines (`titlebar_png`).
-- **App icon**: `sheet_excel_body` / `excel_sheet`: two columns of stepped fills, three row bands and a solid total row (no cell borders), behind the sound-lines box.
-- The macOS Automation prompt text no longer says Excel.
-
-## Phase 57: side panel, turns, vertical sheets
-
-- A right-hand **side panel** eases in beside the window (the window grows by its width and gives it back). The title bar's folder icon opens its **file** page (the active file with the full path on hover and the sheet, an Open File… button, and a scrolling list of spreadsheets open in other programs; picking one makes it active), the new turn icon opens its **turn** page. The panel is not part of the mini view.
-- Files picked with the file window are started in their own program too when none has them open (`open -g` on macOS, so Quill keeps the focus).
-- **Turn settings**: *Next Row* or *Append To* (cells join with commas; `Controller.append_to_row`), and *Columns Across* or *Rows Down* (`TransposedGrid` lets the same bridge code read sheets whose headings run down the first column).
-- The countdown shows just the seconds; the Next button is a media-style skip icon the height of Start; every plain button now has an accent border.
-- App icon cells are more saturated purple.
-
-## Phase 58: panel polish, voice turn options, starting row
-
-- Panel: titled (Files / Turn Options) with an X; a Filter files box; the empty message sits at the top of the section. On macOS the title bar icons move left of the panel's edge as it slides and a one-point line runs through the title bar; icons get a rounded muted fill on hover and while their panel is open.
-- Voice: *append on/off*, *append mode*, *row mode*, *rows down*, *columns across* (`Action.APPEND_ON` ...), with `turn_on` / `turn_off` cues. `keywords_version` is now 3.
-- `start_row` preference (turn page): where a record may start; 0 = the first empty row.
-- Term Helper: opens at the bottom left of the main window's screen the first time, then where it was left (`sorting_x/y/width`); minimum width follows its rows; its Start button matches the main one's height.
-
-## Phase 59: file settings overlay, layout-aware wording, tool tips
-
-- The Files page keeps the file button and a borderless facts table (dates MM/DD/YYYY); starting row, sheet layout (By Columns / By Rows) and headings row moved to an overlay opened by the panel's "…" button. By Rows swaps the number fields for A to Z drop-downs and rewords every text.
-- Title bar: the icons are fixed 30 x 24 boxes (no stack view), the title is centred in the room left of the panel (measured on the real window with `tools`-style screenshots), the "…" and X sit in the panel's part of the title bar.
-- Next in Append To keeps the spreadsheet cursor on the same row; the panel's Next moves it on. Tool tips are centred on the pointer with half the padding.
-- Tests now walk every panel text in both layouts (`TestEveryTextFollowsTheLayout`) and check controller messages, cursor moves and tool tip placement.
-
-## Phase 60: startup message, Files panel on Start, tips, grips
-
-- No "speech model ready" line next to a warning at startup; it is logged once a file connects. **Start** with no file opens the Files panel. The pill reads "File not connected" in the accent colour.
-- The file settings button is a gear on the Active File row; the overlay lists Headings, Starting, then Layout. Next is disabled-looking until Append To is chosen.
-- Tool tips are drawn by `TipWindow` (rounded, lighter grey, centred on the pointer, on screen). Every clickable element has hover text (`quill/ui/hints.py` fills the gaps; a test walks every window).
-- The panel's stray 6 px band was `apply_spacing` giving the content/panel layout a gap; fixed with a `keepSpacing` property and a test that applies the spacing.
-- A drag grip on the matched-words box trades height with the log (or resizes the window when the log is hidden); the log height is remembered (`log_height`).
-
-## Phase 61: taller title bars, real blur, control styles
-
-- Every window gets an empty toolbar from `chrome.mac_chrome` (`tall_titlebar`): the title bar and the close / minimise / zoom buttons are then the larger size other apps have, and the icons grew to 36 x 30 boxes with 16 pt symbols. Each icon group levels itself on the title (`TitlebarButton.settle`), in any window.
-- Blur: the vibrancy view is always at full strength (a half-faded one let the sharp desktop show through, which looked like plain transparency); the slider sets a frost wash (`FROST_ID`) over it instead.
-- Keywords table: phrases are `PillField` pills (`PILL_BG` / `PILL_FG` in theme.py), actions are `FlatCombo`. Captions in the Settings list show an arrow, not a hand.
-- Texts: "Open File" everywhere; the not-connected tooltip and error shortened; `TestControlsFollowTheirStyle` walks every window and fails on a drop-down, switch, slider or spin box that is not the decided class.
-
-## Phase 62: effects measured, panel and log sizing, sounds only for speech
-
-- **Opacity and blur** are now verified on a real screen: `tools/verify_window_effects.py` puts a striped window behind Quill and measures it (opacity 100 solid; 50 sharp at blur 0, blurred at 60 and 100; lower opacity moves the background further; more blur smooths wide bands). Opacity thins the window's background alone (Qt's own paint alpha, `theme.backdrop_alpha`); the blur is the window server's own call with the slider's radius (`chrome.set_background_blur`), not a half-faded vibrancy view.
-- Title bar: the panel's views are re-attached to whatever title bar the system has now (they were lost when it rebuilt it); the window buttons are drawn 1.3x; a stuck hover fill is cleared.
-- The side panel's edge is draggable (`PanelGrip`, remembered as `panel_width`); the log has a bottom grip and sits closer to its heading.
-- Sounds: `Event.spoken`; a click never plays one. Start with no file opens the Files panel, then blinks Open File and opens the file window. Quill listens only while the file is open in a spreadsheet program.
-- Speech Model has its own page (radio buttons, size next to the name, an Installed pill). Default text size 14 (`prefs_version` moves old 12s once). `UI_STYLE.md` lists the one style per element type.
-
-## Phase 63: live rows in Numbers
-
-- `quill/bridge/numbers_mirror.py` (`NumbersMirror`): after Quill writes the file, the cells it just wrote (`OpenpyxlGrid.changes`, taken with `XlsxBridge.take_changes`, in real sheet coordinates) are set in the open Numbers document through one AppleScript run. Cells travel as separate arguments (never spliced into the script), Numbers is never started by it, the document is found by name (`name` or `name.numbers`: imported documents report no file path), tables grow as needed, dates and numbers keep their types. Verified against the real Numbers on this Mac, including end to end through the app (a spoken row appeared in Numbers with no reload).
-- The app (`_show_in_viewer`) falls back to the old close-and-reopen reload only when Numbers cannot take the cells (not running, no such document, permission refused: logged once with where to allow it).
-- Optional real-Numbers test: `QUILL_NUMBERS_LIVE=1 QUILL_NUMBERS_FILE=<xlsx open in Numbers>`.
-
-## Phase 64: LibreOffice live rows, Speech Model page, title bar rule
-
-- `quill/bridge/libreoffice_mirror.py` (`LibreOfficeMirror`): the same live rows as Numbers, for LibreOffice Calc. Quill writes `quill_mirror.py` into LibreOffice's user scripts folder (only if a profile exists; the app says so once) and calls it by forwarding `soffice vnd.sun.star.script:...` to the running program, with the cells in a job file that is deleted once answered. The live display itself never starts a program: the file loader (**Open File**) launches the chosen program, and Quill only writes while the file is open in some program. The program known to hold the file is asked first; if none can take the cells the old reload is used. **Settings > General > Open Files With** picks Numbers, LibreOffice, Excel or the system's choice (`open_with`).
-- Memory: written cells are kept only until the turn's push (`take_changes` empties the list; 500 at most, then the list is dropped and the viewer reloads instead of being shown half the rows); hints and terms heard for one workbook are forgotten when another is connected (`Session.forget_terms`), and the hint table is bounded.
-- Speech Model page: the model in use is the one selected (a one-time move to the best installed model, `model_migrated`; a finished install becomes the chosen one); **Install** / **Uninstall** (`quality_removable`, `remove_model` only deletes inside Quill's own model folder, Standard stays while Best is installed, `fallback_choice` says what takes over); memory and time estimates from measurements on an Intel Mac (Standard about 165 MB, Better about 415 MB and about real time, Best about 700 MB with 0.5 s per phrase); the status pill is the *File not connected* chip.
-- Available Files refreshes every 30 s and has a refresh icon. Title bars: 14 pt title, a one-pixel muted rule along the bottom of every window including through the side panel, 8 pt room right of the icons (the mini view is wider), the lone Help icon in Settings now sits in a holder like every other group. Settings: group captions are underlined across the pane, page titles are bold and flush with the rows, and descriptions have air around them.
-- Speech models are named by what they do, not how good they are: **Quick** (Vosk small, `standard`), **Broad** (Vosk lgraph, `better`: a much bigger vocabulary) and **Careful** (Quick plus a second listen, `best`). The saved values and code keys are unchanged, so no setting moves.
-
-## Phase 65: speech page, tooltips, control translucency
-
-- Speech Model: no "Installed" pill any more; Install / Uninstall is the only signal (Uninstall greyed out, with its reason, for the bundled Quick model); estimates use `~` and `1s` / `.5s`; the memory line is the muted one. Models are Quick, Broad, Careful.
-- Tool tips wrap at word breaks to `TOOLTIP_MAX_TEXT` (300 pt). Every sentence shown ends with a full stop (`sentence()` for the log, hand-fixed tips and descriptions, a test that walks the windows).
-- Title bar: the close / minimise / zoom circles, the title and the icons now share one centre line. The scaled circles grew upward from their frame, so they are moved down by half the growth (`TRAFFIC_DROP`); measured on a real screen with `/scratchpad` pixel probes (red circle centre against icon glyph centres).
-- Opacity and blur reach the controls: `stylesheet_for(backdrop=)` gives text boxes, drop-downs, buttons and cards a fill with the window's alpha (re-styled in 5 % steps). The window body was found to be about twice as thick as set, because macOS gives the central widget a layer of its own and the two see-through backgrounds add (`native_layers`, `layered_alpha`); the title bar's tint is nudged (`BAR_TINT_EXTRA`) and sRGB / lift-compensated so bar and body match. `tools/verify_window_effects.py` now measures bar, body and text-box patches.
-- The system file window is warmed up invisibly after start (`FileDialogWarmer`): the first Open File took about 1.5 s to appear, later ones 0.4 s. Available Files: the refresh icon has a pressed look, the "nothing found" message blinks off for 450 ms on a refresh, and 3 or more letters typed in Search look again. The file overlay has roomier rows in Comfortable spacing.
-
-## Phase 66: side panel chrome, speech model on the Turn Options panel
-
-- Side panel line, title and X: while the window is see-through the system makes the button holder the whole frame view, so the line, the bottom rule and the panel pieces were placed against the wrong thing (and orphaned when the look changed with the panel open). `chrome.bar_extent` finds the real title bar inside it, `refresh_chrome` / `refresh_chrome_soon` re-attach and re-place after any change of look (and draw the window buttons larger again), and the line spans the title bar only.
-- Turn Options has a **Speech Model** drop-down (`SidePanel.model_combo`, `QuillApp.choose_speech_model`): an installed model replaces the listener at once (same session, same file, microphone reopened); one that is not installed opens Settings > Speech Model. It follows installs, removals and the Settings choice (`sync_model_panel`).
-- Speech Model page: stats lines (`Memory: ~415 MB (+250 MB / +1s)`; for Careful `Pause + .5s`: Vosk decides a phrase has ended at a pause in speech, the second model then re-reads that phrase, so words are replaced per phrase, not at the end of the turn); hover texts without sizes, Quick's says it is the base model; buttons top aligned.
-- Start with no file logs plain information (no red "!" in the mini view); the Files panel and the file window are the answer.
-
-## Phase 67: opacity and blur measured on every control
-
-- Earlier checks only asked whether a control was "thinner than solid"; controls were still about 0.83 thick against a 0.50 background. `tools/verify_control_opacity.py` now measures, on a real screen (striped window behind, blur on so the desktop is a flat grey), how thick the window background, the title bar and **every** text box, drop-down, button, card, table and list is, in all 13 windows / views (main, panel file and turn pages, log open, resized, mini, Settings General / Appearance / Sounds / Keywords / Speech Model, Help, Term Helper, file overlay), light and dark, four accents, both spacings, at opacity 30 / 60 / 85. A control may be at most 0.16 thicker than the background beside it and 0.10 thinner; the background must match the slider (0.10) and the bar the background (0.08). 648 controls checked.
-- What the check found and fixed: controls stacked their fill on the background (now `quill/ui/glass.py`, alphas measured by `tools/calibrate_opacity.py` per theme: background paint, title bar tint and control fill); the dark theme behaved differently from the light one; the Help page (a text browser) filled its viewport solid; **Settings was held at 70 % opacity** (now 25 %, so the slider can still be found); and in Comfortable spacing the Term Helper's root was inset by a spacing margin, leaving a clear, sharp frame around it (windows whose root fills them now carry `keepMargins`).
-
-## Testing
-
-- `pytest` runs the **quick** suite (about a minute and a half): the ~320 tests that take 0.25 s or more (listed in `tests/slow_tests.txt`) are left out. `pytest --full` (or `QUILL_FULL=1`) runs everything (about 4.5 minutes); do that before a commit or a build, or when something broad changed. A test named on the command line is always run. `python tools/make_slow_list.py` rewrites the list.
-- On a real screen: `tools/verify_window_effects.py` (opacity and blur basics) and `tools/verify_control_opacity.py` (every control, window, theme, spacing; about 25 minutes, leave the screen alone), both macOS only.
-
-## Phase 68: Start, window size, muted text
-
-- Start with a file that is not yet seen open in a spreadsheet program no longer asks for it to be opened on every press (Numbers opened a new copy each time, and listening never began). `_wait_for_viewer` looks, opens the file only if nobody has it and only once per 45 s (`_launch`, `JUST_LAUNCHED_S`; the loader's own opening counts too), keeps looking every 1.5 s for up to 36 s, and starts listening by itself when it shows up; Stop cancels, giving up says what to do.
-- macOS builds a new native window when the window is closed to the menu bar and shown again, and it came back 28 px taller and 24 px lower each time (taking the room from the matched words box). `_SizeKeeper` / `MainWindow.restore_after_reshow` give back the remembered size and position and keep the intermediate sizes from being saved. Checked on a real screen: size and position identical across repeated close and reopen.
-- Light theme muted text is a shade darker (`#6F6D66` to `#5E5C56`, contrast on the window 4.9 to 6.4); the dark theme's muted colour is unchanged.
-
-## Phase 69: which sheet is open
-
-- The Files panel has a refresh icon at the right end of the **Sheet** row, and `QuillApp` asks the program which sheet is open every `sheet_check_seconds` (30 by default, 0 = off, Settings > General): `refresh_active_sheet` makes one small, off-thread call (`NumbersMirror.active_sheet`, `LibreOfficeMirror.active_sheet`, or the live Excel bridge's own answer) and, if the program is on another sheet, `bridge.set_active_sheet` + `controller.follow_sheet` load that sheet's field words so the next rows go there. Also asked once when a file connects. Verified against the real Numbers and LibreOffice.
-- Available Files lists the active file too (first, bold, "· active"; clicking it does nothing), and Numbers documents imported from an `.xlsx`, which Numbers reports by name only, are resolved to their files (`SpreadsheetHosts.find_by_name`: the active file first, then one `mdfind` per name, newest match outside the Trash and programs' own folders, remembered).
-
-## Phase 70: Available Files polish, closed windows, narrow windows
-
-- Modified and Created show four-digit years. Available Files: no bold or "active" text; each row has a mini icon from `quill/ui/file_icons.py` (our own tile designs per program or type, a white page with the extension as the fallback); the active file stays on top with a 1px green border (`ActiveBorder` delegate) and is not selectable. A closed spreadsheet window is noticed (`QuillApp._check_link`: one missed look when a refresh icon asked, two for the timer): listening stops, and a refresh icon opens the file again. When the window narrows with the side panel open, the panel gives up width (`MainWindow.fit_panel`) so the content keeps `MIN_CONTENT_WIDTH`; the panel's chosen width is kept and returns as the window widens.
-- Follow-up: the active row uses the Term Helper's accepted green border plus its tint; the icon follows the file type first and the program only for unknown types (so an `.xlsx` shown in Numbers is still the Excel icon); Active File's Type has the icon. A closed window now makes Quill let go of the file (back to Open File, not listening, file leaves the list if no program has it) instead of reopening it. Settings group captions ("Preferences", "Voice and Commands") are bold with no rule under them. Dark-theme muted text was never changed.
-- Next follow-up: the success green is lighter app-wide (`FLASH_STYLES["accepted"]` is `#66D983`); Available Files rows are a button tall (`ROW_HEIGHT` 30 px plus 2 px of air, same font as the file button); the Type value reads "Excel (.xlsx)"; `MIN_CONTENT_WIDTH` is 405 (was 330). File icons: Excel follows the Excel logo's layout without its word and with slightly shifted greens; Numbers has a 3-unit line under its bars; LibreOffice is a page with a script L; CSV is a page with "CSV".
-- Available Files with several documents open: the page could hide the second file below the window's bottom edge (the panel page needs more height than the window had, and macOS does not show a scroll bar). The window now keeps the height the panel's page needs (`SidePanel.needed_height`, wrapped text included) and the list keeps room for two rows; documents Numbers reports by name only are also looked for beside the active file and in Desktop, Documents and Downloads before Spotlight is asked (`SpreadsheetHosts._beside`). A stray `@staticmethod` on `SidePanel.resizeEvent` kept the drag grip from following the panel's height. Icons: Numbers is flat (a `#3E8E2F` tile, white bars and base line), LibreOffice a page with a brush-style L, CSV the same page and text size as TXT and DAT.
-- Fixed a reattach loop: after Quill let go of a closed file, `poll_workbooks` saw the file still existed (`XlsxBridge.open_workbooks`) and attached it again within seconds, then `_check_link` closed it again, about every 30 s. `_released_file` now stops the watcher from attaching a file no program has open, and letting go also clears the saved `workbook_file` so a restart begins with no file. LibreOffice's icon is a page that says LIB (like CSV, TXT, DAT).
-- Speech Model descriptions name the model under each choice (Vosk `vosk-model-small-en-us-0.15`, Vosk `vosk-model-en-us-0.22-lgraph`, Whisper `base.en` via faster-whisper `Systran/faster-whisper-base.en`), built from the constants in `quill/listener/model.py`.
-
-## Phase 71: one check loop
-
-- **One timer, one look.** `QuillApp._watcher` ticks every `sheet_check_seconds` (default 10, range 5 to 600, cannot be switched off; saved 30s, the old default, become 10). Its tick, `poll_workbooks`, takes ONE look (`refresh_open_files` -> `_scan` off the GUI thread -> `_looked` on it). The look serves the Available Files list, the closed-file check, the open sheet, Excel's workbook names and the pick-up of a file another program has open. The old panel timer (30 s), sheet timer (30 s), 3-tick host probe and 3 s watcher are gone. Never two looks at once: one asked for meanwhile (a refresh icon, Start) runs right after and its callbacks are kept.
-- **Cost of a look.** The running programs come from the system's own list in-process (`quill/bridge/processes.py`, under 1 ms, no process started; `ps` only as a fallback). Numbers answers once, with every document's name, file and open sheet; LibreOffice is asked only when it holds the file; a program that is not running is never asked; nothing is started. Measured on a Mac: about 0.12 s of child CPU per look with Numbers running, none without.
-- **Completeness.** A command that fails or times out marks the look incomplete (`SpreadsheetHosts.last_look_complete`); an incomplete look never closes a file. One complete look that misses a file that was seen open is enough to let it go, so the Active File returns to Open File within one interval. A file remembered from the last run and never seen open stays connected until Start opens it.
-- **Start checks first.** Pressing Start takes a fresh look before the microphone opens (`toggle_listening`), so a window closed since the last tick never records rows into a file nobody sees.
-- **After a close.** Quill goes back to its starting state (the live bridge, `workbook_file` cleared) and picks no other file by itself until one is chosen (`_attach_paused`).
-- **Bounded.** Every `subprocess.run` has a time limit (6 s for looks, 5 s for the mirrors' looks, 15 s for writes) and the child is killed and reaped; no shell anywhere; names reach scripts only as arguments (the Numbers reload script now takes its path as an argument too); the LibreOffice job files are removed after each job and one job runs at a time; `_launched_at` and the remembered names are pruned. `tests/test_check_loop.py` checks all of this, including by reading the source for shell use and missing time limits.
-
-## Phase 72: formula results survive a save
-
-- **Patch, don't rewrite.** openpyxl saves a workbook by writing every part again and cannot keep the results a spreadsheet program stored for formulas, so Numbers showed its "edited with formulas" notice on a file Quill had written. `XlsxBridge._store` now calls `quill/bridge/xlsx_patch.py::patch_package`, which edits only what Quill changed as text in the package: the cells written (`OpenpyxlGrid.unsaved`), the style table when a cell needs wrapped text or a date format, and inline validation lists (`XlsxBridge._list_edits`). Every other part (stored formula results, charts, pictures, macros, other sheets) is copied across byte for byte. Text goes in as inline strings.
-- **When it saves in full instead** (`Unsupported`, logged at info level): a formula or other special cell is replaced, a formula or error is written, a filter changed rows (`OpenpyxlGrid.restructured`), the package has an unexpected layout, or the folder will not take a temporary file. The whole workbook is then saved the old way and the notice can come back for that file.
-- **Safe write.** The new package is built in memory and each changed part is checked to be well-formed XML. The file itself is then overwritten in place (`_overwrite`), so it stays the same file (same inode: Finder tags, owner and sharing are kept); if that write fails part-way the original bytes are written back. A file another program holds open raises the same locked-file error as before and keeps the changes for the retry. A copy (`save_copy`) is a new file, written through a hidden temporary file (`_create`).
-- **Not carried over.** Which sheet is active is not saved into the file (it was only a side effect of the full save). 
-- Tests: `tests/test_xlsx_patch.py` (stored results, byte-identical parts, text/number/bool/date/newline cells, new rows and columns, lists, fallbacks, locked file, hostile text, style table spellings). Also checked against a file saved by LibreOffice, which read the patched copy back with every formula result intact.
-
-## Phase 73: learned links (teaching Quill which column a word means)
-
-- **What.** A bare date goes to a date column by (1) a *learned* word near it, (2) a heading word, (3) sheet order. Learned words are the user's: nothing is shipped. Design: `Learned Links Design.md`.
-- **Store** (`quill/learning.py`, pure): `LinkStore` of `Link(word stem, column, count, taught, used, sources)`. `observe` counts a correction (used after `learn_after` of them, default 2, 1 to 5, a setting); `teach` ("<word> means <column>") is in force at once; a correction to another column lowers the old link (dropped at zero); capped at 200 (least recently used go first); `link_word` refuses numbers, function words, noise, time words and helper verbs (`fillers.LINK_STOPWORDS`; everyday verbs such as *sold*, *bought*, *spotted* are allowed). Every link keeps the files it was learned in (`Source(path, name, count)`), so `for_file` serves "This File". Saved in the settings file as `[[links]]` tables (`Settings.links`), loaded with validation.
-- **Use.** `Vocabulary.date_column_for` asks the store first (`Vocabulary.links`, `learn_after`, set by `Controller._apply_learning`), and the Log says *'spotted' used for Observation Date (learned)*. `ParseResult.context` / `Session.context` keep the words around a bare date so a correction can learn from them.
-- **Teaching.** Spoken: `Session._teaching` (exactly *word means column*, only while listening) -> `teach_link` event -> `Controller.teach_link`. By hand: `RowTable` emits `row_change_requested` for a click on a changeable line's name; `MainWindow` shows a menu ("Change this to" and the *other* columns that fit, from `Controller.columns_for_change`), then `Controller.change_field` moves or swaps the value and (`learn_ask`, on by default) offers *"Remember that 'x' means Y?"* in `MainWindow.learn_bar` (Yes / No, a spoken yes or no, 12 s timeout = nothing learned). A word of the sheet (heading or list value) is never offered.
-- **Where a sheet's data is** (headings row, starting row, headings direction) belongs to the sheet, not the user: `Settings.layouts` maps (workbook path, sheet name) to a `SheetLayout`, saved as `[[layouts]]` in the settings file (only layouts that differ from the default; at most `MAX_LAYOUTS`). `Controller._apply_layout_for` gives the bridge and the panel (`on_layout`) the layout of the sheet that is open when a workbook is connected or the open sheet changes; the three setters store the change for that sheet (`_remember_layout`). The File Settings gear (`SidePanel._draw_gear`) is muted and disabled while no file is connected.
-- **Settings > Words To Skip** (`ui/skip_page.py`, `SkippedWordsPanel`): its own page after Learned Words, not a text box on it. An add box (Enter or Add; commas and spaces separate words), a search, a list drawn with the Learned Words delegate, **Remove Selected** and **Remove All Shown** (several always ask through `ui/confirm.py`); every change saves at once (`Settings.skip_words`, applied by `Controller._apply_learning`). The panel acts as the page's search row so a settings search for "skip" finds it.
-- **Settings > Learned Words** (`ui/learned_page.py`): two settings (`learn_after`, `learn_ask`), the description with the spoken phrase in its own paragraph, and the list (search, All Files / This File, group by file / column / none, sortable headings, Forget Selected, Forget All Shown). Forgetting several always asks through `ui/confirm.py` (`ConfirmDialog`: names the count, Cancel is the default, the action button is red via `QPushButton[danger="true"]`) and saves at once. The Files panel shows *Learned Words (n)* under the active file's facts and opens the page on This File (`SidePanel.learned_words_requested`).
-- Tests: `tests/test_learning.py`. Not built: learning from delete-and-redo, amounts (`default_amount_column`), Undo of a change.
-
-## Phase 74: menu bar, amounts and delete-and-redo learning
-
-- **Menu bar** (`quill/ui/menus.py`): one table (`LAYOUT`: File, Listening, View, Window, Help) and `QuillMenus`, which builds it, calls handlers by name (`HANDLERS`) and mirrors the app's state (`MenuState`: Start/Stop wording, Mini View / Full Window, check marks for the panels, log and turn mode, Undo, Term Helper count, Use the Open Workbook). The window's own bar is always filled (its File menu with Open File… and Use the Open Workbook is filled in, not duplicated); on macOS a second window-less bar (`install_default_bar`) shows the same menus while Settings, the Term Helper or Help is in front; roles move Settings…, Quit and About into the application menu. `QuillApp._build_menus` supplies the handlers (late-bound lambdas) and `request_menu_sync` (one zero-delay timer) refreshes the state after any event, panel, log, mini, undo or file change. About uses `ui/confirm.py::info`. View > Settings Page opens any Settings page.
-- **Amounts.** `Vocabulary.amount_columns` (non-list number or money-like columns) and `amount_column_for`: a learned word chooses among every amount column, else the sheet default; `ParseResult.context` keeps the words around a bare amount (never its own words, e.g. "dollars"); the change menu offers the other amount columns. `context_words(tokens, i, end)` now skips the value's whole span (also for multi-word dates).
-- **Delete-and-redo.** `Controller.remove_field` remembers a deleted line that had words around it (`_Redo`); if, within the next two phrases of the same row, the same sort of value (date / number) lands in another column *the user named* (not one Quill guessed: `session.context` marks guesses), `_check_redo` offers the usual "Remember ...?" lesson. "next row" / "delete row" end it (`Session.row_ended`, also with nothing to save).
-- Tests: `tests/test_menus.py`, `tests/test_learning_amounts_redo.py`.
-
-
-
-## Background noise (listener)
-
-`quill/listener/noise.py` keeps the room out of the recogniser: a one-pole **high-pass** filter (about 100 Hz) and a **noise gate** that learns the room's quiet level (the quietest 5% of the last eight seconds), opens only for sound at least 2.5 times that (never below an RMS of 350) and for 0.4 s after, and otherwise hands Vosk *silence* of the same length (so a phrase still ends when the speaker stops). The voice lines on the Start button read the gated audio, so they stay flat for the room. `Listener._clean` also drops words Vosk reports below 0.55 confidence (it is asked for word details) and a phrase of two words or fewer whose average is below 0.75. `Settings > Speech Model > Reduce Background Noise` (`noise_filter`, on by default) turns it off; the Listener itself has it off unless `set_noise_filter(True)` is called, so tests that push fake bytes are unaffected. A room that is noisy after two seconds is reported once through `Relay.notice` into the Log. A lone filler word in a partial phrase no longer restarts the quiet timer.
-
-### Listening only for answers
-
-While voice sorting is on, `QuillApp._focus_listener` gives the Listener `set_grammar(expected_words(vocab, aliases))` (`quill/sorting_voice.py`): the commands, the little words, the column names, every list value and its letters, number words and the user's synonyms. The Listener builds a Vosk grammar from them (plus `[unk]`, which is stripped from results and partials) and makes a new recogniser at once; the Whisper second pass is skipped while a grammar is set. `set_grammar(None)` when sorting ends restores open dictation. `Settings > Speech Model > Focus On Answers While Sorting` (`sorting_grammar`, on by default) turns it off. A recogniser factory that takes no grammar argument still works (it is called without it).
-
-### Update check and an older relay
-
-`quill/updates.py` asks the relay's `GET /latest`. A relay that has not been redeployed since `/latest` was added answers 405 (its old code only knows `POST`), which used to show *"The update service answered with an error (405)"*. On a 404 or 405 from the relay the check now asks GitHub's public releases API directly (`GITHUB_LATEST_URL`; the repository is public) and carries on; GitHub's own 404 means nothing is released yet, which counts as up to date. Redeploying the relay (`cd relay && npx wrangler@4 deploy`, or a push to `main` that touches `relay/`, which runs the workflow) makes the app use it again.
+[![Tests](https://github.com/sadmicrowave/quill-dictation-app/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/sadmicrowave/quill-dictation-app/actions/workflows/tests.yml)
+[![Release build](https://github.com/sadmicrowave/quill-dictation-app/actions/workflows/release.yml/badge.svg)](https://github.com/sadmicrowave/quill-dictation-app/actions/workflows/release.yml)
+![macOS 26 and 15](https://img.shields.io/badge/macOS-26%20%7C%2015-blue?logo=apple&logoColor=white)
+![Windows Server 2025 and 2022](https://img.shields.io/badge/Windows-Server%202025%20%7C%202022-blue?logo=windows&logoColor=white)
+
+**Talk. Quill types.** Quill fills in your spreadsheet row by row while your hands stay busy. Open a spreadsheet, say
+"start listening", describe an item, and each word lands in the right column. It works with Excel, Numbers and LibreOffice
+Calc, and it learns your vocabulary from your own drop-down lists and column headings, so it suits any catalog: clothing,
+plants, parts, coins.
+
+![Quill while listening](quill/help/images/main-window-light.png)
+
+Your voice and your spreadsheets stay on your computer: speech is recognised offline and nothing is uploaded.
+
+## Get Quill
+
+Download the latest version for your computer from the [Releases page](https://github.com/sadmicrowave/quill-dictation-app/releases/latest)
+or from the [Quill website](https://quill-website-eta.vercel.app/download.html):
+
+| Your computer | Download |
+|---|---|
+| Mac with an Apple chip (M1 or newer), macOS 26 or newer | `Quill-mac-apple-silicon.dmg` |
+| Mac with an Intel chip, macOS 26 or newer | `Quill-mac-intel.dmg` |
+| Windows (64-bit) | `Quill-windows.zip` (open it and run `Quill.exe`) |
+
+**The first time you open it,** your computer will ask you to confirm, because Quill is not signed with a paid developer
+certificate (yet). This happens once:
+
+- **Mac:** drag Quill to Applications and open it. If macOS says it can't verify the app, open **System Settings > Privacy &
+  Security**, scroll down and press **Open Anyway**.
+- **Windows:** if Windows protects your PC, press **More info**, then **Run anyway**.
+
+Then allow the **microphone** when asked (and, on a Mac, **Automation** for your spreadsheet program, which is only how Quill
+sees which files are open). There is nothing else to set up.
+
+## Your first row
+
+1. **Open your spreadsheet** in Excel, Numbers or LibreOffice.
+2. **Press Start** (the wide button at the top of Quill), or say "start listening".
+3. **Describe an item:** *"black t-shirt, large, good condition, appraisal thirty five dollars"*. Your words appear in the
+   box under the button, and the matching columns light up in the grid as you speak.
+4. **Say "next row"** to save it and begin the next one.
+5. **Say "stop listening"** when you are done. If you forget, Quill stops by itself after a few quiet seconds.
+
+Quill only writes while it is listening, so room chatter never lands in your sheet.
+
+## What Quill does
+
+- **Learns your words.** Column names and the values in your drop-down lists become the words Quill listens for, so there
+  is no list of commands to memorise.
+- **Fills the right column.** Amounts, dates, and list values go where they belong; say a column's name first when a word
+  could fit more than one.
+- **Shows what it heard.** The words you say appear as you speak, and the row grid under them lists your sheet's columns,
+  filling in live so you can catch a mistake before saving the row.
+- **Asks about new words.** Something Quill doesn't know goes to the **Term Helper**, where one click (or a spoken answer)
+  adds it to the right list or teaches Quill what it means.
+- **Fixes mistakes.** Say "undo", remove a wrong line with its small **x**, or change which column a value goes in.
+- **Works your way.** Light, dark or automatic themes, adjustable window opacity and blur, a small **mini view** that
+  sits over your spreadsheet, and optional confirmation sounds.
+- **Stays private.** No accounts, no tracking, no uploads. The only things that ever leave your computer are an optional
+  speech-model download, a check for a newer version (which sends nothing about you), and a problem report you choose to
+  send.
+
+## Help is built in
+
+Press **F1** (or use **Help > Quill Help**) for the full guide, with pictures: talking to Quill, working with different
+spreadsheet programs, the Term Helper, settings, sounds, privacy and troubleshooting. A short guide to what to say is in
+[Using Quill](docs/usage.md).
+
+## If something is not working
+
+| What you see | What to try |
+|---|---|
+| Nothing happens when I speak | Make sure the light is green (press **Start**). Check that Quill is allowed to use the microphone in your computer's privacy settings. |
+| "File not connected" | Open a spreadsheet in Excel, Numbers or LibreOffice. Quill notices within a few seconds. |
+| "This sheet has no column headings Quill can find" | Click **Headings Row** or **Sheet Layout** in the message (or press the gear beside **Active File**) and tell Quill where the headings are. |
+| My drop-down lists are not picked up | Save the spreadsheet. Quill re-reads it by itself within a few seconds. |
+| A word is ignored | Say the column's name just before the value, exactly as it is written in the heading. |
+| Quill hears itself | Turn off *Read questions aloud* in Settings, or use headphones. |
+
+More in the app under **Help > Troubleshooting**.
+
+## Documentation
+
+| | |
+|---|---|
+| [Using Quill](docs/usage.md) | What to say, searching, the Term Helper, voice sorting and undo, working with workbooks |
+| [The window and settings](docs/interface.md) | The main window, mini view, settings, appearance, sounds, speech models |
+| [Development](docs/development.md) | Running from source, tests, building the app, releasing |
+| [Architecture](docs/architecture.md) | How the code is organised and how a spoken phrase becomes a row |
+| [Development history](docs/development-history.md) | Notes from each phase of the project |
+
+## Tested on
+
+Quill's automated tests run on every push, on these systems: macOS 26 and 15 (Apple chip), macOS 15 (Intel), and Windows
+Server 2025 and 2022. The badges at the top show whether the latest run passed. A green **Tests** badge for `main` means the
+full set of systems passed.
