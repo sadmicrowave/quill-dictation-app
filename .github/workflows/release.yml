@@ -70,6 +70,10 @@ jobs:
         run: |
           python tools/make_app_icon.py
           pyinstaller --noconfirm packaging/quill_win.spec
+          $info = (Get-Item dist/Quill.exe).VersionInfo
+          Write-Host "version resource:" $info.CompanyName "|" $info.FileDescription "|" $info.ProductVersion
+          $expected = $env:TAG.TrimStart("v")
+          if ($info.ProductVersion -ne $expected -or -not $info.FileDescription) { throw "Quill.exe has the wrong version resource" }
           Compress-Archive -Path dist/Quill.exe -DestinationPath "${{ matrix.file }}"
       - name: Build (macOS)
         if: startsWith(matrix.name, 'mac')
