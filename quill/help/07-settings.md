@@ -15,7 +15,8 @@ Press the ** sliders icon** in the title bar. Type in **Search** to jump to a se
 | **Appearance** | Theme, accent colour, spacing, text size, opacity, blur |
 | **Sounds** | Sound set, spoken word, sample |
 | **Keywords** | The phrases you say and what they do |
-| **Learned Words** | The words you taught Quill to read as a column, how soon it learns them, and **Words To Skip** (words you trimmed off terms in the Term Helper) |
+| **Learned Words** | The words you taught Quill to read as a column, and how soon it learns them |
+| **Words To Skip** | Words Quill leaves out of new values (words you trimmed off terms in the Term Helper, or added by hand): add, search and remove them |
 
 ## 🎨 Look
 
@@ -48,6 +49,8 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 - **The list** shows each word, the column it means, the file it was learned in, its status (*Taught*, *In use*, *Learning (1 of 2)*) and how often it was used. Search it, switch between **All Files** and **This File**, group it by file or column, and choose the group order (**Most Recent First**, **Name A–Z**, **Most Words First**). Click a heading to sort inside each group; click again to reverse.
 - **Forget Selected** and **Forget All Shown** remove words. More than one always asks first; **Cancel** is the default. This can't be undone.
 - The **Learned Words** link under the active file in the Files panel opens this page on **This File**.
+
+**Settings > Words To Skip** (under *Voice and Commands*, after Learned Words) lists the words Quill never makes part of a new value. Quill adds one whenever you trim a word off a term in the Term Helper; you can also type a word in the box at the top and press **Enter** or **Add**. Search the list, then pick words and press **Remove Selected** (or **Remove All Shown**, which always asks first) to let Quill read them again. Changes are saved at once and apply in every file.
 
 ### Check for Changes
 

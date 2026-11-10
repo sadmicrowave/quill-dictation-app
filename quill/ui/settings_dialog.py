@@ -63,6 +63,7 @@ from quill.ui.chrome import apply_chrome
 from quill.ui.hints import fill_missing_tips
 from quill.learning import LEARN_AFTER_RANGE
 from quill.ui.learned_page import LearnedWordsPanel
+from quill.ui.skip_page import SkippedWordsPanel
 from quill.ui.settings_widgets import (
     BADGE_ROLE, NavDelegate,
     ModelRow,
@@ -88,7 +89,7 @@ SIDEBAR_WIDTH = 270
 
 GROUPS = [("", ["About"]),                      # (no caption: it would only repeat the page's own name)
           ("Preferences", ["General", "Appearance", "Sounds"]),
-          ("Voice and Commands", ["Keywords", "Speech Model", "Learned Words"])]
+          ("Voice and Commands", ["Keywords", "Speech Model", "Learned Words", "Words To Skip"])]
 
 #: The About page's description (the text that used to be in a pop-up window).
 ABOUT_TEXT = ("Hands-free spreadsheet dictation. Everything runs on this computer: your voice and your spreadsheets are never sent "
@@ -239,6 +240,7 @@ class SettingsDialog:
         self.learn_spin: QSpinBox | None = None
         self.learn_ask_check: ToggleSwitch | None = None
         self.learned: "LearnedWordsPanel | None" = None
+        self.skipped: "SkippedWordsPanel | None" = None
         self.speak_check: ToggleSwitch | None = None
         self.auto_sort_check: ToggleSwitch | None = None
         self.mic_check: ToggleSwitch | None = None
@@ -596,6 +598,8 @@ class SettingsDialog:
             if title == "Keywords":
                 self._ensure_keywords()                              # built the first time it is opened
                 fill_missing_tips(self._dialog)
+            if title == "Words To Skip" and self.skipped is not None:
+                self.skipped.refresh()                               # (a word may have been added in the Term Helper meanwhile)
             self.pages.setCurrentIndex(self._page_index[title])
 
     def filter(self, text: str) -> int:
@@ -934,6 +938,7 @@ class SettingsDialog:
         if not self._lazy_keywords:
             self._ensure_keywords()
         self._build_learned_page()
+        self._build_skip_page()
         if self.SHOW_ACCOUNT:
             self._build_account_page()
 
@@ -958,26 +963,24 @@ class SettingsDialog:
         self._add("Learned Words", page, "Ask Before Learning",
                   "Ask before remembering a column change. Off: changes are counted without asking.",
                   self.learn_ask_check, "remember ask confirm prompt learn")
-        self.skip_edit = QLineEdit(", ".join(self._settings.skip_words))
-        self.skip_edit.setPlaceholderText("none yet")
-        self.skip_edit.setToolTip("Words Quill never makes part of a new value. Taught when you trim a word off a term in the Term Helper; "
-                                  "edit the list to forget or add some (separate with commas).")
-        self.skip_edit.editingFinished.connect(self._skip_words_changed)
-        self._add("Learned Words", page, "Words To Skip",
-                  "Words Quill leaves out of new values. Trim a word off a term in the Term Helper (“ones teal” to “teal”) and Quill "
-                  "skips it from then on. Separate with commas.",
-                  self.skip_edit, "skip ignore words filler learned trimmed")
         self.learned = LearnedWordsPanel(self._settings.links, lambda: int(self._settings.preferences["learn_after"]),
                                          self._active_file)
         self.learned.changed.connect(self._links_changed)
         page.addWidget(self.learned, 1)
 
+    def _build_skip_page(self) -> None:
+        """Settings > Words To Skip: the words Quill leaves out of new values."""
+        page = self._page(
+            "Words To Skip",
+            "Words Quill leaves out of new values. Trim a word off a term in the Term Helper and Quill skips it from then on, in every "
+            "file. You can add words here too, or remove ones you want Quill to read again.")
+        self.skipped = SkippedWordsPanel(self._settings)
+        self.skipped.changed.connect(self._skip_words_changed)
+        self._page_rows["Words To Skip"].append(self.skipped)          # (so a search for "skip" finds the page)
+        page.addWidget(self.skipped, 1)
+
     def _skip_words_changed(self) -> None:
-        """The skipped words were edited: kept (saved at once, like the learned words) and applied."""
-        words = [w.strip().lower() for w in self.skip_edit.text().replace(";", ",").split(",") if w.strip()]
-        self._settings.skip_words = []
-        self._settings.add_skip_words(words)
-        self.skip_edit.setText(", ".join(self._settings.skip_words))
+        """The skipped words changed: kept (saved at once, like the learned words) and applied."""
         self._settings.save()
         self._on_change()
 
