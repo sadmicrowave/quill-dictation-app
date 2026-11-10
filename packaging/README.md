@@ -1,7 +1,7 @@
 # Quill — Packaging
 
 Build on the platform you are targeting (PyInstaller does not cross-compile).
-Neither spec has been build-tested yet; see the To Do's Phase 10 checklist.
+Both specs build in CI (the release workflow).
 
     pip install -r requirements.txt
 
@@ -32,3 +32,25 @@ folder. To bundle one instead, unpack it to:
 
 and add `("quill/model", "quill/model")` to `datas` in the spec. The model
 directory is git-ignored (see .gitignore).
+
+## Releasing
+
+    # bump __version__ in quill/__init__.py, merge to main, then:
+    git tag v0.1.0 && git push origin v0.1.0
+
+The `release` workflow (`.github/workflows/release.yml`) builds Windows, macOS Apple Silicon and macOS Intel on GitHub's
+machines and attaches `Quill-windows.zip`, `Quill-mac-apple-silicon.dmg`, `Quill-mac-intel.dmg` and `SHA256SUMS.txt` to a
+**draft** release. Nothing is public until you read the notes and press *Publish release*. (The tag must equal `__version__`.)
+The site's download buttons and the app's update check read the newest published, non-pre-release release.
+
+## First run of an unsigned download
+
+The downloads are not signed with a paid Apple or Windows certificate, so each system warns once:
+
+* **macOS:** "Apple could not verify Quill is free of malware". Choose *Done*, open System Settings > Privacy & Security,
+  scroll down and press *Open Anyway* (on macOS before 15, right-click the app and choose *Open*). Then allow the microphone,
+  and Automation for the spreadsheet program, when asked. Pick the build for the chip (Apple menu > About This Mac).
+* **Windows:** SmartScreen shows "Windows protected your PC". Choose *More info*, then *Run anyway*.
+
+The same words are on the site's download page and in the release notes. Signing (an Apple Developer ID with notarization,
+and a Windows code-signing certificate) removes these warnings; it is not set up yet.
