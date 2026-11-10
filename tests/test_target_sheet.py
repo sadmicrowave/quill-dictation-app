@@ -67,7 +67,7 @@ class TestAlwaysTheOpenSheet(Case):
         self.hear(app, "fern large")
         self.hear(app, "next row")
         self.assertEqual(self.rows("Inventory")[-1], ["Fern", "Small"])      # untouched: Quill did not choose it
-        self.assertEqual(app.window.row_table.rowCount(), 2)                 # the row is kept, nothing lost
+        self.assertEqual(len(app.window.heard_lines()), 2)                 # the row is kept, nothing lost
         self.assertIn("Could not save the row", app.window.log.toPlainText())
 
     def test_after_the_user_opens_the_sheet_the_next_row_works(self):
@@ -81,7 +81,7 @@ class TestAlwaysTheOpenSheet(Case):
         self.hear(app, "next row")
         self.assertEqual(self.rows("2026")[-1], ["Fern", "Large"])
         self.assertEqual(self.rows("2025")[-1], ["Fern", "Small"])
-        self.assertEqual(app.window.row_table.rowCount(), 0)
+        self.assertEqual(len(app.window.heard_lines()), 0)
 
     def test_the_error_says_what_to_do(self):
         app = self.build()

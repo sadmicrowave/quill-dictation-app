@@ -280,7 +280,7 @@ class TestNextRowInTheApp(unittest.TestCase):
         self.app.next_row()
         self.assertEqual(self.app.controller.session.committed, before + 1)
         self.assertEqual(self.app.window.stream_text(), "")
-        self.assertEqual(self.app.window.row_table.rowCount(), 0)
+        self.assertEqual(len(self.app.window.heard_lines()), 0)
         self.assertTrue(self.app.controller.session.listening)               # ready for the next row
 
     def test_with_nothing_heard_it_only_clears_the_words(self):

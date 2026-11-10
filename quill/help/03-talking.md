@@ -28,7 +28,7 @@ Speak naturally. Quill picks out the words it knows.
 
 Everything you say shows up, word by word and in italics, in the box under the Start button.
 
-- Words Quill understood become **coloured pills** and appear in the grid below, in their column, where each value wears the same pill (they are what you said).
+- Words Quill understood become **coloured pills**. The grid below already lists your sheet's columns, muted; the moment a word is understood, its column turns to the normal colour and jumps to the top (columns keep the order you said them in), and its value appears beside it wearing the same pill (they are what you said). Columns you did not mention stay muted.
 - Words still being spoken are shown in the normal text colour; once the phrase is done, words that were **not understood** turn grey.
 - Spoken commands (*next row*, *next item*) are taken out of the box once recognised, so the box shows only what describes the item.
 - Everyday words (*got*, *really*) are skipped, so Quill won't ask about them.

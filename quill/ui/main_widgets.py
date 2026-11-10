@@ -21,6 +21,8 @@ from PySide6.QtCore import (
     QSize,
     Qt,
     QTimer,
+    QVariantAnimation,
+    QEasingCurve,
     Signal,
 )
 from PySide6.QtGui import QColor, QPainter, QPen
@@ -127,6 +129,8 @@ class _ValuePills(QStyledItemDelegate):
         if not text:
             return
         table = self.parent()
+        if table.row_opacity(index.row()) <= 0.01:
+            return
         reach = option.rect.width() - self.MARGIN - table.DELETE_SIZE - table.DELETE_MARGIN - 6          # (clear of the delete button)
         metrics = option.fontMetrics
         shown = metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(reach - 2 * self.PAD_X, 20))
@@ -134,10 +138,28 @@ class _ValuePills(QStyledItemDelegate):
         height = min(metrics.height() + 2 * self.PAD_Y, option.rect.height() - 4)
         box = QRect(option.rect.left() + self.MARGIN, option.rect.top() + (option.rect.height() - height) // 2, width, height)
         painter.save()
+        painter.setOpacity(table.row_opacity(index.row()))
         painter.fillRect(box, self.fill)
         painter.setPen(self.ink)
         painter.setFont(option.font)
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, shown)
+        painter.restore()
+
+
+class _ColumnNames(QStyledItemDelegate):
+    """Draws the column names of the row grid. While the columns ease in, each name fades up and slides a few pixels from the left."""
+
+    SLIDE = 10          # px a name travels while it fades in
+
+    def paint(self, painter, option, index) -> None:
+        table = self.parent()
+        opacity = table.row_opacity(index.row())
+        if opacity <= 0.01:
+            return
+        painter.save()
+        painter.setOpacity(opacity)
+        painter.translate(-self.SLIDE * (1.0 - opacity), 0)
+        super().paint(painter, option, index)
         painter.restore()
 
 
@@ -177,7 +199,15 @@ class RowTable(QTableWidget):
         self._button_fill = QColor("#7A55C2")    # the theme colour; set with :meth:`set_delete_colors`
         self._button_glyph = QColor("#FFFFFF")
         self._pills = _ValuePills(self)
+        self._active: set[str] = set()           # columns that have a value in the row: only their lines can be removed
+        self._revealed: float | None = None      # rows shown so far while the columns ease in (None: all of them, no animation)
+        self._reveal = QVariantAnimation(self)
+        self._reveal.setEasingCurve(QEasingCurve.Type.Linear)
+        self._reveal.valueChanged.connect(self._reveal_step)
+        self._reveal.finished.connect(self._reveal_done)
+        self._names = _ColumnNames(self)
         if columns >= 2:
+            self.setItemDelegateForColumn(0, self._names)
             self.setItemDelegateForColumn(1, self._pills)          # the values, in pills
 
     def set_pill_colors(self, fill: str, ink: str) -> None:
@@ -188,6 +218,43 @@ class RowTable(QTableWidget):
     def set_delete_colors(self, fill: str, glyph: str) -> None:
         """Colour the delete button: a filled circle in *fill* with an "x" in *glyph* (the theme's accent colours)."""
         self._button_fill, self._button_glyph = QColor(fill), QColor(glyph)
+        self.viewport().update()
+
+    def set_active(self, columns: set[str]) -> None:
+        """The columns that have a value in the row now (only their lines show the delete button)."""
+        self._active = set(columns)
+        self.viewport().update()
+
+    def row_opacity(self, row: int) -> float:
+        """How visible *row* is: 1 once shown, rising from 0 as the columns ease in from the top, one after the other."""
+        if self._revealed is None:
+            return 1.0
+        return max(0.0, min(1.0, self._revealed - row))
+
+    def ease_in_rows(self, animate: bool = True) -> None:
+        """Show the rows one after the other from the top, each fading and sliding in (about a second at most, then it stops by itself)."""
+        self._reveal.stop()
+        rows = self.rowCount()
+        if not animate or rows == 0:
+            self._revealed = None
+            self.viewport().update()
+            return
+        stagger = 45                                         # ms between one row starting and the next
+        fade = 260                                           # ms one row takes to appear
+        total = min(fade + stagger * (rows - 1), 1100)
+        self._revealed = 0.0
+        self._reveal.setDuration(total)
+        self._reveal.setStartValue(0.0)
+        self._reveal.setEndValue(float(rows) + fade / stagger)        # (the last row has its whole fade left to run)
+        self._reveal.start()
+        self.viewport().update()
+
+    def _reveal_step(self, value) -> None:
+        self._revealed = float(value)                        # rows revealed, with a fractional part for the one fading in
+        self.viewport().update()
+
+    def _reveal_done(self) -> None:
+        self._revealed = None
         self.viewport().update()
 
     def set_changeable(self, columns: set[str]) -> None:
@@ -214,8 +281,13 @@ class RowTable(QTableWidget):
         row = self.rowAt(point.y())
         return row if 0 <= row < self.rowCount() and self.item(row, 0) is not None else -1
 
+    def _removable(self, row: int) -> bool:
+        """Can the line at *row* be removed? Only a line that has a value in the row."""
+        item = self.item(row, 0) if row >= 0 else None
+        return item is not None and item.text() in self._active
+
     def _over_button(self, point: QPoint) -> bool:
-        return self._hovered_row >= 0 and self.delete_button_rect(self._hovered_row).contains(point)
+        return self._removable(self._hovered_row) and self.delete_button_rect(self._hovered_row).contains(point)
 
     def mouseMoveEvent(self, event) -> None:                         # noqa: N802 (Qt name)
         super().mouseMoveEvent(event)
@@ -245,7 +317,7 @@ class RowTable(QTableWidget):
     def mousePressEvent(self, event) -> None:                        # noqa: N802
         point = event.position().toPoint()
         row = self._row_at(point)
-        if (event.button() == Qt.MouseButton.LeftButton and row >= 0
+        if (event.button() == Qt.MouseButton.LeftButton and self._removable(row)
                 and self.delete_button_rect(row).contains(point)):
             self._hovered_row, self._button_hot = -1, False
             self.viewport().setToolTip("")
@@ -272,7 +344,9 @@ class RowTable(QTableWidget):
             painter.drawLine(divider, 0, divider, bottom - 1)        # between the two columns
             for row in range(self.rowCount() - 1):     # no line under the last row
                 y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
+                painter.setOpacity(self.row_opacity(row))
                 painter.drawLine(0, y, self.viewport().width() - 1, y)
+            painter.setOpacity(1.0)
         if self._hovered_row >= 0 and self.item(self._hovered_row, 0) is not None \
                 and self.item(self._hovered_row, 0).text() in self._changeable:          # a small arrow after the name: it opens a menu
             row = self._hovered_row
@@ -282,7 +356,7 @@ class RowTable(QTableWidget):
             painter.setPen(QPen(self.palette().placeholderText().color(), 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(QPointF(x - 3.5, y - 1.5), QPointF(x, y + 2))
             painter.drawLine(QPointF(x, y + 2), QPointF(x + 3.5, y - 1.5))
-        if self._hovered_row >= 0:
+        if self._removable(self._hovered_row):
             box = QRectF(self.delete_button_rect(self._hovered_row))
             centre = box.center()                      # the exact middle, so the "x" is centred in the circle
             painter.setPen(Qt.PenStyle.NoPen)

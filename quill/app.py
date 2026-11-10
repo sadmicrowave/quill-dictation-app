@@ -271,6 +271,7 @@ class QuillApp:
             on_mini_toggled=self._mini_toggled, mini=bool(settings.preferences["mini_mode"]),
             mini_on_top=bool(settings.preferences["mini_on_top"]),
         )
+        self.controller.on_columns = self.window.set_columns            # the grid lists the sheet's columns once it is connected
         self._refresh_after_batch = self._reveal_after_batch = False      # (see refresh_sorting)
         self.controller.on_batch_done = self._batch_done
         self.sorting = SortingWindow(self.controller.vocab, self.resolve_term,

@@ -108,10 +108,10 @@ class TestDictationThroughUi(AppCase):
         self.assertTrue(self.quill.window.listening)
         self.assertTrue(self.quill.tray.listening)
         self.hear("fern bright")
-        self.assertEqual(self.quill.window.row_table.rowCount(), 2)
+        self.assertEqual(len(self.quill.window.heard_lines()), 2)
         self.hear("next row")
         self.assertEqual(self.sheet()["A4"].value, "Fern")
-        self.assertEqual(self.quill.window.row_table.rowCount(), 0)
+        self.assertEqual(len(self.quill.window.heard_lines()), 0)
         self.assertIn("Row 4", self.quill.window.last_label.text())
 
     def test_stop_turns_light_off(self):
@@ -279,7 +279,7 @@ class TestVoiceStreamInTheApp(unittest.TestCase):
         self.app._on_phrase_heard("a fern")
         self.app.window._remove_row_requested("Type")
         self.assertNotIn("Type", self.app.controller.session.record)
-        self.assertEqual(self.app.window.row_table.rowCount(), 0)
+        self.assertEqual(len(self.app.window.heard_lines()), 0)
         self.assertNotIn("fern", self.app.window.stream.toHtml().split("background-color")[-1:][0][:5])   # no pill left
         self.assertIn("Removed Type", self.app.window.log.toPlainText())
 
