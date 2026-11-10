@@ -1588,6 +1588,8 @@ class MainWindow:
     def _remove_row_requested(self, column: str) -> None:
         """The user clicked a line's delete button: take it out of the grid, un-colour its words, tell the app."""
         self._row_fields.pop(column, None)
+        self._live_fields.pop(column, None)                      # (a line still being heard can be removed too)
+        self._stream_partial = [(word, WordMatch(False) if match.column == column else match) for word, match in self._stream_partial]
         self.update_current_row(self._row_fields)
         self.unmatch_stream_column(column)
         self._on_field_removed(column)
@@ -1595,6 +1597,15 @@ class MainWindow:
     # ------------------------------------------------------------------ #
     # Voice Stream                                                         #
     # ------------------------------------------------------------------ #
+
+    def revalidate_stream(self, valid_columns: set[str]) -> None:
+        """The sheet (or its lists) changed: a word heard for a column the sheet no longer has stops counting as understood, so the grid
+        never lists a column that was heard on another sheet."""
+        def fix(items):
+            return [(word, WordMatch(False) if match.column and match.column not in valid_columns else match) for word, match in items]
+        self._stream_words, self._stream_partial = fix(self._stream_words), fix(self._stream_partial)
+        self._live_fields = {c: v for c, v in self._live_fields.items() if c in valid_columns}
+        self._render_stream()
 
     def set_stream_classifier(self, classify) -> None:
         """Tell the stream how to judge heard words: ``classify(words) -> [WordMatch, ...]`` (see :mod:`quill.stream`)."""
@@ -1666,7 +1677,12 @@ class MainWindow:
         return " ".join(word for word, _ in self._stream_words + self._stream_partial)
 
     def _begin_stream(self) -> None:
+        """New words arrive after the row ended. If the row is over (saved or discarded) they start a new stream; a row that was only
+        stopped, with values in it, goes on: its heard words stay beside its grid."""
         if self._stream_done:
+            if self._row_fields:
+                self._stream_done = False
+                return
             self._stream_words, self._stream_partial, self._stream_done = [], [], False
             self._live_fields, self._live_stale = {}, False
 

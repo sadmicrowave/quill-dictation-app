@@ -2145,6 +2145,8 @@ class QuillApp:
     def _columns_read(self, columns: list[str]) -> None:
         """The active sheet's columns were read: show them; if a file is connected but has none, say so (once) and say what to check."""
         self.window.set_columns(columns)
+        vocab = self.controller.vocab
+        self.window.revalidate_stream(set(vocab.columns()) | set(columns) | set(self.controller.session.record))
         empty = not columns and self.controller.connected
         self.window.set_no_columns(empty)
         if empty and not self._no_columns_told:
@@ -2352,8 +2354,8 @@ class QuillApp:
             self.refresh_sorting()
             return
         self.window.update_current_row(self.controller.session.record)
-        if kind == "updated":
-            self.refresh_sorting()                    # a word that was not understood is on the Term Helper's button at once
+        if kind in ("updated", "discarded"):
+            self.refresh_sorting()                    # a word that was not understood is on the Term Helper's button at once (and a discarded row takes its words with it)
         if kind == "updated" and not event.detail:
             return
         self.window.append_log(self._describe(event), "error" if kind == "error" else "info", safe=("Event: %s", event.kind))
