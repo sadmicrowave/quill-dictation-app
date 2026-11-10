@@ -1649,8 +1649,9 @@ class MainWindow:
 
     def sorting_finished(self) -> None:
         """The Term Helper closed with everything answered: bring this window back and, if the row it was
-        about is over, clear the heard words so the next row starts clean."""
-        if self._stream_done:
+        about is over, clear the heard words so the next row starts clean. A row that was stopped with values still in it
+        is not over (nothing was saved): its heard words and its grid stay together until it is saved or discarded."""
+        if self._stream_done and not self._row_fields:
             self.clear_stream()
         self.show()
 

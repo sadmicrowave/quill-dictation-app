@@ -241,6 +241,7 @@ class QuillApp:
         self._viewer_looks = 0
         self._viewer_running = False
         self._host_noted = False
+        self._reload_kept_noted = False                              # (the log says a document was left alone once)
         self._host_reload = QTimer()
         self._host_reload.setSingleShot(True)
         self._host_reload.setInterval(HOST_RELOAD_MS)
@@ -566,12 +567,12 @@ class QuillApp:
             return
         path = bridge.workbook_path
 
-        def find_and_reload() -> tuple[HostApp | None, bool]:
+        def find_and_reload() -> tuple[HostApp | None, bool | str]:
             host_app = self._host
             if host_app is None:
                 hits = [h for h, p in self.hosts.open_excel_files() if str(p.resolve()) == path]
                 host_app = hits[0] if hits else None
-            reloaded = bool(host_app and host_app.reloads and self.hosts.reload(host_app, path))
+            reloaded = (host_app.reloads and self.hosts.reload(host_app, path)) if host_app else False      # (a word, not only yes or no)
             return host_app, reloaded
 
         self.run_in_background(find_and_reload, self._host_reloaded)
@@ -579,6 +580,15 @@ class QuillApp:
     def _host_reloaded(self, outcome) -> None:
         """A reload request finished: remember the program, and say what to do by hand if it can't be asked."""
         host_app, reloaded = outcome or (None, False)
+        if host_app is not None and reloaded == "kept":
+            self._host = host_app
+            if not self._reload_kept_noted:
+                self._reload_kept_noted = True                   # one line of advice, not one per saved change
+                self.window.append_log(f"{host_app.name} has unsaved changes in the open file, so Quill left it alone and will not open a second "
+                                       "copy. What Quill just saved is in the file: close it in "
+                                       f"{host_app.name} without saving and open it again to see it.", "warning",
+                                       safe=("%s has unsaved changes: left alone", host_app.name))
+            return
         if host_app is None or reloaded:
             self._host = host_app or self._host
             return
@@ -2338,6 +2348,7 @@ class QuillApp:
             if event.resolved:
                 self.sorting.note_outcome(event.resolved["key"], "ignored" if kind == "skipped" else "accepted")
             self.window.append_log(event.detail)
+            self.window.update_current_row(self.controller.session.record)      # (an answered term is part of the row: the grid shows it)
             self.refresh_sorting()
             return
         self.window.update_current_row(self.controller.session.record)

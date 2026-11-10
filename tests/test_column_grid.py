@@ -117,6 +117,49 @@ class TestTheColumnsAreListed(AppCase):
         self.assertFalse(window.row_placeholder.isHidden())
 
 
+class TestAnsweringATermUpdatesTheGrid(AppCase):
+    def test_a_value_added_in_the_term_helper_shows_in_the_row_grid_at_once(self):
+        from quill.session import Decision
+        self.hear("start listening", "fern magnificent")
+        window = self.quill.window
+        self.assertEqual(window.heard_lines(), [("Species", "Fern")])
+        self.quill.resolve_term((None, "magnificent"), Decision.add("Species"), "magnificent")
+        self.assertEqual(window.heard_lines(), [("Species", "Fern\nMagnificent")])
+        self.assertEqual(window._row_fields, dict(self.quill.controller.session.record))     # (the grid never lags behind the row)
+
+
+class TestTheTermHelperClosingAfterAStoppedRow(AppCase):
+    """The row was stopped (by hand or by the quiet timer) with values in it and never saved; the Term Helper then opened and closed."""
+
+    def stopped_with_a_term(self):
+        self.hear("start listening", "fern small magnificent")
+        self.hear("stop listening")
+
+    def test_an_unsaved_row_keeps_its_heard_words_and_its_grid_together(self):
+        from quill.session import Decision
+        self.stopped_with_a_term()
+        window = self.quill.window
+        self.quill.resolve_term((None, "magnificent"), Decision.add("Species"), "magnificent")
+        window.sorting_finished()
+        self.assertEqual([c for c, _ in window.heard_lines()], ["Species", "Pot Size"])
+        self.assertIn("fern", window.stream_text())                              # (never the one cleared and the other kept)
+
+    def test_a_row_with_nothing_in_it_is_cleared_when_the_term_helper_closes(self):
+        self.hear("start listening", "magnificent")
+        self.hear("stop listening")
+        window = self.quill.window
+        window.sorting_finished()
+        self.assertEqual(window.stream_text(), "")
+        self.assertEqual(window.heard_lines(), [])
+
+    def test_a_saved_row_clears_both(self):
+        self.hear("start listening", "fern small", "next row")
+        window = self.quill.window
+        window.sorting_finished()
+        self.assertEqual(window.stream_text(), "")
+        self.assertEqual(window.heard_lines(), [])
+
+
 class TestASheetWithNoColumns(AppCase):
     def blank(self):
         import openpyxl

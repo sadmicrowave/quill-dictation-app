@@ -301,13 +301,19 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
     NASTY = ['/a/"; do shell script "touch /tmp/pwned"; "b.xlsx', "/a/'; rm -rf ~; '.xlsx", "/a/$(touch pwned)`x`.xlsx",
              "/a/new\nline\ttab.xlsx", "/a/\\\\back.xlsx"]
 
-    def test_reload_passes_the_path_as_an_argument_to_a_fixed_script(self):
+    def test_reload_never_puts_a_path_in_a_script(self):
+        from tests.fake_numbers import FakeNumbers
         for path in self.NASTY:
-            runner = FakeRunner({"osascript": "ok"})
-            SpreadsheetHosts("darwin", runner).reload(NUMBERS, path)
-            command = runner.calls[0]
-            self.assertEqual(command[:5], ["osascript", "-l", "JavaScript", "-e", mac_hosts._RELOAD_NUMBERS])
-            self.assertEqual(command[5:], [path])
+            numbers = FakeNumbers()
+            numbers.import_xlsx(path)
+            SpreadsheetHosts("darwin", numbers).reload(NUMBERS, path)
+            for command in numbers.calls:
+                if command[0] == "osascript":
+                    self.assertIn(command[4], (mac_hosts._LIST_NUMBERS_FOR_RELOAD, mac_hosts._CLOSE_NUMBERS))      # fixed scripts
+                    self.assertNotIn(path, command[4])
+                    self.assertTrue(all(arg.isdigit() for arg in command[5:]))                                        # only positions
+                else:
+                    self.assertEqual(command[-1], path)                                                                # one argument, never a shell line
 
     def test_a_spotlight_name_cannot_close_its_quote(self):
         for name in ("x'c || kMDItemFSName == '*", "y\\'", "z'"):
