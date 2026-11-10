@@ -242,6 +242,9 @@ class MainWindow:
         self._stream_words: list[tuple[str, WordMatch]] = []     # what was heard (final), with what Quill made of each word
         self._stream_partial: list[tuple[str, WordMatch]] = []   # the phrase still being spoken
         self._stream_done = False            # the row ended: the next words start a fresh stream
+        self._live_fields: dict[str, object] = {}  # what the words still being spoken would put in the row (shown as they are heard)
+        self._live_stale = False                   # a phrase just ended: its live values stay until the row's own values arrive
+        self._preview_values = lambda words: {}
         self._classify_words = lambda words: [WordMatch(False) for _ in words]
         self._sorting_animation: QVariantAnimation | None = None
         self._countdown_share: float | None = None
@@ -1428,7 +1431,7 @@ class MainWindow:
     def update_current_row(self, fields: dict[str, object]) -> None:
         """Show the record being built: the values of the columns heard so far (the box grows with them, then scrolls)."""
         self._row_fields = dict(fields)
-        self.row_table.set_active(set(fields))
+        self._live_fields, self._live_stale = {}, False          # (the row now has what was heard)
         self.row_table.set_changeable({c for c in fields if self._on_field_options(c)})
         self._refresh_grid()
 
@@ -1465,15 +1468,20 @@ class MainWindow:
         end of the phrase); then every other column of the sheet, muted, in the sheet's order.
         """
         heard = self._heard_columns()
-        for column in self._row_fields:                          # (a value set another way, e.g. by changing a line's column)
+        fields = self._fields_now()
+        for column in fields:                                    # (a value set another way, e.g. by changing a line's column)
             if column not in heard:
                 heard.append(column)
         lines = []
         for column in heard:
-            value = self._row_fields.get(column)
+            value = fields.get(column)
             lines.append((column, "" if value is None else (value.isoformat() if isinstance(value, dt.date) else str(value)), True))
         lines += [(column, "", False) for column in self._sheet_columns if column not in heard]
         return lines
+
+    def _fields_now(self) -> dict[str, object]:
+        """The row's values with those the words still being spoken would add (understood as they are heard, not at the end of the phrase)."""
+        return {**self._row_fields, **self._live_fields}
 
     def heard_lines(self) -> list[tuple[str, str]]:
         """The grid's lines in the normal colour (the columns heard in this turn): ``(column, value text)``, top to bottom."""
@@ -1484,11 +1492,15 @@ class MainWindow:
         if self._window is None:
             return                                               # not built yet
         lines = self._grid_lines()
+        table = self.row_table
+        table.set_active(set(self._fields_now()))
         shown = (tuple(lines), self._text_color)
         if shown == self._grid_shown:
             return
+        window = self._window
+        slide = self.animation_ms > 0 and window is not None and window.isVisible() and bool(self._grid_shown and self._grid_shown[0])
+        before = table.line_positions() if slide else {}
         self._grid_shown = shown
-        table = self.row_table
         table.setRowCount(len(lines))
         self.row_placeholder.setVisible(not lines)
         palette = table.palette()
@@ -1502,6 +1514,7 @@ class MainWindow:
         table.scrollToTop()
         self._size_rows()
         self._fit_row_table()
+        table.slide_from(before, animate=slide)                 # a column heard now slides up to the top
 
     def _change_row_requested(self, column: str, where) -> None:
         """The user clicked a line's column name: offer the other columns its value could go in."""
@@ -1560,6 +1573,9 @@ class MainWindow:
         if content:                                    # a phrase that was only a command leaves the stream as it was
             self._begin_stream()
             self._stream_words += content
+            self._live_stale = bool(self._live_fields)
+            if self._live_stale:
+                QTimer.singleShot(400, self._drop_live)        # (normally the row's own values replace them at once)
         self._render_stream()
 
     def set_stream_partial(self, text: str) -> None:
@@ -1568,7 +1584,18 @@ class MainWindow:
         if content:
             self._begin_stream()
         self._stream_partial = content
+        self._live_fields, self._live_stale = (self._preview_values([w for w, _ in content]) if content else {}), False
         self._render_stream()
+
+    def _drop_live(self) -> None:
+        """The values heard a moment ago were not confirmed by the row: take them back out of the grid."""
+        if self._live_stale:
+            self._live_fields, self._live_stale = {}, False
+            self._refresh_grid()
+
+    def set_stream_previewer(self, preview) -> None:
+        """Tell the grid how to read words still being spoken: ``preview(words) -> {column: value}`` (what they would put in the row)."""
+        self._preview_values = preview
 
     def _content_words(self, words: list[str]) -> list[tuple[str, WordMatch]]:
         """The words with what Quill made of each, leaving out spoken commands ("next row" is not content)."""
@@ -1583,6 +1610,7 @@ class MainWindow:
     def end_stream(self) -> None:
         """The row ended (saved, discarded or listening stopped): the next words start a new stream."""
         self._stream_done = True
+        self._live_fields, self._live_stale = {}, False
         self._refresh_grid()                           # (the words stay in the box, but the grid starts over)
 
     def sorting_finished(self) -> None:
@@ -1595,6 +1623,7 @@ class MainWindow:
     def clear_stream(self) -> None:
         """Empty the Voice Stream."""
         self._stream_words, self._stream_partial, self._stream_done = [], [], False
+        self._live_fields, self._live_stale = {}, False
         self._render_stream()
 
     def stream_text(self) -> str:
@@ -1604,6 +1633,7 @@ class MainWindow:
     def _begin_stream(self) -> None:
         if self._stream_done:
             self._stream_words, self._stream_partial, self._stream_done = [], [], False
+            self._live_fields, self._live_stale = {}, False
 
     def _render_stream(self) -> None:
         """Draw the stream in italics.

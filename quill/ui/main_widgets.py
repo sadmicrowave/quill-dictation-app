@@ -44,6 +44,7 @@ PLACEHOLDER_MARGINS = (6, 4, 4, 0)
 #: Height (px) of the row grid when empty (the Voice Stream box is as tall), and of the stream's growth limit.
 ROW_EMPTY_HEIGHT = 42
 STREAM_MIN_HEIGHT = ROW_EMPTY_HEIGHT
+SHUFFLE_MS = 240            # a heard column slides to the top of the row grid in this time
 STREAM_MAX_LINES = 5        # the Voice Stream box grows to this many lines, then scrolls
 
 
@@ -136,7 +137,8 @@ class _ValuePills(QStyledItemDelegate):
         shown = metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(reach - 2 * self.PAD_X, 20))
         width = metrics.horizontalAdvance(shown) + 2 * self.PAD_X
         height = min(metrics.height() + 2 * self.PAD_Y, option.rect.height() - 4)
-        box = QRect(option.rect.left() + self.MARGIN, option.rect.top() + (option.rect.height() - height) // 2, width, height)
+        box = QRect(option.rect.left() + self.MARGIN, option.rect.top() + (option.rect.height() - height) // 2 + round(table.row_offset(index.row())),
+                    width, height)                                            # (a line that is moving is drawn part-way between its places)
         painter.save()
         painter.setOpacity(table.row_opacity(index.row()))
         painter.fillRect(box, self.fill)
@@ -158,7 +160,7 @@ class _ColumnNames(QStyledItemDelegate):
             return
         painter.save()
         painter.setOpacity(opacity)
-        painter.translate(-self.SLIDE * (1.0 - opacity), 0)
+        painter.translate(-self.SLIDE * (1.0 - opacity), table.row_offset(index.row()))
         super().paint(painter, option, index)
         painter.restore()
 
@@ -205,6 +207,15 @@ class RowTable(QTableWidget):
         self._reveal.setEasingCurve(QEasingCurve.Type.Linear)
         self._reveal.valueChanged.connect(self._reveal_step)
         self._reveal.finished.connect(self._reveal_done)
+        self._offsets: dict[int, float] = {}     # px each line is still short of its new place while the grid reshuffles
+        self._shuffle = QVariantAnimation(self)
+        self._shuffle.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._shuffle.setStartValue(0.0)
+        self._shuffle.setEndValue(1.0)
+        self._shuffle.setDuration(SHUFFLE_MS)
+        self._shuffle_progress = 1.0
+        self._shuffle.valueChanged.connect(self._shuffle_step)
+        self._shuffle.finished.connect(self._shuffle_done)
         self._names = _ColumnNames(self)
         if columns >= 2:
             self.setItemDelegateForColumn(0, self._names)
@@ -230,6 +241,40 @@ class RowTable(QTableWidget):
         if self._revealed is None:
             return 1.0
         return max(0.0, min(1.0, self._revealed - row))
+
+    def row_offset(self, row: int) -> float:
+        """How far (px, vertically) *row* is from the place it is moving to: 0 when it is not moving."""
+        return self._offsets.get(row, 0.0) * (1.0 - self._shuffle_progress)
+
+    def line_positions(self) -> dict[str, int]:
+        """Where each line is now (its top, in viewport pixels), by column name: taken before a refill, for :meth:`slide_from`."""
+        return {item.text(): self.rowViewportPosition(r) for r in range(self.rowCount()) if (item := self.item(r, 0)) is not None}
+
+    def slide_from(self, before: dict[str, int], animate: bool = True) -> None:
+        """The lines were just refilled in a new order: slide each one from where it was (*before*, see :meth:`line_positions`) to
+        where it is now. A line that was not there before does not move. Runs about a quarter of a second, then stops by itself."""
+        self._shuffle.stop()
+        self._offsets = {}
+        self._shuffle_progress = 1.0
+        if animate and self._revealed is None:                    # (while the columns ease in, they are not moving)
+            for r in range(self.rowCount()):
+                item = self.item(r, 0)
+                if item is not None and item.text() in before:
+                    gap = before[item.text()] - self.rowViewportPosition(r)
+                    if gap:
+                        self._offsets[r] = float(gap)
+        if self._offsets:
+            self._shuffle_progress = 0.0
+            self._shuffle.start()
+        self.viewport().update()
+
+    def _shuffle_step(self, value) -> None:
+        self._shuffle_progress = float(value)
+        self.viewport().update()
+
+    def _shuffle_done(self) -> None:
+        self._offsets, self._shuffle_progress = {}, 1.0
+        self.viewport().update()
 
     def ease_in_rows(self, animate: bool = True) -> None:
         """Show the rows one after the other from the top, each fading and sliding in (about a second at most, then it stops by itself)."""
@@ -344,7 +389,7 @@ class RowTable(QTableWidget):
             painter.drawLine(divider, 0, divider, bottom - 1)        # between the two columns
             for row in range(self.rowCount() - 1):     # no line under the last row
                 y = self.rowViewportPosition(row) + self.rowHeight(row) - 1
-                painter.setOpacity(self.row_opacity(row))
+                painter.setOpacity(self.row_opacity(row) * (self._shuffle_progress if self._offsets else 1.0))      # (the lines fade back after a shuffle)
                 painter.drawLine(0, y, self.viewport().width() - 1, y)
             painter.setOpacity(1.0)
         if self._hovered_row >= 0 and self.item(self._hovered_row, 0) is not None \

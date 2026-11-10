@@ -4,6 +4,7 @@ import unittest
 
 from PySide6.QtWidgets import QApplication
 
+from quill.stream import WordMatch
 from quill.ui.main_window import MainWindow
 from tests.fixtures import HEADERS
 from tests.test_app import AppCase
@@ -64,12 +65,38 @@ class TestTheColumnsAreListed(AppCase):
         self.assertTrue(all(muted(window, r) for r in range(len(HEADERS))))
         self.assertEqual(window.row_table.item(0, 1).text(), "")
 
-    def test_only_a_line_with_a_value_can_be_removed(self):
+    def test_a_value_shows_as_it_is_heard_not_at_the_end_of_the_phrase(self):
+        self.hear("start listening")
+        window = self.quill.window
+        self.quill._on_partial_heard("fern small")
+        self.assertEqual(window.heard_lines(), [("Species", "Fern"), ("Pot Size", "Small")])
+        self.assertEqual(window.row_table.item(0, 1).text(), "Fern")
+        self.assertTrue(window.row_table._removable(0))
+
+    def test_the_finished_phrase_confirms_the_live_value_and_a_different_reading_replaces_it(self):
         self.hear("start listening")
         window = self.quill.window
         self.quill._on_partial_heard("fern")
-        self.assertFalse(window.row_table._removable(0))          # heard, but no value yet
-        self.hear("fern")
+        self.hear("small")                                      # (the finished phrase reads differently from the live one)
+        self.assertEqual(window.heard_lines()[0][1], "Small")
+
+    def test_a_live_value_the_row_never_confirmed_is_taken_back(self):
+        self.hear("start listening")
+        window = self.quill.window
+        self.quill._on_partial_heard("fern")
+        window._live_stale = True
+        window._drop_live()
+        self.assertEqual(window.row_table.item(0, 1).text(), "")
+        self.assertFalse(window._live_fields)
+
+    def test_the_live_preview_does_not_touch_the_row_being_built(self):
+        self.hear("start listening")
+        self.quill._on_partial_heard("fern")
+        self.assertEqual(self.quill.controller.session.record, {})
+
+    def test_only_a_line_with_a_value_can_be_removed(self):
+        self.hear("start listening", "fern")
+        window = self.quill.window
         self.assertTrue(window.row_table._removable(0))
         self.assertFalse(window.row_table._removable(3))          # a muted line
 
@@ -117,6 +144,42 @@ class TestTheColumnsEaseIn(unittest.TestCase):
         table = self.window.row_table
         self.window.set_columns([f"Column {n}" for n in range(60)])
         self.assertLessEqual(table._reveal.duration(), 1100)
+
+
+class TestTheHeardColumnsSlideToTheTop(unittest.TestCase):
+    def setUp(self):
+        self.window = MainWindow()
+        self.window.animation_ms = 240
+        self.window.setup()
+        self.window.set_columns(["A", "B", "C", "D"])
+        self.window.row_table._reveal_done()
+        self.window.widget.show()
+        _app.processEvents()
+
+    def test_a_line_that_moves_up_starts_where_it_was_and_ends_in_its_place(self):
+        table = self.window.row_table
+        before = table.line_positions()
+        self.window.set_stream_classifier(lambda words: [WordMatch(True, "C", span=0) for _ in words])
+        self.window.set_stream_partial("see")
+        self.assertEqual(names(self.window)[0], "C")
+        self.assertEqual(table.row_offset(0), before["C"] - table.rowViewportPosition(0))
+        self.assertGreater(table.row_offset(0), 0)
+        table._shuffle_step(0.5)
+        self.assertAlmostEqual(table.row_offset(0), (before["C"] - table.rowViewportPosition(0)) / 2)
+        table._shuffle_done()
+        self.assertEqual(table.row_offset(0), 0.0)
+
+    def test_a_line_that_did_not_move_is_not_offset(self):
+        table = self.window.row_table
+        self.window.set_stream_classifier(lambda words: [WordMatch(True, "A", span=0) for _ in words])
+        self.window.set_stream_partial("a")
+        self.assertEqual(table.row_offset(0), 0.0)
+
+    def test_no_sliding_when_animations_are_off(self):
+        self.window.animation_ms = 0
+        self.window.set_stream_classifier(lambda words: [WordMatch(True, "C", span=0) for _ in words])
+        self.window.set_stream_partial("see")
+        self.assertEqual(self.window.row_table.row_offset(0), 0.0)
 
 
 if __name__ == "__main__":

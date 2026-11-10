@@ -36,6 +36,7 @@ from quill.bridge.mirror import MirrorResult, NullMirror
 from quill.bridge.csv_bridge import CsvBridge
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.parser.fillers import FILLER_WORDS
+from quill.parser.phrase_parser import merge_values, parse
 from quill.sorting_voice import expected_words
 from quill.config.settings import Settings
 from quill.controller import NO_WORKBOOK_HELP, Controller
@@ -365,6 +366,7 @@ class QuillApp:
         self._rebuild_watchers = [watch_native_window(w, self._native_rebuilt)
                                   for w in (self.window.widget, self.sorting.widget) if w is not None]
         self.window.set_stream_classifier(self._match_heard_words)
+        self.window.set_stream_previewer(self._preview_heard_words)
         self.window.restore_panel_width(int(self.settings.preferences["panel_width"]))
         self.window.set_panel_size_listener(self._panel_size_changed)
         self.window.restore_log_height(int(self.settings.preferences["log_height"]))
@@ -2127,6 +2129,18 @@ class QuillApp:
     def _match_heard_words(self, words: list[str]):
         """What Quill makes of each word heard (understood words are drawn as pills in the Voice Stream)."""
         return match_words(words, self.controller.vocab, self.controller.session.matcher)
+
+    def _preview_heard_words(self, words: list[str]) -> dict[str, object]:
+        """What the words heard so far in the phrase still being spoken would put in the row, read by the parser that fills it (so the
+        row grid shows the values as they are heard, and the finished phrase then confirms them)."""
+        session = self.controller.session
+        if not words or not session.listening:
+            return {}
+        result = parse(" ".join(words), self.controller.vocab, session.today(), filled=set(session.record))
+        fields: dict[str, object] = {}
+        for column, heard in result.updates.items():
+            fields[column] = merge_values(session.record[column], heard) if column in result.additive and column in session.record else heard
+        return fields
 
     def _answering(self) -> bool:
         """Is what is being said an answer (to the Term Helper by voice, or to a question Quill asked) and not dictation? Answers are
