@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QMenu, QMenuBar
 from quill import platforms
 
 #: The Settings pages the View menu can open directly (the titles of the pages in the Settings window).
-SETTINGS_PAGES = ("About", "General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words")
+SETTINGS_PAGES = ("About", "General", "Appearance", "Sounds", "Keywords", "Speech Model", "Learned Words", "Words To Skip")
 
 #: Everything the menus can ask the app to do. A missing handler makes its entry do nothing.
 HANDLERS = (

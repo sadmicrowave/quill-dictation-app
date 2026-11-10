@@ -14,7 +14,7 @@ Everything Quill understood is already saved. Term Helper only handles the lefto
 
 ## 🖱️ Answer with the mouse
 
-The word is already capitalised for you, and whatever you type is capitalised when it is added. **Trim off words that are not part of the value** (Quill heard *ones teal*: change it to *teal*): when you **Add** it, Quill learns to skip the words you cut (*ones*) from then on, in every file. **Settings > Learned Words > Words To Skip** lists them; edit the list to forget some. **Add All With a Column** and **Ignore All** answer every row in one go, and the rows leave together. Each word has a line for the words and the column list, and a line of buttons under it. The rows sit together in a light rounded box, with room below it before **Add All With a Column** and **Ignore All**. The window opens only as wide as a row needs. For each word choose:
+The word is already capitalised for you, and whatever you type is capitalised when it is added. **Trim off words that are not part of the value** (Quill heard *ones teal*: change it to *teal*): when you **Add** it, Quill learns to skip the words you cut (*ones*) from then on, in every file. **Settings > Words To Skip** lists them; remove some there to let Quill read them again, or add your own. **Add All With a Column** and **Ignore All** answer every row in one go, and the rows leave together. Each word has a line for the words and the column list, and a line of buttons under it. The rows sit together in a light rounded box, with room below it before **Add All With a Column** and **Ignore All**. The window opens only as wide as a row needs. For each word choose:
 
 | Button | Means |
 |---|---|
