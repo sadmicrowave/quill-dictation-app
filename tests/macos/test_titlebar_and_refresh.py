@@ -31,6 +31,8 @@ class FakeNSWindow:
 
     def setLevel_(self, level): self.level = level
     def addTitlebarAccessoryViewController_(self, vc): self.accessories.append(vc)
+    def titlebarAccessoryViewControllers(self): return list(self.accessories)
+    def removeTitlebarAccessoryViewControllerAtIndex_(self, index): del self.accessories[index]
 
 
 class FakeButton:
@@ -63,13 +65,15 @@ class FakeHolderView:
 
 
 class FakeController:
-    def __init__(self): self.view, self.layout, self.removed = None, None, False
+    def __init__(self): self.view, self.layout, self.removed, self.identifier_ = None, None, False, ""
 
     @classmethod
     def alloc(cls): return cls()
     def init(self): return self
     def setView_(self, v): self.view = v
     def setLayoutAttribute_(self, a): self.layout = a
+    def setIdentifier_(self, name): self.identifier_ = name
+    def identifier(self): return self.identifier_
     def removeFromParentViewController(self): self.removed = True
 
 
@@ -152,6 +156,27 @@ class TestTitlebarButton(unittest.TestCase):
         self.assertEqual(controller.layout, 2)                         # NSLayoutAttributeRight
         self.assertFalse(button._button.bordered)                      # just the icon, no box
         self.assertEqual(button._button.action, "toggle:")
+
+    def test_asking_again_for_the_same_side_never_leaves_two_rows_on_the_window(self):
+        """Found on screen: the main window showed two rows of icons drawn over each other, because the system keeps every row it is given."""
+        native()
+        kit = FakeAppKit()
+        widget = QWidget()
+        for _ in range(3):
+            chrome.add_titlebar_button(widget, lambda: None, platform="darwin", appkit=kit)
+            chrome.add_titlebar_button(widget, lambda: None, symbol="undo", side="left", platform="darwin", appkit=kit)
+        self.assertEqual(sorted(c.layout for c in kit.window.accessories), [1, 2])      # one left row and one right row, nothing more
+        self.assertEqual(sorted(c.identifier() for c in kit.window.accessories),
+                         ["quillTitlebarIcons-left", "quillTitlebarIcons-right"])
+
+    def test_a_row_another_part_of_the_app_put_on_is_not_removed(self):
+        native()
+        kit = FakeAppKit()
+        other = FakeController()
+        other.setIdentifier_("somethingElse")
+        kit.window.addTitlebarAccessoryViewController_(other)
+        chrome.add_titlebar_button(QWidget(), lambda: None, platform="darwin", appkit=kit)
+        self.assertIn(other, kit.window.accessories)
 
     def test_clicking_it_calls_back(self):
         native()

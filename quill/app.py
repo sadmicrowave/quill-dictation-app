@@ -366,8 +366,11 @@ class QuillApp:
         self.sorting.install_titlebar()
         self._apply_look()          # again: the windows now exist, so their layouts get the spacing
         self.tray.setup()
-        self._rebuild_watchers = [watch_native_window(w, self._native_rebuilt)
-                                  for w in (self.window.widget, self.sorting.widget) if w is not None]
+        # Each window is told only about its own rebuild: a Term Helper that came back on a new native window must not put the main
+        # window's icons on again (the old ones stay: it showed a second row of icons drawn over the title).
+        self._rebuild_watchers = [watch_native_window(w, on_rebuilt)
+                                  for w, on_rebuilt in ((self.window.widget, self._main_native_rebuilt),
+                                                        (self.sorting.widget, self._sorting_native_rebuilt)) if w is not None]
         self.window.set_stream_classifier(self._match_heard_words)
         self.window.set_stream_previewer(self._preview_heard_words)
         self.window.restore_panel_width(int(self.settings.preferences["panel_width"]))
@@ -1992,14 +1995,18 @@ class QuillApp:
         if self.quit_failsafe_ms:
             QTimer.singleShot(self.quit_failsafe_ms, lambda: self.qapp.exit(0))    # fail-safe if a nested event loop lingers
 
-    def _native_rebuilt(self) -> None:
-        """A window came back after being closed on a new native window: style it and add its title bar icons again."""
+    def _main_native_rebuilt(self) -> None:
+        """The main window came back on a new native window: style it and add its title bar icons again (the Term Helper's stay)."""
         self._titlebar = self._titlebar_left = None
-        self.sorting._titlebar = None
         self._apply_look()
         self._install_titlebar_button()
-        self.sorting.install_titlebar()
         self.window.set_mini_on_top(bool(self.settings.preferences["mini_on_top"]))
+
+    def _sorting_native_rebuilt(self) -> None:
+        """The Term Helper came back on a new native window: style it and add its title bar icons again (the main window's stay)."""
+        self.sorting._titlebar = None
+        self._apply_look()
+        self.sorting.install_titlebar()
 
     def _install_titlebar_button(self) -> None:
         """Put the resize icon in the title bar (macOS); the in-window one is then hidden."""

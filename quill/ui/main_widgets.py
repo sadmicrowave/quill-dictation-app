@@ -379,6 +379,13 @@ class RowTable(QTableWidget):
 
     # -- painting ----------------------------------------------------------
 
+    def divider_x(self) -> float:
+        """Where the line between the name and the value columns is, in this widget's own coordinates (the columns start inside the
+        frame, so it is not the middle of the widget). The resize handle under the grid puts its middle dot here."""
+        if self.columnCount() < 2:
+            return self.width() / 2
+        return self.viewport().x() + self.columnViewportPosition(0) + self.columnWidth(0) - 1
+
     def paintEvent(self, event) -> None:                             # noqa: N802 (Qt name)
         super().paintEvent(event)
         if not self.rowCount():
@@ -389,7 +396,7 @@ class RowTable(QTableWidget):
             color = QColor.fromRgba(self.style().styleHint(QStyle.StyleHint.SH_Table_GridLineColor, None, self) & 0xFFFFFFFF)
             painter.setPen(color)
             bottom = self.rowViewportPosition(self.rowCount() - 1) + self.rowHeight(self.rowCount() - 1)
-            divider = self.columnViewportPosition(0) + self.columnWidth(0) - 1
+            divider = self.columnViewportPosition(0) + self.columnWidth(0) - 1        # (see divider_x)
             painter.drawLine(divider, 0, divider, bottom - 1)        # between the two columns
             for row in range(self.rowCount() - 1):     # no line under the last row
                 y = self.rowViewportPosition(row) + self.rowHeight(row) - 1

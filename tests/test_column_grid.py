@@ -279,3 +279,34 @@ class TestTheHeardColumnsSlideToTheTop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheHandleUnderTheGridSitsOnTheDivider(AppCase):
+    """Found on screen: the middle dot of the drag handle under the heard-words grid was 5 px right of the grid's divider line, because the dot
+    was centred on the whole box and the columns start inside its frame."""
+
+    def show(self, width):
+        from PySide6.QtTest import QTest
+        self.quill.window.widget.show()
+        self.quill.window.widget.resize(width, 460)
+        QTest.qWait(300)
+
+    def test_the_middle_dot_is_on_the_divider_at_any_window_width(self):
+        for width in (453, 520, 700, 900):
+            self.show(width)
+            table, grip = self.quill.window.row_table, self.quill.window.row_grip
+            self.assertEqual(grip.centre(), table.divider_x(), f"at width {width}")
+            self.assertNotEqual(grip.centre(), grip.width() / 2, "the old place, the middle of the whole box")
+
+    def test_the_divider_is_where_the_columns_meet(self):
+        self.show(520)
+        table = self.quill.window.row_table
+        self.assertEqual(table.divider_x(), table.viewport().x() + table.columnWidth(0) - 1)
+
+    def test_a_handle_with_nothing_to_follow_centres_itself(self):
+        from quill.ui.widgets import ResizeGrip
+        grip = ResizeGrip()
+        grip.resize(200, 8)
+        self.assertEqual(grip.centre(), 100.0)
+        grip.centre_provider = lambda: 1 / 0               # (a provider that fails: back to the middle, never a crash)
+        self.assertEqual(grip.centre(), 100.0)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 
+from typing import Callable
+
 import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
@@ -84,10 +86,21 @@ class ResizeGrip(QWidget):
         self.setFixedHeight(8)
         self._last: int | None = None
         self._ink = QColor("#888")
+        #: Where (x, in this strip) the middle dot sits: asked every time it is drawn. None: the middle of the strip.
+        self.centre_provider: Callable[[], float] | None = None
 
     def set_color(self, color: str) -> None:
         self._ink = QColor(color)
         self.update()
+
+    def centre(self) -> float:
+        """The x of the middle dot: where :attr:`centre_provider` says (the box's divider), else the middle of the strip."""
+        if self.centre_provider is not None:
+            try:
+                return float(self.centre_provider())
+            except Exception:
+                pass
+        return self.width() / 2
 
     def mousePressEvent(self, event) -> None:                       # noqa: N802 (Qt name)
         self._last = int(event.globalPosition().y())
@@ -111,7 +124,7 @@ class ResizeGrip(QWidget):
         ink.setAlpha(150 if self.underMouse() else 70)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(ink)
-        centre = self.width() / 2
+        centre = self.centre()
         for offset in (-8, 0, 8):                                     # three small dots, the usual "drag here" mark
             painter.drawEllipse(QRectF(centre + offset - 1.5, self.height() - 4.5, 3, 3))
         painter.end()

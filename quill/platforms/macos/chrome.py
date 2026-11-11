@@ -808,6 +808,9 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
         holder.addSubview_(row)
         controller.setView_(holder)
         controller.setLayoutAttribute_(_NS_LAYOUT_LEFT if side == "left" else _NS_LAYOUT_RIGHT)
+        tag = _ACCESSORY_ID + side
+        controller.setIdentifier_(tag)
+        _remove_accessories(window, tag)              # (a window holds one row of icons per side, however often it is asked)
         window.addTitlebarAccessoryViewController_(controller)
         panel = _PanelChrome(appkit, window, on_panel_close, make_button) if side == "right" and appkit_real else None
         reference = window.standardWindowButton_(0) if appkit_real else None
@@ -826,6 +829,19 @@ def add_titlebar_button(widget, callback: Callable[[], None], mini: bool = False
 _TARGET_CLASS = None
 _BUTTON_CLASS = None
 _DIVIDER_ID = "quillPanelDivider"
+_ACCESSORY_ID = "quillTitlebarIcons-"
+
+
+def _remove_accessories(window, tag: str) -> None:
+    """Take off the icon rows an earlier call put on *window*'s title bar (same *tag*): the system keeps every one it is given, so
+    asking twice showed two rows drawn over each other."""
+    try:
+        existing = list(window.titlebarAccessoryViewControllers())
+        for index in range(len(existing) - 1, -1, -1):              # (highest first: removing one never moves the next)
+            if existing[index].identifier() == tag:
+                window.removeTitlebarAccessoryViewControllerAtIndex_(index)
+    except Exception:
+        pass                                                        # (a system without these calls: nothing to take off)
 
 
 class _PanelChrome:

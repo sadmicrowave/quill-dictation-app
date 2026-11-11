@@ -311,3 +311,41 @@ class TestChangesOfMindMidRow(Journey):
         self.window._remove_row_requested("Pot Size")
         self.step("clicked the x on a line still being heard")
         self.assertNotIn("Pot Size", [c for c, _ in self.grid()])
+
+
+class TestTitleBars(Journey):
+    """The macOS title bars (a stand-in that remembers what each window's title bar holds). Found on screen: after the Term Helper opened
+    by itself the main window had a second row of icons drawn over its title, because the Term Helper's rebuild put the *main*
+    window's icons on again as well."""
+
+    native_titlebars = True
+
+    def test_at_launch_each_window_has_its_icons_once(self):
+        self.assertEqual(len(self.native.icons[id(self.window.widget)]), 2)         # the right row and the left row
+        self.assertEqual(len(self.native.icons[id(self.quill.sorting.widget)]), 1)
+
+    def test_the_term_helper_coming_back_on_a_new_native_window_leaves_the_main_window_alone(self):
+        before = list(self.native.icons[id(self.window.widget)])
+        self.start()
+        self.say("fern gobbledygook")
+        self.rebuild_window("sorting")
+        self.assertEqual(self.native.icons[id(self.window.widget)], before)
+        self.assertEqual(len(self.native.icons[id(self.quill.sorting.widget)]), 1)
+
+    def test_the_term_helper_opened_again_and_again_never_stacks_icons_anywhere(self):
+        self.start()
+        for _ in range(4):
+            self.say("fern gobbledygook")
+            self.rebuild_window("sorting")
+            self.close_term_helper()
+
+    def test_the_main_window_rebuilt_gets_its_icons_back_once_and_the_term_helper_is_left_alone(self):
+        before = list(self.native.icons[id(self.quill.sorting.widget)])
+        self.rebuild_window("main")
+        self.assertEqual(len(self.native.icons[id(self.window.widget)]), 2)
+        self.assertEqual(self.native.icons[id(self.quill.sorting.widget)], before)
+
+    def test_both_rebuilt_one_after_the_other(self):
+        self.rebuild_window("main")
+        self.rebuild_window("sorting")
+        self.rebuild_window("main")

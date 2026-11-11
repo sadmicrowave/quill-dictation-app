@@ -21,6 +21,8 @@ class RandomWalks(Journey):
             ("say", 8), ("partial", 3), ("start", 3), ("stop", 1), ("quiet", 1), ("answer", 3), ("close_helper", 2), ("sheet", 1),
             ("close_file", 1), ("reopen", 2), ("headings", 1), ("mini", 1), ("remove_line", 1), ("settle", 1),
         ]
+        if self.native is not None:
+            actions += [("rebuild_main", 1), ("rebuild_helper", 3)]          # (the system replaces a window's native window)
         names = [a for a, w in actions for _ in range(w)]
         for _ in range(STEPS):
             action = rng.choice(names)
@@ -65,6 +67,10 @@ class RandomWalks(Journey):
                     self.step("removed a line")
             elif action == "settle":
                 self.settle(30)
+            elif action == "rebuild_main":
+                self.rebuild_window("main")
+            elif action == "rebuild_helper":
+                self.rebuild_window("sorting")
         self.steps.append("(end)")
 
 
@@ -78,3 +84,12 @@ def _make(seed: int):
 
 for _seed in SEEDS:
     setattr(RandomWalks, f"test_seed_{_seed}", _make(_seed))
+
+
+class RandomWalksWithNativeTitleBars(RandomWalks):
+    """The same walks with the macOS title bars and the system replacing windows' native windows now and then."""
+    native_titlebars = True
+
+
+for _seed in range(40):
+    setattr(RandomWalksWithNativeTitleBars, f"test_seed_{_seed}", _make(_seed))

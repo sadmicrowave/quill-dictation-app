@@ -14,6 +14,7 @@ from PySide6.QtTest import QTest
 
 from quill.bridge.hosts import NUMBERS, SpreadsheetHosts
 from quill.session import Decision
+from tests.fake_chrome import FakeNativeWindows
 from tests.fake_numbers import FakeNumbers
 from tests.test_app import AppCase
 
@@ -24,7 +25,17 @@ class Journey(AppCase):
     #: Extra invariants a journey adds to :attr:`INVARIANTS` (names of methods starting ``inv_``).
     extra_invariants: tuple[str, ...] = ()
 
+    #: True: the title bars are the macOS ones (a stand-in that keeps what each window's title bar holds: tests/fake_chrome.py), so
+    #: a journey can rebuild a window and the invariant can see a title bar drawn twice. False: no native title bars (the default).
+    native_titlebars = False
+
     def setUp(self):
+        self.native = None
+        if self.native_titlebars:
+            self.native = FakeNativeWindows()
+            for patch in self.native.patches():
+                patch.start()
+                self.addCleanup(patch.stop)
         super().setUp()
         self.numbers = FakeNumbers()                                    # Numbers has the workbook open, as the user's does
         self.numbers.import_xlsx(str(self.path.resolve()))
@@ -113,6 +124,13 @@ class Journey(AppCase):
         panel.headings_row_changed.emit(number)
         self.step(f"chose headings row {number}")
 
+    def rebuild_window(self, which: str) -> None:
+        """The system replaces a window's native window (it happens to the Term Helper when it is closed and shown again)."""
+        assert self.native is not None, "this journey has no native title bars: set native_titlebars = True"
+        widget = self.window.widget if which == "main" else self.quill.sorting.widget
+        self.native.rebuild(widget)
+        self.step(f"the {which} window was rebuilt by the system")
+
     def settle(self, ms: int = 400) -> None:
         QTest.qWait(ms)
         self.step("waited")
@@ -153,6 +171,21 @@ class Journey(AppCase):
     def inv_the_file_is_open_at_most_once_in_the_spreadsheet_program(self):
         for name in {d["name"] for d in self.numbers.docs}:
             assert self.numbers.count(name) <= 1, f"{self.numbers.count(name)} copies of {name!r} are open"
+
+    def inv_every_window_has_each_of_its_title_bar_icon_sets_exactly_once(self):
+        """A window's title bar must hold one row of icons, never two drawn over each other (the main window has a right row and a
+        left row; the Term Helper a left row)."""
+        if self.native is None:
+            return
+        from quill.ui.chrome import SYMBOL_UNDO
+        expected = {id(self.window.widget): [("left", SYMBOL_UNDO), ("right", "resize")], id(self.quill.sorting.widget): [("left", SYMBOL_UNDO)]}
+        for key, icons in self.native.icons.items():
+            assert len(icons) == len(set(icons)), f"a title bar holds {icons}: some icons are there twice"
+            assert not icons or sorted(icons) == sorted(expected[key]), f"a title bar holds {icons}, expected {expected[key]}"
+
+    def inv_the_resize_handle_under_the_grid_has_its_middle_dot_on_the_grids_divider(self):
+        grip, table = self.window.row_grip, self.window.row_table
+        assert abs(grip.centre() - table.divider_x()) < 0.01, f"the handle's middle dot is at {grip.centre()}, the divider at {table.divider_x()}"
 
     def inv_the_gear_works_exactly_when_a_file_is_connected(self):
         gear = self.window.panel.settings_button

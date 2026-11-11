@@ -415,6 +415,7 @@ class MainWindow:
         self.row_grip.dragged.connect(self._grip_dragged)
         self.row_grip.released.connect(lambda: self._on_log_height(self._log_height))
         self.row_table.installEventFilter(_GripPlacer(self.row_table, self.row_grip, ROW_GRIP_DROP))
+        self.row_grip.centre_provider = self.row_table.divider_x        # (the middle dot sits on the line between the grid's two columns)
         layout.addWidget(self.row_table, 1)        # takes the height when the window is resized: it is what is being watched
         self.learn_bar = QWidget()                 # "Remember that 'spotted' means Observation Date?  Yes  No": quiet, goes by itself
         learn = QHBoxLayout(self.learn_bar)
@@ -2004,4 +2005,5 @@ class _GripPlacer(QObject):
             grip.setVisible(box.isVisible() and getattr(grip, "allowed", True))
             grip.setGeometry(box.x(), box.y() + box.height() - grip.height() + self._drop, box.width(), grip.height())
             grip.raise_()
+            QTimer.singleShot(0, grip.update)                       # (the columns settle after this event: draw the dot where the line ended up)
         return False
