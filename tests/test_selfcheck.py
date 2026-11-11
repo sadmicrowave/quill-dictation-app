@@ -87,3 +87,75 @@ class TestTheCommand(unittest.TestCase):
     def test_the_report_file_is_written_where_asked_and_the_default_is_the_desktop_or_home(self):
         self.assertIn(selfcheck.default_path().parent, (pathlib.Path.home() / "Desktop", pathlib.Path.home()))
         self.assertEqual(selfcheck.default_path().name, "Quill self-check.txt")
+
+
+class TestSendingTheReport(unittest.TestCase):
+    """``--selftest --send``: the report goes to the support relay (an issue in the private reports repository)."""
+
+    RESULTS = [Check("a", OK, "fine"), Check("b", WARN, "hm"), Check("c", FAIL, "bad"), Check("i", selfcheck.INFO, "x")]
+
+    def test_the_first_line_is_a_searchable_title_with_nothing_personal(self):
+        first = selfcheck.message(self.RESULTS).splitlines()[0]
+        self.assertTrue(first.startswith("Self-check: "), first)
+        self.assertIn("1 ok, 1 to look at, 1 failed", first)
+        self.assertLessEqual(len(first), 70)                                            # (the relay keeps 70 characters as the title)
+
+    def test_the_message_fits_the_relays_limit_by_dropping_the_least_important_lines(self):
+        many = [Check(f"info {n}", selfcheck.INFO, "x" * 100) for n in range(60)] + [Check("broken", FAIL, "it is")]
+        text = selfcheck.message(many)
+        self.assertLessEqual(len(text), 3800)
+        self.assertIn("broken", text)                                                   # a failure is never the thing dropped
+
+    def test_the_payload_is_what_the_relay_accepts(self):
+        sent = []
+        selfcheck.send(self.RESULTS, sender=lambda payload: sent.append(payload) or mock.Mock(ok=True))
+        payload = sent[0]
+        self.assertEqual(payload["kind"], "problem")
+        self.assertEqual(payload["contact"], "")
+        self.assertLessEqual(len(payload["message"]), 4000)
+        self.assertTrue(payload["message"].startswith("Self-check: "))
+        self.assertTrue(all(line for line in payload["log"]) and isinstance(payload["facts"], dict))
+
+    def test_it_goes_through_the_real_sender_to_the_relay_address(self):
+        from quill import support
+        seen = []
+
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'{"ok": true, "reference": "#7"}'
+        with mock.patch.object(support.urllib.request, "urlopen", lambda request, timeout: seen.append(request) or Reply()):
+            result = selfcheck.send(self.RESULTS)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.reference, "#7")
+        self.assertTrue(seen[0].full_url.startswith("https://"))
+        self.assertEqual(seen[0].get_method(), "POST")
+
+    def test_the_outcome_is_shown_and_the_exit_code_says_which_part_failed(self):
+        from quill.support import SendResult
+        shown = []
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(selfcheck, "run_checks", return_value=[Check("a", OK)]):
+            out = str(pathlib.Path(folder) / "r.txt")
+            code = selfcheck.main(out, send_report=True, sender=lambda p: SendResult(True, reference="#9"), notify=shown.append)
+            self.assertEqual((code, "#9" in shown[0]), (0, True))
+            code = selfcheck.main(out, send_report=True, sender=lambda p: SendResult(False, error="no network"), notify=shown.append)
+            self.assertEqual(code, 2)
+            self.assertIn("NOT sent: no network", shown[1])
+            self.assertTrue(pathlib.Path(out).is_file())                                # (the report is kept either way)
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(selfcheck, "run_checks", return_value=[Check("a", FAIL, "bad")]):
+            code = selfcheck.main(str(pathlib.Path(folder) / "r.txt"), send_report=True, sender=lambda p: SendResult(True), notify=shown.append)
+            self.assertEqual(code, 1)
+
+    def test_a_microphone_name_is_never_in_the_report(self):
+        devices = [{"name": "Samantha's AirPods Pro", "max_input_channels": 1}]
+        fake = mock.Mock(query_devices=lambda kind=None: devices[0] if kind else devices)
+        with mock.patch.dict(sys.modules, {"sounddevice": fake}):
+            text = selfcheck.report(selfcheck.microphone())
+        self.assertNotIn("Samantha", text)
+        self.assertIn("1 input device", text)
+
+    def test_send_alone_runs_the_self_check_from_the_command_line(self):
+        with tempfile.TemporaryDirectory() as folder:
+            done = subprocess.run([sys.executable, str(ROOT / "main.py"), "--send", "--out", str(pathlib.Path(folder) / "r.txt"), "--help"],    # noqa: S603
+                                  capture_output=True, text=True, timeout=60, cwd=folder)
+        self.assertIn("--send", done.stdout)

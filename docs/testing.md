@@ -59,7 +59,10 @@ No merge, tag or release is needed to try what is on `develop`:
    Desktop and opens it: versions, microphone, the speech model, the folders, which spreadsheet programs are running and how fast
    they answer, a row written into a workbook with accents in its name, a CSV in Excel's ANSI encoding, a file held the way Excel holds
    one, and the Windows look. Nothing is changed or recorded, and the report holds no file names, words or sheet names.
-3. Send the file (or its text). Each line says ok, warn, FAIL or skip.
+3. To send it, run **`Send Quill self-check.bat`** from the same zip (or `Quill.exe --selftest --send`). It runs the check and sends the
+   report through the support relay, which opens an issue in the private `quill-support` repository (titled "[problem] Self-check: ...", no
+   token is in the exe). A message box says "sent as issue #N". Find them with `gh issue list --repo sadmicrowave/quill-support --search "Self-check"`,
+   then close them. Each line says ok, warn, FAIL or skip.
 
 The same check runs in every release build against the packaged exe, and `tests/test_selfcheck.py` runs it on every system.
 

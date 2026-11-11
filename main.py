@@ -8,6 +8,7 @@ Options:
   --verbose, -v     Log debug detail to the log file and the terminal (same as QUILL_DEBUG=1).
   --demo            Open a sample workbook and add a Demo menu that fills the screens with data (QUILL_DEMO=1).
   --selftest        Check what Quill needs from this computer, write the answers to one text file (see --out) and exit.
+  --send            With --selftest: also send the report to the developer (an issue in a private repository; nothing personal is in it).
   --out FILE        With --selftest: where to write the report (default: "Quill self-check.txt" on the Desktop, opened afterwards).
 """
 from __future__ import annotations
@@ -23,12 +24,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verbose", "-v", action="store_true", help="log debug detail (also QUILL_DEBUG=1)")
     parser.add_argument("--demo", action="store_true", help="sample workbook and a Demo menu (also QUILL_DEMO=1)")
     parser.add_argument("--selftest", action="store_true", help="check this computer and write a report file")
+    parser.add_argument("--send", action="store_true", help="with --selftest: send the report to the developer")
     parser.add_argument("--out", help="with --selftest: the report file")
     args = parser.parse_args(argv)
 
-    if args.selftest:                                        # no window, no sound, nothing of the user's changed
+    if args.selftest or args.send:                           # no window, no sound, nothing of the user's changed
         from quill.selfcheck import main as selfcheck
-        return selfcheck(args.out)
+        return selfcheck(args.out, send_report=args.send)
 
     from quill.diagnostics import setup_logging
     setup_logging(verbose=args.verbose)                      # a packaged app has no console: keep a log file instead

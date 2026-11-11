@@ -44,7 +44,7 @@ jobs:
         run: |
           python tools/make_app_icon.py
           pyinstaller --noconfirm packaging/quill_win.spec
-          Compress-Archive -Path dist/Quill.exe -DestinationPath Quill-windows-dev.zip
+          Compress-Archive -Path dist/Quill.exe, "tools/Send Quill self-check.bat" -DestinationPath Quill-windows-dev.zip
           Write-Host ("size: {0} MB" -f [int]((Get-Item Quill-windows-dev.zip).Length / 1MB))
       - name: The packaged Quill.exe checks itself
         shell: pwsh

@@ -1,6 +1,7 @@
 """A self-check: asks the real system the questions Quill depends on and writes the answers to one text file.
 
     Quill.exe --selftest [--out FILE]        (or: python main.py --selftest)
+    Quill.exe --selftest --send              also sends the report to the support relay, which opens an issue in the private repository
 
 It starts no window, records no sound and changes nothing of the user's: it only reads, and writes into a temporary folder it removes.
 The report is for sending to the developer when something does not work, instead of describing it. It holds versions, counts and
@@ -85,10 +86,11 @@ def microphone() -> list[Check]:
     if not inputs:
         return [Check("Microphone", WARN, "no input device is listed")]
     try:
-        default = sounddevice.query_devices(kind="input")["name"]
+        sounddevice.query_devices(kind="input")
+        default = "yes"
     except Exception:
         default = "none chosen"
-    return [Check("Microphone", OK, f"{len(inputs)} input device(s); the default is “{default}”")]
+    return [Check("Microphone", OK, f"{len(inputs)} input device(s); a default is set: {default} (names are left out: they can hold a person's name)")]
 
 
 def speech_model() -> list[Check]:
@@ -307,13 +309,49 @@ def report(results: list[Check]) -> str:
     return "\n".join(lines) + "\n"
 
 
+#: The first line of the issue (the relay makes it the title): easy to search for, nothing personal.
+TITLE = "Self-check"
+
+
+def message(results: list[Check], limit: int = 3800) -> str:
+    """The report as the message of a support report: a title line, then the report, shortened (``info`` lines first) to fit *limit*."""
+    counts = {status: sum(1 for r in results if r.status == status) for status in (OK, WARN, FAIL)}
+    system = platform.system() + (f" build {sys.getwindowsversion().build}" if sys.platform == "win32" else "")      # type: ignore[attr-defined]
+    head = f"{TITLE}: {system}, {counts[OK]} ok, {counts[WARN]} to look at, {counts[FAIL]} failed"
+    for kept in (results, [r for r in results if r.status != INFO], [r for r in results if r.status in (WARN, FAIL)]):
+        text = f"{head}\n\n{report(kept)}"
+        if len(text) <= limit:
+            return text
+    return text[:limit]
+
+
+def send(results: list[Check], sender: Callable | None = None):
+    """Send the report to the support relay (it opens an issue in the private reports repository). Returns a ``support.SendResult``."""
+    from quill import support
+    payload = support.Report(message=message(results), include_log=True).payload()
+    return (sender or support.send)(payload)
+
+
+def show(text: str) -> None:
+    """Tell the person the outcome where there is no console: a message box on Windows, a dialog on a Mac."""
+    with contextlib.suppress(Exception):
+        if sys.platform == "win32":
+            ctypes.windll.user32.MessageBoxW(None, text, "Quill self-check", 0x40)           # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            import subprocess
+            subprocess.run(["osascript", "-e", "on run argv", "-e", "display dialog (item 1 of argv) with title \"Quill self-check\" buttons {\"OK\"}",     # noqa: S603, S607
+                            "-e", "end run", text], timeout=120, check=False, capture_output=True)
+
+
 def default_path() -> pathlib.Path:
     desktop = pathlib.Path.home() / "Desktop"
     return (desktop if desktop.is_dir() else pathlib.Path.home()) / "Quill self-check.txt"
 
 
-def main(out: str | None = None) -> int:
-    """Run the checks, write the report (to *out*, else the Desktop, and open it there), print it where there is a console. 0 when nothing failed."""
+def main(out: str | None = None, send_report: bool = False, sender: Callable | None = None, notify: Callable[[str], None] | None = None) -> int:
+    """Run the checks, write the report (to *out*, else the Desktop, and open it there), print it where there is a console. With
+    *send_report* it is also sent to the support relay and the outcome shown. 0 when nothing failed, 1 when a check failed, 2 when only
+    the sending failed."""
     results = run_checks()
     text = report(results)
     target = pathlib.Path(out) if out else default_path()
@@ -322,10 +360,19 @@ def main(out: str | None = None) -> int:
         with contextlib.suppress(Exception):
             print(text)
             print(f"Written to {private(target)}")
+    failed = any(r.status == FAIL for r in results)
+    if send_report:
+        sent = send(results, sender)
+        outcome = (f"The report was sent{(' as issue ' + sent.reference) if sent.reference else ''}." if sent.ok else f"The report was NOT sent: {sent.error}")
+        outcome += f"\n\n{sum(1 for r in results if r.status == FAIL)} check(s) failed. A copy is in {private(target)}."
+        if sys.stdout is not None:
+            print(outcome)
+        (notify or show)(outcome)
+        return 1 if failed else (0 if sent.ok else 2)
     if not out:
         with contextlib.suppress(Exception):
             from quill import platforms
             opener = platforms.offered(sys.platform, "open_file")
             if opener is not None:
                 opener(str(target))
-    return 1 if any(r.status == FAIL for r in results) else 0
+    return 1 if failed else 0
