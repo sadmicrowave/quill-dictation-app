@@ -67,7 +67,9 @@ def make_demo_workbook(folder: pathlib.Path | None = None, blank_sheet: bool | N
             config.cell(row=offset, column=column, value=value)
     for header, values in LISTS.items():
         letter = get_column_letter(list(LISTS).index(header) + 1)
-        rule = DataValidation(type="list", formula1=f"=Config!${letter}$2:${letter}${len(values) + 1 + SPARE_SLOTS}",
+        # (no "=" in front: Excel stores a rule's range without one, and Numbers reads an "=" as a formula it cannot keep: it warns
+        # "Unsupported formulas were replaced" and marks every cell of the rule with a blue triangle)
+        rule = DataValidation(type="list", formula1=f"Config!${letter}$2:${letter}${len(values) + 1 + SPARE_SLOTS}",
                               allow_blank=True)
         inventory.add_data_validation(rule)
         rule.add(f"{get_column_letter(HEADERS.index(header) + 1)}2:{get_column_letter(HEADERS.index(header) + 1)}200")

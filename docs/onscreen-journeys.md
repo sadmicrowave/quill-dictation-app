@@ -49,7 +49,7 @@ Gotchas when driving it:
 - The **Demo** menu is in the menu bar only while the Quill window is the front window: click the Quill window first. (After the
   Term Helper has opened, the menu was seen missing; if it is, that is a finding, see the 2026-11-10 report.)
 - **A Row Being Dictated** opens the real microphone. Run it in a quiet room: room sound becomes junk words and Term Helper terms.
-- Numbers may open its own "This spreadsheet may look different" window over the document and take the first click: close it first.
+- The demo workbook must open in Numbers with **no warnings** (View > Show Warnings says "There aren't any warnings for this spreadsheet") and **no blue triangles** in the cells. If "Unsupported formulas were replaced by the last calculated value" shows, or every cell of a drop-down column has a blue triangle, that is a finding: it means a drop-down rule was written with a leading "=" (Excel stores the range without one). It was the case until 2026-11-10.
 - Each run leaves a `Demo Inventory N.numbers` in the iCloud Numbers folder (Numbers saves the imported workbook there): list it
   under "left over" and leave it for the person to delete.
 

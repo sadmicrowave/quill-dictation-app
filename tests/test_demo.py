@@ -14,19 +14,27 @@ _app = QApplication.instance() or QApplication([])
 
 
 class TestDemoWorkbook(unittest.TestCase):
-    def test_a_blank_sheet_is_added_only_when_asked_for(self):
-        import os
-        from unittest import mock
+    def test_no_drop_down_rule_is_stored_with_a_leading_equals_sign(self):
+        """Found on screen: Numbers showed "Unsupported formulas were replaced by the last calculated value" and a blue triangle in every
+        cell with a drop-down, because the rules were stored as ``=Config!$A$2:$A$17``; Excel (and Numbers) store ``Config!$A$2:$A$17``."""
+        import re
+        import zipfile
         with tempfile.TemporaryDirectory() as tmp:
-            plain = openpyxl.load_workbook(make_demo_workbook(pathlib.Path(tmp) / "a"))
-            self.assertEqual(plain.sheetnames, ["Inventory", "Config"])
-            asked = openpyxl.load_workbook(make_demo_workbook(pathlib.Path(tmp) / "b", blank_sheet=True))
-            self.assertEqual(asked.sheetnames, ["Inventory", "Config", "Blank"])
-            self.assertEqual(asked["Blank"].max_row, 1)
-            self.assertIsNone(asked["Blank"]["A1"].value)
-            with mock.patch.dict(os.environ, {"QUILL_DEMO_BLANK_SHEET": "1"}):
-                again = openpyxl.load_workbook(make_demo_workbook(pathlib.Path(tmp) / "c"))
-            self.assertIn("Blank", again.sheetnames)
+            path = make_demo_workbook(pathlib.Path(tmp), blank_sheet=True)
+            with zipfile.ZipFile(path) as package:
+                sheets = [n for n in package.namelist() if n.startswith("xl/worksheets/sheet")]
+                rules = [r for n in sheets for r in re.findall(r"<formula1>(.*?)</formula1>", package.read(n).decode())]
+        self.assertGreaterEqual(len(rules), 7)
+        self.assertFalse([r for r in rules if r.lstrip().startswith("=")], rules)
+        self.assertIn("Config!$A$2:$A$17", rules)
+
+    def test_the_lists_are_still_found_without_the_equals_sign(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = XlsxBridge(make_demo_workbook(pathlib.Path(tmp)))
+            bridge.connect()
+            lists = bridge.get_lists()
+        self.assertEqual(lists["Category"], ["T-Shirt", "Jacket", "Sweater", "Hoodie", "Jeans", "Dress"])
+        self.assertEqual(lists["Size"], ["XS", "S", "M", "L", "XL", "XXL"])
 
     def test_workbook_has_rows_and_lists(self):
         with tempfile.TemporaryDirectory() as tmp:
