@@ -15,7 +15,7 @@ import pathlib
 import subprocess
 
 from quill.bridge.hosts import SUPPORTED_SUFFIXES, files_named_in
-from quill.platforms.macos.numbers_app import NUMBERS_APP_JS, NUMBERS_BUNDLE_JS
+from quill.platforms.macos.numbers_app import NUMBERS_APP_JS, NUMBERS_BUNDLE_IDS, NUMBERS_BUNDLE_JS
 from quill.platforms.macos.processes import running_executables as _native_list
 from quill.diagnostics import syslog
 
@@ -57,7 +57,21 @@ class MacHosts:
 
     def installed(self, program: str) -> bool:
         bundle = self._MAC_BUNDLES.get(program)
-        return bool(bundle) and any((root / bundle).is_dir() for root in (pathlib.Path("/Applications"), pathlib.Path.home() / "Applications"))
+        if bundle and any((root / bundle).is_dir() for root in (pathlib.Path("/Applications"), pathlib.Path.home() / "Applications")):
+            return True
+        return program == "numbers" and bool(self._installed_numbers_bundle())      # (the newer Numbers has another name on disk)
+
+    def _installed_numbers_bundle(self) -> str:
+        """The bundle id of an installed Numbers, the newer one first ('' when Spotlight knows of none)."""
+        for bundle_id in NUMBERS_BUNDLE_IDS:
+            if self._run(["mdfind", f"kMDItemCFBundleIdentifier == '{bundle_id}'"]).strip():
+                return bundle_id
+        return ""
+
+    def _numbers_bundle(self) -> str:
+        """The Numbers to open files in: the one that is running (it has the user's documents), else the newest installed
+        (asking for "Numbers" by name could start an old copy that is still installed next to the new one), else '' (by name)."""
+        return self._run(["osascript", "-l", "JavaScript", "-e", NUMBERS_BUNDLE_JS]).strip() or self._installed_numbers_bundle()
 
     def launch(self, path, program: str = "auto") -> bool:
         """Open *path* without bringing the program to the front: the system's program for the file, or the one chosen."""
@@ -65,7 +79,7 @@ class MacHosts:
         if chosen == "Numbers":
             if self._numbers_has(pathlib.Path(path)):
                 return True                          # Numbers adds a copy every time it is asked: one that is open is used as it is
-            bundle = self._run(["osascript", "-l", "JavaScript", "-e", NUMBERS_BUNDLE_JS]).strip()
+            bundle = self._numbers_bundle()
             self._run(["open", "-g", *(["-b", bundle] if bundle else ["-a", chosen]), str(path)])
             return True
         else:
@@ -98,7 +112,7 @@ class MacHosts:
         indices = sorted((d[3] for d in same), reverse=True)                      # highest first: closing one never moves the next
         if self._run(["osascript", "-l", "JavaScript", "-e", _CLOSE_NUMBERS, *map(str, indices)]).strip() != "ok":
             return False
-        bundle = self._run(["osascript", "-l", "JavaScript", "-e", NUMBERS_BUNDLE_JS]).strip()
+        bundle = self._numbers_bundle()
         self._run(["open", "-g", *(["-b", bundle] if bundle else ["-a", "Numbers"]), str(target)])   # (once: the copies it replaces are closed)
         return True
 

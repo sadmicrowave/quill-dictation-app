@@ -312,6 +312,9 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
                     self.assertIn(command[4], (mac_hosts._LIST_NUMBERS_FOR_RELOAD, mac_hosts._CLOSE_NUMBERS, mac_hosts.NUMBERS_BUNDLE_JS))      # fixed scripts
                     self.assertNotIn(path, command[4])
                     self.assertTrue(all(arg.isdigit() for arg in command[5:]))                                        # only positions
+                elif command[0] == "mdfind":                                                                           # which Numbers is installed
+                    self.assertNotIn(path, " ".join(command))
+                    self.assertIn(command[1], [f"kMDItemCFBundleIdentifier == '{b}'" for b in ("com.apple.Numbers", "com.apple.iWork.Numbers")])
                 else:
                     self.assertEqual(command[-1], path)                                                                # one argument, never a shell line
 

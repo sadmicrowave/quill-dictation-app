@@ -19,6 +19,7 @@ class FakeNumbers:
     def __init__(self) -> None:
         self.docs: list[dict] = []            # name, file, modified
         self.calls: list[list[str]] = []
+        self.installed: list[str] = []        # bundle ids Spotlight knows of (newest first in Quill's own search order)
         self.bundle = ""                      # what the script that names the running Numbers answers ("" = it does not know)
 
     # -- the world, as a test sets it up and looks at it ----------------------------------------------
@@ -39,6 +40,8 @@ class FakeNumbers:
         if args[0] == "open":                                           # ``open -g -a Numbers <path>`` (or ``-b <bundle id>``)
             self.import_xlsx(args[-1])
             return ""
+        if args[0] == "mdfind":
+            return "/Applications/Numbers.app\n" if any(f"'{b}'" in args[1] for b in self.installed) else ""
         if args[0] == "osascript":
             script, rest = args[4], args[5:]
             if script == mac_hosts.NUMBERS_BUNDLE_JS:

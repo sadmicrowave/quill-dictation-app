@@ -59,6 +59,26 @@ class TestOpeningNeverAddsACopy(unittest.TestCase):
         launch(numbers)
         self.assertIn(["open", "-g", "-b", "com.apple.Numbers", PATH], numbers.calls)
 
+    def test_nothing_running_the_newer_installed_numbers_is_chosen_not_the_old_one_by_name(self):
+        numbers = FakeNumbers()
+        numbers.installed = ["com.apple.Numbers", "com.apple.iWork.Numbers"]
+        launch(numbers)
+        self.assertIn(["open", "-g", "-b", "com.apple.Numbers", PATH], numbers.calls)
+        self.assertFalse([c for c in numbers.calls if c[:3] == ["open", "-g", "-a"]])
+
+    def test_only_the_classic_numbers_installed_it_is_the_one_opened(self):
+        numbers = FakeNumbers()
+        numbers.installed = ["com.apple.iWork.Numbers"]
+        launch(numbers)
+        self.assertIn(["open", "-g", "-b", "com.apple.iWork.Numbers", PATH], numbers.calls)
+
+    def test_the_running_numbers_wins_over_an_installed_one(self):
+        numbers = FakeNumbers()
+        numbers.bundle = "com.apple.iWork.Numbers"
+        numbers.installed = ["com.apple.Numbers", "com.apple.iWork.Numbers"]
+        launch(numbers)
+        self.assertIn(["open", "-g", "-b", "com.apple.iWork.Numbers", PATH], numbers.calls)
+
     def test_when_it_cannot_be_told_apart_the_name_is_used(self):
         numbers = FakeNumbers()
         launch(numbers)
