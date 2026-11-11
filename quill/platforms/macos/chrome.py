@@ -659,10 +659,6 @@ class TitlebarButton:
         """Enable or grey out the main icon."""
         self._button.setEnabled_(enabled)
 
-    def set_extra_enabled(self, index: int, enabled: bool) -> None:
-        """Enable or grey out the *index*-th extra icon (counting from the left)."""
-        self._extras[index][0].setEnabled_(enabled)
-
     def set_extra_image(self, index: int, png: bytes, tip: str, muted: bool, template: bool = True) -> bool:
         """Give the *index*-th extra icon (counting from the left) its own picture (PNG bytes, drawn as a template
         so the system colours it for the title bar), a tooltip, and dim it when *muted*. Returns False if it can't."""

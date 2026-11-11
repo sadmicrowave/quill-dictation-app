@@ -396,14 +396,12 @@ QToolButton[errorMark="true"]:hover {{ background: #F0686C; }}
 QToolButton[flatIcon="true"] {{ border: none; background: transparent; padding: 5px; border-radius: 7px; }}
 QToolButton[flatIcon="true"]:hover {{ background: {rgba(t['text'], 0.08)}; }}
 QToolButton[heading="true"]:hover {{ color: {t['accent']}; }}
-QLabel[headingToggle="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; }}
 QLabel[staticHeading="true"] {{ color: {t['muted']}; padding: 2px 0; font-weight: 400; }}
 QLabel[info="true"] {{ background: {rgba(t['accent'], 0.12)}; color: {t['text']}; border: 1px solid {rgba(t['accent'], 0.38)};
               border-radius: 12px; padding: 8px 14px; }}
 QPushButton[outline="true"] {{ border: 1px solid {t['accent']}; }}
 QPushButton[outline="true"]:disabled {{ border-color: {t['off_fill']}; }}
 QPushButton[outline="true"]:hover {{ background: {rgba(t['accent'], 0.14)}; }}
-QLabel[headingToggle="true"]:hover {{ color: {t['accent']}; }}
 QTreeWidget#helpNav {{ background: transparent; border: none; outline: none; padding: 0; }}
 QTreeWidget#helpNav::branch {{ background: transparent; image: none; }}
 QTreeWidget#helpNav::item {{ padding: 7px 10px; margin: 1px 0; border-radius: 8px; color: {t['text']}; }}

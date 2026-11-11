@@ -17,7 +17,7 @@ How the code is organised. For running and building it, see [Development](develo
 | `quill/listener/`, `quill/speaker/` | Vosk microphone loop and model download; text-to-speech |
 | `quill/ui/`, `quill/app.py` | PySide6: main window, tray, settings, Needs-sorting window; app wiring and the workbook watcher |
 | `quill/config/` | Shipped defaults and user settings (TOML) |
-| `examples/` | `make_demo_workbook.py` |
+| `quill/demo.py` | Demo mode: the sample workbook and the Demo menu's scenarios |
 
 Data flow: microphone → `Listener` (thread) → Qt signal → `Controller.handle_transcript` → `Session.feed` → events → bridge writes / speech / window updates.
 The Session never does I/O, so the dictation logic is tested without Excel, audio or Qt. Packaging notes: [`packaging/README.md`](../packaging/README.md).

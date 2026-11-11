@@ -206,19 +206,9 @@ class LinkStore:
     # Forgetting                                                           #
     # ------------------------------------------------------------------ #
 
-    def forget(self, word: str, column: str) -> bool:
-        """Drop one link (*word* is the stored stem or any form of it). True if there was one."""
-        key = link_word(word) or word
-        return self._links.pop((key, column), None) is not None
-
     def forget_many(self, links: list[Link]) -> int:
         """Drop every one of *links*; returns how many were there."""
         return sum(1 for link in links if self._links.pop((link.word, link.column), None) is not None)
-
-    def forget_all(self) -> int:
-        count = len(self._links)
-        self._links.clear()
-        return count
 
     def forget_file(self, path: str) -> int:
         """Forget what was learned in the file at *path* (links learned only there are dropped; others lose that file)."""

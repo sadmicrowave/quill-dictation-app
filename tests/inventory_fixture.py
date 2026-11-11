@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
-"""Build a small demo inventory workbook to try Quill with.
+"""A small inventory workbook for tests (a Config sheet of drop-down lists with spare slots, an Inventory sheet with validation).
 
-    python examples/make_demo_workbook.py [output.xlsx]
+    python -m tests.inventory_fixture [output.xlsx]
 
 The workbook has a Config sheet of drop-down lists (with spare slots, so
 "Add it to the list" works), an Inventory sheet with validation on Type, Size,

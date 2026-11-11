@@ -14,9 +14,9 @@ For people running or changing the code. For using Quill, see the [README](../RE
 3. Say **"start listening"**, or press **Start** in the window / menu bar icon.
 4. Speak a row, then say **"next row"**. Say **"stop listening"** when done.
 
-To try it without a workbook of your own, build the demo:
+To try it without a workbook of your own, start **demo mode** (a sample workbook, its settings kept in a throw-away folder so your own are never touched, and a **Demo** menu that fills the screens without speaking):
 
-    python examples/make_demo_workbook.py "Quill Demo Inventory.xlsx"
+    python main.py --demo
 
 then say, for example: *"this item is a black t-shirt in good condition, appraisal thirty five dollars, next row"*. Say something Quill doesn't know ("a large one", "from the nineties") and it lands in the Needs-sorting window, where *Same as 1990s* teaches it.
 

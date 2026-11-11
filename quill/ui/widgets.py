@@ -411,32 +411,6 @@ class FooterButton(QPushButton):
         self.setIcon(icon)
 
 
-class HeadingToggle(QLabel):
-    """A clickable heading ("Log  v"): plain text that starts exactly at the content's left edge.
-
-    A QToolButton centres its text inside extra margins, which pushed these headings about 8 px in
-    from the edge everything else lines up with; a label has none.
-    """
-
-    clicked = Signal()
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setProperty("headingToggle", True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMargin(0)
-        self.setContentsMargins(0, 0, 0, 0)
-
-    def click(self) -> None:
-        """Act as if the heading had been clicked (also used by tests)."""
-        self.clicked.emit()
-
-    def mousePressEvent(self, event) -> None:                    # noqa: N802 (Qt name)
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
-
 #: The look of spoken words and commands wherever they appear in text: a pill in the app's own font and size.
 PILL_STYLE = f"background-color:{PILL_BG}; color:{PILL_FG}"
 

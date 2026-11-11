@@ -222,13 +222,6 @@ class LetterBox(FlatCombo):
         return self.currentText()
 
 
-def _field_row(row_box: QWidget | None = None) -> QVBoxLayout:
-    layout = QVBoxLayout()
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(4)
-    return layout
-
-
 class FileSettings(QFrame):
     """The overlay the gear next to "Active File" opens: where the data starts and which way the headings run.
 

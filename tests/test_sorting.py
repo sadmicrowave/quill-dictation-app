@@ -1,6 +1,5 @@
 """Unrecognised terms: sorting decisions, aliases, back-fill, and the Needs-sorting window."""
 import datetime as dt
-import importlib.util
 import pathlib
 import tempfile
 import unittest
@@ -19,10 +18,7 @@ from quill.ui.sorting_window import PLACEHOLDER, SortingWindow, question_for
 
 _app = QApplication.instance() or QApplication([])
 
-_spec = importlib.util.spec_from_file_location(
-    "make_demo_workbook", pathlib.Path(__file__).resolve().parents[1] / "examples" / "make_demo_workbook.py")
-demo = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(demo)
+from tests import inventory_fixture as demo        # (a small inventory workbook: Config lists with spare slots, validation on the Inventory sheet)
 
 SENTENCE = ("this next item is an jumbo t-shirt made in the 90s "
             "mainly teal and could sell for thirty five dollars")

@@ -10,7 +10,7 @@
     python tools/make_icon_ideas.py --offset [contact-sheet.png]   # an eighth round: 64-67, the Excel offset layout
     python tools/make_icon_ideas.py --all [contact-sheet.png]      # the first forty, one sheet
 
-Writes ``assets/icon-ideas/NN-name.svg`` (the full-colour app icon) and
+Writes ``build/icon-ideas/NN-name.svg`` (not tracked) (the full-colour app icon) and
 ``NN-name-menubar.svg`` (the same idea as a plain black glyph, which macOS can
 tint for light and dark menu bars), then, if a path is given, a contact sheet.
 The glyphs are drawn on a 128 x 128 grid.
@@ -20,7 +20,7 @@ from __future__ import annotations
 import pathlib
 import sys
 
-OUT = pathlib.Path(__file__).resolve().parents[1] / "assets" / "icon-ideas"
+OUT = pathlib.Path(__file__).resolve().parents[1] / "build" / "icon-ideas"      # (build/ is not tracked: the ideas are scratch work; keep the ones worth keeping outside the repository)
 
 #: A feather: a leaf shape with a spine.
 FEATHER = ('<path d="M98 26C62 30 38 58 32 102C58 96 88 74 98 26Z" fill="{fg}"/>'

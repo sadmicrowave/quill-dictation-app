@@ -1202,10 +1202,6 @@ class MainWindow:
         self._full_size = QSize(width, window.height())
         self._on_resized(width, window.height())
 
-    def _log_opening(self) -> bool:
-        return self._log_animation is not None and self._log_animation.property("opening") is True \
-            and self._log_animation.state() == QVariantAnimation.State.Running
-
     def _log_closing(self) -> bool:
         return self._log_animation is not None and self._log_animation.property("opening") is False \
             and self._log_animation.state() == QVariantAnimation.State.Running
@@ -1934,9 +1930,6 @@ class MainWindow:
         menu = self._window.menuBar().addMenu("Demo")
         for label, action in scenarios:
             menu.addAction(label, action)
-
-    def _icon(self, name: str, color: str):
-        return make_icon(name, color)
 
     def refresh_icons(self, text_color: str = "#1F1E1D", on_accent: str = "#FFFFFF",
                       accent: str = "#7A55C2") -> None:

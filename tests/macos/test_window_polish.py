@@ -399,7 +399,7 @@ class TestSectionHeadings(unittest.TestCase):
     def test_section_headings_are_not_bold(self):
         from quill.ui import theme
         sheet = theme.stylesheet_for(False)
-        for selector in ('QLabel[staticHeading="true"]', 'QLabel[headingToggle="true"] {'):
+        for selector in ('QLabel[staticHeading="true"]',):
             start = sheet.index(selector)
             self.assertIn("font-weight: 400", sheet[start: sheet.index("}", start)])
 

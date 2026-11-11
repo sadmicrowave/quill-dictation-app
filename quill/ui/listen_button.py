@@ -396,9 +396,6 @@ class ListenButton(QPushButton):
         self._colors = (text, on_accent, accent)
         self._style()
 
-    def set_chip(self, chip: QWidget) -> None:               # (kept so older callers still work: the notice is drawn here now)
-        chip.setVisible(False)
-
     # ------------------------------------------------------------------ #
 
     def _state(self) -> str:

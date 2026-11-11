@@ -2392,12 +2392,6 @@ class QuillApp:
         label = labels.get(event.kind)
         return f"{label}: {event.detail}".rstrip(": ") if label else event.detail
 
-    def _safe_sheet(self) -> str:
-        try:
-            return self.controller.bridge.active_sheet_name()
-        except BridgeError:
-            return "–"
-
     #: Milliseconds between looks at Numbers while Quill is listening (the one check loop looks every few seconds otherwise).
     NUMBERS_LOOK_MS = 1000
 
