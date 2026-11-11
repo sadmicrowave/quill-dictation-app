@@ -61,6 +61,13 @@ class VocabEntry:
         return self.canonical
 
 
+#: Shown (in the Start button's tooltip, and in the log when something tries to start) while the open sheet has no columns Quill can find.
+NO_COLUMNS_START_HELP = (
+    "Start is off: this sheet has no column headings Quill can find, so there is nothing to match the words to. Check Headings Row or "
+    "Sheet Layout in the file settings (the gear beside Active File), or open a sheet that has headings."
+)
+
+
 class Vocabulary:
     """Searchable vocabulary built from a column → options mapping."""
 

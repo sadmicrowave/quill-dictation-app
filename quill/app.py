@@ -932,7 +932,7 @@ class QuillApp:
         self.menus.update(
             listening=w.listening, has_file=self.connected, can_use_excel=w.use_excel_action.isEnabled(), mini=w.mini,
             panel_page=w.panel_page, log_open=not w.log_collapsed, can_undo=len(c.history) > 0,
-            sorting_count=len(c.pending_terms()), turn_mode=c.turn_mode)
+            sorting_count=len(c.pending_terms()), turn_mode=c.turn_mode, can_start=c.start_blocked_reason() is None)
 
     def _set_turn_mode(self, mode: str) -> None:
         self.controller.set_turn_mode(mode)
@@ -1166,6 +1166,10 @@ class QuillApp:
         """
         if active and not _checked and self._needs_fresh_look():
             self.refresh_open_files(manual=True, then=lambda: self.toggle_listening(True, _checked=True))
+            return
+        if active and (reason := self.controller.start_blocked_reason()):      # nothing to match the words to: they would only sit in the grid
+            self._set_listening(False)
+            self.window.append_log(reason, safe="Start is off: the sheet has no columns Quill can find")
             return
         if active and self._unsaved_sheet:                            # a different sheet is open and not saved: not into the old one
             self._set_listening(False)
@@ -2156,12 +2160,20 @@ class QuillApp:
         vocab = self.controller.vocab
         self.window.revalidate_stream(set(vocab.columns()) | set(columns) | set(self.controller.session.record))
         empty = not columns and self.controller.connected
+        if empty and self.window.listening:                       # the sheet turned empty under a running turn: nothing can be matched now
+            self.toggle_listening(False)
+            self.window.append_log("Stopped listening: this sheet has no columns Quill can find.",
+                                   safe="Stopped listening: the sheet has no columns Quill can find")
         self.window.set_no_columns(empty)
+        self.request_menu_sync()
         if empty and not self._no_columns_told:
             self.window.append_log("This sheet has no column headings Quill can find. It looks in the first rows: check Headings Row "
                                    "and Sheet Layout in the file settings (the gear beside Active File).", "warning",
                                    safe="This sheet has no column headings Quill can find")
-        self._no_columns_told = empty
+        if columns:
+            self._no_columns_told = False                           # (a sheet with columns ends it; a reconnect's passing "no file" read does not)
+        elif empty:
+            self._no_columns_told = True
 
     def _preview_heard_words(self, words: list[str]) -> dict[str, object]:
         """What the words heard so far in the phrase still being spoken would put in the row, read by the parser that fills it (so the

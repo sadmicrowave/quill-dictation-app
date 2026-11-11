@@ -131,6 +131,17 @@ class Journey(AppCase):
         self.native.rebuild(widget)
         self.step(f"the {which} window was rebuilt by the system")
 
+    def open_empty_sheet(self) -> None:
+        """The file now shows a sheet with no columns (a blank sheet): the next look at the spreadsheet finds no headings."""
+        path = self.path.with_name("empty.xlsx")
+        openpyxl.Workbook().save(path)
+        self.quill.open_workbook_file(path, remember=False)                 # (as when the person opens it: the app's own path)
+        self.step("the open sheet has no columns")
+
+    def open_usual_sheet(self) -> None:
+        self.quill.open_workbook_file(self.path, remember=False)
+        self.step("the open sheet has columns again")
+
     def settle(self, ms: int = 400) -> None:
         QTest.qWait(ms)
         self.step("waited")
@@ -200,6 +211,18 @@ class Journey(AppCase):
             elif len(tokens) == 1 and [tokens[0]] in waiting and not match.command:
                 assert False, f"{word!r} is waiting in the Term Helper but has no grey pill"
 
+    def inv_start_is_off_exactly_while_the_open_sheet_has_nothing_to_match(self):
+        """A connected file whose sheet has no columns cannot be listened to (the words would only sit in the grid): the button is off and
+        says so, nothing is listening, and the menu item is off. Otherwise Start works."""
+        button = self.window.toggle_button
+        blocked = bool(self.quill.connected) and not self.quill.controller.sheet_headers
+        if blocked:
+            assert not button.isEnabled(), "Start can be pressed on a sheet with no columns"
+            assert not self.window.listening and not self.session.listening, "listening on a sheet with no columns"
+            assert button.notice_text == "No columns on this sheet", f"the button says {button.notice_text!r}"
+        else:
+            assert button.isEnabled(), "Start is off although the sheet has columns (or no file is connected)"
+
     def inv_the_gear_works_exactly_when_a_file_is_connected(self):
         gear = self.window.panel.settings_button
         assert gear.isEnabled() == bool(self.quill.connected), f"gear enabled={gear.isEnabled()} but connected={self.quill.connected}"
@@ -266,9 +289,11 @@ class Journey(AppCase):
         assert len(titles) == len(set(titles)), f"two windows with the same title are open: {titles}"
 
     def inv_no_warning_repeats_in_a_row(self):
-        lines = [line.split("\t", 1)[-1] for line in self.log().splitlines() if "Warning" in line]
+        """The same warning is never logged twice running (a warning again after other lines, such as a sheet that turns empty a second
+        time, is news and is fine)."""
+        lines = [line.split("\t", 1)[-1] for line in self.log().splitlines()]
         for first, second in zip(lines, lines[1:]):
-            assert first != second, f"the log warns twice running: {first!r}"
+            assert not ("Warning" in first and first == second), f"the log warns twice running: {first!r}"
 
     def inv_nothing_was_logged_as_an_error_the_journey_did_not_expect(self):
         for line in self.log().splitlines():

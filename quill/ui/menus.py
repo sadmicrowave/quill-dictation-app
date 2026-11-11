@@ -107,6 +107,7 @@ class MenuState:
     panel_page: str = ""                   # "" (closed), "file" or "turn" (the pages of the side panel)
     log_open: bool = False
     can_undo: bool = False
+    can_start: bool = True                 # False while the open sheet has no columns Quill can find (listening could not match anything)
     sorting_count: int = 0
     turn_mode: str = "next_row"            # "next_row" | "append"
     file_page: str = "file"
@@ -235,7 +236,7 @@ class QuillMenus:
                 action.setChecked(props["checked"])
                 action.blockSignals(blocked)
 
-        put("toggle_listening", text="Stop Listening" if s.listening else "Start Listening")
+        put("toggle_listening", text="Stop Listening" if s.listening else "Start Listening", enabled=s.listening or s.can_start)
         put("next_row", enabled=s.listening)
         put("new_row", enabled=s.listening)
         put("undo", enabled=s.can_undo)

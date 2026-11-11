@@ -20,6 +20,7 @@ class RandomWalks(Journey):
         actions = [
             ("say", 8), ("partial", 3), ("start", 3), ("stop", 1), ("quiet", 1), ("answer", 3), ("close_helper", 2), ("sheet", 1),
             ("close_file", 1), ("reopen", 2), ("headings", 1), ("mini", 1), ("remove_line", 1), ("settle", 1),
+            ("empty_sheet", 1), ("usual_sheet", 1),
         ]
         if self.native is not None:
             actions += [("rebuild_main", 1), ("rebuild_helper", 3)]          # (the system replaces a window's native window)
@@ -67,6 +68,10 @@ class RandomWalks(Journey):
                     self.step("removed a line")
             elif action == "settle":
                 self.settle(30)
+            elif action == "empty_sheet":
+                self.open_empty_sheet()
+            elif action == "usual_sheet":
+                self.open_usual_sheet()
             elif action == "rebuild_main":
                 self.rebuild_window("main")
             elif action == "rebuild_helper":

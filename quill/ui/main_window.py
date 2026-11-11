@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
 
 from quill import diagnostics
 from quill.parser.tokens import tokenize
+from quill.parser.vocab import NO_COLUMNS_START_HELP
 from quill.stream import WordMatch
 from quill.ui.chrome import set_always_on_top
 from quill.ui.hints import fill_missing_tips
@@ -70,7 +71,7 @@ from quill.ui.main_widgets import (
 )
 from quill.ui.theme import apply_spacing, grey_pill, install_backdrop
 from quill.ui.side_panel import FILE_PAGE, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH, SidePanel, TURN_PAGE
-from quill.ui.listen_button import ListenButton
+from quill.ui.listen_button import NO_COLUMNS_TEXT, ListenButton
 from quill.ui.widgets import (
     ElidedLabel,
     FooterButton,
@@ -1055,7 +1056,10 @@ class MainWindow:
             return
         full = not self._view_mini
         self._render_countdown()
-        self.toggle_button.set_notice(self._not_connected, self._not_connected_tip)
+        if self._no_columns and not self._listening:            # a sheet with nothing to match: Start is off, and the button says why
+            self.toggle_button.set_notice(True, NO_COLUMNS_START_HELP, NO_COLUMNS_TEXT, blocked=True)
+        else:
+            self.toggle_button.set_notice(self._not_connected, self._not_connected_tip)
         self.open_file_button.setVisible(full and not self._native_file_button)
         self.turn_button.setVisible(full and not self._native_turn_button)
         sliding = self._next_animation is not None
@@ -1468,6 +1472,7 @@ class MainWindow:
             if self._window is not None:
                 self._grid_shown = ()
                 self._refresh_grid()
+                self._refresh_visibility()                       # (Start is off while the sheet has no columns)
 
     def set_columns(self, columns: list[str]) -> None:
         """The active sheet's columns (empty: no file is connected).

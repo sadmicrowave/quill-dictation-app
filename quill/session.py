@@ -154,6 +154,7 @@ class Session:
     context: dict = field(default_factory=dict)      # column -> words spoken around a date placed without its column's name
     committed: int = 0
     ignored_while_stopped: int = 0
+    start_blocked: Callable[[], str | None] | None = None    # says why listening cannot start now (None: it can); set by the controller
     pool: dict = field(default_factory=dict)        # TermKey -> times heard, not yet shown
     alias_hints: dict = field(default_factory=dict)  # TermKey -> the short code it probably spells out ("M" for "medium")
     row_terms: set = field(default_factory=set)     # pool keys heard in the current row
@@ -362,6 +363,9 @@ class Session:
     def _command(self, command: CommandEvent) -> list[Event]:
         action = command.action
         if action is Action.START_LISTENING:
+            reason = self.start_blocked() if self.start_blocked is not None else None
+            if reason:
+                return [Event("ignored", detail=reason)]
             self.listening = True
             return [Event("started", detail="Listening")]
         if action is Action.STOP_LISTENING:

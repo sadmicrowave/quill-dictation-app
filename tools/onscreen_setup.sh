@@ -29,6 +29,16 @@ numbers_documents() {
   osascript -l JavaScript -e "const a = Application('$id'); a.running() ? a.documents().map(d => d.name()).join('\\n') : '(Numbers is not running)'"
 }
 
+# Quit the Quill this script started the way a person would, so its next start does not offer a crash report ("Quill hit an unexpected
+# error last time": a forced kill looks like one). Only if it does not quit within a few seconds is it stopped by force.
+quit_quill() {
+  pgrep -f "$APP/Contents/MacOS/Quill" >/dev/null || return 0
+  osascript -e 'tell application id "com.quill.app" to quit' >/dev/null 2>&1 || true
+  i=0
+  while pgrep -f "$APP/Contents/MacOS/Quill" >/dev/null && [ "$i" -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
+  pkill -f "$APP/Contents/MacOS/Quill" 2>/dev/null || true
+}
+
 case "${1:-start}" in
   status)
     if pgrep -f "$APP/Contents/MacOS/Quill" >/dev/null; then echo "Quill: running ($APP)"; else echo "Quill: not running"; fi
@@ -36,7 +46,7 @@ case "${1:-start}" in
     echo "Numbers documents:"; numbers_documents | sed 's/^/  /'
     exit 0 ;;
   stop)
-    pkill -f "$APP/Contents/MacOS/Quill" 2>/dev/null || true
+    quit_quill
     echo "Quill stopped."; exit 0 ;;
 esac
 
@@ -52,7 +62,7 @@ fi
 codesign --verify --deep "$APP"
 
 # 2. A clean start: no earlier Quill, no earlier sample workbook.
-pkill -f "$APP/Contents/MacOS/Quill" 2>/dev/null || true
+quit_quill
 sleep 1
 rm -rf "$DIR"
 mkdir -p "$DIR"

@@ -113,10 +113,12 @@ class TestASheetWithNoColumns(Journey):
         self.settle(500)
         self.assertEqual(self.window.panel_page, "file")
         self.assertTrue(self.window.panel.settings.isVisible())
-        self.start()
-        self.say("fern small")                                                                           # nothing to understand
+        self.assertFalse(self.window.toggle_button.isEnabled())                                          # Start is off: nothing to match
+        self.start()                                                                                     # (pressing it does nothing)
+        self.assertFalse(self.window.listening)
         self.assertEqual(self.quill.controller.pending_terms(), [])
         self.quill.controller.connect(str(self.path))                                                    # the right file at last
+        self.assertTrue(self.window.toggle_button.isEnabled())
         self.step("connected the real workbook")
         self.assertTrue(self.grid_columns())
 
@@ -349,3 +351,40 @@ class TestTitleBars(Journey):
         self.rebuild_window("main")
         self.rebuild_window("sorting")
         self.rebuild_window("main")
+
+
+class TestAnEmptySheet(Journey):
+    """Found on screen: Quill followed Numbers to a blank sheet, Start could still be pressed, and the words sat in the grid with nowhere to
+    be written. Now Start is off there, says why, and a turn already running stops."""
+
+    def test_start_is_off_on_an_empty_sheet_and_comes_back_with_a_sheet_that_has_columns(self):
+        self.open_empty_sheet()
+        self.assertFalse(self.window.toggle_button.isEnabled())
+        self.window.toggle_button.click()
+        self.step("pressed Start (it is off)")
+        self.assertFalse(self.window.listening)
+        self.open_usual_sheet()
+        self.start()
+        self.say("fern small")
+        self.assertEqual([c for c, _ in self.grid()], ["Species", "Pot Size"])
+
+    def test_a_turn_running_when_the_sheet_turns_empty_stops_and_writes_nothing(self):
+        wb = openpyxl.load_workbook(self.path)
+        wb.create_sheet("Blank")                                     # (the person adds an empty sheet and switches to it in the program)
+        wb.save(self.path)
+        self.quill.open_workbook_file(self.path, remember=False)       # (the saved file has the sheet now)
+        self.start()
+        self.say("fern small")
+        self.switch_sheet("Blank")
+        self.assertFalse(self.window.listening)
+        self.assertIn("Stopped listening", self.log())
+        self.assertEqual(self.saved_rows(), [])                           # (the stopped row keeps its words; none of it was written anywhere)
+        self.assertFalse(self.window.toggle_button.isEnabled())
+        self.switch_sheet("Inventory")
+        self.assertTrue(self.window.toggle_button.isEnabled())
+
+    def test_the_voice_cannot_start_it(self):
+        self.open_empty_sheet()
+        self.hear("start listening")
+        self.step("said 'start listening'")
+        self.assertFalse(self.window.listening)

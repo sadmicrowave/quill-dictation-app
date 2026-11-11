@@ -112,6 +112,14 @@ def shoot(app: QApplication, theme: str) -> None:
     waiting.widget.resize(380, 200)
     waiting.widget.show()
 
+    blank = as_native(MainWindow())                                # (a connected file whose open sheet has no headings: Start is off)
+    blank.setup()
+    blank.update_workbooks(["Apparel Inventory.xlsx"], "Apparel Inventory.xlsx")
+    blank.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
+    blank.set_no_columns(True)
+    blank.widget.resize(380, 440)
+    blank.widget.show()
+
     panels = {}
     MainWindow.animation_ms = 0                                   # the panel is drawn open, not mid-slide
     for page in ("file", "turn"):
@@ -158,13 +166,14 @@ def shoot(app: QApplication, theme: str) -> None:
     save(main_window.widget, "main-window.png", 24, theme)
     save(mini.widget, "mini-view.png", 24, theme)
     save(waiting.widget, "not-connected.png", 24, theme)
+    save(blank.widget, "no-columns.png", 24, theme)
     save(helper.widget, "term-helper.png", 0, theme)
     save(support_form(), "support.png", 0, theme)
     for page, side in panels.items():
         save(side.widget, f"side-panel-{page}.png", 24, theme)
     for shown, (dialog, widget) in dialogs.items():
         save(widget, f"settings-{shown.lower()}.png", 0, theme)
-    for window in (main_window.widget, mini.widget, waiting.widget, helper.widget, *(p.widget for p in panels.values()), *(w for _, w in dialogs.values())):
+    for window in (main_window.widget, mini.widget, waiting.widget, blank.widget, helper.widget, *(p.widget for p in panels.values()), *(w for _, w in dialogs.values())):
         window.close()
 
 

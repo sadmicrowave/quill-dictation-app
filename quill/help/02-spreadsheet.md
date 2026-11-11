@@ -29,6 +29,8 @@ A file you pick this way that no program has open yet is **started in its own pr
 
 ### Where the data starts
 
+If the sheet you have open has **no column headings** Quill can find (a blank sheet, say), **Start is off** and says so; see [Troubleshooting](help:troubleshooting) for how to bring it back.
+
 Press the **gear** at the right of **Active File** for the **file settings** (an overlay; the gear is greyed out until a file is connected, and greys out again if the file is let go). These settings belong to the **sheet** you have open, in that workbook: another sheet, or another file, has its own, and Quill remembers each one next time you open that file. They are: **Headings Row** (**Automatic** finds the headings), **Starting Row** (where a turn may begin writing; **Automatic** is the first empty row under the headings), and **Sheet Layout** (**By Columns**: headings run across the first row and each turn writes to the next row; **By Rows**: headings run down the first column and each turn writes to the next column). With **By Rows** these become **Starting Column** and **Headings Column** and are chosen from a list, A to Z.
 
 ### Several programs at once
@@ -73,6 +75,10 @@ Always the sheet that is **open** (the active tab). Quill never tries another sh
 ![Not connected](images/not-connected.png)
 
 - **File not connected**: said by the **Start** button itself (a grey button with a flat line in its screen) while no sheet is found. Pressing **Start** then opens the **Files** panel so you can pick a file. Hover it for what to do.
+- **No columns on this sheet**: said by the **Start** button when the sheet that is open has no column headings Quill can find (a blank sheet, say). **Start is off**: the button is greyed, the *Start Listening* menu item and the voice command do nothing, and nothing you could say would have a column to go to. Hover the button, or read the message in the grid under it: **Headings Row** and **Sheet Layout** in it open the file settings, where you tell Quill where the headings are. If you switch to such a sheet while listening, Quill stops listening and says so in the Log. Start comes back by itself when the open sheet has headings.
+
+![No columns on this sheet](images/no-columns.png)
+
 - **The box that says "Words you say appear here…"**: the words Quill hears, as you say them. Words it already knows light up as coloured pills.
 - **The row grid** under it: as soon as a spreadsheet is connected it lists the active sheet's columns, in the sheet's order and in muted text (they ease in from the top, so you can see Quill is connected to the right sheet). When you say a word that belongs to a column, that column turns to the normal text colour and slides to the top of the grid *as the word is heard*, in the order you said them, and its value appears beside it as a pill (like the words above it) the moment Quill understands it. If the finished phrase is read a little differently (the Careful speech model re-reads each phrase when you pause), the value updates. Columns you have not mentioned stay muted below. Check it before saying "next row", and remove any line that is wrong with its round **x** (shown when you hover a line that has a value). After "next row" the grid goes back to the muted list, in the sheet's order.
 - **Last Saved** summary: the row written last, as a muted *Last Saved: Row 7 · 4 Fields*, at the right of the footer (the strip along the bottom of the window); hover it for every field. It only appears after the first save.

@@ -22,7 +22,7 @@ from quill.parser.commands import NO_WORDS, YES_WORDS, Action, CommandMatcher
 from quill.parser.numbers import parse_number
 from quill.parser.phrase_parser import COMMON_WORDS
 from quill.parser.tokens import tokenize
-from quill.parser.vocab import Vocabulary
+from quill.parser.vocab import NO_COLUMNS_START_HELP, Vocabulary
 from quill.search import parse_search
 from quill.session import Decision, Event, Session, TermKey
 from quill.sorting_voice import VoiceSorter
@@ -69,7 +69,6 @@ NO_WORKBOOK_HELP = (
     "or choose Open File in the File menu."
 )
 
-
 class Controller:
     """Runs dictation: transcript in, workbook writes and UI events out.
 
@@ -107,6 +106,7 @@ class Controller:
         self._on_speech = on_speech or (lambda speaking: None)
         self.vocab = Vocabulary()
         self.session = Session(self.vocab, CommandMatcher(settings.keywords), today=today)
+        self.session.start_blocked = self.start_blocked_reason
         self._sheet = ""
         self.sheet_headers: list[str] = []
         """The active sheet's columns in sheet order (empty when no workbook is connected)."""
@@ -286,6 +286,12 @@ class Controller:
         self.session.record.clear()
         return [Event("error", detail=NO_WORKBOOK_HELP) if e.kind == "started" else e
                 for e in events]
+
+    def start_blocked_reason(self) -> str | None:
+        """Why listening cannot start now, or None: a connected file whose open sheet has no columns has nothing to match the words to, so
+        the words would only sit in the grid and never be saved. (The sheet's own headings count, not the vocabulary: its lists come
+        from the whole workbook, so a blank sheet in a workbook with lists elsewhere would otherwise look fine.)"""
+        return NO_COLUMNS_START_HELP if self.connected and not self.sheet_headers else None
 
     def set_listening(self, active: bool) -> None:
         """Open or close the listening gate without speech (tray / button)."""
