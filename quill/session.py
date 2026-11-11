@@ -124,6 +124,8 @@ class Event:
     values: list | None = None
     terms: list | None = None
     """committed: the terms heard in that row (so their cells can be back-filled)."""
+    auto: list | None = None
+    """committed: the columns Quill filled in itself (a counter's next number): they are in ``record`` but were not spoken."""
     cells: list | None = None
     """add_values/alias_added: ``(sheet, row, column, value)`` cells to back-fill."""
     resolved: dict | None = None
@@ -160,6 +162,7 @@ class Session:
     row_terms: set = field(default_factory=set)     # pool keys heard in the current row
     pending: list | None = None                     # TermKey list awaiting a decision
     origins: dict = field(default_factory=dict)     # TermKey -> (sheet, row) it was heard in
+    auto: dict = field(default_factory=dict)         # column -> the value Quill would put in the row itself (a counter's next number); only while listening
     open_note: str | None = None                    # the notes-style column still being dictated: the next phrases go on with it
     _voice_open: bool = False                       # may a spoken yes/no answer apply now?
     _reask: bool = False                            # speak the question again at next pause
@@ -207,9 +210,9 @@ class Session:
         self._reask = True
         return [Event("expired", detail="No answer. I'll ask again at the next pause.")]
 
-    def restore(self, record: dict) -> None:
-        """Put back a record whose write failed, so nothing the user said is lost."""
-        self.record = {**record, **self.record}
+    def restore(self, record: dict, auto: list | None = None) -> None:
+        """Put back a record whose write failed, so nothing the user said is lost (the *auto* columns are Quill's own, not said)."""
+        self.record = {**{c: v for c, v in record.items() if c not in (auto or ())}, **self.record}
         self.committed = max(0, self.committed - 1)
 
     def defer(self, key: TermKey) -> None:
@@ -413,6 +416,7 @@ class Session:
         if action is Action.STOP_LISTENING:
             self._close_note(say=False)
             self.listening = False
+            self.auto = {}
             return [Event("stopped", detail="Not Listening")] + self._ask_if_needed()
         if not self.listening:
             return [Event("ignored", detail=f"{action.name.replace('_', ' ').title()} heard while stopped")]
@@ -449,7 +453,9 @@ class Session:
             terms = sorted(self.row_terms, key=lambda k: (k[0] or "", k[1]))
             self.row_terms.clear()
             self.committed += 1
-            events.append(Event("committed", record=row, terms=terms))
+            auto = {column: value for column, value in self.auto.items() if column not in row}      # (what was said wins)
+            self.auto = {}                                                                          # (the controller offers the next row's)
+            events.append(Event("committed", record={**auto, **row}, terms=terms, auto=sorted(auto)))
         else:
             events.append(Event("ignored", detail="Nothing to save yet"))
         return events + self._ask_if_needed()

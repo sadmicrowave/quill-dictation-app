@@ -20,10 +20,11 @@ from quill.history import History
 from quill.learning import link_word
 from quill.parser.commands import NO_WORDS, YES_WORDS, Action, CommandMatcher
 from quill.parser.numbers import parse_number
-from quill.parser.phrase_parser import COMMON_WORDS
+from quill.parser.phrase_parser import COMMON_WORDS, is_note_column
 from quill.parser.tokens import tokenize
 from quill.parser.vocab import NO_COLUMNS_START_HELP, Vocabulary
 from quill.search import parse_search
+from quill.sequence import Sequence, detect
 from quill.session import Decision, Event, Session, TermKey
 from quill.sorting_voice import VoiceSorter
 
@@ -68,6 +69,13 @@ NO_WORKBOOK_HELP = (
     "No spreadsheet is connected. Open a spreadsheet and Quill connects to it automatically, "
     "or choose Open File in the File menu."
 )
+
+#: What the information icon of a notes-style column says in the grid.
+NOTE_TIP = ("A note: say the column's name, then speak freely, pauses included. It stays open until you say \u201cend note\u201d "
+            "or \u201cnext row\u201d, or start a phrase with another column's name. Column names inside a note are just words.")
+#: What the information icon of a counter column says ({found} is the run Quill saw and what it continues it with).
+COUNTER_TIP = ("Quill continues this column's numbering: {found}. Say a value for it to use yours; remove its line to leave the cell empty.")
+
 
 class Controller:
     """Runs dictation: transcript in, workbook writes and UI events out.
@@ -116,6 +124,8 @@ class Controller:
         """Told the active sheet's columns whenever they are read (and ``[]`` when the workbook is let go)."""
         self.connected = False
         """True while attached to a workbook."""
+        self.counters: dict[str, Sequence] = {}
+        """The sheet's counter columns (the last values count up by one) and what comes next in each: see :mod:`quill.sequence`."""
         self.voice_sorter: VoiceSorter | None = None
         """Set while the user is answering the Needs-sorting list by voice."""
         self.lead_in_s = 0.0
@@ -192,7 +202,68 @@ class Controller:
             self._apply_learning()
             self._sheet = self.bridge.active_sheet_name()
             self.sheet_headers = list(self.bridge.get_headers())
+            self._read_counters()
         self.on_columns(list(self.sheet_headers))
+
+    # ------------------------------------------------------------------ #
+    # Counter columns (an ID or record number that counts up by one)       #
+    # ------------------------------------------------------------------ #
+
+    def _counts(self, column: str) -> bool:
+        """May *column* be a counter? Not one with a drop-down list, a note, or a date (their values are not a number to continue)."""
+        return (not self.vocab.is_list_column(column) and not is_note_column(self.vocab, column)
+                and column not in self.vocab.date_columns)
+
+    def _read_counters(self) -> None:
+        """Look at the end of every column: those that count up by one are counters. (Rows Down sheets have none: their records run across.)"""
+        self.counters = {}
+        if self.vertical:
+            return
+        try:
+            samples = self.bridge.column_samples()
+        except BridgeError as exc:
+            log.debug("could not read the columns' last values: %s", exc)
+            return
+        for column in self.sheet_headers:
+            found = detect(samples.get(column, [])) if self._counts(column) else None
+            if found is not None:
+                self.counters[column] = found
+
+    def refresh_counters(self) -> None:
+        """Read the counters again (after a row was written, or the sheet changed) and offer their next values to the row being built."""
+        if self.connected:
+            self._read_counters()
+        self._offer_counters()
+
+    def _offer_counters(self) -> None:
+        """While listening, the row being built gets each counter's next value unless the user says one (they are not in ``session.record``:
+        the grid shows them apart, and they are written only with the row)."""
+        session = self.session
+        if not session.listening or self.turn_mode == "append" or self.vertical:
+            session.auto = {}
+            return
+        session.auto = {column: found.next for column, found in self.counters.items() if column not in session.record}
+
+    def column_tips(self) -> dict[str, str]:
+        """What the grid's information icons say, by column: how to dictate a note, how a counter is continued."""
+        tips: dict[str, str] = {}
+        for column in self.sheet_headers:
+            if is_note_column(self.vocab, column):
+                tips[column] = NOTE_TIP
+            elif column in self.counters:
+                tips[column] = COUNTER_TIP.format(found=self.counters[column].explanation)
+        return tips
+
+    def _recheck_counters(self, event: Event) -> None:
+        """Just before the row is written: read the counters once more (the file may have gained rows while it was being dictated) and
+        use the numbers that are right now. A column that stopped being a counter is left empty."""
+        self._read_counters()
+        for column in event.auto or ():
+            found = self.counters.get(column)
+            if found is None:
+                event.record.pop(column, None)
+            else:
+                event.record[column] = found.next
 
     # ------------------------------------------------------------------ #
     # Where a sheet's data is (kept per workbook and sheet)                #
@@ -349,6 +420,7 @@ class Controller:
         if option.startswith("append"):
             prefs["turn_mode"] = "append" if on else "next_row"
             self.settings.save()
+            self._offer_counters()                         # (a turn that adds to a row has no new number to give)
             return Event("turn_on" if on else "turn_off",
                          detail=f"Each turn adds to the same {self._unit()}" if on else f"Each turn is written to a new {self._unit()}")
         prefs["vertical_layout"] = on
@@ -412,6 +484,9 @@ class Controller:
             True if the row had that column.
         """
         if column not in self.session.record:
+            if column in self.session.auto:                  # a number Quill filled in itself: this row goes without it (the next row is offered one again)
+                del self.session.auto[column]
+                return True
             return False
         value = self.session.record.pop(column)
         if self.session.open_note == column:
@@ -771,8 +846,17 @@ class Controller:
             self._redo = None                              # the row is over: a deleted line can no longer be redone in it
         if event.resolved is not None:
             self._record(event)
+        if event.kind == "started":
+            self.refresh_counters()
         if event.kind == "committed":
+            if event.auto:
+                self._recheck_counters(event)
             self._write_row(event)
+            if event.kind == "committed" and event.auto:                         # (saved: say what Quill filled in, then offer the next numbers)
+                for column in event.auto:
+                    if column in (event.record or {}):
+                        self._on_event(Event("ignored", detail=f"Assumed: {column} = {event.record[column]} (continues the column's numbering)"))
+            self.refresh_counters()
         elif event.kind == "add_values":
             self._write_values(event)
         elif event.kind == "alias_added":
@@ -853,7 +937,8 @@ class Controller:
                 self._append_target = (sheet, row)
                 event.detail = f"{self._record_name(row)} (added to)"
             else:
-                row = self.bridge.append_row(sheet, event.record)
+                row = (self.bridge.append_row(sheet, event.record, leave_filled=event.auto) if event.auto
+                       else self.bridge.append_row(sheet, event.record))
                 event.detail = self._record_name(row)
             self.session.tag_origin(event.terms or [], sheet, row)
             self.bridge.select_record(sheet, row if self.turn_mode == "append" else row + 1)   # append keeps the cursor on the row; otherwise it moves on
@@ -864,7 +949,7 @@ class Controller:
             self._append_target = (sheet, row) if self.turn_mode == "append" else None
             self._on_event(Event("locked", detail=f"{exc}. Quill is holding the rows and saves them the moment it is free."))
         except BridgeError as exc:
-            self.session.restore(event.record)             # nothing the user said is lost: the row stays as it was
+            self.session.restore(event.record, event.auto)    # nothing the user said is lost: the row stays as it was
             hint = " Open the sheet you are filling in, then say next row again." if "has no " in str(exc) else ""
             event.kind, event.detail = "error", f"Could not save the row: {exc}.{hint}"   # and it is reported as a failure,
             event.record = event.terms = None                                       # not as a saved row

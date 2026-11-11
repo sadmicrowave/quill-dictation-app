@@ -25,9 +25,12 @@ from PySide6.QtCore import (
     QEasingCurve,
     Signal,
 )
+import textwrap
+
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QLabel,
+    QStyleOptionViewItem,
     QSizePolicy,
     QStyle,
     QStyledItemDelegate,
@@ -128,6 +131,7 @@ class _ValuePills(QStyledItemDelegate):
     def __init__(self, parent) -> None:
         super().__init__(parent)
         self.fill, self.ink = QColor("#7A55C2"), QColor("#FFFFFF")
+        self.auto_fill, self.auto_ink = QColor("#B8B8C0"), QColor("#222222")      # (a value Quill filled in itself: grey, never the colour of spoken words)
 
     def paint(self, painter, option, index) -> None:
         text = str(index.data() or "")
@@ -145,8 +149,9 @@ class _ValuePills(QStyledItemDelegate):
                     width, height)                                            # (a line that is moving is drawn part-way between its places)
         painter.save()
         painter.setOpacity(table.row_opacity(index.row()))
-        painter.fillRect(box, self.fill)
-        painter.setPen(self.ink)
+        auto = table.is_auto(index.row())
+        painter.fillRect(box, self.auto_fill if auto else self.fill)
+        painter.setPen(self.auto_ink if auto else self.ink)
         painter.setFont(option.font)
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, shown)
         painter.restore()
@@ -165,6 +170,9 @@ class _ColumnNames(QStyledItemDelegate):
         painter.save()
         painter.setOpacity(opacity)
         painter.translate(-self.SLIDE * (1.0 - opacity), table.row_offset(index.row()))
+        if table.has_tip(index.row()):                                       # (a long name stops short of the information icon)
+            option = QStyleOptionViewItem(option)
+            option.rect.setRight(option.rect.right() - table.ICON_RESERVE)
         super().paint(painter, option, index)
         painter.restore()
 
@@ -190,6 +198,9 @@ class RowTable(QTableWidget):
     DELETE_HOT_FILL = "#E5484D"   # the button turns red while the pointer is over it: it removes something
     DELETE_TIP = "Remove this line from the row.\nQuill will not write it."
     CHANGE_TIP = "Change which column this value goes in."
+    ICON_SIZE = 13            # px, the round "i" after a column name that has help
+    ICON_RESERVE = 22         # px at the right end of the name cell kept for it
+    TIP_WIDTH = 46            # characters a help text is wrapped at
 
     def __init__(self, rows: int, columns: int) -> None:
         super().__init__(rows, columns)
@@ -206,6 +217,9 @@ class RowTable(QTableWidget):
         self._button_glyph = QColor("#FFFFFF")
         self._pills = _ValuePills(self)
         self._active: set[str] = set()           # columns that have a value in the row: only their lines can be removed
+        self._auto: set[str] = set()             # columns whose value Quill filled in itself (their pill is grey)
+        self._tips: dict[str, str] = {}          # column -> its help, shown from an "i" after the name
+        self._over_icon = False                  # the pointer is over such an icon
         self._revealed: float | None = None      # rows shown so far while the columns ease in (None: all of them, no animation)
         self._reveal = QVariantAnimation(self)
         self._reveal.setEasingCurve(QEasingCurve.Type.Linear)
@@ -234,6 +248,42 @@ class RowTable(QTableWidget):
         """Colour the delete button: a filled circle in *fill* with an "x" in *glyph* (the theme's accent colours)."""
         self._button_fill, self._button_glyph = QColor(fill), QColor(glyph)
         self.viewport().update()
+
+    def set_auto_colors(self, fill: str, ink: str) -> None:
+        """Colour the pill of a value Quill filled in itself (the muted grey of a word waiting in the Term Helper)."""
+        self._pills.auto_fill, self._pills.auto_ink = QColor(fill), QColor(ink)
+        self.viewport().update()
+
+    def set_auto(self, columns: set[str]) -> None:
+        """The columns whose value in the row Quill filled in itself (a counter's next number): their pills are grey, not the spoken colour."""
+        self._auto = set(columns)
+        self.viewport().update()
+
+    def is_auto(self, row: int) -> bool:
+        item = self.item(row, 0) if 0 <= row < self.rowCount() else None
+        return item is not None and item.text() in self._auto
+
+    def set_tips(self, tips: dict[str, str]) -> None:
+        """Help for some columns: each shows a small "i" after its name that says it when the pointer rests on it."""
+        self._tips = dict(tips)
+        self.viewport().update()
+
+    def has_tip(self, row: int) -> bool:
+        item = self.item(row, 0) if 0 <= row < self.rowCount() else None
+        return item is not None and item.text() in self._tips
+
+    def icon_rect(self, row: int) -> QRect:
+        """Where the information icon of *row* is, in viewport coordinates."""
+        size = self.ICON_SIZE
+        return QRect(self.columnWidth(0) - size - 8, self.rowViewportPosition(row) + (self.rowHeight(row) - size) // 2, size, size)
+
+    def _icon_hit(self, row: int, point: QPoint) -> bool:
+        return self.has_tip(row) and self.icon_rect(row).adjusted(-3, -3, 3, 3).contains(point)
+
+    def tip_for(self, row: int) -> str:
+        """The help text of *row*'s column, wrapped for a tool tip."""
+        item = self.item(row, 0) if 0 <= row < self.rowCount() else None
+        return textwrap.fill(self._tips.get(item.text(), ""), self.TIP_WIDTH) if item is not None else ""
 
     def set_active(self, columns: set[str]) -> None:
         """The columns that have a value in the row now (only their lines show the delete button)."""
@@ -353,13 +403,17 @@ class RowTable(QTableWidget):
         if name != self._over_name:
             self._over_name = name
             self.viewport().update()
+        icon = not hot and not name and self._icon_hit(row, point)
+        if icon != self._over_icon:
+            self._over_icon = icon
+            self.viewport().update()
         self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if hot or name else Qt.CursorShape.ArrowCursor)
-        self.viewport().setToolTip(self.DELETE_TIP if hot else self.CHANGE_TIP if name else "")
+        self.viewport().setToolTip(self.DELETE_TIP if hot else self.CHANGE_TIP if name else self.tip_for(row) if icon else "")
 
     def leaveEvent(self, event) -> None:                             # noqa: N802
         super().leaveEvent(event)
         if self._hovered_row != -1:
-            self._hovered_row, self._button_hot, self._over_name = -1, False, False
+            self._hovered_row, self._button_hot, self._over_name, self._over_icon = -1, False, False, False
             self.viewport().setToolTip("")
             self.viewport().update()
 
@@ -403,6 +457,22 @@ class RowTable(QTableWidget):
                 painter.setOpacity(self.row_opacity(row) * (self._shuffle_progress if self._offsets else 1.0))      # (the lines fade back after a shuffle)
                 painter.drawLine(0, y, self.viewport().width() - 1, y)
             painter.setOpacity(1.0)
+        for row in range(self.rowCount()):                                          # the "i" after a column name that has help
+            if self.has_tip(row) and self.row_opacity(row) > 0.01:
+                heard = self.item(row, 0).text() in self._active          # (a name in the normal colour: its column has a value)
+                box = QRectF(self.icon_rect(row)).translated(0, self.row_offset(row))
+                colour = self.palette().text().color() if heard else self.palette().placeholderText().color()
+                if row == self._hovered_row and self._over_icon:
+                    colour = self.palette().text().color()
+                painter.setOpacity(self.row_opacity(row))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(colour)
+                painter.drawEllipse(box)
+                painter.setPen(QPen(self.palette().base().color(), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))        # (the "i" is cut out of the disc)
+                x, top = box.center().x(), box.top()
+                painter.drawPoint(QPointF(x, top + box.height() * 0.30))
+                painter.drawLine(QPointF(x, top + box.height() * 0.46), QPointF(x, top + box.height() * 0.74))
+                painter.setOpacity(1.0)
         if self._hovered_row >= 0 and self.item(self._hovered_row, 0) is not None \
                 and self.item(self._hovered_row, 0).text() in self._changeable:          # a small arrow after the name: it opens a menu
             row = self._hovered_row

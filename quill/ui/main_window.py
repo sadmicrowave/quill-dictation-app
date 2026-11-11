@@ -242,6 +242,7 @@ class MainWindow:
         self._on_field_changed = on_field_changed or (lambda column, to: None)
         self._on_learn_answer = on_learn_answer or (lambda answer: None)      # True: yes, False: no, None: no answer in time
         self._row_fields: dict[str, object] = {}   # the values of the row being built (what the grid shows beside their names)
+        self._auto_fields: dict[str, object] = {}  # what Quill would fill in itself (a counter's next number): shown in grey pills, apart from what was said
         self._sheet_columns: list[str] = []        # the active sheet's columns, in sheet order (the grid lists them all, muted, from the start)
         self._grid_shown: tuple = ()               # what the grid was last filled with (it is only refilled when this changes)
         self._stream_words: list[tuple[str, WordMatch]] = []     # what was heard (final), with what Quill made of each word
@@ -1461,6 +1462,19 @@ class MainWindow:
         self.row_table.set_changeable({c for c in fields if self._on_field_options(c)})
         self._refresh_grid()
 
+    def set_auto_values(self, values: dict[str, object]) -> None:
+        """The values Quill fills in itself in the row being built (a counter column's next number): the grid shows each in a grey pill,
+        after the columns that were said. A column the user said a value for shows that value instead."""
+        values = dict(values)
+        if values == self._auto_fields:
+            return
+        self._auto_fields = values
+        self._refresh_grid()
+
+    def set_column_tips(self, tips: dict[str, str]) -> None:
+        """Help for some of the sheet's columns (a note, a counter): an "i" after the name says it."""
+        self.row_table.set_tips(tips)
+
     def set_no_columns(self, on: bool) -> None:
         """A file is connected but its sheet has no columns Quill could find: the empty grid says so (instead of its usual hint)."""
         if on != self._no_columns:
@@ -1496,11 +1510,17 @@ class MainWindow:
                 found.append(match.column)
         return found
 
-    def _grid_lines(self) -> list[tuple[str, str, bool]]:
-        """What the grid shows, top to bottom: ``(column, value text, heard)``.
+    def _auto_now(self) -> dict[str, object]:
+        """The values Quill fills in itself that the user has not replaced by saying one."""
+        said = self._fields_now()
+        return {c: v for c, v in self._auto_fields.items() if c not in said}
+
+    def _grid_lines(self) -> list[tuple[str, str, bool, bool]]:
+        """What the grid shows, top to bottom: ``(column, value text, heard, filled in by Quill)``.
 
         The columns heard in this turn come first, in the order they were said (a column's value shows once it is understood, at the
-        end of the phrase); then every other column of the sheet, muted, in the sheet's order.
+        end of the phrase); then the numbers Quill fills in itself (grey pills); then every other column of the sheet, muted, in the
+        sheet's order.
         """
         heard = self._heard_columns()
         fields = self._fields_now()
@@ -1510,8 +1530,10 @@ class MainWindow:
         lines = []
         for column in heard:
             value = fields.get(column)
-            lines.append((column, "" if value is None else (value.isoformat() if isinstance(value, dt.date) else str(value)), True))
-        lines += [(column, "", False) for column in self._sheet_columns if column not in heard]
+            lines.append((column, "" if value is None else (value.isoformat() if isinstance(value, dt.date) else str(value)), True, False))
+        auto = self._auto_now()
+        lines += [(column, str(value), True, True) for column, value in auto.items() if column not in heard]
+        lines += [(column, "", False, False) for column in self._sheet_columns if column not in heard and column not in auto]
         return lines
 
     def _fields_now(self) -> dict[str, object]:
@@ -1520,7 +1542,11 @@ class MainWindow:
 
     def heard_lines(self) -> list[tuple[str, str]]:
         """The grid's lines in the normal colour (the columns heard in this turn): ``(column, value text)``, top to bottom."""
-        return [(column, text) for column, text, heard in (self._grid_shown[0] if self._grid_shown else ()) if heard]
+        return [(column, text) for column, text, heard, auto in (self._grid_shown[0] if self._grid_shown else ()) if heard and not auto]
+
+    def auto_lines(self) -> list[tuple[str, str]]:
+        """The grid's grey-pill lines: ``(column, value text)`` of what Quill filled in itself."""
+        return [(column, text) for column, text, _, auto in (self._grid_shown[0] if self._grid_shown else ()) if auto]
 
     def _refresh_grid(self) -> None:
         """Fill the grid from :meth:`_grid_lines`: heard columns in the normal colour at the top, the rest muted below them."""
@@ -1528,7 +1554,9 @@ class MainWindow:
             return                                               # not built yet
         lines = self._grid_lines()
         table = self.row_table
-        table.set_active(set(self._fields_now()))
+        auto = {column for column, _, _, filled in lines if filled}
+        table.set_active(set(self._fields_now()) | auto)
+        table.set_auto(auto)
         shown = (tuple(lines), self._text_color)
         if shown == self._grid_shown:
             return
@@ -1544,7 +1572,7 @@ class MainWindow:
         self.row_placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not self._no_columns)
         self.row_placeholder.setVisible(not lines)
         palette = table.palette()
-        for r, (column, text, heard) in enumerate(lines):
+        for r, (column, text, heard, _) in enumerate(lines):
             for c, content in enumerate((column, text)):
                 item = QTableWidgetItem(content)
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)            # not selectable
@@ -1594,6 +1622,7 @@ class MainWindow:
     def _remove_row_requested(self, column: str) -> None:
         """The user clicked a line's delete button: take it out of the grid, un-colour its words, tell the app."""
         self._row_fields.pop(column, None)
+        self._auto_fields.pop(column, None)                      # (a number Quill filled in: this row goes without it)
         self._live_fields.pop(column, None)                      # (a line still being heard can be removed too)
         self._stream_partial = [(word, WordMatch(False) if match.column == column else match) for word, match in self._stream_partial]
         self.update_current_row(self._row_fields)
@@ -1948,6 +1977,7 @@ class MainWindow:
         self.badge_label.set_colors(on_accent, accent)
         self.row_table.set_delete_colors(accent, on_accent)
         self.row_table.set_pill_colors(accent, on_accent)
+        self.row_table.set_auto_colors(*grey_pill(text_color))
         self.update_current_row(self._row_fields)         # the grid's first column takes its colour from the theme
         self.undo_button.setIcon(make_icon("undo", text_color, 18))
         self.help_button.setIcon(make_icon("question", text_color, 18))

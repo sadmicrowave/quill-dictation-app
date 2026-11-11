@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 from abc import ABC, abstractmethod
+from collections.abc import Collection
 
 from quill.bridge.filters import ColumnFilter
 
@@ -143,12 +144,14 @@ class WorkbookBridge(ABC):
     # ------------------------------------------------------------------ #
 
     @abstractmethod
-    def append_row(self, sheet_name: str, values: dict[str, object]) -> int:
+    def append_row(self, sheet_name: str, values: dict[str, object], leave_filled: Collection[str] = ()) -> int:
         """Write one record to the next empty row of *sheet_name*.
 
         Args:
             sheet_name: Target sheet (usually the active sheet).
             values: Mapping of column_header -> value to write.
+            leave_filled: Columns Quill fills in on its own (a counter's next number): where the row's cell already holds anything (a
+                formula the sheet pre-filled) it is left alone, and such a cell never makes the row count as taken.
 
         Returns:
             The 1-based row number that was written.
@@ -217,6 +220,10 @@ class WorkbookBridge(ABC):
     def date_columns(self, sheet_name: str | None = None) -> list[str]:
         """Headers that hold dates, in sheet order (so a spoken date can go into the right column)."""
         return []
+
+    def column_samples(self, sheet_name: str | None = None, keep: int = 12) -> dict[str, list[object]]:
+        """The last *keep* non-blank cells of every column, oldest first, by header (what shows a column counting up: 41, 42, 43)."""
+        return {}
 
     def apply_filters(self, sheet_name: str, filters: list[ColumnFilter]) -> int | None:
         """Filter *sheet_name* to rows matching every filter.

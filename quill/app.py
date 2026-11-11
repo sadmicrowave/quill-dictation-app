@@ -2183,6 +2183,7 @@ class QuillApp:
     def _columns_read(self, columns: list[str]) -> None:
         """The active sheet's columns were read: show them; if a file is connected but has none, say so (once) and say what to check."""
         self.window.set_columns(columns)
+        self._show_auto()
         vocab = self.controller.vocab
         self.window.revalidate_stream(set(vocab.columns()) | set(columns) | set(self.controller.session.record))
         empty = not columns and self.controller.connected
@@ -2322,8 +2323,14 @@ class QuillApp:
             self._show_in_viewer()
         self._sync_mic()
 
+    def _show_auto(self) -> None:
+        """The grid's extras: the numbers Quill fills in itself (grey pills) and the help icons of notes and counter columns."""
+        self.window.set_auto_values(self.controller.session.auto)
+        self.window.set_column_tips(self.controller.column_tips())
+
     def _handle_event(self, event: Event) -> None:
         kind = event.kind
+        self._show_auto()
         if kind in ("committed", "discarded", "stopped"):
             self.window.end_stream()                  # the row is over: the next words start a new stream
         if event.spoken:                                          # a click confirms itself on screen: no sound
