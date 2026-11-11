@@ -4,6 +4,7 @@ questions asked of a real Windows are in ``test_windows_system.py``).
 The Mac tests of ``tests/test_hosts.py`` fake a Mac's answers (``ps``, ``lsof``, AppleScript, Spotlight). These are their Windows
 counterparts: what ``tasklist`` says, what PowerShell says about a command line, and how Windows paths and names are read.
 """
+import base64
 import os
 import pathlib
 import tempfile
@@ -17,8 +18,18 @@ from quill.platforms.windows import libreoffice as win_lo
 from tests.test_hosts import FakeRunner, make_file
 
 
+def ps(*lines):
+    """What the PowerShell question answers: each command line as base64 of its UTF-8 bytes."""
+    return "\n".join(base64.b64encode(line.encode("utf-8")).decode("ascii") for line in lines)
+
+
 def named(text):
     return [str(path) for path, _ in files_named_in(text)]
+
+
+def spelled(*paths):
+    """The paths as this system spells them (Windows turns ``/`` into ``\\``)."""
+    return [str(pathlib.Path(p)) for p in paths]
 
 
 class TestWhatTasklistSays(unittest.TestCase):
@@ -49,7 +60,7 @@ class TestWhatTasklistSays(unittest.TestCase):
 
 class TestWhoIsAskedAboutCommandLines(unittest.TestCase):
     def test_powershell_is_asked_first_with_a_fixed_script(self):
-        runner = FakeRunner({"powershell": 'soffice.exe --calc "C:\\a\\b.xlsx"'})
+        runner = FakeRunner({"powershell": ps('soffice.exe --calc "C:\\a\\b.xlsx"')})
         winhosts.documents(LIBREOFFICE, runner)
         self.assertEqual(len(runner.calls), 1)
         command = runner.calls[0]
@@ -61,6 +72,21 @@ class TestWhoIsAskedAboutCommandLines(unittest.TestCase):
         runner = FakeRunner({"wmic": 'soffice.exe --calc "C:\\a\\b.xlsx"'})
         self.assertEqual(named_in(winhosts.documents(LIBREOFFICE, runner)), ["C:\\a\\b.xlsx"])
         self.assertEqual([c[0] for c in runner.calls], ["powershell", "wmic"])
+
+    def test_accents_and_other_scripts_in_a_folder_name_survive_the_trip(self):
+        """PowerShell's own text goes through the console's code page, which loses them; the base64 trip does not."""
+        line = 'soffice.exe --calc "C:\\Users\\José 山田\\Mes classeurs été\\Bilan – août.xlsx"'
+        runner = FakeRunner({"powershell": ps(line)})
+        self.assertEqual(named_in(winhosts.documents(LIBREOFFICE, runner)), ["C:\\Users\\José 山田\\Mes classeurs été\\Bilan – août.xlsx"])
+
+    def test_lines_that_are_not_an_answer_are_ignored(self):
+        runner = FakeRunner({"powershell": "WARNING: something\n" + ps('soffice.exe "C:\\a\\b.xlsx"') + "\n\n"})
+        self.assertEqual(named_in(winhosts.documents(LIBREOFFICE, runner)), ["C:\\a\\b.xlsx"])
+        self.assertEqual([c[0] for c in runner.calls], ["powershell"])
+
+    def test_several_instances_each_give_their_files(self):
+        runner = FakeRunner({"powershell": ps('soffice.exe "C:\\a\\one.xlsx"', 'soffice.exe "C:\\a\\two.csv"')})
+        self.assertEqual(named_in(winhosts.documents(LIBREOFFICE, runner)), ["C:\\a\\one.xlsx", "C:\\a\\two.csv"])
 
     def test_nothing_is_asked_of_a_program_that_has_no_windows_process(self):
         runner = FakeRunner({})
@@ -95,7 +121,7 @@ class TestWindowsPathsOnACommandLine(unittest.TestCase):
         self.assertEqual(named(line), [r"C:\a\one.XLSX", r"D:\b\two.Csv", r"E:\c\three.tsv"])
 
     def test_forward_slashes_are_a_path_too(self):
-        self.assertEqual(named('soffice.exe "C:/Users/sam/stock.xlsx"'), ["C:/Users/sam/stock.xlsx"])
+        self.assertEqual(named('soffice.exe "C:/Users/sam/stock.xlsx"'), spelled("C:/Users/sam/stock.xlsx"))
 
     def test_a_network_share(self):
         self.assertEqual(named('soffice.exe "\\\\fileserver\\team\\stock.xlsx"'), ["\\\\fileserver\\team\\stock.xlsx"])
@@ -115,7 +141,7 @@ class TestWindowsPathsOnACommandLine(unittest.TestCase):
                 self.assertEqual(named(f'soffice.exe "C:\\Users\\sam\\{name}"'), [f"C:\\Users\\sam\\{name}"])
 
     def test_the_mac_way_of_naming_a_file_still_works(self):
-        self.assertEqual(named('/Applications/LibreOffice.app/Contents/MacOS/soffice --calc "/Users/sam/stock.xlsx"'), ["/Users/sam/stock.xlsx"])
+        self.assertEqual(named('/Applications/LibreOffice.app/Contents/MacOS/soffice --calc "/Users/sam/stock.xlsx"'), spelled("/Users/sam/stock.xlsx"))
 
 
 class TestNamesNeverBecomeCommandsOnWindows(unittest.TestCase):
@@ -126,7 +152,7 @@ class TestNamesNeverBecomeCommandsOnWindows(unittest.TestCase):
              "C:\\a\\back\\\\slash.xlsx", "\\\\server\\share\\a & b.xlsx"]
 
     def test_looking_for_open_files_asks_only_fixed_questions(self):
-        runner = FakeRunner({"tasklist": '"soffice.exe","2","Console"', "powershell": "\n".join(f'soffice.exe "{p}"' for p in self.NASTY)})
+        runner = FakeRunner({"tasklist": '"soffice.exe","2","Console"', "powershell": ps(*[f'soffice.exe "{p}"' for p in self.NASTY])})
         SpreadsheetHosts("win32", runner).open_excel_files()
         for command in runner.calls:
             for path in self.NASTY:
@@ -167,20 +193,20 @@ class TestOpenFilesAsWindowsReportsThem(unittest.TestCase):
         self.path = make_file(self.dir.name, "stock list.xlsx")
 
     def test_a_file_on_the_command_line_of_a_running_libreoffice_is_found(self):
-        runner = FakeRunner({"tasklist": '"soffice.exe","2","Console"', "powershell": f'soffice.exe --calc "{self.path}"'})
+        runner = FakeRunner({"tasklist": '"soffice.exe","2","Console"', "powershell": ps(f'soffice.exe --calc "{self.path}"')})
         self.assertEqual(SpreadsheetHosts("win32", runner).open_excel_files(), [(LIBREOFFICE, self.path)])
 
     def test_the_side_panel_lists_it_with_the_program_that_has_it(self):
-        runner = FakeRunner({"tasklist": '"et.exe","2","Console"', "powershell": f'et.exe "{self.path}"'})
+        runner = FakeRunner({"tasklist": '"et.exe","2","Console"', "powershell": ps(f'et.exe "{self.path}"')})
         files = SpreadsheetHosts("win32", runner).open_files()
         self.assertEqual([(f.name, f.path, f.app) for f in files], [("stock list.xlsx", str(self.path), "WPS Office")])
 
     def test_a_file_that_is_gone_is_not_listed(self):
-        runner = FakeRunner({"tasklist": '"soffice.exe","2","Console"', "powershell": f'soffice.exe "{self.dir.name}\\gone.xlsx"'})
+        runner = FakeRunner({"tasklist": '"soffice.exe","2","Console"', "powershell": ps(f'soffice.exe "{self.dir.name}\\gone.xlsx"')})
         self.assertEqual(SpreadsheetHosts("win32", runner).open_excel_files(), [])
 
     def test_excel_is_left_to_live_automation(self):
-        runner = FakeRunner({"tasklist": '"EXCEL.EXE","1","Console"', "powershell": f'EXCEL.EXE "{self.path}"'})
+        runner = FakeRunner({"tasklist": '"EXCEL.EXE","1","Console"', "powershell": ps(f'EXCEL.EXE "{self.path}"')})
         self.assertEqual(SpreadsheetHosts("win32", runner).open_excel_files(), [])
         self.assertTrue(EXCEL.live)
 

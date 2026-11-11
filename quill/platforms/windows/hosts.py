@@ -10,6 +10,7 @@ Not done: a file opened *inside* a running LibreOffice or WPS (File > Open) is o
 
 from __future__ import annotations
 
+import base64
 import os
 import pathlib
 
@@ -38,12 +39,24 @@ def launch(path, program: str = "auto") -> bool:
 
 
 def command_lines(process: str, run) -> str:
-    """The command lines of every running *process* (an image name from :data:`PROCESS_NAMES`), one per line; '' when none or unknown."""
+    """The command lines of every running *process* (an image name from :data:`PROCESS_NAMES`), one per line; '' when none or unknown.
+
+    PowerShell writes its answer in the console's code page, which turns an accent or a non-Latin letter in a folder name into
+    ``?`` (and a user called José or 山田 is not rare). So each line is sent as base64 of its UTF-8 bytes, which no code page changes.
+    """
     if not process:
         return ""
-    query = f"Get-CimInstance Win32_Process -Filter \"name='{process}'\" | ForEach-Object {{ $_.CommandLine }}"
-    out = run(["powershell", "-NoProfile", "-NonInteractive", "-Command", query])
-    return out if out.strip() else run(["wmic", "process", "where", f"name='{process}'", "get", "commandline"])
+    query = (f"Get-CimInstance Win32_Process -Filter \"name='{process}'\" | ForEach-Object {{ if ($_.CommandLine) "
+             "{ [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($_.CommandLine)) } }")
+    lines = []
+    for line in run(["powershell", "-NoProfile", "-NonInteractive", "-Command", query]).splitlines():
+        try:
+            lines.append(base64.b64decode(line.strip(), validate=True).decode("utf-8"))
+        except ValueError:                                    # (not one of ours: a warning or a banner)
+            continue
+    if lines:
+        return "\n".join(lines)
+    return run(["wmic", "process", "where", f"name='{process}'", "get", "commandline"])
 
 
 def documents(app, run) -> list[tuple[pathlib.Path, str]]:
