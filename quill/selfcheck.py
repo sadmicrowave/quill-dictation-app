@@ -26,6 +26,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+from quill import platforms
+
 OK, WARN, FAIL, INFO, SKIP = "ok", "warn", "fail", "info", "skip"
 LABELS = {OK: "  ok  ", WARN: " warn ", FAIL: " FAIL ", INFO: " info ", SKIP: " skip "}
 
@@ -244,7 +246,7 @@ def command_line_lookup() -> list[Check]:
         script.write_text("Start-Sleep -Seconds 40\n", encoding="utf-8")
         # (a stand-in program that has the file on its command line; not Python: inside the packaged app sys.executable is Quill.exe)
         child = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script), str(path)],   # noqa: S603, S607
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **platforms.no_console())
         text, took = "", 0.0
         try:
             for _ in range(8):                                                 # (a slow machine needs a moment for the child to appear)
@@ -340,7 +342,7 @@ def show(text: str) -> None:
         elif sys.platform == "darwin":
             import subprocess
             subprocess.run(["osascript", "-e", "on run argv", "-e", "display dialog (item 1 of argv) with title \"Quill self-check\" buttons {\"OK\"}",     # noqa: S603, S607
-                            "-e", "end run", text], timeout=120, check=False, capture_output=True)
+                            "-e", "end run", text], timeout=120, check=False, capture_output=True, **platforms.no_console())
 
 
 def default_path() -> pathlib.Path:

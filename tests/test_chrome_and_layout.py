@@ -375,9 +375,11 @@ class TestFontSize(unittest.TestCase):
     def test_every_text_is_the_same_size(self):
         """Titles, buttons, notes, values and placeholders differ in colour and style, never in size."""
         sheet = theme.stylesheet_for(False, font_size=12)
-        self.assertEqual(sheet.count("font-size"), 1)                    # one base size for every widget (the platform's own
-        self.assertIn("QWidget { font-size: 12pt; }", sheet)             # per-class sizes would otherwise win over the setting)
-        self.assertEqual(theme.stylesheet_for(True, font_size=16).count("font-size"), 1)
+        self.assertEqual(sheet.count("font-size"), 2)                    # one base size for every widget (the platform's own
+        self.assertIn("QWidget { font-size: 12pt; }", sheet)             # per-class sizes would otherwise win over the setting) ...
+        self.assertIn("QMenuBar { font-size: ", sheet)                   # ... except the menu bar inside the window: the title bar's size
+        self.assertNotIn("QMenuBar { font-size: 12pt", sheet)
+        self.assertEqual(theme.stylesheet_for(True, font_size=16).count("font-size"), 2)
 
     def test_dialog_has_a_text_size_box_that_saves(self):
         settings = Settings.load(self.dir)

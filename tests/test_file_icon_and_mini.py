@@ -45,7 +45,7 @@ class TestFolderIconInTheWindow(unittest.TestCase):
         self.assertEqual(self.w.open_file_button.toolTip().splitlines()[0], "Open File")
 
     def test_the_folder_sits_left_of_the_settings_icon(self):
-        row = self.w._status_row
+        row = self.w._ribbon_layout                                      # (the icons the title bar holds elsewhere: the ribbon above Start)
         order = [row.itemAt(i).widget() for i in range(row.count())]
         self.assertEqual(order.index(self.w.open_file_button) + 2, order.index(self.w.settings_button))      # the turn icon sits between
 

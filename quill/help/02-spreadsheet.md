@@ -95,6 +95,8 @@ The window opens at the smallest size it can be (and never gets smaller). The mi
 | Sliders | right | **Settings** |
 | Arrows | far right | **Mini view** |
 
+> 💡 **On Windows** the same icons (help, undo, folder, turn, settings, mini view) sit in a **ribbon of their own above the Start button**, right-aligned in that order, so Start keeps the whole width. The mini view has no ribbon: its arrows sit beside Start. The **File, Listening, View, Window, Help** menu bar is in the size of the title bar's text.
+
 ## 🔔 Menu bar icon
 
 A rounded square: **outline** = idle, **solid** = listening. Open it to start, stop, show the window or quit. While listening it names the sheet being written.

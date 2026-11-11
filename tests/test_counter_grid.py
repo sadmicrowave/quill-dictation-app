@@ -46,6 +46,7 @@ class GridCase(unittest.TestCase):
 
     def pill_colour(self, column):
         """The colour painted at the left end of the value pill of *column* (inside its padding)."""
+        QTest.qWait(1300)                                        # (the columns ease in: wait until they are fully drawn)
         self.table.resize(max(self.table.width(), 360), self.table.height())
         row = self.row_of(column)
         x = self.table.columnViewportPosition(1) + self.table.fontMetrics().averageCharWidth() // 4 + 7

@@ -366,11 +366,18 @@ class MainWindow:
         self.next_button.clicked.connect(lambda: self._on_next_row())
         row.addWidget(self.toggle_button, 1)
         row.addWidget(self.next_button)
-        row.addWidget(self.help_button)
-        row.addWidget(self.undo_button)
-        row.addWidget(self.settings_button)
         row.addWidget(self.error_button)
-        row.addWidget(self.mini_button)
+        # The icons the macOS title bar holds are, where the system has no such place, a ribbon of their own above Start (so Start keeps
+        # the whole width): help, undo, files, turns, settings and the resize icon, right-aligned, in the title bar's order. The resize
+        # icon goes back beside Start in the mini view, which has no room for a ribbon.
+        self.ribbon = QWidget()
+        self.ribbon.setProperty("keepMargins", True)
+        self._ribbon_layout = QHBoxLayout(self.ribbon)
+        self._ribbon_layout.setContentsMargins(0, 0, 0, 0)
+        self._ribbon_layout.addStretch(1)
+        for button in (self.help_button, self.undo_button, self.settings_button, self.mini_button):
+            self._ribbon_layout.addWidget(button)
+        layout.addWidget(self.ribbon)
         layout.addLayout(row)
         self._layout, self._status_row = layout, row
 
@@ -382,14 +389,14 @@ class MainWindow:
         self.open_file_button.setAccessibleName("Open File")
         self.open_file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_file_button.clicked.connect(lambda: self.toggle_panel(FILE_PAGE))
-        status_row.insertWidget(status_row.indexOf(self.settings_button), self.open_file_button)
+        self._ribbon_layout.insertWidget(self._ribbon_layout.indexOf(self.settings_button), self.open_file_button)
         self.turn_button = QPushButton()                        # the turn icon: opens the side panel's turn page
         self.turn_button.setProperty("iconOnly", True)
         self.turn_button.setToolTip("Turn Settings")
         self.turn_button.setAccessibleName("Turn Settings")
         self.turn_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.turn_button.clicked.connect(lambda: self.toggle_panel(TURN_PAGE))
-        status_row.insertWidget(status_row.indexOf(self.settings_button), self.turn_button)
+        self._ribbon_layout.insertWidget(self._ribbon_layout.indexOf(self.settings_button), self.turn_button)
 
         # --- current row
         # (Not collapsible: the row being built is the point of every spoken turn, so it is always in view.)
@@ -523,6 +530,9 @@ class MainWindow:
         fill_missing_tips(window)
         fill_missing_tips(self.panel.settings)
         self._refresh_grid()                                   # (columns read before the window was built)
+        fit = QSize(window.width(), max(window.height(), self._fit_height()))     # (a window with a ribbon needs more than the least height)
+        window.resize(fit)
+        self._full_size = fit
 
     @staticmethod
     def _heading(text: str) -> QLabel:
@@ -988,7 +998,7 @@ class MainWindow:
         layout = self._layout
         layout.invalidate()
         layout.activate()
-        return layout.sizeHint().height()
+        return layout.sizeHint().height() + self._frame_extra()
 
     def _keep_minimum(self) -> None:
         """Re-apply the content's minimum size when widgets appear or disappear (not while a resize is animating).
@@ -1018,7 +1028,7 @@ class MainWindow:
         if self._panel_extra() and self.panel.height() > 0:             # the panel's page shows whole, never cut off below
             panel_height = self.panel.needed_height() + self._window.height() - self.panel.height()
         self._window.setMinimumSize(max(max(content.width(), MIN_CONTENT_WIDTH) + panel_least, MIN_WINDOW[0]),
-                                    max(content.height(), MIN_WINDOW[1], panel_height))
+                                    max(content.height() + self._frame_extra(), MIN_WINDOW[1], panel_height))
 
     def fit_panel(self) -> None:
         """Keep the content (everything but the side panel) at least :data:`MIN_CONTENT_WIDTH` wide as the window narrows: the
@@ -1051,6 +1061,22 @@ class MainWindow:
             if was_visible:
                 window.show()
 
+    def _place_mini_button(self, full: bool) -> None:
+        """The resize icon is the last one of the ribbon in the full window, and sits beside Start in the mini view (it has no ribbon)."""
+        home = self._ribbon_layout if full else self._status_row
+        if home.indexOf(self.mini_button) < 0:
+            for layout in (self._ribbon_layout, self._status_row):
+                layout.removeWidget(self.mini_button)
+            home.addWidget(self.mini_button)
+
+    def _frame_extra(self) -> int:
+        """Height of what the window holds besides its content: the menu bar drawn inside it where the system has no global one
+        (the window is the content plus this, so a size worked out from the content alone cuts Start short)."""
+        bar = self._window.menuBar() if self._window is not None else None
+        if bar is None or bar.isNativeMenuBar() or bar.isHidden():
+            return 0
+        return bar.sizeHint().height()
+
     def _refresh_visibility(self) -> None:
         """Show each widget only if both the view (full / mini) and its own state call for it."""
         if self._window is None:
@@ -1061,6 +1087,7 @@ class MainWindow:
             self.toggle_button.set_notice(True, NO_COLUMNS_START_HELP, NO_COLUMNS_TEXT, blocked=True, short=NO_COLUMNS_SHORT)
         else:
             self.toggle_button.set_notice(self._not_connected, self._not_connected_tip)
+        self._place_mini_button(full)
         self.open_file_button.setVisible(full and not self._native_file_button)
         self.turn_button.setVisible(full and not self._native_turn_button)
         sliding = self._next_animation is not None
@@ -1088,6 +1115,8 @@ class MainWindow:
         self.last_label.setVisible(full and self._has_last_saved)
         self.help_button.setVisible(full and not self._native_help_button)
         self.undo_button.setVisible(full and not self._native_undo_button)
+        self.ribbon.setVisible(full and any(not b.isHidden() for b in (self.help_button, self.undo_button, self.open_file_button,
+                                                                          self.turn_button, self.settings_button, self.mini_button)))
         self.undo_button.setEnabled(self._undo_count > 0)
         self.log.setVisible(full and (not self._log_collapsed or self._log_closing()))
         if self.log.isVisibleTo(self._window) and not self._log_busy:
@@ -1377,12 +1406,8 @@ class MainWindow:
         tip = (f"{self._workbook_name}{sheet}" if has
                else "Open File\nChoose an .xlsx or .csv file for Quill to fill in.")
         self.open_file_button.setToolTip(tip)
-        color = self._text_color
-        if not has:
-            muted = QColor(color)
-            muted.setAlpha(110)
-            color = muted.name(QColor.NameFormat.HexArgb)
-        self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", color, 18, badge=bool(self._file_alert)))
+        self.open_file_button.setIcon(make_icon("folder-open" if has else "folder", self._text_color, 18, badge=bool(self._file_alert),
+                                                alpha=1.0 if has else 110 / 255))
         if self._file_alert:
             self.open_file_button.setToolTip(f"{self._file_alert}\n{tip}")
         self.panel.set_active(self._workbook_name, self._sheet_name, self._workbook_path, self._workbook_kind)

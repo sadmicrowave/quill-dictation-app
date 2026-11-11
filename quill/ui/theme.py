@@ -20,7 +20,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 
 from quill import platforms
 from quill.ui import glass as glass_module
-from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 _SCHEMES = {
@@ -281,6 +281,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QWidget {{ font-size: {font_size}pt; }}
+QMenuBar {{ font-size: {_title_font_points()}pt; }}
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QFrame#sidePanel, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.26 if dark else 0.08)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.6)};
@@ -567,6 +568,13 @@ def apply_opacity(root: QWidget, percent: int, blur: int = 0) -> None:
     if root.graphicsEffect() is not None:
         root.setGraphicsEffect(None)                       # no effect may be left over from before
     root.window().setWindowOpacity(1.0 if (platforms.offered(sys.platform, "OPACITY_THINS_BACKGROUND", False) or int(blur) > 0) else percent / 100)
+
+
+def _title_font_points() -> int:
+    """The size (points) of the text in the system's window title bars. The menu bar drawn inside the window (File, Listening, View ...,
+    where the system has no global one) is in it, not in the size of Quill's own controls."""
+    size = QFontDatabase.systemFont(QFontDatabase.SystemFont.TitleFont).pointSizeF()
+    return max(8, round(size)) if size > 0 else 9
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:

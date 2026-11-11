@@ -59,6 +59,19 @@ def provider(platform: str | None = None) -> ModuleType | None:
         return None
 
 
+#: Windows' ``CREATE_NO_WINDOW``: the child process gets no console window.
+CREATE_NO_WINDOW = 0x08000000
+
+
+def no_console(platform: str | None = None) -> dict:
+    """Keyword arguments that start a child process **without a console window** on Windows (none anywhere else).
+
+    Quill is a window program, so every command it runs (``tasklist``, PowerShell, ``soffice``) would otherwise open a console that
+    flashes on screen for as long as the command takes. Pass it to every ``subprocess`` call: ``subprocess.run(args, **no_console())``.
+    """
+    return {"creationflags": CREATE_NO_WINDOW} if (platform or sys.platform) == "win32" else {}
+
+
 def offered(platform: str | None, what: str, default=None):
     """What the provider for *platform* offers under *what* (*default* when there is no provider or it offers nothing)."""
     module = provider(platform)
