@@ -11,6 +11,7 @@ Not done: a file opened *inside* a running LibreOffice or WPS (File > Open) is o
 from __future__ import annotations
 
 import base64
+import csv
 import os
 import pathlib
 
@@ -59,6 +60,14 @@ def command_lines(process: str, run) -> str:
     return run(["wmic", "process", "where", f"name='{process}'", "get", "commandline"])
 
 
+def process_numbers(process: str, run) -> tuple[str, ...]:
+    """The process numbers of every running *process*, sorted ('' tuple when none or unreadable): a cheap question (about 50 ms)."""
+    if not process:
+        return ()
+    rows = csv.reader(run(["tasklist", "/fo", "csv", "/nh", "/fi", f"imagename eq {process}"]).splitlines())
+    return tuple(sorted(row[1] for row in rows if len(row) > 1 and row[0].lower() == process.lower()))
+
+
 def documents(app, run) -> list[tuple[pathlib.Path, str]]:
     """``(path, open sheet)`` of the spreadsheets *app* was started with (the sheet is '' where the program does not say)."""
     from quill.bridge.hosts import files_named_in
@@ -70,6 +79,9 @@ class WinHosts:
 
     def __init__(self, run, native: bool = False) -> None:
         self._run = run
+        self._asked: dict[str, tuple[tuple[str, ...], list[tuple[pathlib.Path, str]]]] = {}
+        """Per program: the process numbers it had and the files its command lines named then. A command line cannot change while a
+        process lives, and PowerShell needs seconds to answer, so the question is asked again only when the numbers change."""
 
     def running(self, apps) -> list:
         return running(apps, self._run)
@@ -87,4 +99,11 @@ class WinHosts:
         return None                        # (only Numbers reports a document by name)
 
     def documents(self, app, prefer: tuple[str, ...] = ()) -> list:
-        return documents(app, self._run)
+        numbers = process_numbers(PROCESS_NAMES.get(app.key, ""), self._run)
+        known = self._asked.get(app.key)
+        if numbers and known is not None and known[0] == numbers:
+            return list(known[1])
+        found = documents(app, self._run)
+        if numbers:                                  # (no numbers: the list could not be read, so nothing is remembered)
+            self._asked[app.key] = (numbers, list(found))
+        return found

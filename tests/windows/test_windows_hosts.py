@@ -105,6 +105,57 @@ def named_in(pairs):
     return [str(path) for path, _ in pairs]
 
 
+class TestPowerShellIsAskedOnlyWhenTheProgramsChange(unittest.TestCase):
+    """PowerShell needs seconds to answer, and a process's command line never changes: ask again only when its process numbers do."""
+
+    def make(self):
+        self.numbers = '"soffice.exe","100","Console","1","50,000 K"'
+        self.lines = ps('soffice.exe "C:\\a\\one.xlsx"')
+        self.calls = []
+
+        def run(args):
+            self.calls.append(args[0])
+            if args[0] == "tasklist":
+                return self.numbers
+            if args[0] == "powershell":
+                return self.lines
+            return ""
+        return winhosts.WinHosts(run)
+
+    def test_the_same_programs_are_not_asked_about_again(self):
+        hosts = self.make()
+        self.assertEqual(named_in(hosts.documents(LIBREOFFICE)), ["C:\\a\\one.xlsx"])
+        self.assertEqual(named_in(hosts.documents(LIBREOFFICE)), ["C:\\a\\one.xlsx"])
+        self.assertEqual(self.calls.count("powershell"), 1)
+
+    def test_a_new_process_is_asked_about(self):
+        hosts = self.make()
+        hosts.documents(LIBREOFFICE)
+        self.numbers = '"soffice.exe","100","Console","1","50,000 K"\n"soffice.exe","200","Console","1","50,000 K"'
+        self.lines = ps('soffice.exe "C:\\a\\one.xlsx"', 'soffice.exe "C:\\a\\two.xlsx"')
+        self.assertEqual(named_in(hosts.documents(LIBREOFFICE)), ["C:\\a\\one.xlsx", "C:\\a\\two.xlsx"])
+        self.assertEqual(self.calls.count("powershell"), 2)
+
+    def test_a_restarted_program_with_a_new_number_is_asked_about(self):
+        hosts = self.make()
+        hosts.documents(LIBREOFFICE)
+        self.numbers = '"soffice.exe","300","Console","1","50,000 K"'
+        self.lines = ps('soffice.exe "C:\\a\\other.xlsx"')
+        self.assertEqual(named_in(hosts.documents(LIBREOFFICE)), ["C:\\a\\other.xlsx"])
+
+    def test_nothing_is_remembered_when_the_process_list_cannot_be_read(self):
+        hosts = self.make()
+        self.numbers = ""
+        hosts.documents(LIBREOFFICE)
+        hosts.documents(LIBREOFFICE)
+        self.assertEqual(self.calls.count("powershell"), 2)
+
+    def test_the_cached_answer_is_a_copy(self):
+        hosts = self.make()
+        hosts.documents(LIBREOFFICE).clear()
+        self.assertEqual(len(hosts.documents(LIBREOFFICE)), 1)
+
+
 class TestWindowsPathsOnACommandLine(unittest.TestCase):
     def test_a_quoted_program_and_a_quoted_file_with_spaces(self):
         line = r'"C:\Program Files\LibreOffice\program\soffice.exe" --calc "C:\Users\Sam Lee\My Docs\stock list.xlsx"'

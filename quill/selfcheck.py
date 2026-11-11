@@ -238,19 +238,26 @@ def command_line_lookup() -> list[Check]:
     with tempfile.TemporaryDirectory(prefix="quill selfcheck é ") as folder:
         path = pathlib.Path(folder) / "Bilan – août.xlsx"
         path.write_bytes(b"")
-        image = os.path.basename(sys.executable)
-        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", str(path)])         # noqa: S603
+        script = pathlib.Path(folder) / "wait.ps1"
+        script.write_text("Start-Sleep -Seconds 40\n", encoding="utf-8")
+        # (a stand-in program that has the file on its command line; not Python: inside the packaged app sys.executable is Quill.exe)
+        child = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script), str(path)],   # noqa: S603, S607
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        text, took = "", 0.0
         try:
-            time.sleep(0.5)
-            started = time.monotonic()
-            text = winhosts.command_lines(image, lambda args: hosts._run(args))
-            took = time.monotonic() - started
+            for _ in range(8):                                                 # (a slow machine needs a moment for the child to appear)
+                started = time.monotonic()
+                text = winhosts.command_lines("powershell.exe", lambda args: hosts._run(args))
+                took = time.monotonic() - started
+                if str(path) in text:
+                    break
+                time.sleep(1)
         finally:
             child.kill()
             child.wait()
     ok = str(path) in text
-    return [Check("Which file a program was started with (PowerShell)", (OK if took < 3 else WARN) if ok else FAIL,
-                  f"{'found, accents intact' if ok else 'NOT found'}; took {took:.2f} s")]
+    return [Check("Which file a program was started with (PowerShell)", (OK if took < 6 else WARN) if ok else FAIL,
+                  f"{'found, accents intact' if ok else 'NOT found'}; one question took {took:.2f} s (Quill asks again only when the programs change)")]
 
 
 def excel_live() -> list[Check]:
