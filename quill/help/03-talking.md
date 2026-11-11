@@ -35,6 +35,8 @@ Everything you say shows up, word by word and in italics, in the box under the S
 - Everyday words (*got*, *really*) are skipped, so Quill won't ask about them.
 - A word that sounds like one of your column names or list values is taken as that word. *"Waste"* becomes *Waist* if your sheet has a Waist column. The Log notes it.
 - A word Quill doesn't know goes straight onto the **Term Helper** button as soon as the phrase ends.
+- A column that **counts up by one** (an *ID* or *Record Number*: its last three values are 41, 42, 43) shows its **next number in a grey pill** while you are listening, and Quill writes it with the row. Say a value for that column to use yours, or remove the grey line to leave that row's cell empty.
+- A small round **i** after a column name (a note column, or a counting one) explains it when you rest the pointer on it: how to dictate a note, or which numbers Quill saw and how it continues them.
 - Disagree with a match? Hover its line in the grid: a round **x** appears at the right (it turns red under the pointer). Click it and the line is removed and will not be written.
 
 ## 📅 Dates

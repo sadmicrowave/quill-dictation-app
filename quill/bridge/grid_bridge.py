@@ -12,6 +12,7 @@ import contextlib
 import dataclasses
 import datetime as dt
 import re
+from collections.abc import Collection
 
 from quill.bridge.base import BridgeError, BridgeLockedError, WorkbookBridge
 from quill.bridge.filters import ColumnFilter
@@ -26,6 +27,11 @@ from quill.bridge.introspect import (
 
 #: Said when a search is asked for on a sheet whose headings run down the side (a filter works on rows).
 VERTICAL_SEARCH_MESSAGE = "searching needs the headings across the first row, and this sheet is set to Rows Down."
+
+
+def _has_content(value: object) -> bool:
+    """Is there anything in the cell, a formula included? (``is_blank`` counts a formula as empty: for finding a free row that is right.)"""
+    return value is not None and not (isinstance(value, str) and not value.strip())
 
 
 def normalize_header(text: object) -> str:
@@ -223,13 +229,19 @@ class GridBridge(WorkbookBridge):
             )
         return header_row, columns
 
-    def append_row(self, sheet_name: str, values: dict[str, object]) -> int:
+    def append_row(self, sheet_name: str, values: dict[str, object], leave_filled: Collection[str] = ()) -> int:
         grid = self._require()
         header_row, columns = self._column_map(grid, sheet_name, values)
-        row = self._next_free_row(grid, sheet_name, max(header_row, self._start_row - 1), sorted(columns.values()))
+        spared = {normalize_header(name) for name in leave_filled}
+        row = self._next_free_row(grid, sheet_name, max(header_row, self._start_row - 1),
+                                  sorted(c for name, c in columns.items() if name not in spared))
         for name, value in values.items():
-            if value is not None:
-                grid.write(sheet_name, row, columns[normalize_header(name)], value)
+            if value is None:
+                continue
+            column = columns[normalize_header(name)]
+            if normalize_header(name) in spared and _has_content(grid.read(sheet_name, row, column, 1, 1)[0][0]):
+                continue                                                  # (the sheet already put something there, a formula too: it stays)
+            grid.write(sheet_name, row, column, value)
         self._saved_row(row)
         return row
 
@@ -351,6 +363,24 @@ class GridBridge(WorkbookBridge):
             numbers = [v for v in entries if self._is_number(v)]
             if entries and len(numbers) / len(entries) >= self._NUMERIC_SHARE:
                 found.append(str(header).strip())
+        return found
+
+    def column_samples(self, sheet_name: str | None = None, keep: int = 12) -> dict[str, list[object]]:
+        grid = self._require()
+        sheet = sheet_name or grid.active_sheet()
+        header_row = self._header_row(grid, sheet)
+        width = grid.last_col(sheet)
+        last = grid.last_row(sheet)
+        if width == 0 or last <= header_row:
+            return {}
+        first = max(header_row + 1, last - self._SAMPLE_ROWS + 1)            # (the end of the sheet: that is where the counting is)
+        headers = grid.read(sheet, header_row, 1, 1, width)[0]
+        data = grid.read(sheet, first, 1, last - first + 1, width)
+        found: dict[str, list[object]] = {}
+        for index, header in enumerate(headers):
+            if is_blank(header):
+                continue
+            found[str(header).strip()] = [r[index] for r in data if not is_blank(r[index])][-keep:]
         return found
 
     #: Header words that make an empty column a date column.

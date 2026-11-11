@@ -15,6 +15,7 @@ from PySide6.QtTest import QTest                                       # noqa: E
 from PySide6.QtWidgets import QApplication                              # noqa: E402
 
 from quill.config.settings import Settings                              # noqa: E402
+from quill.controller import COUNTER_TIP, NOTE_TIP                        # noqa: E402
 from quill.parser.vocab import Vocabulary                               # noqa: E402
 from quill.stream import WordMatch                                      # noqa: E402
 from quill.ui.main_window import MainWindow                             # noqa: E402
@@ -87,7 +88,9 @@ def shoot(app: QApplication, theme: str) -> None:
     colors = colors_for(dark, "violet")
     main_window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
     heard_in = {"black": "Color", "t-shirt": "Type", "large": "Size", "good": "Condition", "appraisal": "Appraisal", "thirty": "Appraisal", "five": "Appraisal"}
-    main_window.set_columns(["Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])        # (the sheet's columns, listed from the start)
+    main_window.set_columns(["Record", "Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])        # (the sheet's columns, listed from the start)
+    main_window.set_column_tips({"Record": COUNTER_TIP.format(found="39, 40, 41 → 42"), "Notes": NOTE_TIP})   # (the "i" after a counter and a note)
+    main_window.set_auto_values({"Record": 42})                    # (the next number Quill fills in itself: a grey pill)
     main_window.set_stream_classifier(lambda words: [WordMatch(w in heard_in, heard_in.get(w), span=list(heard_in).index(w) if w in heard_in else None) for w in words])
     main_window.add_stream_text('this next one is a black t-shirt large good indigo appraisal thirty five')
     main_window.set_pending_words(["indigo"])                      # (a word the Term Helper is waiting on: a grey pill)
@@ -100,7 +103,9 @@ def shoot(app: QApplication, theme: str) -> None:
     mini.setup()
     mini.set_mini(True)
     mini.set_listening_indicator(True)
-    mini.set_columns(["Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])
+    mini.set_columns(["Record", "Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])
+    mini.set_column_tips({"Record": COUNTER_TIP.format(found="39, 40, 41 → 42"), "Notes": NOTE_TIP})
+    mini.set_auto_values({"Record": 42})
     mini.update_current_row(row)
     mini.set_sorting_count(2)
     mini.widget.resize(340, 190)

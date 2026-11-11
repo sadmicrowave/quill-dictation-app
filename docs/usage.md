@@ -55,6 +55,19 @@ A column named note, notes, comment(s), description, remarks or details (with no
 - Trade-off: a continuation that happens to **begin with a column name** (*"size was hard to tell"*) is read as that column; and the words *end note* inside a note end it.
 - Keywords saved before `end note` existed get it added once (**Settings > Keywords** shows it, and Restore defaults brings it back).
 
+## Numbered columns (an ID or record number)
+
+A column whose **last three or more values count up by one** (`41, 42, 43`; `A-0041, A-0042, A-0043`) is a counter. Quill reads the sheet's own data for this, never a heading, so it works for *ID*, *Record Number*, *Invoice*, or a name in another language.
+
+- While listening, the row being built shows the column with its **next number in a grey pill** (the grey of a word waiting in the Term Helper, never the colour of spoken words), after the columns you have said. It is written with the row.
+- **Say a value** for the column (*"id fifty seven"*) and yours is used; the grey line gives way to a normal one.
+- **Remove the grey line** (its round **x**) and that row goes without a number; the next row is offered one again.
+- Just before the row is written Quill reads the column once more, so a row someone added meanwhile is not numbered twice; if the column stopped counting, the cell stays empty. The Log says `Assumed: ID = 44 (continues the column's numbering)`.
+- The text around the number and the zero padding are kept (`R009` → `R010`). A plain number stays a number; numbers stored as text stay text.
+- Not a counter: a column with a drop-down list, a note, a date, one that jumps (`1, 2, 4`), counts down, or holds formulas. A formula already in the new row's cell is never written over.
+- Not offered while **Append To** is on (the turn adds to one row) or the headings run down the first column.
+- A sheet that only coincidentally counts (a quantity that went 1, 2, 3) is a counter too: remove the line, or say the value.
+
 ## Search
 
 `search for black blouses under 50` turns on AutoFilter on the active sheet's

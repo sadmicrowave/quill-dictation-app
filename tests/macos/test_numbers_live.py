@@ -831,7 +831,7 @@ class TestARereadAsksNumbersEachThingOnce(unittest.TestCase):
         controller.bridge = Bridge()
         controller.vocab = mock.MagicMock()
         controller.on_columns = lambda columns: None
-        controller._apply_aliases = controller._apply_learning = lambda: None
+        controller._apply_aliases = controller._apply_learning = controller._read_counters = lambda: None
         controller.bridge.get_lists = lambda: {}
         controller.bridge.get_headers = lambda: ["A"]
         controller.bridge.numeric_columns = controller.bridge.date_columns = lambda: set()
