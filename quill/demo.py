@@ -135,6 +135,7 @@ class Demo:
         if session.listening:
             app.toggle_listening(False)
         session.record.clear()
+        session.open_note = None
         session.pool.clear()
         session.row_terms.clear()
         session.pending = None

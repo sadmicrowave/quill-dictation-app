@@ -14,7 +14,9 @@ nearby never reaches your sheet.
 | column + amount: `appraisal thirty five`, `price twelve dollars and fifty cents` | Number |
 | amount with money words, no column: `thirty five dollars` | Goes to the sheet's money-like number column; the log says which |
 | column + date: `acquired today`, `date october thirty`, `march 3 2025` | Date (`today`, `yesterday`, or `<month> <day> [year]`) |
-| column + text: `notes needs repotting` | Text up to the next column word. Columns named note/notes/comment(s)/description/remarks/details are always text |
+| column + text: `source garden center` | Text up to the next column word |
+| a note: `notes needs repotting`, `description a tall fern…` | Columns named note/notes/comment(s)/description/remarks/details take **everything you say** (see *Long notes* below) |
+| `end note` · `end notes` | Closes the note being dictated |
 | `next row` (or `new record`) | Writes the row to the next empty row of the active sheet |
 | `cancel` / `delete row` | Discards the row being built |
 | `stop listening` | Closes the gate |
@@ -33,6 +35,7 @@ Details worth knowing:
 |-----|--------|
 | start listening | Open the gate |
 | stop listening | Close the gate |
+| end note · end notes | Close the note being dictated |
 | next row · new record | Commit the row |
 | delete row · cancel | Discard the row |
 | search for … | Filter the sheet (see below) |
@@ -40,6 +43,17 @@ Details worth knowing:
 | sort terms | Start answering the Needs-sorting list by voice |
 
 If you saved keywords before a default existed, add it in Settings or press *Restore defaults*.
+
+## Long notes
+
+A column named note, notes, comment(s), description, remarks or details (with no drop-down list) is dictated as a **note**:
+
+- Everything after the column name is the note, **across pauses**: the recogniser ends a phrase at every pause, and the next phrase goes on with the same cell, one space between the pieces. Column names, list values, numbers and dates inside it are ordinary words (*"notes the price went up last spring"* is a note, nothing goes to Price or to the Needs-sorting window).
+- It ends on **`end note`** (the words after it are read as usual: *"notes needs repotting, end note, color navy"*), on **`next row`** (or any other command, or *stop listening*), or when a phrase **begins with another column's name** (*"notes needs repotting"* … pause … *"color navy"*). Saying the note's own column name again goes on with it.
+- Where the note goes last in the row, `next row` is all it needs.
+- The saved note gets a capital letter and a full stop (the recogniser gives neither). A note that already ends in `.`, `!` or `?` keeps it.
+- Trade-off: a continuation that happens to **begin with a column name** (*"size was hard to tell"*) is read as that column; and the words *end note* inside a note end it.
+- Keywords saved before `end note` existed get it added once (**Settings > Keywords** shows it, and Restore defaults brings it back).
 
 ## Search
 

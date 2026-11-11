@@ -21,7 +21,7 @@ Speak naturally. Quill picks out the words it knows.
 - **Column name first** when it's ambiguous: *"size medium"*
 - **Amounts:** *"appraisal thirty five"*, *"twelve dollars fifty"*
 - **Dates:** *"acquired today"*, *"date march 3"*
-- **Notes:** *"notes needs a new button"*
+- **Notes:** *"notes needs a new button"*. A note can be as long as you like and can pause in the middle: everything you say after **notes** (or **comments**, **description**, **remarks**, **details**) goes into that cell, even column names and list words, until you say **"end note"**, **"next row"**, or start a phrase with another column's name
 - Filler like *"this next one is a…"* is ignored
 
 ## 👂 What Quill heard
@@ -68,6 +68,7 @@ A month and day with no year mean this year, or last year if that day is more th
 | Say | Quill |
 |---|---|
 | **"Cancel"** / **"Delete row"** | drops the row you're still describing |
+| **"End note"** | closes the note you're dictating (the next words are read as usual) |
 | **"Undo"** | takes back the last Term Helper answer |
 | *(saved rows)* | fix them in your spreadsheet as usual |
 

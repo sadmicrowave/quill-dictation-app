@@ -62,7 +62,7 @@ class TestDictation(ControllerCase):
         ws = self.sheet()
         self.assertEqual(
             [ws.cell(4, c).value for c in (1, 2, 3, 5, 7)],
-            ["Fern", "Small", "Bright", 12.0, "needs water"],
+            ["Fern", "Small", "Bright", 12.0, "Needs water."],
         )
         self.assertEqual(ws["F4"].value.date(), dt.date(2026, 10, 30))
         committed = [e for e in self.events if e.kind == "committed"][0]
