@@ -56,6 +56,8 @@ Edit, add or remove phrases. Quill won't let a phrase clash with *yes* or *no*, 
 
 **Settings > General > Check for Changes** is how often (5 to 600 seconds, 10 by default) Quill looks at your spreadsheet programs. It is one short check that does three things: it lists the files that are open (the Available Files list), notices when the file Quill is working on was closed (Quill lets go of it, stops listening and goes back to **Open File**), and asks which sheet is open, so rows go to the sheet you are on. Nothing is started for this: if no spreadsheet program is running, the check only looks at the list of running programs. The refresh icons in the Files panel, and pressing **Start**, check at once.
 
+**Numbers is looked at more often than this**, because it cannot tell Quill that you switched sheets: while Quill is **listening** it asks Numbers every second, and while it is only **showing a file that Numbers has open** (and its window is showing) every two seconds, so a change of sheet is followed within about two seconds. Each of those looks is tiny (about a tenth of a second), and it stops by itself when you let the file go, when Numbers does not have it, or when Quill's window is hidden or minimised.
+
 ### Open Files With
 
 **Settings > General > Open Files With** chooses the program Quill opens a spreadsheet in when you pick one that is not open yet: *Automatic* (what your computer opens that kind of file with), Numbers, LibreOffice or Excel. Every program is listed; the ones not installed on this computer are grey and last. Text Size defaults to 14. Numbers and LibreOffice show each row as Quill writes it; Excel is updated in place.

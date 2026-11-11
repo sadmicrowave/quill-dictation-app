@@ -8,6 +8,7 @@ values to a list. Subclasses supply the connection (``connect``) and a
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime as dt
 import re
@@ -99,6 +100,10 @@ class GridBridge(WorkbookBridge):
     def _require(self) -> Grid:
         """The grid as the records are read and written: swapped when the sheet runs the other way."""
         return TransposedGrid(self._raw()) if self._vertical else self._raw()
+
+    def remembering(self):
+        """See :meth:`WorkbookBridge.remembering` (the live grids remember; a file does not need to)."""
+        return self._grid.remembering() if self._grid is not None else contextlib.nullcontext()
 
     def _raw(self) -> Grid:
         """The grid as it is on the sheet (where a list's cells are, whichever way the records run)."""

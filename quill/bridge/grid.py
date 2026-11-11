@@ -11,6 +11,8 @@ value, so callers can tell computed columns from typed-in data.
 """
 
 from __future__ import annotations
+
+import contextlib
 import datetime as dt
 import sys
 from abc import ABC, abstractmethod
@@ -33,6 +35,11 @@ class Grid(ABC):
     def set_active(self, sheet: str) -> bool:
         """Make *sheet* the active one (False where that is not possible: a live program already says which is open)."""
         return False
+
+    def remembering(self):
+        """A context manager: inside it, asking the same question twice may ask the program once (a re-read of the lists and headings asks
+        about the same cells several times). Nothing to do for a grid that is already in memory."""
+        return contextlib.nullcontext()
 
     @abstractmethod
     def last_row(self, sheet: str) -> int:

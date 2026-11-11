@@ -46,6 +46,17 @@ def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | Non
     return _call("apply_chrome", None, widget, dark, colors, platform=platform, opacity=opacity, blur=blur)
 
 
+def begin_activity(reason: str, platform: str | None = None, **native):
+    """Ask the system not to slow Quill's timers (macOS App Nap) while something is being waited for; returns a token for
+    :func:`end_activity`, or None where there is nothing to hold."""
+    return _call("begin_activity", None, reason, platform=platform, **native)
+
+
+def end_activity(token, platform: str | None = None, **native) -> None:
+    """Give back what :func:`begin_activity` took."""
+    _call("end_activity", None, token, platform=platform, **native)
+
+
 def no_window_shadow(widget, platform: str | None = None) -> bool:
     """Take the operating system's shadow off a window, so a rounded, transparent one has no square edge."""
     return _call("no_window_shadow", False, widget, platform=platform)

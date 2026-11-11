@@ -786,7 +786,8 @@ class SettingsDialog:
         self._add("General", page, "Check for Changes",
                   "How often Quill looks at your spreadsheet programs, all in one check: which files are open, whether the file "
                   "it is working on was closed, and which sheet is open, so rows go to the sheet you are on (5 to 600 seconds). "
-                  "The refresh icons in the Files panel check at once.",
+                  "The refresh icons in the Files panel check at once. Numbers is looked at every two seconds (every second while "
+                  "listening) while Quill shows a file it has open.",
                   self.sheet_spin, "check changes sheet tab active file closed poll refresh interval seconds")
         self.history_spin = GuardedSpinBox()
         self.history_spin.setRange(*HISTORY_LIMIT_RANGE)

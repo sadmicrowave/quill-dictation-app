@@ -69,6 +69,8 @@ from quill.ui.chrome import (
     SYMBOL_UNDO,
     add_titlebar_button,
     apply_chrome,
+    begin_activity,
+    end_activity,
     FileDialogWarmer,
     bring_app_forward,
     refresh_chrome_soon,
@@ -215,7 +217,8 @@ class QuillApp:
         self._update_unseen = False                  # a newer version is out and the About page has not been looked at (the red dots)
         self._update_seen = ""                       # the version whose About page was looked at
         self._update_announced = ""
-        self._numbers_timer = QTimer()               # a quicker look at Numbers, only while listening (ends with the listening)
+        self._nap_hold = None                        # what macOS was asked while the quicker look runs, so App Nap does not stretch its timer
+        self._numbers_timer = QTimer()               # a quicker look at Numbers, only while it is wanted (see _numbers_look_wanted)
         self._numbers_timer.setInterval(self.NUMBERS_LOOK_MS)
         self._numbers_timer.timeout.connect(self._look_at_numbers)
         self._lo_changed_timer = QTimer()            # coalesces LibreOffice's "edited" news into one re-read
@@ -715,6 +718,24 @@ class QuillApp:
                 found.append((pathlib.Path(unquote(parsed.path)), str(info.get("sheet") or "")))
         return found
 
+    def _follow_numbers_sheet(self, url: str, sheet: str) -> bool:
+        """Numbers moved the document Quill is working in to another sheet, and said which: follow it at once. (The full look at every
+        spreadsheet program costs a second or two and would only find the same sheet; it is kept for everything else: a document
+        opened or closed, another program.) False when the news is not about this document, so the full look is taken."""
+        bridge = self.controller.bridge
+        if not self.connected or not sheet or getattr(bridge, "PROGRAM", "") != "Numbers":
+            return False
+        path = getattr(bridge, "workbook_path", "") or ""
+        if not path:
+            return False
+        from quill.platforms.macos.numbers_live import document_names     # (the names Numbers gives a document)
+        if url not in document_names(path):
+            return False
+        log.debug("following the sheet %r directly", sheet)
+        self._apply_sheet(sheet, quiet=True)
+        log.debug("followed the sheet %r", sheet)
+        return True
+
     def _wire_lo_events(self) -> None:
         """Let LibreOffice's news (from the live link's thread) reach the window's own thread through a signal."""
         if hasattr(self.hosts, "live_documents"):
@@ -727,6 +748,9 @@ class QuillApp:
     def _lo_event(self, kind: str, url: str, sheet: str) -> None:
         """LibreOffice said something happened in it (a document opened or closed, or moved to another sheet): look at once,
         instead of at the next timed look."""
+        log.debug("news from the live link: %s %r %r", kind, url, sheet)
+        if kind == "sheet" and self._follow_numbers_sheet(url, sheet):
+            return
         if kind in ("opened", "closed", "sheet"):
             self.refresh_open_files(manual=False, announce=False)
         elif kind == "changed":
@@ -1644,6 +1668,7 @@ class QuillApp:
         self._attach_live_if_open_in_libreoffice()
         self._attach_live_if_open_in_numbers()
         self._show_open_files()
+        self._sync_numbers_timer()                                      # (a file Numbers holds is looked at quickly; one it does not, no)
         for callback in thens:
             callback()
         if self._look_again is not None:
@@ -2120,6 +2145,7 @@ class QuillApp:
         diagnostics.syslog().info("Shutting down")
         self._watcher.stop()
         self._numbers_timer.stop()
+        self._release_nap()
         if self.numbers_link is not None:
             self.numbers_link.close()
         platforms.offered(sys.platform, "close_numbers_worker", lambda: None)()          # (the one kept process that asks Numbers things)
@@ -2392,23 +2418,77 @@ class QuillApp:
         label = labels.get(event.kind)
         return f"{label}: {event.detail}".rstrip(": ") if label else event.detail
 
-    #: Milliseconds between looks at Numbers while Quill is listening (the one check loop looks every few seconds otherwise).
+    #: Milliseconds between looks at Numbers while Quill is listening, and while it is only showing a file that Numbers holds. (Numbers
+    #: cannot tell anyone that its sheet changed, so Quill asks; a look costs about 0.1 s and 17 ms of CPU, so while idle it asks less
+    #: often than while listening. Otherwise the one check loop looks every ``sheet_check_seconds``.)
     NUMBERS_LOOK_MS = 1000
+    NUMBERS_IDLE_LOOK_MS = 2000
+
+    def _numbers_look_wanted(self) -> bool:
+        """Is a quicker look at Numbers worth its cost now? While listening, yes. Otherwise only while a connected file is held by Numbers
+        and Quill's window is showing (nobody sees a sheet change in a window that is hidden or minimised)."""
+        if self.numbers_link is None or self._quitting or os.environ.get("QUILL_NO_HOSTS"):
+            return False
+        if self.window.listening:
+            return True
+        bridge = self.controller.bridge
+        path = getattr(bridge, "workbook_path", "") or ""
+        widget = self.window.widget
+        showing = widget is not None and widget.isVisible() and not widget.isMinimized()
+        # Working in Numbers' own open document is the sure sign; a file Numbers merely holds (not attached yet) is found by the last look.
+        in_numbers = getattr(bridge, "PROGRAM", "") == "Numbers" or (bool(path) and self._program_holding(path) == "numbers")
+        wanted = bool(self.connected and path and showing and in_numbers)
+        if not wanted:
+            log.debug("quick look off: connected=%s path=%r showing=%s program=%r", self.connected, path, showing, getattr(bridge, "PROGRAM", ""))
+        return wanted
+
+    def _sync_numbers_timer(self) -> None:
+        """Start, retime or stop the quicker look at Numbers to match :meth:`_numbers_look_wanted`. It stops by itself the moment nothing
+        calls for it (the file is let go, Numbers does not hold it, the window is hidden)."""
+        if not self._numbers_look_wanted():
+            self._numbers_timer.stop()
+            self._release_nap()
+            return
+        interval = self.NUMBERS_LOOK_MS if self.window.listening else self.NUMBERS_IDLE_LOOK_MS
+        if self._numbers_timer.interval() != interval:
+            self._numbers_timer.setInterval(interval)
+        if not self._numbers_timer.isActive():
+            self._numbers_timer.start()
+        if self._nap_hold is None:                       # (macOS stretches the timers of an app whose windows are covered: 2 s became 21 s)
+            self._nap_hold = begin_activity("Quill follows the sheet that is open in Numbers")
+
+    def _release_nap(self) -> None:
+        """Let macOS nap Quill again (nothing is waiting for the quicker look)."""
+        if self._nap_hold is not None:
+            end_activity(self._nap_hold)
+            self._nap_hold = None
 
     def _look_at_numbers(self) -> None:
-        """The quick look while listening: one small question to Numbers, off the window's thread, and only if it runs."""
-        if self.numbers_link is None or self._quitting:
+        """The quick look: one small question to Numbers, off the window's thread, and only while one is wanted."""
+        if not self._numbers_look_wanted():
             self._numbers_timer.stop()
+            self._release_nap()
             return
-        self.run_in_background(lambda: self.numbers_link.look(deep=False), lambda _: None)
+        log.debug("quick look at Numbers")
+        names = self._numbers_document_names()
+        if names:                                              # (the document in use: ask only which sheet it shows)
+            self.run_in_background(lambda: self.numbers_link.look_sheet(names), lambda _: None)
+        else:
+            self.run_in_background(lambda: self.numbers_link.look(deep=False), lambda _: None)
+
+    def _numbers_document_names(self) -> list[str]:
+        """The names Numbers gives the document Quill is working in (empty when Quill is not working in a Numbers document)."""
+        bridge = self.controller.bridge
+        path = getattr(bridge, "workbook_path", "") or ""
+        if not path or getattr(bridge, "PROGRAM", "") != "Numbers":
+            return []
+        from quill.platforms.macos.numbers_live import document_names     # (the names Numbers gives a document)
+        return document_names(path)
 
     def _set_listening(self, active: bool) -> None:
-        if active and self.numbers_link is not None and not os.environ.get("QUILL_NO_HOSTS"):
-            self._numbers_timer.start()
-        else:
-            self._numbers_timer.stop()
+        self.window.set_listening_indicator(active)                  # (first: the quicker look depends on whether it is listening)
+        self._sync_numbers_timer()
         self.request_menu_sync()
-        self.window.set_listening_indicator(active)
         self.tray.set_listening(active)
         self._restart_quiet_timer()
 

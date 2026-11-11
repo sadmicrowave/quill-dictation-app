@@ -45,6 +45,40 @@ def apply_chrome(widget, dark: bool, colors: dict[str, str], platform: str | Non
     return None
 
 
+def begin_activity(reason: str, platform: str | None = None, foundation=None):
+    """Tell macOS that Quill is doing something somebody is waiting for, so App Nap does not stretch its timers.
+
+    App Nap slows the timers of an app whose windows are covered (a 2-second timer fired every 21 seconds while Quill sat behind Numbers).
+    Hold this only while the work is wanted and give it back with :func:`end_activity`. The Mac may still sleep when idle.
+
+    Returns:
+        A token for :func:`end_activity`, or None (another system, a headless run, no PyObjC).
+    """
+    platform = platform or sys.platform
+    try:
+        if platform != "darwin" or not _native_platform(platform):
+            return None
+        if foundation is None:
+            import Foundation as foundation                 # noqa: F811 (PyObjC, optional)
+        options = foundation.NSActivityUserInitiatedAllowingIdleSystemSleep
+        return foundation.NSProcessInfo.processInfo().beginActivityWithOptions_reason_(options, reason)
+    except Exception:
+        return None
+
+
+def end_activity(token, platform: str | None = None, foundation=None) -> None:
+    """Give back what :func:`begin_activity` took (macOS may nap Quill again)."""
+    platform = platform or sys.platform
+    try:
+        if token is None or platform != "darwin" or not _native_platform(platform):
+            return
+        if foundation is None:
+            import Foundation as foundation                 # noqa: F811
+        foundation.NSProcessInfo.processInfo().endActivity_(token)
+    except Exception:
+        pass
+
+
 def no_window_shadow(widget, platform: str | None = None) -> bool:
     """Take the operating system's shadow off a (macOS) window, so a rounded, transparent one has no square edge."""
     platform = platform or sys.platform

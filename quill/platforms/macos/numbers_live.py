@@ -115,9 +115,19 @@ function block(table, top, left, rows, cols) {
 // How far the data reaches: the last row and the last column that hold anything, over EVERY column (headings may run far to the right and
 // a column further right may be taller than the first ones: looking at a few columns put a new record on top of what was there).
 function usedSize(table) {
-  const colCount = Math.min(table.columnCount(), 200);
+  const rowCount = table.rowCount(), colCount = Math.min(table.columnCount(), 200);
   let rows = 0, cols = 0;
-  for (let c = 1; c <= colCount; c++) {
+  if (rowCount * colCount <= 20000) {                                   // a table of an ordinary size: one question for the whole of it
+    const flat = table.ranges["A1:" + letters(colCount) + rowCount].cells.value();
+    for (let i = 0; i < flat.length; i++) {
+      if (flat[i] !== null && flat[i] !== "") {
+        rows = Math.max(rows, Math.floor(i / colCount) + 1);
+        cols = Math.max(cols, (i % colCount) + 1);
+      }
+    }
+    return {rows: rows, cols: cols};
+  }
+  for (let c = 1; c <= colCount; c++) {                                  // a big one: a column at a time
     const column = table.columns[c - 1].cells.value();
     for (let r = column.length - 1; r >= 0; r--) {
       if (column[r] !== null && column[r] !== "") { rows = Math.max(rows, r + 1); cols = c; break; }
@@ -241,6 +251,11 @@ function handle(command, args) {
   }
   const doc = findDocument(app, args.urls || []);
   if (doc === null) return JSON.stringify({ok: false, error: "nodoc"});
+  if (command === "sheet") {                                                      // the one thing a quick look needs: which sheet this document shows
+    let name = "";
+    try { name = doc.activeSheet().name(); } catch (e) {}
+    return JSON.stringify({ok: true, sheet: name});
+  }
   if (command === "used") {
     const size = usedSize(tableOf(doc, args.sheet));
     return JSON.stringify({ok: true, rows: size.rows, cols: size.cols});
@@ -605,6 +620,31 @@ class NumbersLink:
             return
         try:
             self._look(deep)
+        finally:
+            self._looking.release()
+
+    def look_sheet(self, urls: list[str]) -> None:
+        """A much smaller look than :meth:`look`: only which sheet the document called any of *urls* shows now, and the news if it changed
+        (a quarter of the work: the full quick look asks about every open document). A document that is not there says nothing here: the
+        general look finds it opened or closed. Does nothing if Numbers is not running or another look is under way."""
+        if os.environ.get("QUILL_NO_HOSTS") or not self._looking.acquire(blocking=False):
+            return
+        try:
+            if not self._running():
+                return
+            doc = self.find(urls)
+            if doc is None:
+                return
+            answer = self.request("sheet", timeout=ASK_TIMEOUT_S, urls=urls)
+            if answer is None or not answer.get("ok") or not answer.get("sheet"):
+                return
+            with self._lock:
+                now = {key: dict(value) for key, value in self.docs.items()}
+            for key, value in now.items():
+                if value is doc or value.get("url") == doc.get("url"):
+                    value["sheet"] = answer["sheet"]
+            if now != self.docs:
+                self._news(now)
         finally:
             self._looking.release()
 

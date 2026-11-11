@@ -746,3 +746,237 @@ class TestNewCellsAreLeftEmpty(unittest.TestCase):
     def test_a_sheet_without_pop_ups_is_not_affected(self):
         done = run_steps(self.book(popups=False), [self.write((1, 3, "Dress")), self.read(1, 3, 3, 1)])
         self.assertEqual([row[0] for row in done[1]["cells"]], ["Dress", None, None])
+
+
+class TestARereadAsksNumbersEachThingOnce(unittest.TestCase):
+    """Found by counting the asks: after a sheet change Quill re-read the lists and headings with 13 questions to Numbers (the used size six
+    times, a fifth of a second each), which kept the window waiting 2.3 s. Inside a re-read the same question is asked once."""
+
+    def grid(self):
+        from quill.bridge.libreoffice_bridge import LibreOfficeGrid
+        asked = []
+
+        class Doc:
+            def ask(self_inner, command, **fields):
+                asked.append((command, tuple(sorted(fields.items()))))
+                return {"rows": 7, "cols": 4, "cells": [[1]]}
+
+            def info(self_inner):
+                return {}
+        return LibreOfficeGrid(Doc()), asked
+
+    def test_the_same_question_inside_the_block_is_asked_once(self):
+        grid, asked = self.grid()
+        with grid.remembering():
+            self.assertEqual([grid.last_row("Data"), grid.last_col("Data"), grid.last_row("Data"), grid.last_col("Data")], [7, 4, 7, 4])
+            grid.read("Data", 1, 1, 1, 1)
+            grid.read("Data", 1, 1, 1, 1)
+        self.assertEqual(len(asked), 2)                                         # one "used", one "read"
+
+    def test_outside_the_block_every_question_is_asked(self):
+        grid, asked = self.grid()
+        grid.last_row("Data")
+        grid.last_row("Data")
+        self.assertEqual(len(asked), 2)
+
+    def test_a_different_sheet_is_a_different_question_and_blocks_of_one_sheet_share_one_read(self):
+        grid, asked = self.grid()
+        with grid.remembering():
+            grid.last_row("Data")
+            grid.last_row("Config")
+            grid.read("Data", 1, 1, 1, 1)
+            grid.read("Data", 2, 1, 1, 1)
+        self.assertEqual([c for c, _ in asked], ["used", "used", "read"])        # (the used size of each sheet; the two blocks come from one whole read)
+
+    def test_a_write_makes_it_forget_so_nothing_stale_is_ever_used(self):
+        grid, asked = self.grid()
+        with grid.remembering():
+            grid.last_row("Data")
+            grid.write("Data", 8, 1, "x")
+            grid.last_row("Data")
+        self.assertEqual([c for c, _ in asked], ["used", "apply", "used"])
+
+    def test_nothing_is_remembered_after_the_block(self):
+        grid, asked = self.grid()
+        with grid.remembering():
+            grid.last_row("Data")
+        grid.last_row("Data")
+        self.assertEqual(len(asked), 2)
+
+    def test_blocks_inside_blocks_share_one_memory(self):
+        grid, asked = self.grid()
+        with grid.remembering():
+            grid.last_row("Data")
+            with grid.remembering():
+                grid.last_row("Data")
+            grid.last_row("Data")
+        self.assertEqual(len(asked), 1)
+
+    def test_a_reload_of_the_vocabulary_uses_it(self):
+        """The controller re-reads inside the block (a bridge without the method is read as before)."""
+        from quill.controller import Controller
+        entered = []
+
+        class Bridge:
+            def remembering(self_inner):
+                import contextlib
+
+                @contextlib.contextmanager
+                def block():
+                    entered.append("in")
+                    yield
+                    entered.append("out")
+                return block()
+        controller = Controller.__new__(Controller)
+        controller.bridge = Bridge()
+        controller.vocab = mock.MagicMock()
+        controller.on_columns = lambda columns: None
+        controller._apply_aliases = controller._apply_learning = lambda: None
+        controller.bridge.get_lists = lambda: {}
+        controller.bridge.get_headers = lambda: ["A"]
+        controller.bridge.numeric_columns = controller.bridge.date_columns = lambda: set()
+        controller.bridge.active_sheet_name = lambda: "Data"
+        Controller.reload_vocab(controller)
+        self.assertEqual(entered, ["in", "out"])
+
+
+class TestWholeSheetReadsInsideARereread(unittest.TestCase):
+    """Inside a re-read the lists are read block by block (seven asks to Numbers, 150 ms each): the used area of a sheet is asked for once and
+    the blocks are cut from it. It must give exactly what asking block by block gives."""
+
+    DATA = [["Category", "Gender", None, "Size"], ["T-Shirt", "Men", None, "S"], ["Jacket", None, None, "M"], [None, None, None, None],
+            ["Dress", "Women", None, {"d": "2026-03-04T00:00:00"}]]
+
+    def grid(self, data=None):
+        from quill.bridge.libreoffice_bridge import LibreOfficeGrid
+        data = self.DATA if data is None else data
+        asked = []
+
+        class Doc:
+            def ask(self_inner, command, **f):
+                asked.append(command)
+                if command == "used":
+                    rows = max((r + 1 for r, row in enumerate(data) if any(v is not None for v in row)), default=0)
+                    cols = max((c + 1 for row in data for c, v in enumerate(row) if v is not None), default=0)
+                    return {"rows": rows, "cols": cols}
+                if command == "read":
+                    top, left, rows, cols = f["top"], f["left"], f["rows"], f["cols"]
+                    return {"cells": [[data[r - 1][c - 1] if 0 < r <= len(data) and 0 < c <= len(data[0]) else None
+                                       for c in range(left, left + cols)] for r in range(top, top + rows)]}
+                return {}
+
+            def info(self_inner):
+                return {}
+        return LibreOfficeGrid(Doc()), asked
+
+    def test_every_block_is_the_same_as_asking_for_it_directly(self):
+        direct, _ = self.grid()
+        remembered, _ = self.grid()
+        blocks = [(1, 1, 5, 4), (2, 1, 1, 1), (1, 4, 5, 1), (3, 2, 2, 2), (4, 1, 3, 6), (6, 1, 2, 2), (1, 7, 2, 2), (5, 4, 1, 1), (1, 1, 1, 4)]
+        with remembered.remembering():
+            for block in blocks:
+                self.assertEqual(remembered.read("S", *block), direct.read("S", *block), block)
+
+    def test_many_blocks_cost_two_asks(self):
+        grid, asked = self.grid()
+        with grid.remembering():
+            for block in ((1, 1, 5, 4), (2, 1, 3, 1), (1, 4, 5, 1), (3, 2, 2, 2)):
+                grid.read("S", *block)
+            grid.last_row("S")
+        self.assertEqual(asked, ["used", "read"])
+
+    def test_dates_still_come_back_as_dates(self):
+        import datetime as dt
+        grid, _ = self.grid()
+        with grid.remembering():
+            self.assertEqual(grid.read("S", 5, 4, 1, 1), [[dt.datetime(2026, 3, 4)]])
+
+    def test_an_empty_sheet_reads_as_empty_cells(self):
+        grid, asked = self.grid([[None, None], [None, None]])
+        with grid.remembering():
+            self.assertEqual(grid.read("S", 1, 1, 2, 2), [[None, None], [None, None]])
+
+    def test_a_sheet_too_big_to_read_whole_is_read_by_blocks_as_before(self):
+        grid, asked = self.grid()
+        grid.WHOLE_SHEET_CELLS = 5
+        with grid.remembering():
+            grid.read("S", 1, 1, 2, 2)
+            grid.read("S", 3, 1, 2, 2)
+        self.assertEqual(asked.count("read"), 2)
+
+    def test_outside_the_block_nothing_is_read_whole(self):
+        grid, asked = self.grid()
+        grid.read("S", 1, 1, 2, 2)
+        self.assertEqual(asked, ["read"])
+
+
+@unittest.skipUnless(NODE, "needs node")
+class TestTheSheetQuestion(unittest.TestCase):
+    """The quick look at an open document asks only which sheet it shows (the full quick look asks about every open document)."""
+
+    def test_it_answers_the_open_sheet_of_the_named_document(self):
+        answer = run_script(a_book(active=1), "sheet", {"urls": ["Plants", "Plants.numbers"]})
+        self.assertEqual(answer, {"ok": True, "sheet": "Config"})
+
+    def test_a_document_that_is_not_open_says_so(self):
+        self.assertEqual(run_script(a_book(), "sheet", {"urls": ["Other"]}), {"ok": False, "error": "nodoc"})
+
+
+class TestLookingAtOnlyTheSheet(unittest.TestCase):
+    def setUp(self):
+        patch = mock.patch.dict(os.environ)
+        patch.start()
+        self.addCleanup(patch.stop)
+        os.environ.pop("QUILL_NO_HOSTS", None)
+        self.events = []
+        self.runner = FakeRunner([])
+        self.running = True
+        self.link = NumbersLink(on_event=lambda *a: self.events.append(a), runner=self.runner, running=lambda: self.running)
+        self.runner.answers.append(state({}))                      # (one document, "Plants", on its sheet "Data")
+        self.link.look()                                          # (the document is known: the news starts from here)
+        self.events.clear()
+        self.runner.calls.clear()
+
+    def sheet(self, answer):
+        self.runner.answers.append(answer)
+        self.link.look_sheet(["Plants", "Plants.numbers"])
+
+    def test_a_new_sheet_is_news_once_and_is_remembered(self):
+        self.sheet({"ok": True, "sheet": "Config"})
+        self.assertEqual(self.events, [("sheet", "Plants", "Config")])
+        self.assertEqual(self.link.find(["Plants"])["sheet"], "Config")
+        self.sheet({"ok": True, "sheet": "Config"})
+        self.assertEqual(len(self.events), 1)
+
+    def test_the_same_sheet_is_no_news(self):
+        self.sheet({"ok": True, "sheet": "Data"})
+        self.assertEqual(self.events, [])
+
+    def test_it_asks_one_small_question(self):
+        self.sheet({"ok": True, "sheet": "Data"})
+        self.assertEqual(len(self.runner.calls), 1)
+        self.assertIn("sheet", self.runner.calls[0])
+        self.assertNotIn("state", self.runner.calls[0])
+
+    def test_a_document_it_does_not_know_asks_nothing(self):
+        self.link.look_sheet(["Never heard of it"])
+        self.assertEqual(self.runner.calls, [])
+
+    def test_numbers_not_running_asks_nothing(self):
+        self.running = False
+        self.sheet({"ok": True, "sheet": "Config"})
+        self.assertEqual(self.runner.calls, [])
+        self.assertEqual(self.events, [])
+
+    def test_a_failed_answer_is_no_news_and_no_error(self):
+        for answer in ({"ok": False, "error": "nodoc"}, {"ok": True, "sheet": ""}, None):
+            self.sheet(answer)
+        self.assertEqual(self.events, [])
+
+    def test_other_documents_are_left_as_they_were(self):
+        self.runner.answers.append(state({"url": "Plants"}, {"url": "Orders", "sheet": "Q1", "sheets": ["Q1"]}))
+        self.link.look()
+        self.events.clear()
+        self.sheet({"ok": True, "sheet": "Config"})
+        self.assertEqual(self.link.find(["Orders"])["sheet"], "Q1")
+        self.assertEqual(self.events, [("sheet", "Plants", "Config")])

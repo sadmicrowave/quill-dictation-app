@@ -15,6 +15,7 @@ does not touch the file while LibreOffice has it open.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import pathlib
 from typing import Callable
@@ -81,6 +82,28 @@ class LibreOfficeGrid(Grid):
     def __init__(self, document: LiveDocument) -> None:
         self._doc = document
         self._hidden: dict[str, list[int]] = {}               # rows a search hid, per sheet, so that clearing it shows them again
+        self._memo: dict | None = None                        # the answers to questions already asked inside :meth:`remembering`
+
+    @contextlib.contextmanager
+    def remembering(self):
+        """Inside the block the same question is asked of the program once, and any write forgets what was remembered. A re-read of the
+        lists and headings after a sheet change asked for the used size six times (a fifth of a second each) and for headings twice."""
+        outer = self._memo is not None
+        if not outer:
+            self._memo = {}
+        try:
+            yield
+        finally:
+            if not outer:
+                self._memo = None
+
+    def _ask_once(self, key: tuple, command: str, **fields) -> dict:
+        if self._memo is not None and key in self._memo:
+            return self._memo[key]
+        answer = self._doc.ask(command, **fields)
+        if self._memo is not None:
+            self._memo[key] = answer
+        return answer
 
     def sheet_names(self) -> list[str]:
         return list(self._doc.info().get("sheets") or [])
@@ -92,18 +115,40 @@ class LibreOfficeGrid(Grid):
         return False                                              # LibreOffice says which sheet is open; Quill never moves the user
 
     def last_row(self, sheet: str) -> int:
-        return int(self._doc.ask("used", sheet=sheet)["rows"])
+        return int(self._ask_once(("used", sheet), "used", sheet=sheet)["rows"])
 
     def last_col(self, sheet: str) -> int:
-        return int(self._doc.ask("used", sheet=sheet)["cols"])
+        return int(self._ask_once(("used", sheet), "used", sheet=sheet)["cols"])
+
+    #: The most cells of a sheet read whole inside :meth:`remembering` (a bigger sheet is read a block at a time, as outside it).
+    WHOLE_SHEET_CELLS = 20000
+
+    def _whole_sheet(self, sheet: str) -> list[list[object]] | None:
+        """Inside :meth:`remembering`: every used cell of *sheet*, asked of the program once (None: too big, or empty)."""
+        key = ("whole", sheet)
+        if key not in self._memo:
+            rows, cols = int(self._ask_once(("used", sheet), "used", sheet=sheet)["rows"]), int(self._ask_once(("used", sheet), "used", sheet=sheet)["cols"])
+            whole = None
+            if rows > 0 and cols > 0 and rows * cols <= self.WHOLE_SHEET_CELLS:
+                whole = self._doc.ask("read", sheet=sheet, top=1, left=1, rows=rows, cols=cols)["cells"]
+            self._memo[key] = whole
+        return self._memo[key]
 
     def read(self, sheet: str, top: int, left: int, rows: int, cols: int) -> list[list[object]]:
         if rows <= 0 or cols <= 0:
             return []
-        block = self._doc.ask("read", sheet=sheet, top=top, left=left, rows=rows, cols=cols)["cells"]
+        if self._memo is not None:
+            whole = self._whole_sheet(sheet)
+            if whole is not None:                                  # (a re-read asks about many blocks of the same sheet: ask once for all of it)
+                height, width = len(whole), len(whole[0]) if whole else 0
+                return [[_plain(whole[top - 1 + r][left - 1 + c]) if 0 <= top - 1 + r < height and 0 <= left - 1 + c < width else None
+                         for c in range(cols)] for r in range(rows)]
+        block = self._ask_once(("read", sheet, top, left, rows, cols), "read", sheet=sheet, top=top, left=left, rows=rows, cols=cols)["cells"]
         return [[_plain(value) for value in row] for row in block]
 
     def write(self, sheet: str, row: int, col: int, value: object) -> None:
+        if self._memo is not None:
+            self._memo.clear()                                # (what was remembered is out of date now)
         self._doc.ask("apply", changes=[change_fields(sheet, row, col, value)])
 
     # Searching: rows that do not match are hidden (and shown again when the search is cleared).

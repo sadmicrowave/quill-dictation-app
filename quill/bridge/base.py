@@ -11,6 +11,7 @@ Use bridge.factory.get_bridge() to obtain the right one at runtime.
 
 from __future__ import annotations
 
+import contextlib
 from abc import ABC, abstractmethod
 
 from quill.bridge.filters import ColumnFilter
@@ -68,6 +69,11 @@ class WorkbookBridge(ABC):
 
         Only a bridge that edits a file keeps them (so a program showing the file can be shown the same cells)."""
         return []
+
+    def remembering(self):
+        """A context manager: inside it, asking the workbook the same thing twice may ask the spreadsheet program once (used around a re-read of
+        the lists and headings). Nothing to do for a bridge that reads a file."""
+        return contextlib.nullcontext()
 
     def select_record(self, sheet_name: str, number: int) -> None:
         """Put the spreadsheet's cursor on record *number* (a row; a column when the headings run down). Best effort."""

@@ -184,13 +184,14 @@ class Controller:
 
     def reload_vocab(self) -> None:
         """Re-read lists and headers (after a refresh or a sheet change)."""
-        self.vocab.load(self.bridge.get_lists(), self.bridge.get_headers())
-        self.vocab.numeric_columns = self.bridge.numeric_columns()
-        self.vocab.date_columns = self.bridge.date_columns()
-        self._apply_aliases()
-        self._apply_learning()
-        self._sheet = self.bridge.active_sheet_name()
-        self.sheet_headers = list(self.bridge.get_headers())
+        with getattr(self.bridge, "remembering", contextlib.nullcontext)():     # (the same cells are asked about several times: ask the program once)
+            self.vocab.load(self.bridge.get_lists(), self.bridge.get_headers())
+            self.vocab.numeric_columns = self.bridge.numeric_columns()
+            self.vocab.date_columns = self.bridge.date_columns()
+            self._apply_aliases()
+            self._apply_learning()
+            self._sheet = self.bridge.active_sheet_name()
+            self.sheet_headers = list(self.bridge.get_headers())
         self.on_columns(list(self.sheet_headers))
 
     # ------------------------------------------------------------------ #
