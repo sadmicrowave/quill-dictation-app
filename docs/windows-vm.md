@@ -35,19 +35,47 @@ The Windows 10 evaluation is no longer offered (its page redirects to Windows 11
 6. Optional, for the Excel tests: install Excel (Microsoft 365 trial) or LibreOffice (`winget install TheDocumentFoundation.LibreOffice`).
 7. **Shut down and take a snapshot called "clean"** (Virtual Machine > Snapshots).
 
+## The shared folder (the everyday way)
+
+A Windows program can only be built on Windows, so the Mac cannot drop a finished `Quill.exe` into a folder. What it can share is the **code**: the VM builds or runs it from there, with no commit, push, GitHub download or zip. Edit on the Mac, sync, run.
+
+One-time setup:
+
+1. On the Mac: `tools/windows-vm/sync-to-share.sh` (it makes `~/Developer/QuillShare/src` and `.../out`; the repository and its `.git` are never shared, only this copy).
+2. Fusion, VM shut down or running: **Virtual Machine > Settings > Sharing**: tick **Enable Shared Folders**, **+**, choose `~/Developer/QuillShare`, **Read & Write**. (VMware Tools must be installed in Windows. macOS may ask to let Fusion see the folder.)
+3. In the VM the folder is `\\vmware-host\Shared Folders\QuillShare` (Explorer > Network > vmware-host). Open `src\tools\windows-vm` there.
+4. Install Python once: `winget install -e --id Python.Python.3.13`, then open a new PowerShell.
+
+Every change:
+
+| On the Mac | In the VM (double-click in `QuillShare\src\tools\windows-vm`) | You get |
+|---|---|---|
+| `tools/windows-vm/sync-to-share.sh` | **Run Quill from source.bat** | Quill running as plain Python, seconds after the sync (the first run makes the Python environment and installs the requirements; later runs only when `requirements.txt` changes). `-SelfTest` runs the self-check instead. |
+| `tools/windows-vm/sync-to-share.sh` | **Build Quill exe.bat** | The packaged `Quill.exe`, built like the release (PyInstaller), self-checked and started. A copy and the report land in `QuillShare\out` (`~/Developer/QuillShare/out` on the Mac). |
+
+- **From source** is the quick loop for layout and behaviour. **The built exe** is what finds packaging problems (a missing data file, a different startup path): build it before saying a change is done.
+- The build is stamped *"<commit> + local changes on <branch> (shared folder)"*, so the self-check report shows exactly what was tried.
+- The Python environment and the working copy live in `C:\QuillTest` inside the VM (running from the share is slow and Python's files do not belong there).
+- To use another shared folder, give the Mac script its path and set `QUILL_SHARE` in the VM to the share's Windows path.
+
+## The GitHub build (to check what CI makes)
+
+The shared-folder build is built by you; the CI dev build is built the way the release will be. To try that one, run in the VM:
+
+```powershell
+.\Get-QuillDevBuild.ps1 -Start          # newest green dev build of develop, self-check, start it
+.\Get-QuillDevBuild.ps1 -Branch fix/windows-chrome -Start   # a branch (it needs a dev build first:
+                                                            #   gh workflow run "dev build" --ref fix/windows-chrome)
+```
+
+(It needs the one-time `winget install --id GitHub.cli` and `gh auth login`.)
+
 ## Every test
 
 1. Start the VM from "clean" (or revert to it).
-2. Run the script from `tools\windows-vm`:
-
-   ```powershell
-   .\Get-QuillDevBuild.ps1 -Start          # newest green dev build of develop, self-check, start it
-   .\Get-QuillDevBuild.ps1 -Branch fix/windows-chrome -Start   # a branch (it needs a dev build first:
-                                                               #   gh workflow run "dev build" --ref fix/windows-chrome)
-   ```
-
-3. Look at the window, try the things the change touched; **Win+Shift+S** takes a screenshot (it lands in the VM's Pictures folder; drag it to the Mac, or use a shared folder).
-4. Revert to "clean" when done.
+2. Sync from the Mac and double-click the .bat for what you want to try (above).
+3. Look at the window, try the things the change touched; **Win+Shift+S** takes a screenshot (it lands in the VM's Pictures folder; save it into the shared `out` folder and it is on the Mac).
+4. Revert to "clean" when done (the Python environment is rebuilt in a few minutes, or take the snapshot *after* the first successful run to keep it).
 
 With the VM window open on the Mac, Claude can also look at it and drive it through computer use (an approval is asked for VMware Fusion).
 
