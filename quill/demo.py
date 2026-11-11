@@ -39,8 +39,12 @@ def demo_requested(flag: bool = False) -> bool:
     return flag or os.environ.get("QUILL_DEMO", "").lower() in ("1", "true", "yes", "on")
 
 
-def make_demo_workbook(folder: pathlib.Path | None = None) -> pathlib.Path:
-    """Write the sample workbook (an Inventory sheet with a few finished rows, and a Config sheet of lists)."""
+def make_demo_workbook(folder: pathlib.Path | None = None, blank_sheet: bool | None = None) -> pathlib.Path:
+    """Write the sample workbook (an Inventory sheet with a few finished rows, and a Config sheet of lists).
+
+    With *blank_sheet* (or ``QUILL_DEMO_BLANK_SHEET=1``) a third, empty sheet called **Blank** is added: the on-screen test run
+    (``docs/onscreen-journeys.md``) uses it to see what Quill does with a sheet that has no column headings.
+    """
     folder = pathlib.Path(folder) if folder else pathlib.Path(tempfile.mkdtemp(prefix="quill-demo-"))
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / "Demo Inventory.xlsx"
@@ -83,6 +87,8 @@ def make_demo_workbook(folder: pathlib.Path | None = None) -> pathlib.Path:
     for index, name in enumerate(HEADERS, start=1):
         inventory.column_dimensions[get_column_letter(index)].width = 26 if name == "Notes" else (16 if "Date" in name or "Price" in name else 13)
     inventory.row_dimensions[1].height = 24
+    if blank_sheet or (blank_sheet is None and os.environ.get("QUILL_DEMO_BLANK_SHEET", "").lower() in ("1", "true", "yes", "on")):
+        wb.create_sheet("Blank")
     wb.save(path)
     return path
 

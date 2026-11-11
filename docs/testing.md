@@ -48,19 +48,21 @@ counting terms a deleted row had taken with it, stale lines in the grid after th
 4. If the outside world was involved (a program, a file, a window), model it in a stand-in with state, not a canned reply, and
    assert what is left behind afterwards.
 
+## What a full test is
+
+**A full test is two parts, and a release is not tested until both have run:**
+
+1. `pytest --full`: the unit tests, the headless journeys and the random walks.
+2. The **on-screen journeys**: [docs/onscreen-journeys.md](onscreen-journeys.md). They need a real screen, the packaged app and a
+   real Numbers, so Claude runs them with computer control (the first run of a session asks you for access to Quill and
+   Numbers, and for full-screen control for the clicks). `sh tools/onscreen_setup.sh` prepares the machine; the result is written to
+   `docs/test-runs/onscreen-YYYY-MM-DD.md`, one row per journey: passed, failed, or not run with the reason.
+
+`pytest` cannot start part 2: screen control is a tool of the Claude session, not something a test runner or CI can call. So part 2
+runs when a person asks Claude for a "full test" (the project skill `full-test` does both parts in order), and never in CI.
+What the on-screen pass cannot do (speak into a microphone, download a fresh release) is listed in the report as *not run*,
+never as passed.
+
 ## On-screen journeys
 
-These need a real screen and the packaged app (`sh tools/build_mac.sh`), so they are run by hand or with computer control, not in
-CI. Each one is a journey from the list above, checked for what the headless run cannot see. Run them before a release; the demo
-mode (`QUILL_DEMO_*`, see `quill/demo.py`) can speak the phrases.
-
-| # | Journey | Look for |
-|---|---|---|
-| S1 | Open a spreadsheet, connect, press Start, speak a row, say next row | Columns ease in muted; heard column un-mutes and slides to the top; value pill appears as you speak; grid resets after saving |
-| S2 | Say a sentence with two unknown words, stop, answer both in the Term Helper, close it | The file is open **once** in Numbers (Window menu); the grid shows the answered values; heard words and grid stay together |
-| S3 | Open a blank sheet | The message and both links are visible, the links open the Files panel and the File Settings overlay |
-| S4 | Close the file in its program | Gear muted, grid hint returns, unsaved row discarded with one log line |
-| S5 | Change Headings Row on one sheet, switch sheets and back | Each sheet remembers its own |
-| S6 | Light and dark themes, opacity and blur extremes, mini view | Muted and normal text are clearly different; nothing cut off |
-| S7 | Settings > Words To Skip | Add, search, remove; the list looks like Learned Words |
-| S8 | First launch of a fresh download | The first-run warnings are as the README says |
+Eight journeys, S1 to S8, with how each is driven and what counts as a pass, are in [onscreen-journeys.md](onscreen-journeys.md).

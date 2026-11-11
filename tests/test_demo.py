@@ -14,6 +14,20 @@ _app = QApplication.instance() or QApplication([])
 
 
 class TestDemoWorkbook(unittest.TestCase):
+    def test_a_blank_sheet_is_added_only_when_asked_for(self):
+        import os
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            plain = openpyxl.load_workbook(make_demo_workbook(pathlib.Path(tmp) / "a"))
+            self.assertEqual(plain.sheetnames, ["Inventory", "Config"])
+            asked = openpyxl.load_workbook(make_demo_workbook(pathlib.Path(tmp) / "b", blank_sheet=True))
+            self.assertEqual(asked.sheetnames, ["Inventory", "Config", "Blank"])
+            self.assertEqual(asked["Blank"].max_row, 1)
+            self.assertIsNone(asked["Blank"]["A1"].value)
+            with mock.patch.dict(os.environ, {"QUILL_DEMO_BLANK_SHEET": "1"}):
+                again = openpyxl.load_workbook(make_demo_workbook(pathlib.Path(tmp) / "c"))
+            self.assertIn("Blank", again.sheetnames)
+
     def test_workbook_has_rows_and_lists(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = make_demo_workbook(pathlib.Path(tmp))
