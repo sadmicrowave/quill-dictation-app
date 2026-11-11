@@ -1,15 +1,11 @@
 """Finding and starting the spreadsheet programs on Windows (what ``quill.bridge.hosts.SpreadsheetHosts`` asks of a provider).
 
-STUB, to be finished and tested on a Windows machine. What exists is a straight move of what ``hosts.py`` did for Windows
-before it was split out: the process list from ``tasklist``, the files named on a program's command line through ``wmic``,
-installed-program checks in Program Files, and ``os.startfile`` to open a file.
+The process list comes from ``tasklist``; the files a program was started with come from its command line, asked of PowerShell
+(``Get-CimInstance Win32_Process``) first and of ``wmic`` only when PowerShell gives nothing (newer Windows builds no longer ship
+``wmic``). Installed-program checks look in Program Files; ``os.startfile`` opens a file.
 
-To do here:
-  1. Ask for command lines with PowerShell (``Get-CimInstance Win32_Process -Filter "name='soffice.exe'"``) and fall back to
-     ``wmic`` only when PowerShell is unavailable (newer Windows 11 builds no longer ship ``wmic``).
-  2. Add the "files the program holds open" step that ``lsof`` gives on a Mac: LibreOffice and WPS write a lock file beside every
-     open document (``.~lock.<name>#`` for LibreOffice), which can be listed without any permission.
-  3. Tests with a fake runner, as the Mac ones have, and the Windows rows of the end-to-end checklist.
+Not done: a file opened *inside* a running LibreOffice or WPS (File > Open) is on no command line. LibreOffice's own link
+(``quill.bridge.libreoffice_live``) answers for it while that link is up.
 """
 
 from __future__ import annotations
@@ -41,11 +37,19 @@ def launch(path, program: str = "auto") -> bool:
     return True
 
 
+def command_lines(process: str, run) -> str:
+    """The command lines of every running *process* (an image name from :data:`PROCESS_NAMES`), one per line; '' when none or unknown."""
+    if not process:
+        return ""
+    query = f"Get-CimInstance Win32_Process -Filter \"name='{process}'\" | ForEach-Object {{ $_.CommandLine }}"
+    out = run(["powershell", "-NoProfile", "-NonInteractive", "-Command", query])
+    return out if out.strip() else run(["wmic", "process", "where", f"name='{process}'", "get", "commandline"])
+
+
 def documents(app, run) -> list[tuple[pathlib.Path, str]]:
-    """``(path, open sheet)`` of the spreadsheets *app* has open (the sheet is '' where the program does not say)."""
+    """``(path, open sheet)`` of the spreadsheets *app* was started with (the sheet is '' where the program does not say)."""
     from quill.bridge.hosts import files_named_in
-    out = run(["wmic", "process", "where", f"name='{PROCESS_NAMES.get(app.key, '')}'", "get", "commandline"])
-    return files_named_in(out)
+    return files_named_in(command_lines(PROCESS_NAMES.get(app.key, ""), run))
 
 
 class WinHosts:

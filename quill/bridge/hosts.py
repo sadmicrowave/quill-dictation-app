@@ -261,7 +261,17 @@ class SpreadsheetHosts:
         return self._os.documents(app, prefer)
 
 
+#: A Windows path in a command line: a drive (``C:\\`` or ``C:/``) or a network share (``\\\\server\\share``), up to the file type, quoted or not.
+_WINDOWS_PATH = re.compile(r'(?:[A-Za-z]:[\\/]|\\\\)[^"\n]*?\.(?:xlsx|csv|tsv)(?=["\s]|$)', re.IGNORECASE)
+
+
 def files_named_in(text: str) -> list[tuple[pathlib.Path, str]]:
-    """Spreadsheet files named in *text* (a command line or several), as ``(path, '')``."""
-    return [(pathlib.Path(m.strip('" ')), "") for m in re.findall(r'[^"\n]+\.(?:xlsx|csv|tsv)', text)
-            if m.strip('" ').startswith(("/", "~")) or re.match(r'[A-Za-z]:\\', m.strip('" '))]
+    """Spreadsheet files named in *text* (a command line or several), as ``(path, '')``: POSIX paths (quoted), and Windows
+    paths (quoted or not, any capitals in the file type)."""
+    found = [pathlib.Path(m.strip('" ')) for m in re.findall(r'[^"\n]+\.(?:xlsx|csv|tsv)', text) if m.strip('" ').startswith(("/", "~"))]
+    found += [pathlib.Path(m) for m in _WINDOWS_PATH.findall(text)]
+    unique: list[pathlib.Path] = []
+    for path in found:
+        if path not in unique:
+            unique.append(path)
+    return [(path, "") for path in unique]

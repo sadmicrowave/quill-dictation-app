@@ -301,6 +301,7 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
     NASTY = ['/a/"; do shell script "touch /tmp/pwned"; "b.xlsx', "/a/'; rm -rf ~; '.xlsx", "/a/$(touch pwned)`x`.xlsx",
              "/a/new\nline\ttab.xlsx", "/a/\\\\back.xlsx"]
 
+    @unittest.skipIf(sys.platform == "win32", "the Numbers path is a Mac one: Windows rewrites the slashes of the pretend path")
     def test_reload_never_puts_a_path_in_a_script(self):
         from tests.fake_numbers import FakeNumbers
         for path in self.NASTY:

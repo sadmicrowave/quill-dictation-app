@@ -10,6 +10,7 @@ How Quill is tested, and how a bug found by hand becomes a test that keeps it fr
 | Unit tests | `tests/test_*.py` | One piece does what it says (the parser, the session, a widget) | Every run |
 | **Journeys** | `tests/journeys/test_journeys.py` | Whole sessions a person has, through the real application, window and workbook file | `pytest --full` (and so the weekly CI run, pull requests and `main`) |
 | **Random walks** | `tests/journeys/test_random_walks.py` | Hundreds of arbitrary sessions never reach a contradictory state | `pytest --full` |
+| **Windows tests** | `tests/windows/` | The Windows provider: what `tasklist` and PowerShell say, Windows paths and names, files Excel holds, CSVs in cp1252. Most use a pretend runner and run anywhere; the `test_windows_system.py` ones, and the end of `test_windows_files.py`, ask a real Windows and run on the GitHub `windows-2025` runner | Every run (the real ones only on Windows) |
 | On-screen journeys | below | What only a real screen shows (looks, animation, real Numbers, permissions) | By hand or with computer control, on the packaged app |
 
 Unit tests are good at "this function is right". They cannot see a bug that only exists across a whole session, such as the
@@ -38,6 +39,14 @@ The random walks do the same with arbitrary sequences (start, say, go quiet, ans
 the headings row, ...) from fixed seeds, so a failure is reproducible: run `QUILL_FULL=1 pytest tests/journeys -k test_seed_17`.
 They have already found bugs nobody wrote a journey for (a row dictated for one file written into the next, the Term Helper button
 counting terms a deleted row had taken with it, stale lines in the grid after the sheet changed).
+
+## Mac and Windows
+
+A test that fakes one system's output (`ps`, `lsof`, AppleScript, POSIX paths) says so and is skipped on the other. **Every such skip has
+a counterpart**: Mac fakes in `tests/test_hosts.py` and `tests/macos/`, Windows ones in `tests/windows/`. A skip with no counterpart
+is a gap, not a decision. When a Windows behaviour can only be seen on Windows (file sharing, a real PowerShell, the profile folder),
+the test is written for it and skipped elsewhere with `skipUnless(sys.platform == "win32")`. Windows on Arm is not tested: Vosk
+publishes no Arm64 wheel, so the Arm runner cannot install Quill; the x64 build is what Arm PCs run.
 
 ## When a bug is found
 

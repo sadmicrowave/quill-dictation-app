@@ -56,6 +56,7 @@ class CsvBridge(XlsxBridge):
         self._delimiter = ","
         self._newline = "\n"
         self._bom = False
+        self._encoding = "utf-8"                  # what the file was written in (Excel on Windows still writes cp1252 for plain CSV)
         self._sheet = ""
         self._added: dict[str, list[str]] = {}          # values taught since the file was read
         self._date_format: dict[int, str] = {}          # column index -> the layout its dates use
@@ -80,8 +81,12 @@ class CsvBridge(XlsxBridge):
             self._bom = raw.startswith(b"\xef\xbb\xbf")
             try:
                 text = raw.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                text = raw.decode("latin-1")             # an older Excel export; every byte is a character
+                self._encoding = "utf-8-sig" if self._bom else "utf-8"
+            except UnicodeDecodeError:                   # an older Excel export (Windows' "CSV (Comma delimited)")
+                try:
+                    text, self._encoding = raw.decode("cp1252"), "cp1252"
+                except UnicodeDecodeError:               # (cp1252 leaves five bytes unused; latin-1 has a character for every byte)
+                    text, self._encoding = raw.decode("latin-1"), "latin-1"
             self._newline = "\r\n" if "\r\n" in text else "\n"
             self._delimiter = self._sniff(path, text)
             rows = list(csv.reader(io.StringIO(text, newline=""), delimiter=self._delimiter))
@@ -266,10 +271,16 @@ class CsvBridge(XlsxBridge):
         last, width = grid.last_row(self._sheet), grid.last_col(self._sheet)
         tmp = target.with_name(target.name + ".quill-tmp")
         try:
-            with open(tmp, "w", encoding="utf-8-sig" if self._bom else "utf-8", newline="") as handle:
-                writer = csv.writer(handle, delimiter=self._delimiter, lineterminator=self._newline)
-                for r, row in enumerate(sheet.iter_rows(min_row=1, max_row=last, max_col=width, values_only=True), start=1):
-                    writer.writerow([self._text(v, r if self._vertical else c) for c, v in enumerate(row, start=1)])
+            lines = [[self._text(v, r if self._vertical else c) for c, v in enumerate(row, start=1)]
+                     for r, row in enumerate(sheet.iter_rows(min_row=1, max_row=last, max_col=width, values_only=True), start=1)]
+            for encoding in (self._encoding, "utf-8-sig"):       # (a word the old encoding has no letter for makes it UTF-8 with its mark)
+                try:
+                    with open(tmp, "w", encoding=encoding, newline="") as handle:
+                        csv.writer(handle, delimiter=self._delimiter, lineterminator=self._newline).writerows(lines)
+                    self._encoding = encoding
+                    break
+                except UnicodeEncodeError:
+                    continue
             os.replace(tmp, target)
         finally:
             tmp.unlink(missing_ok=True)
