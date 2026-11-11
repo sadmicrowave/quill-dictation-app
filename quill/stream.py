@@ -31,6 +31,10 @@ class WordMatch:
     span: int | None = None
     """Which understood value the word belongs to: words with the same span are one value ("you hear me") and share one pill."""
 
+    pending: bool = False
+    """True while the word is waiting in the Term Helper (it is drawn as a grey pill until it is answered); words with the same span
+    are one term and share one pill."""
+
 
 def match_words(words: list[str], vocab: Vocabulary, matcher: CommandMatcher | None = None,
                 today: dt.date | None = None) -> list[WordMatch]:

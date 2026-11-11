@@ -9,6 +9,7 @@ Opens when Quill hears a word it can't place, such as *"…teal, from the 90s…
 - The **Term Helper** button and the badge on the menu bar icon show the count **the moment** Quill hears a word it doesn't know.
 - When you finish the row, a **special sound** plays and the **Term Helper** window opens by itself.
 - You can answer a word before the row ends: it goes into the row you are saying.
+- In the heard words, each word Quill is waiting on wears a **muted grey pill** (understood words are purple). When you answer, the pill follows: **added** words turn purple, **ignored** words lose the pill and read as plain text.
 
 Everything Quill understood is already saved. Term Helper only handles the leftovers.
 

@@ -30,6 +30,7 @@ Everything you say shows up, word by word and in italics, in the box under the S
 
 - Words Quill understood become **coloured pills**. The grid below already lists your sheet's columns, muted; the moment a word is understood, its column turns to the normal colour and slides to the top (columns keep the order you said them in), and its value appears beside it wearing the same pill (they are what you said). The value can change when you pause, if the finished phrase is read differently (most often with the Careful speech model, which re-reads each phrase). Columns you did not mention stay muted.
 - Words still being spoken are shown in the normal text colour; once the phrase is done, words that were **not understood** turn grey.
+- A word that **Quill is asking about** (it is waiting in the [Term Helper](04-term-helper.md)) wears a **muted grey pill**. Answer it and the pill changes with the answer: **add it** (or say it means a known word) and it turns into an ordinary **purple** pill; **ignore it** and the pill goes, leaving the word as plain text in the box. A term of several words is one grey pill, and answering it with *undo* brings its grey pill back.
 - Spoken commands (*next row*, *next item*) are taken out of the box once recognised, so the box shows only what describes the item.
 - Everyday words (*got*, *really*) are skipped, so Quill won't ask about them.
 - A word that sounds like one of your column names or list values is taken as that word. *"Waste"* becomes *Waist* if your sheet has a Waist column. The Log notes it.

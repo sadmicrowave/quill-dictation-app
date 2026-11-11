@@ -89,7 +89,8 @@ def shoot(app: QApplication, theme: str) -> None:
     heard_in = {"black": "Color", "t-shirt": "Type", "large": "Size", "good": "Condition", "appraisal": "Appraisal", "thirty": "Appraisal", "five": "Appraisal"}
     main_window.set_columns(["Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])        # (the sheet's columns, listed from the start)
     main_window.set_stream_classifier(lambda words: [WordMatch(w in heard_in, heard_in.get(w), span=list(heard_in).index(w) if w in heard_in else None) for w in words])
-    main_window.add_stream_text('this next one is a black t-shirt large good appraisal thirty five')
+    main_window.add_stream_text('this next one is a black t-shirt large good indigo appraisal thirty five')
+    main_window.set_pending_words(["indigo"])                      # (a word the Term Helper is waiting on: a grey pill)
     main_window.update_current_row(row)
     main_window.set_last_saved("Row 6", {"Type": "Blouse", "Color": "Navy", "Size": "M"})
     main_window.widget.resize(380, 590)

@@ -187,6 +187,19 @@ class Journey(AppCase):
         grip, table = self.window.row_grip, self.window.row_table
         assert abs(grip.centre() - table.divider_x()) < 0.01, f"the handle's middle dot is at {grip.centre()}, the divider at {table.divider_x()}"
 
+    def inv_grey_pills_are_only_on_words_waiting_in_the_term_helper(self):
+        """A word wears the grey pill exactly while the Term Helper is waiting on it: never on a word nobody is waiting for, and every
+        single-word term waiting is grey wherever it was heard."""
+        from quill.parser.tokens import tokenize
+        waiting = [tokenize(key[1]) for key in self.quill.controller.pending_terms()]
+        waiting_tokens = {token for tokens in waiting for token in tokens}
+        for word, match in self.window._stream_words:
+            tokens = tokenize(word)
+            if match.pending:
+                assert tokens and all(t in waiting_tokens for t in tokens), f"{word!r} has a grey pill but nothing about it is waiting: {waiting}"
+            elif len(tokens) == 1 and [tokens[0]] in waiting and not match.command:
+                assert False, f"{word!r} is waiting in the Term Helper but has no grey pill"
+
     def inv_the_gear_works_exactly_when_a_file_is_connected(self):
         gear = self.window.panel.settings_button
         assert gear.isEnabled() == bool(self.quill.connected), f"gear enabled={gear.isEnabled()} but connected={self.quill.connected}"

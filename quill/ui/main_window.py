@@ -13,6 +13,7 @@ passed to the constructor; it holds no dictation logic.
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import html
 import logging
@@ -52,6 +53,7 @@ from PySide6.QtWidgets import (
 )
 
 from quill import diagnostics
+from quill.parser.tokens import tokenize
 from quill.stream import WordMatch
 from quill.ui.chrome import set_always_on_top
 from quill.ui.hints import fill_missing_tips
@@ -66,7 +68,7 @@ from quill.ui.main_widgets import (
     RowTable,
     StreamBox,
 )
-from quill.ui.theme import install_backdrop, apply_spacing
+from quill.ui.theme import apply_spacing, grey_pill, install_backdrop
 from quill.ui.side_panel import FILE_PAGE, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH, SidePanel, TURN_PAGE
 from quill.ui.listen_button import ListenButton
 from quill.ui.widgets import (
@@ -245,6 +247,8 @@ class MainWindow:
         self._stream_partial: list[tuple[str, WordMatch]] = []   # the phrase still being spoken
         self._stream_done = False            # the row ended: the next words start a fresh stream
         self._no_columns = False                   # connected, but the sheet's headings were not found
+        self._pending_span = 0                       # (the next number for a term waiting in the Term Helper: its words share one pill)
+        self._answered_span = 10_000                 # (spans given to words that were just answered and are read again)
         self._live_fields: dict[str, object] = {}  # what the words still being spoken would put in the row (shown as they are heard)
         self._live_stale = False                   # a phrase just ended: its live values stay until the row's own values arrive
         self._preview_values = lambda words: {}
@@ -1687,36 +1691,81 @@ class MainWindow:
             self._stream_words, self._stream_partial, self._stream_done = [], [], False
             self._live_fields, self._live_stale = {}, False
 
+    def set_pending_words(self, terms: list[str]) -> None:
+        """The terms waiting in the Term Helper now (the words as heard): the words in the stream that tripped it wear a grey pill.
+
+        A word that was waiting and is not any more has been answered: it is read again, so a word that was added (or matched to a
+        known one) turns into an ordinary purple pill and a word that was ignored (or whose row was discarded) is plain text again.
+        """
+        waiting = [tokens for tokens in (tokenize(term) for term in terms) if tokens]
+        flat: list[tuple[str, int]] = []                  # every token of the finished words, and the word it came from
+        for index, (word, match) in enumerate(self._stream_words):
+            flat += [(token, index) for token in tokenize(word)] if not match.command else []
+        marked: dict[int, int] = {}                       # word index -> the span of the term it belongs to
+        for tokens in waiting:
+            size = len(tokens)
+            for start in range(len(flat) - size + 1):
+                if [t for t, _ in flat[start:start + size]] == tokens:
+                    self._pending_span -= 1
+                    for _, index in flat[start:start + size]:
+                        marked.setdefault(index, self._pending_span)
+        old = self._stream_words
+        words: list[tuple[str, WordMatch]] = []
+        released: list[int] = []                          # words that were waiting and are not
+        for index, (word, match) in enumerate(old):
+            if index in marked:
+                words.append((word, WordMatch(False, pending=True, span=marked[index])))
+            elif match.pending:
+                words.append((word, match))
+                released.append(index)
+            else:
+                words.append((word, match))
+        for run in _runs(released, old):                  # (one term's words are read together, as when they were heard)
+            heard = self._classify_words([old[i][0] for i in run])
+            self._answered_span += 100
+            for index, now in zip(run, heard):
+                words[index] = (old[index][0], dataclasses.replace(now, pending=False, span=None if now.span is None else self._answered_span + now.span))
+        if words != old:
+            self._stream_words = words
+            self._render_stream()
+
     def _render_stream(self) -> None:
         """Draw the stream in italics.
 
-        Understood words are pills in the theme colour. Words still being spoken start in the normal text
-        colour; once a phrase is final, the words that were not understood are muted.
+        Understood words are pills in the theme colour; words that tripped the Term Helper (still waiting there) are muted grey pills.
+        Words still being spoken start in the normal text colour; once a phrase is final, the other words that were not understood are
+        muted text.
         """
         pill = f"background-color:{self._accent}; color:{self._on_accent}"
+        grey_fill, grey_ink = grey_pill(self._text_color)
+        waiting = f"background-color:{grey_fill}; color:{grey_ink}"
         muted = self.stream.palette().placeholderText().color().name()
 
         def draw(items, unknown_color: str) -> str:
             pieces: list[str] = []
             run: list[str] = []                         # the words of the value being gathered: one pill for all of them
-            run_span = None
+            run_key = None
+            run_style = pill
 
             def close() -> None:
-                nonlocal run, run_span
+                nonlocal run, run_key
                 if run:
-                    pieces.append(f'<span style="{pill}">&nbsp;{" ".join(run)}&nbsp;</span>')
-                run, run_span = [], None
+                    pieces.append(f'<span style="{run_style}">&nbsp;{" ".join(run)}&nbsp;</span>')
+                run, run_key = [], None
 
             for word, match in items:
-                if match.known and match.span is not None:
-                    if run and match.span != run_span:
+                if (match.known or match.pending) and match.span is not None:
+                    key = (match.span, match.pending)
+                    if run and key != run_key:
                         close()
                     run.append(html.escape(word))
-                    run_span = match.span
+                    run_key, run_style = key, waiting if match.pending else pill
                     continue
                 close()
-                pieces.append(f'<span style="{pill}">&nbsp;{html.escape(word)}&nbsp;</span>' if match.known
-                              else f'<span style="color:{unknown_color}">{html.escape(word)}</span>')
+                if match.known or match.pending:
+                    pieces.append(f'<span style="{waiting if match.pending else pill}">&nbsp;{html.escape(word)}&nbsp;</span>')
+                else:
+                    pieces.append(f'<span style="color:{unknown_color}">{html.escape(word)}</span>')
             close()
             return " ".join(pieces)
 
@@ -2007,3 +2056,14 @@ class _GripPlacer(QObject):
             grip.raise_()
             QTimer.singleShot(0, grip.update)                       # (the columns settle after this event: draw the dot where the line ended up)
         return False
+
+
+def _runs(indices: list[int], words: list[tuple[str, WordMatch]]) -> list[list[int]]:
+    """*indices* (ascending) split into runs of neighbours that waited as one term (the same span)."""
+    runs: list[list[int]] = []
+    for index in indices:
+        if runs and index == runs[-1][-1] + 1 and words[index][1].span == words[runs[-1][-1]][1].span:
+            runs[-1].append(index)
+        else:
+            runs.append([index])
+    return runs

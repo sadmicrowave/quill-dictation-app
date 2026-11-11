@@ -97,6 +97,32 @@ def mix(base: str, other: str, amount: float) -> str:
     return "#" + "".join(f"{round(x + (y - x) * amount):02X}" for x, y in zip(a, b))
 
 
+def contrast_ratio(first: str, second: str) -> float:
+    """WCAG contrast ratio (1 to 21) between two ``"#RRGGBB"`` colours; 4.5 is the usual minimum for text."""
+    a, b = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (a + 0.05) / (b + 0.05)
+
+
+#: The least contrast (see :func:`contrast_ratio`) the text on a pill must have.
+PILL_MIN_CONTRAST = 4.5
+
+
+def grey_pill(text_color: str) -> tuple[str, str]:
+    """``(fill, ink)`` of the muted grey pill words wear while they wait in the Term Helper: a grey made from the theme's own text colour
+    (lighter than a light window, lighter than a dark one) with the text colour on it, nudged until it reads (contrast of at least
+    :data:`PILL_MIN_CONTRAST`) whatever the theme."""
+    dark = _luminance(text_color) > 0.4                        # light text: a dark window
+    base = TOKENS["dark" if dark else "light"]["bg"]
+    fill = mix(base, text_color, 0.26)
+    ink = text_color
+    for step in range(10):                                     # (only if a theme's colours are close together)
+        if contrast_ratio(ink, fill) >= PILL_MIN_CONTRAST:
+            break
+        fill = mix(fill, "#000000" if dark else "#FFFFFF", 0.12 * (step + 1) / 2)
+        ink = mix(ink, "#FFFFFF" if dark else "#000000", 0.12)
+    return fill, ink
+
+
 #: The warning colour of notices ("File not connected"): an amber that reads on a light and on a dark window.
 WARNING_LIGHT, WARNING_DARK = "#B26A00", "#E0A030"
 

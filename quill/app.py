@@ -1232,6 +1232,7 @@ class QuillApp:
             return
         pending = self.controller.pending_terms()
         self.sorting.set_items(pending)
+        self.window.set_pending_words([key[1] for key in pending])        # (their words in the heard words wear a grey pill)
         self.window.set_sorting_count(len(pending))
         self.tray.set_badge(len(pending))
         undoable = len(self.controller.history)
