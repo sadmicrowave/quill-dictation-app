@@ -3,7 +3,6 @@
 The tests beside this one fake the system's answers. These ask the real ``tasklist``, the real PowerShell, a real child process and a
 real file that another program holds, because the fakes can only repeat what we believe Windows says.
 """
-import ctypes
 import os
 import pathlib
 import subprocess
@@ -136,28 +135,7 @@ class TestACommandThatTakesTooLong(unittest.TestCase):
 
 # ---- a file another program holds ----------------------------------------------------------------------------------------------------
 
-GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL = 0x80000000, 0x1, 3, 0x80
-
-
-class HeldLikeExcelHolds:
-    """The file opened the way Excel opens a workbook: others may read it, nobody may write to it, rename it or delete it."""
-
-    def __init__(self, path):
-        from ctypes import wintypes
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel.CreateFileW.restype = wintypes.HANDLE
-        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
-                                       wintypes.DWORD, wintypes.HANDLE]
-        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-        self._kernel = kernel
-        self._handle = kernel.CreateFileW(str(path), GENERIC_READ, FILE_SHARE_READ, None, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None)
-        if self._handle in (None, wintypes.HANDLE(-1).value):
-            raise OSError(ctypes.get_last_error(), "could not hold the file")
-
-    def release(self):
-        if self._handle is not None:
-            self._kernel.CloseHandle(self._handle)
-            self._handle = None
+from quill.selfcheck import HeldLikeExcelHolds  # noqa: E402  (the same helper the self-check uses)
 
 
 def make_stock(path):

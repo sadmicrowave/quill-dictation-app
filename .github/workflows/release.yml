@@ -75,6 +75,14 @@ jobs:
           $expected = $env:TAG.TrimStart("v")
           if ($info.ProductVersion -ne $expected -or -not $info.FileDescription) { throw "Quill.exe has the wrong version resource" }
           Compress-Archive -Path dist/Quill.exe -DestinationPath "${{ matrix.file }}"
+      - name: The packaged Quill.exe checks itself
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          Expand-Archive -Path "${{ matrix.file }}" -DestinationPath packaged -Force
+          $run = Start-Process -FilePath packaged/Quill.exe -ArgumentList "--selftest", "--out", "selfcheck.txt" -Wait -PassThru
+          if (Test-Path selfcheck.txt) { Get-Content selfcheck.txt }
+          if ($run.ExitCode -ne 0) { throw "the packaged Quill.exe failed its own check (exit code $($run.ExitCode))" }
       - name: Build (macOS)
         if: startsWith(matrix.name, 'mac')
         shell: bash

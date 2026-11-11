@@ -1,0 +1,63 @@
+name: dev build
+
+# A Windows build of whatever is on `develop`, for trying it on a real PC without a merge, a tag or a release.
+#
+#   push to develop  ->  Actions tab > this run > Artifacts > "Quill-windows-dev"  (a zip holding Quill.exe)
+#   or: Actions tab > dev build > Run workflow            (any branch)
+#
+# The artifact needs a GitHub sign-in to download and is deleted after 14 days: it is not a release. It also carries
+# "selfcheck.txt", the report of the packaged Quill.exe run with --selftest on the build machine.
+# On the PC: run Quill.exe --selftest, and send the "Quill self-check.txt" it writes (see docs/testing.md).
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true          # a newer push replaces a build that is still running
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Stamp the build with its commit
+        shell: bash
+        run: echo "BUILD = \"$(git rev-parse --short HEAD) on ${GITHUB_REF_NAME}\"" > quill/_build.py
+      - name: Build
+        shell: pwsh
+        run: |
+          python tools/make_app_icon.py
+          pyinstaller --noconfirm packaging/quill_win.spec
+          Compress-Archive -Path dist/Quill.exe -DestinationPath Quill-windows-dev.zip
+          Write-Host ("size: {0} MB" -f [int]((Get-Item Quill-windows-dev.zip).Length / 1MB))
+      - name: The packaged Quill.exe checks itself
+        shell: pwsh
+        run: |
+          $run = Start-Process -FilePath dist/Quill.exe -ArgumentList "--selftest", "--out", "selfcheck.txt" -Wait -PassThru
+          if (Test-Path selfcheck.txt) { Get-Content selfcheck.txt } else { Write-Host "no report was written" }
+          if ($run.ExitCode -ne 0) { throw "Quill.exe --selftest failed (exit code $($run.ExitCode))" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Quill-windows-dev
+          path: |
+            Quill-windows-dev.zip
+            selfcheck.txt
+          retention-days: 14
+          if-no-files-found: warn

@@ -48,6 +48,21 @@ is a gap, not a decision. When a Windows behaviour can only be seen on Windows (
 the test is written for it and skipped elsewhere with `skipUnless(sys.platform == "win32")`. Windows on Arm is not tested: Vosk
 publishes no Arm64 wheel, so the Arm runner cannot install Quill; the x64 build is what Arm PCs run.
 
+## Trying a build on a real Windows PC
+
+No merge, tag or release is needed to try what is on `develop`:
+
+1. Every push to `develop` runs the **dev build** workflow (`.github/workflows/dev-build.yml`): it builds `Quill.exe` on a Windows
+   runner, runs the packaged exe with `--selftest` (a broken download fails the build) and attaches `Quill-windows-dev.zip` to the run.
+   Open the run in the Actions tab, then Artifacts, and download it (GitHub sign-in needed; kept 14 days). It can also be started by hand.
+2. On the PC, unzip it and run `Quill.exe --selftest` (a Command Prompt or PowerShell in that folder). It writes **Quill self-check.txt** on the
+   Desktop and opens it: versions, microphone, the speech model, the folders, which spreadsheet programs are running and how fast
+   they answer, a row written into a workbook with accents in its name, a CSV in Excel's ANSI encoding, a file held the way Excel holds
+   one, and the Windows look. Nothing is changed or recorded, and the report holds no file names, words or sheet names.
+3. Send the file (or its text). Each line says ok, warn, FAIL or skip.
+
+The same check runs in every release build against the packaged exe, and `tests/test_selfcheck.py` runs it on every system.
+
 ## When a bug is found
 
 1. Reproduce it as a **journey** (the steps the person took) or add the **invariant** it breaks. If the bug is a state that must

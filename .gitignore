@@ -37,3 +37,6 @@ desktop.ini
 *.swp
 *.swo
 relay/.wrangler/
+
+# Written by the dev-build workflow: which commit a download came from (see quill/selfcheck.py)
+quill/_build.py
