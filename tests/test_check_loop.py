@@ -309,7 +309,7 @@ class TestNamesNeverBecomeCommands(unittest.TestCase):
             SpreadsheetHosts("darwin", numbers).reload(NUMBERS, path)
             for command in numbers.calls:
                 if command[0] == "osascript":
-                    self.assertIn(command[4], (mac_hosts._LIST_NUMBERS_FOR_RELOAD, mac_hosts._CLOSE_NUMBERS))      # fixed scripts
+                    self.assertIn(command[4], (mac_hosts._LIST_NUMBERS_FOR_RELOAD, mac_hosts._CLOSE_NUMBERS, mac_hosts.NUMBERS_BUNDLE_JS))      # fixed scripts
                     self.assertNotIn(path, command[4])
                     self.assertTrue(all(arg.isdigit() for arg in command[5:]))                                        # only positions
                 else:

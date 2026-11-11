@@ -32,6 +32,7 @@ from typing import Callable
 
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from quill.platforms.macos.numbers_app import NUMBERS_APP_JS
 from quill.bridge.base import BridgeError
 from quill.bridge.filters import ColumnFilter
 from quill.bridge.libreoffice_bridge import LibreOfficeBridge, LibreOfficeGrid, build_workbook
@@ -53,7 +54,7 @@ EventCallback = Callable[[str, str, str], None]
 Runner = Callable[[list[str], float], tuple[int, str, str]]
 
 #: The script. ``argv[0]`` is the command, ``argv[1]`` its arguments as JSON; the answer is JSON.
-SCRIPT = r"""
+SCRIPT = NUMBERS_APP_JS + r"""
 // An imported workbook is called by its file name; once edited it is "name.numbers", and when a "name.numbers" already exists on the
 // disk Numbers numbers the new one ("name 2.numbers"): all of these are the same document.
 function titleKey(title) { return title.slice(-8) === ".numbers" ? title.slice(0, -8).replace(/ \d+$/, "") : title; }
@@ -189,7 +190,7 @@ function writeCell(doc, app, change) {
 }
 
 function handle(command, args) {
-  const app = Application("Numbers");
+  const app = numbersApp();
   if (!app.running()) return JSON.stringify({ok: true, running: false, docs: []});
   if (command === "state") {
     const docs = [], documents = app.documents();

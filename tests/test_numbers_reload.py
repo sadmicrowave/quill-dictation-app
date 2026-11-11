@@ -4,6 +4,7 @@ whole dictation with Term Helper answers through the application to count them a
 import unittest
 
 from quill.bridge.hosts import NUMBERS, SpreadsheetHosts
+from quill.platforms.macos import hosts as mac_hosts
 from quill.session import Decision
 from tests.fake_numbers import FakeNumbers
 from tests.test_app import AppCase
@@ -13,6 +14,67 @@ PATH = "/Users/me/Documents/Apparel Inventory.xlsx"
 
 def reload(numbers, path=PATH):
     return SpreadsheetHosts("darwin", numbers).reload(NUMBERS, path)
+
+
+class _Installed(mac_hosts.MacHosts):
+    def installed(self, program):
+        return True
+
+
+def launch(numbers, path=PATH):
+    return _Installed(numbers).launch(path, "numbers")
+
+
+class TestOpeningNeverAddsACopy(unittest.TestCase):
+    """Start (and Open File) ask Numbers to open the file when nobody seems to have it: if Numbers already has it, nothing is opened."""
+
+    def test_a_workbook_already_open_in_numbers_is_not_opened_again(self):
+        numbers = FakeNumbers()
+        numbers.import_xlsx(PATH)
+        self.assertTrue(launch(numbers))
+        self.assertEqual(len(numbers.docs), 1)
+        self.assertFalse([c for c in numbers.calls if c[0] == "open"])
+
+    def test_a_numbers_document_with_that_file_is_not_opened_again(self):
+        numbers = FakeNumbers()
+        numbers.open_numbers_document(PATH)
+        launch(numbers)
+        self.assertEqual(len(numbers.docs), 1)
+
+    def test_a_file_nobody_has_open_is_opened_once_however_often_it_is_asked(self):
+        numbers = FakeNumbers()
+        for _ in range(4):
+            launch(numbers)
+        self.assertEqual(numbers.count("Apparel Inventory"), 1)
+
+    def test_other_open_documents_do_not_stop_it(self):
+        numbers = FakeNumbers()
+        numbers.import_xlsx("/Users/me/Documents/Other.xlsx")
+        launch(numbers)
+        self.assertEqual(sorted(d["name"] for d in numbers.docs), ["Apparel Inventory", "Other"])
+
+    def test_the_numbers_that_is_running_is_asked_by_its_bundle_id(self):
+        numbers = FakeNumbers()
+        numbers.bundle = "com.apple.Numbers"
+        launch(numbers)
+        self.assertIn(["open", "-g", "-b", "com.apple.Numbers", PATH], numbers.calls)
+
+    def test_when_it_cannot_be_told_apart_the_name_is_used(self):
+        numbers = FakeNumbers()
+        launch(numbers)
+        self.assertIn(["open", "-g", "-a", "Numbers", PATH], numbers.calls)
+
+
+class TestEveryNumbersScriptPicksTheRunningNumbers(unittest.TestCase):
+    """Two Numbers apps can be installed; asking for "Numbers" by name reaches only one, so no script may do that."""
+
+    def test_no_script_asks_for_numbers_by_name_alone(self):
+        from quill.platforms.macos import numbers_live, numbers_mirror
+        scripts = [mac_hosts._LIST_NUMBERS, mac_hosts._LIST_NUMBERS_FOR_RELOAD, mac_hosts._CLOSE_NUMBERS, numbers_live.SCRIPT,
+                   numbers_mirror.SCRIPT, numbers_mirror.PROBE, numbers_mirror.ACTIVE_SHEET]
+        for script in scripts:
+            self.assertIn("numbersApp()", script)
+            self.assertEqual(script.count('Application("Numbers")'), 1, "only the fallback inside numbersApp() may use the name")
 
 
 class TestNeverASecondCopy(unittest.TestCase):

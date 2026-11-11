@@ -15,6 +15,7 @@ import pathlib
 import subprocess
 
 from quill.bridge.hosts import SUPPORTED_SUFFIXES, files_named_in
+from quill.platforms.macos.numbers_app import NUMBERS_APP_JS, NUMBERS_BUNDLE_JS
 from quill.platforms.macos.processes import running_executables as _native_list
 from quill.diagnostics import syslog
 
@@ -61,7 +62,14 @@ class MacHosts:
     def launch(self, path, program: str = "auto") -> bool:
         """Open *path* without bringing the program to the front: the system's program for the file, or the one chosen."""
         chosen = OPEN_WITH.get(program) if self.installed(program) else None       # (not installed: the system's choice)
-        command = ["open", "-g", *(["-a", chosen] if chosen else []), str(path)]
+        if chosen == "Numbers":
+            if self._numbers_has(pathlib.Path(path)):
+                return True                          # Numbers adds a copy every time it is asked: one that is open is used as it is
+            bundle = self._run(["osascript", "-l", "JavaScript", "-e", NUMBERS_BUNDLE_JS]).strip()
+            self._run(["open", "-g", *(["-b", bundle] if bundle else ["-a", chosen]), str(path)])
+            return True
+        else:
+            command = ["open", "-g", *(["-a", chosen] if chosen else []), str(path)]
         return subprocess.run(command, capture_output=True, timeout=COMMAND_TIMEOUT_S, check=False).returncode == 0   # noqa: S603
 
     #: What :meth:`reload` answers when the document has unsaved changes in the program, so Quill left it alone.
@@ -90,8 +98,14 @@ class MacHosts:
         indices = sorted((d[3] for d in same), reverse=True)                      # highest first: closing one never moves the next
         if self._run(["osascript", "-l", "JavaScript", "-e", _CLOSE_NUMBERS, *map(str, indices)]).strip() != "ok":
             return False
-        self._run(["open", "-g", "-a", "Numbers", str(target)])                   # (once: the copies it replaces are closed)
+        bundle = self._run(["osascript", "-l", "JavaScript", "-e", NUMBERS_BUNDLE_JS]).strip()
+        self._run(["open", "-g", *(["-b", bundle] if bundle else ["-a", "Numbers"]), str(target)])   # (once: the copies it replaces are closed)
         return True
+
+    def _numbers_has(self, target: pathlib.Path) -> bool:
+        """Does Numbers already have *target* open (by file, or by name: an imported workbook reports no file)?"""
+        documents = self._numbers_documents() or []
+        return any((d[1] and _same_file(d[1], target)) or d[0] in (target.stem, target.name) for d in documents)
 
     def _numbers_documents(self) -> list[tuple[str, str, bool, int]] | None:
         """``(name, file, has unsaved changes, position)`` of every document Numbers has open; None if it could not be asked."""
@@ -218,9 +232,9 @@ class MacHosts:
         return listed
 
 
-_LIST_NUMBERS = """
+_LIST_NUMBERS = NUMBERS_APP_JS + """
 function run() {
-  const app = Application("Numbers");
+  const app = numbersApp();
   if (!app.running()) return "";
   const documents = app.documents();
   let out = "";
@@ -235,10 +249,10 @@ function run() {
 }
 """
 
-_LIST_NUMBERS_FOR_RELOAD = """
+_LIST_NUMBERS_FOR_RELOAD = NUMBERS_APP_JS + """
 function run() {
   try {
-    const app = Application("Numbers");
+    const app = numbersApp();
     if (!app.running()) return "";
     const documents = app.documents();
     let out = "";
@@ -256,10 +270,10 @@ function run() {
 }
 """
 
-_CLOSE_NUMBERS = """
+_CLOSE_NUMBERS = NUMBERS_APP_JS + """
 function run(argv) {
   try {
-    const app = Application("Numbers");
+    const app = numbersApp();
     const documents = app.documents();
     for (const position of argv) app.close(documents[Number(position)], {saving: "no"});
     return "ok";

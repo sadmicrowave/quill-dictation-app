@@ -18,6 +18,7 @@ import pathlib
 import subprocess
 from typing import Callable
 
+from quill.platforms.macos.numbers_app import NUMBERS_APP_JS
 from quill.bridge.mirror import MirrorResult   # (the answer type is shared; re-exported here)
 
 log = logging.getLogger("quill.numbers")
@@ -53,9 +54,9 @@ function findDocument(app, docName) {
 """
 
 #: Takes the document's file name as argument 1, then one argument per cell: sheet, row, column, kind, text.
-SCRIPT = _FIND_DOCUMENT + r"""
+SCRIPT = NUMBERS_APP_JS + _FIND_DOCUMENT + r"""
 function run(argv) {
-  const app = Application("Numbers");
+  const app = numbersApp();
   if (!app.running()) return "notrunning";
   const target = findDocument(app, argv[0]);
   if (target === null) return "nodoc";
@@ -89,9 +90,9 @@ function run(argv) {
 
 
 #: Takes the document's file name as argument 1; answers ``ok`` if Numbers has such a document open (it changes nothing).
-PROBE = _FIND_DOCUMENT + r"""
+PROBE = NUMBERS_APP_JS + _FIND_DOCUMENT + r"""
 function run(argv) {
-  const app = Application("Numbers");
+  const app = numbersApp();
   if (!app.running()) return "notrunning";
   return findDocument(app, argv[0]) === null ? "nodoc" : "ok";
 }
@@ -99,9 +100,9 @@ function run(argv) {
 
 
 #: Takes the document's file name as argument 1; answers ``sheet:<name of the sheet that is open now>`` (it changes nothing).
-ACTIVE_SHEET = _FIND_DOCUMENT + r"""
+ACTIVE_SHEET = NUMBERS_APP_JS + _FIND_DOCUMENT + r"""
 function run(argv) {
-  const app = Application("Numbers");
+  const app = numbersApp();
   if (!app.running()) return "notrunning";
   const found = findDocument(app, argv[0]);
   if (found === null) return "nodoc";

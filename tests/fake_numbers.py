@@ -19,6 +19,7 @@ class FakeNumbers:
     def __init__(self) -> None:
         self.docs: list[dict] = []            # name, file, modified
         self.calls: list[list[str]] = []
+        self.bundle = ""                      # what the script that names the running Numbers answers ("" = it does not know)
 
     # -- the world, as a test sets it up and looks at it ----------------------------------------------
     def import_xlsx(self, path: str, modified: bool = False) -> None:
@@ -35,11 +36,13 @@ class FakeNumbers:
     # -- the commands Quill sends ----------------------------------------------------------------------
     def __call__(self, args: list[str]) -> str:
         self.calls.append(list(args))
-        if args[0] == "open":                                           # ``open -g -a Numbers <path>``
+        if args[0] == "open":                                           # ``open -g -a Numbers <path>`` (or ``-b <bundle id>``)
             self.import_xlsx(args[-1])
             return ""
         if args[0] == "osascript":
             script, rest = args[4], args[5:]
+            if script == mac_hosts.NUMBERS_BUNDLE_JS:
+                return self.bundle
             if script == mac_hosts._LIST_NUMBERS_FOR_RELOAD:
                 return "".join(f"{d['name']}\t{d['file']}\t{'1' if d['modified'] else '0'}\t{i}\n" for i, d in enumerate(self.docs))
             if script == mac_hosts._CLOSE_NUMBERS:
