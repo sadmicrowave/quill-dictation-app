@@ -39,6 +39,7 @@ forward at a time: a Quill window over a Numbers window takes your click.
 | S5 | Layouts per sheet | On Blank set Headings Row 3; select Inventory; open the gear; select Blank; open the gear | Inventory shows Automatic, Blank shows 3 | Real clicks |
 | S6 | Looks | Settings > Appearance: Light, then Dark, then System; opacity and blur at both ends; Mini View | Muted and normal text clearly different; nothing cut off; no control is left opaque or sharp at low opacity | Settings controls |
 | S7 | Words To Skip | Settings > Words To Skip: add a word, search for it, select it, remove it | The list behaves like Learned Words; with no words the message says so | Real clicks |
+| S9 | Where a turn is written, on the real Numbers | Run `.venv/bin/python tools/numbers_placement_check.py` (no clicking: it opens five small workbooks in Numbers and runs Quill's own Numbers bridge on them) | It prints `5 of 5 placements correct`: one record per turn, each value in the cell where its heading crosses it, headings of different heights and headings below row 3, across and down, nothing overwritten, no value nobody said | A Mac with Numbers; it leaves five `*_check` documents open: close them by hand |
 | S8 | First launch of a fresh download | Release build, fresh machine or user | The first-run warnings match the README | A person; not run from here |
 
 S1 and S2 are the spoken steps: demo mode stands in for the microphone, so they check the screen's side of a phrase, not the

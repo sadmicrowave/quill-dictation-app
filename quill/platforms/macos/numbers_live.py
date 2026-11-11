@@ -112,14 +112,16 @@ function block(table, top, left, rows, cols) {
   return out;
 }
 
+// How far the data reaches: the last row and the last column that hold anything, over EVERY column (headings may run far to the right and
+// a column further right may be taller than the first ones: looking at a few columns put a new record on top of what was there).
 function usedSize(table) {
-  const rowCount = table.rowCount(), colCount = table.columnCount();
+  const colCount = Math.min(table.columnCount(), 200);
   let rows = 0, cols = 0;
-  const head = block(table, 1, 1, Math.min(rowCount, 3), colCount);
-  for (let r = 0; r < head.length; r++) for (let c = 0; c < head[r].length; c++) if (head[r][c] !== null) cols = Math.max(cols, c + 1);
-  for (let c = 1; c <= Math.min(colCount, 3) && rows < rowCount; c++) {
+  for (let c = 1; c <= colCount; c++) {
     const column = table.columns[c - 1].cells.value();
-    for (let r = column.length - 1; r >= rows; r--) if (column[r] !== null && column[r] !== "") { rows = Math.max(rows, r + 1); break; }
+    for (let r = column.length - 1; r >= 0; r--) {
+      if (column[r] !== null && column[r] !== "") { rows = Math.max(rows, r + 1); cols = c; break; }
+    }
   }
   return {rows: rows, cols: cols};
 }
@@ -185,11 +187,24 @@ function paintRuns(table, top, left, cols, runs, rowsOnly) {
   }
 }
 
+// A table that grows gets new cells. Numbers fills a new pop-up menu cell with the first item of its list, which would be saved as
+// something nobody said, so the new cells are cleared before anything is written into them.
+function growTable(table, app, rowNo, colNo) {
+  const rows = table.rowCount(), cols = table.columnCount();
+  if (rows < rowNo) {
+    table.rowCount = rowNo;
+    app.clear(table.ranges["A" + (rows + 1) + ":" + letters(cols) + rowNo]);
+  }
+  if (cols < colNo) {
+    table.columnCount = colNo;
+    app.clear(table.ranges[letters(cols + 1) + "1:" + letters(colNo) + table.rowCount()]);
+  }
+}
+
 function writeCell(doc, app, change) {
   const table = tableOf(doc, change[0]);
   const rowNo = change[1], colNo = change[2], kind = change[3], text = change[4];
-  if (table.rowCount() < rowNo) table.rowCount = rowNo;
-  if (table.columnCount() < colNo) table.columnCount = colNo;
+  growTable(table, app, rowNo, colNo);
   const cell = table.rows[rowNo - 1].cells[colNo - 1];
   if (kind === "e") app.clear(cell);
   else if (kind === "n") cell.value = parseFloat(text);

@@ -43,8 +43,19 @@ function makeTable(data) {
     return true; } }) }) }) });
   data.colors = data.colors || [];
   let selected = null;
-  return { get selectionRange() { return () => selected; }, set selectionRange(v) { selected = v; }, get rowCount() { const f = () => data.rowCount; return new Proxy(f, { apply: () => data.rowCount }); }, set rowCount(v) { data.rowCount = v; },
-           get columnCount() { return () => data.colCount; }, set columnCount(v) { data.colCount = v; }, ranges, columns, rows };
+  // (As the real Numbers does: a cell that is new because the table grew shows the first item of its pop-up list when the sheet has pop-ups.)
+  const grow = (rowsFrom, rowsTo, colsFrom, colsTo) => {
+    if (!data.popups) return;
+    for (let r = 0; r < rowsTo; r++) for (let c = 0; c < colsTo; c++) if (r >= rowsFrom || c >= colsFrom) { data.rows[r] = data.rows[r] || []; data.rows[r][c] = "POPUP-DEFAULT"; }
+  };
+  data.clear = (ref) => {
+    const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(String(ref));
+    const c1 = parseLetters(m[1]) - 1, r1 = +m[2] - 1, c2 = parseLetters(m[3]) - 1, r2 = +m[4] - 1;
+    for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) { data.rows[r] = data.rows[r] || []; data.rows[r][c] = null; }
+  };
+  return { get selectionRange() { return () => selected; }, set selectionRange(v) { selected = v; }, get rowCount() { const f = () => data.rowCount; return new Proxy(f, { apply: () => data.rowCount }); },
+           set rowCount(v) { const was = data.rowCount; data.rowCount = v; grow(was, v, 0, data.colCount); },
+           get columnCount() { return () => data.colCount; }, set columnCount(v) { const was = data.colCount; data.colCount = v; grow(data.rowCount, data.rowCount, was, v); }, ranges, columns, rows };
 }
 
 const sheets = book.sheets.map((s) => ({ name: () => s.name, tables: [makeTable(s)] }));
@@ -56,7 +67,7 @@ const doc = { file: () => null, name: () => book.title, sheets: sheetList, activ
 globalThis.Application = () => ({
   running: () => book.running,
   documents: () => (book.open ? [doc] : []),
-  clear: () => {},
+  clear: (target) => { if (target && typeof target.name === "function") { const t = sheets[book.active].tables[0]; book.sheets[book.active].clear(target.name()); } },
 });
 globalThis.__book = book;
 """
@@ -628,3 +639,110 @@ class TestTwoDocumentsWithTheSameName(unittest.TestCase):
         for script in (numbers_live.SCRIPT, numbers_mirror.SCRIPT, numbers_mirror.PROBE, numbers_mirror.ACTIVE_SHEET):
             self.assertIn("bestScore", script)                      # (the best match, not the first)
             self.assertNotIn("return documents[i];", script.split("function findDocument")[1].split("\n}\n")[0] if "function findDocument" in script else "")
+
+
+@unittest.skipUnless(NODE, "needs node")
+class TestHowFarTheDataReaches(unittest.TestCase):
+    """Found with the real Numbers: the 'used' size looked at the first three columns and the first three rows only, so a record was put on
+    top of what a taller column to the right already held (and headings below the third row were not found)."""
+
+    @staticmethod
+    def book(rows, cols, cells):
+        data = [[None] * cols for _ in range(rows)]
+        for (r, c), v in cells.items():
+            data[r - 1][c - 1] = v
+        return {"title": "Plants.numbers", "running": True, "open": True, "active": 0,
+                "sheets": [{"name": "Data", "rowCount": rows, "colCount": cols, "rows": data}]}
+
+    def used(self, book):
+        answer = run_script(book, "used", {"urls": ["Plants"], "sheet": "Data"})
+        return answer["rows"], answer["cols"]
+
+    def test_a_column_further_right_that_is_taller_than_the_first_ones_counts(self):
+        cells = {(1, c): f"H{c}" for c in range(1, 8)}                         # headings across A..G
+        cells.update({(2, 1): "a", (3, 1): "b"})                               # the first column: two records
+        cells.update({(r, 7): f"g{r}" for r in range(2, 8)})                   # the seventh: six
+        self.assertEqual(self.used(self.book(10, 7, cells)), (7, 7))
+
+    def test_headings_far_to_the_right_count_even_with_nothing_else_in_the_first_rows(self):
+        cells = {(1, 1): "title line", (5, 1): "Category"}
+        cells.update({(5, c): f"H{c}" for c in range(2, 8)})                   # headings on row 5, across to G
+        self.assertEqual(self.used(self.book(8, 8, cells)), (5, 7))
+
+    def test_a_row_further_down_that_is_longer_than_the_first_rows_counts_when_headings_run_down(self):
+        cells = {(r, 1): f"H{r}" for r in range(1, 8)}                         # headings down A1..A7
+        cells.update({(1, 2): "x", (1, 3): "y"})                               # the first heading: two records
+        cells.update({(7, c): f"r{c}" for c in range(2, 8)})                   # the seventh: six
+        self.assertEqual(self.used(self.book(8, 10, cells)), (7, 7))
+
+    def test_an_empty_table_has_no_extent(self):
+        self.assertEqual(self.used(self.book(4, 3, {})), (0, 0))
+
+    def test_blank_cells_and_gaps_do_not_move_it(self):
+        cells = {(1, 1): "Species", (6, 1): "last", (3, 4): ""}                # (an empty string is empty)
+        self.assertEqual(self.used(self.book(9, 5, cells)), (6, 1))
+
+
+def run_steps(book: dict, steps: list, script: str | None = None) -> list:
+    """Run several commands one after another in the SAME pretend Numbers (so a write can be read back); returns each answer."""
+    program = FAKE_NUMBERS + "\n" + (script or numbers_live.SCRIPT) + "\n" + \
+        "const out = []; for (const [c, a] of JSON.parse(process.argv[1])) out.push(JSON.parse(run([c, JSON.stringify(a)]))); process.stdout.write(JSON.stringify(out));"
+    done = subprocess.run([NODE, "-e", program, "--", json.dumps(steps)], capture_output=True, text=True,
+                          env={"FAKE_BOOK": json.dumps(book), "PATH": ""}, timeout=20, check=False)
+    if done.returncode != 0:
+        raise AssertionError(done.stderr)
+    return json.loads(done.stdout)
+
+
+@unittest.skipUnless(NODE, "needs node")
+class TestNewCellsAreLeftEmpty(unittest.TestCase):
+    """Found with the real Numbers: when the table grows, its new pop-up cells show the first item of their list, which was then saved as
+    something nobody said (Men, Small, Nike ... beside the one value that was dictated)."""
+
+    @staticmethod
+    def book(popups=True):
+        rows = [[f"H{r}", "x"] for r in range(1, 6)]                         # headings down A, one record in B
+        return {"title": "Plants.numbers", "running": True, "open": True, "active": 0,
+                "sheets": [{"name": "Data", "rowCount": 5, "colCount": 2, "rows": rows, "popups": popups}]}
+
+    @staticmethod
+    def write(*cells):
+        return ["apply", {"urls": ["Plants"], "changes": [["Data", r, c, "s", t] for r, c, t in cells]}]
+
+    @staticmethod
+    def read(top, left, rows, cols):
+        return ["read", {"urls": ["Plants"], "sheet": "Data", "top": top, "left": left, "rows": rows, "cols": cols}]
+
+    def test_a_new_column_holds_only_what_was_written(self):
+        done = run_steps(self.book(), [self.write((1, 3, "Dress"), (5, 3, "Good")), self.read(1, 3, 5, 1)])
+        self.assertEqual([row[0] for row in done[1]["cells"]], ["Dress", None, None, None, "Good"])
+
+    def test_a_new_row_holds_only_what_was_written(self):
+        done = run_steps(self.book(), [self.write((7, 2, "Dress")), self.read(6, 1, 2, 2)])
+        self.assertEqual(done[1]["cells"], [[None, None], [None, "Dress"]])
+
+    def test_a_new_row_and_a_new_column_at_once(self):
+        done = run_steps(self.book(), [self.write((7, 4, "Dress")), self.read(1, 1, 7, 4)])
+        cells = done[1]["cells"]
+        self.assertEqual(cells[6][3], "Dress")
+        self.assertEqual([c for r, row in enumerate(cells) for k, c in enumerate(row) if k >= 2 and (r, k) != (6, 3)], [None] * 13)
+
+    def test_the_cells_that_were_already_there_are_never_cleared(self):
+        done = run_steps(self.book(), [self.write((1, 3, "Dress")), self.read(1, 1, 5, 2)])
+        self.assertEqual(done[1]["cells"], [[f"H{r}", "x"] for r in range(1, 6)])
+
+    def test_writing_inside_the_table_clears_nothing(self):
+        done = run_steps(self.book(), [self.write((3, 2, "kept elsewhere")), self.read(1, 1, 5, 2)])
+        self.assertEqual(done[1]["cells"][2], ["H3", "kept elsewhere"])
+        self.assertEqual(done[1]["cells"][0], ["H1", "x"])
+
+    def test_the_pretend_numbers_really_fills_new_cells_so_these_tests_mean_something(self):
+        """Without the script's clearing, the same write leaves the pop-up defaults behind (what the real Numbers did)."""
+        mutated = numbers_live.SCRIPT.replace("app.clear(table.ranges[", "(function(){})(table.ranges[")
+        self.assertNotEqual(mutated, numbers_live.SCRIPT)
+        done = run_steps(self.book(), [self.write((1, 3, "Dress"), (5, 3, "Good")), self.read(1, 3, 5, 1)], script=mutated)
+        self.assertEqual([row[0] for row in done[1]["cells"]], ["Dress", "POPUP-DEFAULT", "POPUP-DEFAULT", "POPUP-DEFAULT", "Good"])
+
+    def test_a_sheet_without_pop_ups_is_not_affected(self):
+        done = run_steps(self.book(popups=False), [self.write((1, 3, "Dress")), self.read(1, 3, 3, 1)])
+        self.assertEqual([row[0] for row in done[1]["cells"]], ["Dress", None, None])

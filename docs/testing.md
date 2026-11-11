@@ -65,4 +65,4 @@ never as passed.
 
 ## On-screen journeys
 
-Eight journeys, S1 to S8, with how each is driven and what counts as a pass, are in [onscreen-journeys.md](onscreen-journeys.md).
+Nine journeys, S1 to S9, with how each is driven and what counts as a pass, are in [onscreen-journeys.md](onscreen-journeys.md).

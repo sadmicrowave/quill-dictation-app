@@ -62,6 +62,26 @@ function findDocument(app, docName) {
 
 #: Takes the document's file name as argument 1, then one argument per cell: sheet, row, column, kind, text.
 SCRIPT = NUMBERS_APP_JS + _FIND_DOCUMENT + r"""
+function letters(n) {
+  let s = "";
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+// A table that grows gets new cells. Numbers fills a new pop-up menu cell with the first item of its list, which would be saved as
+// something nobody said, so the new cells are cleared before anything is written into them.
+function growTable(table, app, rowNo, colNo) {
+  const rows = table.rowCount(), cols = table.columnCount();
+  if (rows < rowNo) {
+    table.rowCount = rowNo;
+    app.clear(table.ranges["A" + (rows + 1) + ":" + letters(cols) + rowNo]);
+  }
+  if (cols < colNo) {
+    table.columnCount = colNo;
+    app.clear(table.ranges[letters(cols + 1) + "1:" + letters(colNo) + table.rowCount()]);
+  }
+}
+
 function run(argv) {
   const app = numbersApp();
   if (!app.running()) return "notrunning";
@@ -77,8 +97,7 @@ function run(argv) {
     let sheet;
     try { sheet = target.sheets.byName(sheetName); sheet.name(); } catch (e) { sheet = target.sheets[0]; }
     const table = sheet.tables[0];
-    if (table.rowCount() < rowNo) table.rowCount = rowNo;
-    if (table.columnCount() < colNo) table.columnCount = colNo;
+    growTable(table, app, rowNo, colNo);
     const cell = table.rows[rowNo - 1].cells[colNo - 1];
     if (kind === "e") {
       app.clear(cell);
