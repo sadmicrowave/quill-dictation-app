@@ -586,3 +586,45 @@ class TestAppTakesOverTheOpenNumbersDocument(PanelApp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTwoDocumentsWithTheSameName(unittest.TestCase):
+    """Found on screen: with "Demo Inventory" and a leftover "Demo Inventory 27.numbers" open, Quill followed the leftover (its sheet was
+    Blank) because both answer to the same name and it took the wrong one."""
+
+    def docs(self, *titles_and_sheets):
+        return [{"url": "Demo Inventory", "title": t, "sheet": s, "sheets": ["Inventory", "Blank"]} for t, s in titles_and_sheets]
+
+    def test_the_one_called_exactly_that_wins_whatever_the_order(self):
+        live, old = ("Demo Inventory", "Inventory"), ("Demo Inventory 27.numbers", "Blank")
+        for order in ((live, old), (old, live)):
+            chosen = numbers_live.one_document_per_name(self.docs(*order))
+            self.assertEqual(chosen["Demo Inventory"]["sheet"], "Inventory", f"order {order}")
+
+    def test_among_copies_the_highest_numbered_wins(self):
+        docs = self.docs(("Demo Inventory 3.numbers", "A"), ("Demo Inventory 27.numbers", "B"), ("Demo Inventory 9.numbers", "C"))
+        self.assertEqual(numbers_live.one_document_per_name(docs)["Demo Inventory"]["sheet"], "B")
+
+    def test_a_document_saved_as_name_dot_numbers_counts_as_exact(self):
+        docs = self.docs(("Demo Inventory 27.numbers", "Blank"), ("Demo Inventory.numbers", "Inventory"))
+        self.assertEqual(numbers_live.one_document_per_name(docs)["Demo Inventory"]["sheet"], "Inventory")
+
+    def test_documents_without_a_name_or_a_title_are_still_handled(self):
+        docs = [{"sheet": "x"}, {"url": "Plants", "sheet": "Data"}, {"url": "Plants", "sheet": "Other"}]
+        self.assertEqual(numbers_live.one_document_per_name(docs), {"Plants": {"url": "Plants", "sheet": "Data"}})
+
+    def test_the_link_follows_the_exact_document_not_the_leftover(self):
+        for order in (("Demo Inventory", "Demo Inventory 27.numbers"), ("Demo Inventory 27.numbers", "Demo Inventory")):
+            runner = FakeRunner([state(*({"url": "Demo Inventory", "title": t, "sheet": "Inventory" if t == "Demo Inventory" else "Blank"}
+                                         for t in order))])
+            with mock.patch.dict(os.environ):
+                os.environ.pop("QUILL_NO_HOSTS", None)
+                link = NumbersLink(runner=runner, running=lambda: True)
+                link.look()
+            self.assertEqual(link.find(["Demo Inventory"])["sheet"], "Inventory", f"order {order}")
+
+    def test_the_scripts_prefer_the_exact_name_too(self):
+        from quill.platforms.macos import numbers_mirror
+        for script in (numbers_live.SCRIPT, numbers_mirror.SCRIPT, numbers_mirror.PROBE, numbers_mirror.ACTIVE_SHEET):
+            self.assertIn("bestScore", script)                      # (the best match, not the first)
+            self.assertNotIn("return documents[i];", script.split("function findDocument")[1].split("\n}\n")[0] if "function findDocument" in script else "")

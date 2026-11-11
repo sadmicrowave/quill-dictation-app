@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import subprocess
 import threading
 from typing import Callable
@@ -59,14 +60,21 @@ SCRIPT = NUMBERS_APP_JS + r"""
 // disk Numbers numbers the new one ("name 2.numbers"): all of these are the same document.
 function titleKey(title) { return title.slice(-8) === ".numbers" ? title.slice(0, -8).replace(/ \d+$/, "") : title; }
 
+// Several open documents can answer to the same name ("Plants" and "Plants 27.numbers"): the one called exactly that wins, then the
+// highest-numbered copy (Numbers numbers the newest one last); equal ones: the first.
 function findDocument(app, names) {
   const documents = app.documents();
+  let best = null, bestScore = Infinity;
   for (let i = 0; i < documents.length; i++) {
     let title = "";
     try { title = documents[i].name(); } catch (e) { continue; }
-    if (names.indexOf(title) >= 0 || names.indexOf(titleKey(title)) >= 0) return documents[i];
+    let score;
+    if (names.indexOf(title) >= 0) score = 0;
+    else if (names.indexOf(titleKey(title)) >= 0) { const m = /(\d+)\.numbers$/.exec(title); score = 1 + 1 / (1 + (m ? parseInt(m[1], 10) : 0)); }
+    else continue;
+    if (score < bestScore) { best = documents[i]; bestScore = score; }
   }
-  return null;
+  return best;
 }
 
 function letters(n) {
@@ -478,6 +486,27 @@ def document_names(path: str | os.PathLike) -> list[str]:
     return [stem, stem + ".numbers"]
 
 
+def _copy_number(title: str) -> int | None:
+    """The number Numbers gave a copy ("Plants 27.numbers" is 27); None for a document not named that way."""
+    match = re.fullmatch(r".* (\d+)\.numbers", title or "")
+    return int(match.group(1)) if match else None
+
+
+def one_document_per_name(docs: list[dict]) -> dict[str, dict]:
+    """The open documents by name (``url``). Two can share one ("Plants" and a copy, "Plants 27.numbers"): the one called exactly that
+    wins, then the highest-numbered copy (Numbers numbers the newest one last); equal ones: the first."""
+    chosen: dict[str, dict] = {}
+    for doc in docs:
+        url = doc.get("url")
+        if not url:
+            continue
+        number = _copy_number(doc.get("title", ""))
+        rank = (0, 0) if number is None else (1, -number)
+        if url not in chosen or rank < chosen[url][0]:
+            chosen[url] = (rank, doc)
+    return {url: doc for url, (rank, doc) in chosen.items()}
+
+
 class NumbersLink:
     """Questions to Numbers, and what is open there as of the last look.
 
@@ -575,7 +604,7 @@ class NumbersLink:
                 self._news(None)
             return
         self._failures = 0
-        self._news({d["url"]: d for d in answer.get("docs", []) if d.get("url")})
+        self._news(one_document_per_name(answer.get("docs", [])))
 
     def _news(self, now: dict[str, dict] | None) -> None:
         """Compare what is open now with what was, and say the differences. ``None``: Numbers is gone or not answering."""

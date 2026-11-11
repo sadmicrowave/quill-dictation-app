@@ -42,14 +42,21 @@ OSASCRIPT = ["osascript", "-l", "JavaScript", "-e"]
 #: extension and, once edited, ``name.numbers``).
 _FIND_DOCUMENT = r"""
 function findDocument(app, docName) {
+  // The one called exactly that wins, then the highest-numbered copy ("name 27.numbers"; Numbers numbers the newest last); equal: the first.
   const documents = app.documents();
+  let best = null, bestScore = Infinity;
   for (let i = 0; i < documents.length; i++) {
     let title = "";
     try { title = documents[i].name(); } catch (e) { continue; }
-    if (title === docName || title.indexOf(docName + ".") === 0) return documents[i];
-    if (title.slice(-8) === ".numbers" && title.slice(0, -8).replace(/ \d+$/, "") === docName) return documents[i];   // "name 2.numbers"
+    let score;
+    if (title === docName || title.indexOf(docName + ".") === 0) score = 0;
+    else if (title.slice(-8) === ".numbers" && title.slice(0, -8).replace(/ \d+$/, "") === docName) {   // "name 2.numbers"
+      const m = / (\d+)\.numbers$/.exec(title);
+      score = 1 + 1 / (1 + (m ? parseInt(m[1], 10) : 0));
+    } else continue;
+    if (score < bestScore) { best = documents[i]; bestScore = score; }
   }
-  return null;
+  return best;
 }
 """
 
