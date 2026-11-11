@@ -32,7 +32,7 @@ from quill.parser.commands import (
     CommandEvent,
     CommandMatcher,
 )
-from quill.parser.phrase_parser import merge_values, parse
+from quill.parser.phrase_parser import finish_note, merge_values, parse
 from quill.parser.tokens import display_name, tokenize
 from quill.parser.vocab import Vocabulary
 
@@ -160,6 +160,7 @@ class Session:
     row_terms: set = field(default_factory=set)     # pool keys heard in the current row
     pending: list | None = None                     # TermKey list awaiting a decision
     origins: dict = field(default_factory=dict)     # TermKey -> (sheet, row) it was heard in
+    open_note: str | None = None                    # the notes-style column still being dictated: the next phrases go on with it
     _voice_open: bool = False                       # may a spoken yes/no answer apply now?
     _reask: bool = False                            # speak the question again at next pause
 
@@ -329,7 +330,15 @@ class Session:
             self.ignored_while_stopped += 1
             return []
 
+        events: list[Event] = []
+        if self.open_note:
+            more = self.note_words(tokenize(text))
+            if more is not None:
+                return self._add_to_note(more)
+            events += self._close_note(say=True)                      # a column name begins the phrase: the note is over
+
         result = parse(text, self.vocab, self.today(), filled=set(self.record))
+        self.open_note = result.open_note
         for column, heard in result.updates.items():
             if column in result.additive and column in self.record:           # another value for it: under the first
                 self.record[column] = merge_values(self.record[column], heard)
@@ -349,7 +358,6 @@ class Session:
             if cand.alias_of:
                 self.alias_hints[key] = cand.alias_of[1]
                 self._trim_hints()
-        events: list[Event] = []
         if result.updates or result.candidates:
             detail = ", ".join(f"{k}={_show(v)}" for k, v in result.updates.items())
             if result.candidates:
@@ -360,6 +368,40 @@ class Session:
             events.append(Event("ignored", detail=f"Assumed: {note}"))
         return events
 
+    # ------------------------------------------------------------------ #
+    # Notes                                                                #
+    # ------------------------------------------------------------------ #
+
+    def note_words(self, tokens: list[str]) -> list[str] | None:
+        """The words of a phrase that go on with the open note, or None when the phrase is not part of it.
+
+        While a note is open every phrase is part of it (column names and list values inside it are ordinary words), except one that
+        begins with another column's name: saying ``color navy`` after a pause ends the note. Beginning with the note's own column
+        name (``notes and also …``) goes on with it."""
+        if not self.open_note or not tokens:
+            return None
+        hit = self.vocab.field_at(tokens, 0)
+        if hit is None:
+            return tokens
+        return tokens[hit[1]:] if hit[0] == self.open_note else None
+
+    def _add_to_note(self, words: list[str]) -> list[Event]:
+        column = self.open_note
+        text = " ".join(words)
+        if not text:
+            return []
+        self.record[column] = f"{self.record[column]} {text}" if self.record.get(column) else text
+        return [Event("updated", detail=f"{column}={self.record[column]}")]
+
+    def _close_note(self, say: bool) -> list[Event]:
+        """End the open note: its text gets a capital and a full stop (``say``: tell the log what the cell now holds)."""
+        column, self.open_note = self.open_note, None
+        text = str(self.record.get(column) or "").strip() if column else ""
+        if not text:
+            return []
+        self.record[column] = finish_note(text)
+        return [Event("updated", detail=f"{column}={self.record[column]}")] if say else []
+
     def _command(self, command: CommandEvent) -> list[Event]:
         action = command.action
         if action is Action.START_LISTENING:
@@ -369,10 +411,14 @@ class Session:
             self.listening = True
             return [Event("started", detail="Listening")]
         if action is Action.STOP_LISTENING:
+            self._close_note(say=False)
             self.listening = False
             return [Event("stopped", detail="Not Listening")] + self._ask_if_needed()
         if not self.listening:
             return [Event("ignored", detail=f"{action.name.replace('_', ' ').title()} heard while stopped")]
+        if action is Action.END_NOTE:
+            return self._close_note(say=True) or [Event("ignored", detail="No note is open")]
+        self._close_note(say=False)                                  # any other command ends the note too
         if action is Action.NEXT_ROW:
             self.row_ended = True
             return self._commit()
@@ -420,6 +466,7 @@ class Session:
         self.row_terms.clear()
         row, self.record = dict(self.record), {}
         self.context.clear()
+        self.open_note = None
         return [Event("discarded", record=row, detail="Row discarded")]
 
     def drop_row(self, why: str) -> list[Event]:

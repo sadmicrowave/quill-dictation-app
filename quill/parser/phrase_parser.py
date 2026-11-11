@@ -122,6 +122,26 @@ class ParseResult:
     """Columns filled by a known value spoken without the column's name. A second different value for such a
     column is added under the first (one value per line of the cell) instead of replacing it."""
 
+    open_note: str | None = None
+    """The notes-style column this phrase began (a note is read to the end of the phrase, and the next phrases go on with it
+    until the note is closed: see :class:`quill.session.Session`)."""
+
+
+def is_note_column(vocab: Vocabulary, column: str) -> bool:
+    """True for a column with no list whose heading ends in a notes-style word (notes, comments, description ...): its value is long text."""
+    last = tokenize(column)[-1] if tokenize(column) else ""
+    return last in TEXT_HINTS and not vocab.is_list_column(column)
+
+
+def finish_note(text: str) -> str:
+    """A note as it is written to the cell: the recogniser gives no capitals or full stops, so the first letter is a capital and the
+    note ends with a full stop (unless it already ends with ``.``, ``!`` or ``?``)."""
+    text = text.strip()
+    if not text:
+        return text
+    text = text[0].upper() + text[1:]
+    return text if text[-1] in ".!?" else text + "."
+
 
 def merge_values(existing: object, new: object) -> str:
     """Put *new* under *existing* in one cell (a value per line), unless it is already there."""
@@ -325,6 +345,9 @@ class _Parser:
 
     def _read_field_value(self, column: str, field_start: int) -> None:
         """Consume the value that follows the field word (at *field_start*)."""
+        if is_note_column(self.vocab, column):
+            self._read_note(column)                          # (a note keeps its small words: "the price went up")
+            return
         while self.i < len(self.tokens) and self.tokens[self.i] in FILLERS:
             self.i += 1
         if self.vocab.is_list_column(column):
@@ -360,6 +383,15 @@ class _Parser:
             self._set(column, close[1])
         else:
             self.result.candidates.append(self._candidate(term, column, True))
+
+    def _read_note(self, column: str) -> None:
+        """Take every word to the end of the phrase as the note: column names, list values, numbers and dates inside it are
+        just words. The note stays open for the phrases that follow."""
+        words = self.tokens[self.i:]
+        if words:
+            self._set(column, " ".join(words))
+        self.result.open_note = column
+        self.i = len(self.tokens)
 
     def _read_free_value(self, column: str, start: int) -> None:
         """Read an amount, date or free text for a column with no list."""

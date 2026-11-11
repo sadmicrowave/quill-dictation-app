@@ -80,9 +80,18 @@ class TestDates(unittest.TestCase):
 
 
 class TestTextColumns(unittest.TestCase):
-    def test_notes_run_to_next_field_word(self):
+    def test_notes_run_to_the_end_of_the_phrase_whatever_words_are_in_them(self):
+        """A note is long text: a column name, a number or a list value inside it is just a word (tests/test_notes.py has the rest)."""
         result = run("notes needs repotting soon price 5")
-        self.assertEqual(result.updates, {"Notes": "needs repotting soon", "Price": 5.0})
+        self.assertEqual(result.updates, {"Notes": "needs repotting soon price 5"})
+        self.assertEqual(result.open_note, "Notes")
+
+    def test_a_text_column_that_is_not_a_note_still_stops_at_the_next_field_word(self):
+        vocab = Vocabulary()
+        vocab.load({}, ["Source", "Price"])
+        result = parse("source garden center price 5", vocab, TODAY)
+        self.assertEqual(result.updates, {"Source": "garden center", "Price": 5.0})
+        self.assertIsNone(result.open_note)
 
     def test_notes_may_contain_known_values_and_numbers(self):
         self.assertEqual(run("notes 3 leaves fern").updates, {"Notes": "3 leaves fern"})

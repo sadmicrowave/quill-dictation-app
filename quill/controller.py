@@ -285,6 +285,7 @@ class Controller:
             return events
         self.session.listening = False
         self.session.record.clear()
+        self.session.open_note = None
         return [Event("error", detail=NO_WORKBOOK_HELP) if e.kind == "started" else e
                 for e in events]
 
@@ -413,6 +414,8 @@ class Controller:
         if column not in self.session.record:
             return False
         value = self.session.record.pop(column)
+        if self.session.open_note == column:
+            self.session.open_note = None                  # (a note taken off the row is no longer being dictated)
         words = self.session.context.pop(column, [])
         self._redo = _Redo(column, _kind(value), words) if words else None
         log.debug("removed %s=%r from the row being built", column, value)

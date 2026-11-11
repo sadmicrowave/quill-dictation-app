@@ -2207,6 +2207,9 @@ class QuillApp:
         session = self.controller.session
         if not words or not session.listening:
             return {}
+        more = session.note_words(words)
+        if more is not None:                                       # (the words go on with an open note)
+            return {session.open_note: f"{session.record.get(session.open_note, '')} {' '.join(more)}".strip()}
         result = parse(" ".join(words), self.controller.vocab, session.today(), filled=set(session.record))
         fields: dict[str, object] = {}
         for column, heard in result.updates.items():
