@@ -377,8 +377,8 @@ class TestFontSize(unittest.TestCase):
         sheet = theme.stylesheet_for(False, font_size=12)
         self.assertEqual(sheet.count("font-size"), 2)                    # one base size for every widget (the platform's own
         self.assertIn("QWidget { font-size: 12pt; }", sheet)             # per-class sizes would otherwise win over the setting) ...
-        self.assertIn("QMenuBar { font-size: ", sheet)                   # ... except the menu bar inside the window: the title bar's size
-        self.assertNotIn("QMenuBar { font-size: 12pt", sheet)
+        self.assertIn(f"QMenuBar {{ font-size: {theme._title_font_points()}pt; }}", sheet)   # ... except the menu bar inside the window: the title bar's size
+        self.assertEqual(theme.stylesheet_for(False, font_size=20).count(f"QMenuBar {{ font-size: {theme._title_font_points()}pt"), 1)   # (whatever the setting)
         self.assertEqual(theme.stylesheet_for(True, font_size=16).count("font-size"), 2)
 
     def test_dialog_has_a_text_size_box_that_saves(self):
