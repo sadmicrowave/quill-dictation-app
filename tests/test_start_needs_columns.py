@@ -107,3 +107,27 @@ class TestASheetThatTurnsEmptyWhileListening(StartCase):
         self.blank()
         self.quill.controller.reload_vocab()
         self.assertEqual(self.log().count("Stopped listening: this sheet has no columns"), 1)
+
+
+class TestTheMiniViewIsNotMadeWider(StartCase):
+    """Found when the 'Start is off' label was longer than 'File not connected': the mini view's minimum width grew from 470 to 497. The mini
+    view says the short 'No columns' and the button's width budget is unchanged."""
+
+    def test_the_compact_button_says_the_short_words_and_the_full_window_the_full_ones(self):
+        from quill.ui.listen_button import NO_COLUMNS_SHORT
+        self.blank()
+        window = self.quill.window
+        self.assertEqual(self.button.text_pill.text(), NO_COLUMNS_TEXT)
+        window.set_mini(True)
+        self.assertEqual(self.button.text_pill.text(), NO_COLUMNS_SHORT)
+        self.assertEqual(self.button.toolTip(), NO_COLUMNS_START_HELP, "the reason is still on hover")
+        window.set_mini(False)
+        self.assertEqual(self.button.text_pill.text(), NO_COLUMNS_TEXT)
+
+    def test_the_least_width_does_not_depend_on_the_new_label(self):
+        from quill.ui.listen_button import ListenButton
+        button = ListenButton()
+        button.set_compact(True)
+        plain = button.minimumWidth()
+        button.set_notice(True, "why", NO_COLUMNS_TEXT, blocked=True, short="No columns")
+        self.assertEqual(button.minimumWidth(), plain)

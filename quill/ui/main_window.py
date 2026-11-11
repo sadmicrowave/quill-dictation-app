@@ -71,7 +71,7 @@ from quill.ui.main_widgets import (
 )
 from quill.ui.theme import apply_spacing, grey_pill, install_backdrop
 from quill.ui.side_panel import FILE_PAGE, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH, SidePanel, TURN_PAGE
-from quill.ui.listen_button import NO_COLUMNS_TEXT, ListenButton
+from quill.ui.listen_button import NO_COLUMNS_SHORT, NO_COLUMNS_TEXT, ListenButton
 from quill.ui.widgets import (
     ElidedLabel,
     FooterButton,
@@ -1057,7 +1057,7 @@ class MainWindow:
         full = not self._view_mini
         self._render_countdown()
         if self._no_columns and not self._listening:            # a sheet with nothing to match: Start is off, and the button says why
-            self.toggle_button.set_notice(True, NO_COLUMNS_START_HELP, NO_COLUMNS_TEXT, blocked=True)
+            self.toggle_button.set_notice(True, NO_COLUMNS_START_HELP, NO_COLUMNS_TEXT, blocked=True, short=NO_COLUMNS_SHORT)
         else:
             self.toggle_button.set_notice(self._not_connected, self._not_connected_tip)
         self.open_file_button.setVisible(full and not self._native_file_button)

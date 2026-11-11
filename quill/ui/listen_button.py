@@ -29,6 +29,8 @@ from quill.ui.theme import FLASH_STYLES
 NOT_CONNECTED_TEXT = "File not connected"
 #: The words while the open sheet has no columns Quill can find (Start is off then).
 NO_COLUMNS_TEXT = "No columns on this sheet"
+#: ... and in the compact mini view, where the button is never allowed to be wider than "File not connected" needs.
+NO_COLUMNS_SHORT = "No columns"
 #: Corner radius (px) of the button, and of the tile and the screen inside it: the app's one button corner.
 RADIUS, INNER_RADIUS = 8.0, 6.0
 #: The green that says "live".
@@ -276,6 +278,7 @@ class ListenButton(QPushButton):
         self._compact = False
         self._notice = False
         self._notice_text = NOT_CONNECTED_TEXT
+        self._notice_short: str | None = None
         self._alert = False
         self._count_total = 0                               # the most seconds the count-down has shown since it began
         self.fixed_tip: str | None = None                  # a tooltip that stays whatever the state
@@ -340,11 +343,13 @@ class ListenButton(QPushButton):
     def minimumSizeHint(self) -> QSize:                    # noqa: N802
         return QSize(0, self.sizeHint().height())
 
-    def set_notice(self, shown: bool, tip: str = "", text: str = NOT_CONNECTED_TEXT, blocked: bool = False) -> None:
+    def set_notice(self, shown: bool, tip: str = "", text: str = NOT_CONNECTED_TEXT, blocked: bool = False, short: str | None = None) -> None:
         """While the notice shows, the button says *text* ("File not connected") and *tip* explains it on hover. It can still be pressed,
-        unless *blocked*: then Start is off (the button is disabled) until the notice goes."""
+        unless *blocked*: then Start is off (the button is disabled) until the notice goes. *short* is what the compact mini view says
+        instead, so a longer notice never makes the mini view wider than it is designed to be."""
         self._notice = shown
         self._notice_text = text if shown else NOT_CONNECTED_TEXT
+        self._notice_short = short if shown else None
         self.fixed_tip = tip if shown and tip else None
         self.setEnabled(not (shown and blocked))
         self._show_text()
@@ -400,7 +405,8 @@ class ListenButton(QPushButton):
         return "none" if self._notice and not self._active else ("live" if self._active else "ready")
 
     def _show_text(self) -> None:
-        text = self._notice_text if self._state() == "none" else (self._live_text if self._active else self._idle_text)
+        shown = self._notice_short if self._compact and self._notice_short else self._notice_text
+        text = shown if self._state() == "none" else (self._live_text if self._active else self._idle_text)
         self.text_pill.setText(text)
         self.setToolTip(self.fixed_tip or text)
         self.setAccessibleName(text)
@@ -418,7 +424,7 @@ class ListenButton(QPushButton):
         font = self.text_pill.font()
         font.setWeight(QFont.Weight.DemiBold)
         metrics = QFontMetrics(font)
-        words = max(metrics.horizontalAdvance(t) for t in (self._idle_text, self._live_text, NOT_CONNECTED_TEXT, NO_COLUMNS_TEXT))
+        words = max(metrics.horizontalAdvance(t) for t in (self._idle_text, self._live_text, NOT_CONNECTED_TEXT, NO_COLUMNS_SHORT))
         margins = self._row.contentsMargins()
         return margins.left() + (height - 10) + 2 * self._row.spacing() + words + 6 + self.SCREEN_LEAST + margins.right()
 
