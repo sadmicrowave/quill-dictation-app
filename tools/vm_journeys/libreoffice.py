@@ -66,6 +66,12 @@ def main(argv=None) -> int:
         return '"soffice.exe"' in out or '"soffice.bin"' in out
 
     already = soffice_running()
+    if already:
+        # A second launch is handed to the LibreOffice that is already running and the launcher exits: the file then has no process of its own, so no command
+        # line to read. That is how Windows and LibreOffice behave (and a gap Quill's Windows lookup lists), not something this journey can test around.
+        report.skip("Quill sees the file LibreOffice has open", "LibreOffice is already running here: close it (File > Exit) and run this journey again")
+        print("LibreOffice is already running: close it and run again")
+        return 0
     try:
         started = time.monotonic()
         found = False
