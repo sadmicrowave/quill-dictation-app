@@ -77,7 +77,7 @@ class TestLiveUpdate(LiveCase):
             self.d.blur_slider.setValue(blur)
             self.d.opacity_slider.setValue(50)
             self.assertAlmostEqual(_app.property("quillBackdrop"), theme.backdrop_alpha(50, blur), 2, f"blur {blur}")   # the background thins
-            self.assertEqual(self.app.window.widget.windowOpacity(), 1.0 if (_THINS or blur > 0) else 0.5)   # the window stays opaque (Windows without blur fades whole)
+            self.assertAlmostEqual(self.app.window.widget.windowOpacity(), 1.0 if (_THINS or blur > 0) else 0.5, 2)   # the window stays opaque (Windows without blur fades whole; its opacity is kept in 8 bits)
             self.d.opacity_slider.setValue(100)
             self.assertAlmostEqual(_app.property("quillBackdrop"), 1.0, 2)
 
@@ -121,12 +121,18 @@ class TestLiveUpdate(LiveCase):
         self.d.opacity_slider.setValue(15)
         self.assertAlmostEqual(self.d.root.property("quillMinAlpha"), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
         self.assertAlmostEqual(_app.property("quillBackdrop"), theme.backdrop_alpha(15, 0), 2)   # the app's windows thin to the slider ...
-        painted = self.d.root.grab().toImage().pixelColor(5, 5).alpha()
-        self.assertAlmostEqual(painted / 255, SettingsDialog.MIN_DIALOG_OPACITY / 100, delta=0.02)   # ... Settings stops at its floor
+        floor = SettingsDialog.MIN_DIALOG_OPACITY / 100
+        self.assertAlmostEqual(self.seen(), floor, delta=0.02)                        # ... Settings stops at its floor
         self.d.opacity_slider.setValue(85)
-        self.assertAlmostEqual(self.d.root.grab().toImage().pixelColor(5, 5).alpha() / 255, 0.85, delta=0.02)
+        self.assertAlmostEqual(self.seen(), 0.85, delta=0.02)
         self.d.opacity_slider.setValue(100)
-        self.assertAlmostEqual(self.d.root.grab().toImage().pixelColor(5, 5).alpha() / 255, 1.0, delta=0.02)
+        self.assertAlmostEqual(self.seen(), 1.0, delta=0.02)
+
+    def seen(self):
+        """How see-through the Settings window really is: its painted background times the window's own opacity (a Mac thins the
+        background and keeps the window opaque; Windows without blur fades the whole window and keeps the background solid)."""
+        painted = self.d.root.grab().toImage().pixelColor(5, 5).alpha() / 255
+        return painted * self.d.root.window().windowOpacity()
 
     def test_open_settings_wires_live_updates_and_cancel_through_the_app(self):
         # The app's own dialog: change, cancel, and everything is as it was.
