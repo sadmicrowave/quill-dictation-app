@@ -338,6 +338,7 @@ class TestOpacityAndBlur(unittest.TestCase):
             self.assertEqual(theme.backdrop_alpha(50, 0), 1.0)                # (elsewhere the window fades as a whole)
 
     def test_a_window_can_ask_for_a_floor_under_its_background_alpha(self):
+        theme.apply_theme(_app, "light", "violet", "compact", backdrop=0.2)       # (not left to whichever test ran before)
         theme.set_backdrop(_app, 0.2)
         root = QWidget()
         root.setObjectName("settingsRoot")
