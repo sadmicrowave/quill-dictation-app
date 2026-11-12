@@ -235,5 +235,6 @@ def install_window_trace(app, path: str | pathlib.Path):
             return False
 
     tracer = Tracer(app)
+    tracer.close = lambda: (app.removeEventFilter(tracer), out.close())          # (a test closes the file so Windows can delete it)
     app.installEventFilter(tracer)
     return tracer

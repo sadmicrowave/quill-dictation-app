@@ -25,7 +25,7 @@ class TestWindowTrace(unittest.TestCase):
             QTest.qWait(30)
             window.hide()
             QTest.qWait(30)
-            _app.removeEventFilter(tracer)
+            tracer.close()
             text = path.read_text(encoding="utf-8")
         shown = [line for line in text.splitlines() if " Show " in line and "Probe window" in line]
         self.assertTrue(shown, text)
@@ -42,7 +42,7 @@ class TestWindowTrace(unittest.TestCase):
             window.show()
             QTest.qWait(30)
             window.hide()
-            _app.removeEventFilter(tracer)
+            tracer.close()
             text = path.read_text(encoding="utf-8")
         self.assertNotIn("secret", text)
         self.assertNotIn("QLabel", text)
