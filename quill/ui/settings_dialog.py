@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
 
 from quill.config.settings import (
     AUTO_STOP_RANGE,
+    DEFAULT_PREFERENCES,
     SHEET_CHECK_RANGE,
     BLUR_RANGE,
     FONT_SIZE_RANGE,
@@ -897,7 +898,7 @@ class SettingsDialog:
         self.font_spin.setRange(*FONT_SIZE_RANGE)
         self.font_spin.setValue(int(prefs["font_size"]))
         self.font_spin.setSuffix(" pt")
-        self._add("Appearance", page, "Text Size", "The size of text throughout Quill (default 14).",
+        self._add("Appearance", page, "Text Size", f"The size of text throughout Quill (default {DEFAULT_PREFERENCES['font_size']}).",
                   self.font_spin, "font")
         self.opacity_slider, self.opacity_label, box = _slider(
             *OPACITY_RANGE, int(prefs["opacity"]), "How see-through the whole window is, text included.")

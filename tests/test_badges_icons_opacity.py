@@ -1,5 +1,6 @@
 """Count badges (tray + inline), button icons, supporting-note styling and window opacity."""
 import pathlib
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -7,6 +8,7 @@ from unittest import mock
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QApplication, QWidget
 
+from quill import platforms
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import BLUR_RANGE, OPACITY_RANGE, Settings
@@ -196,6 +198,10 @@ class TestNoteStyle(unittest.TestCase):
         self.assertIn('QLabel[note="true"] { font-style: italic;', sheet)
 
 
+# macOS thins only the background; elsewhere, without blur, the whole window fades (theme.apply_opacity)
+_THINS = platforms.offered(sys.platform, "OPACITY_THINS_BACKGROUND", False)
+
+
 class TestOpacityAndBlur(unittest.TestCase):
     """Opacity thins the window's background; blur then blurs what shows through it (macOS; see below for the rest).
 
@@ -274,8 +280,12 @@ class TestOpacityAndBlur(unittest.TestCase):
 
     def test_lower_opacity_thins_the_background_not_the_window(self):
         app = self.make_app(opacity=60, blur=0)
-        self.assertIsNone(self.faded(app.window.root))                   # the window itself stays opaque: the blur needs that
-        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.6)       # its background is what is see-through
+        if _THINS:
+            self.assertIsNone(self.faded(app.window.root))               # the window itself stays opaque: the blur needs that
+            self.assertAlmostEqual(_app.property("quillBackdrop"), 0.6)   # its background is what is see-through
+        else:                                                            # Windows without blur: the whole window fades instead
+            self.assertEqual(self.faded(app.window.root), 0.6)
+            self.assertEqual(_app.property("quillBackdrop"), 1.0)
         self.assertTrue(app.sorting.root.property("quillSolid"))          # the Term Helper stays solid by default
         app.settings.preferences["sorting_follows_opacity"] = True
         app.apply_settings(quiet=True)
@@ -286,7 +296,7 @@ class TestOpacityAndBlur(unittest.TestCase):
             app = self.make_app(blur=blur)
             app.settings.preferences["opacity"] = 35
             app.apply_settings(quiet=True)
-            self.assertAlmostEqual(_app.property("quillBackdrop"), 0.35, msg=f"blur {blur}")
+            self.assertAlmostEqual(_app.property("quillBackdrop"), theme.backdrop_alpha(35, blur), msg=f"blur {blur}")
             app.settings.preferences["opacity"] = 100
             app.apply_settings(quiet=True)
             self.assertEqual(_app.property("quillBackdrop"), 1.0, f"blur {blur}")
