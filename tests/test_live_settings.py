@@ -1,5 +1,6 @@
 """Live-updating settings, Cancel reverting, wheel-safe controls, pointer cursors, the bundled model."""
 import pathlib
+import sys
 import tempfile
 import unittest
 
@@ -7,6 +8,7 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
+from quill import platforms
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
@@ -24,6 +26,9 @@ def wheel(widget, delta=120):
     return QWheelEvent(QPointF(5, 5), QPointF(5, 5), QPoint(0, 0), QPoint(0, delta),
                        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
                        Qt.ScrollPhase.NoScrollPhase, False)
+
+
+_THINS = platforms.offered(sys.platform, "OPACITY_THINS_BACKGROUND", False)   # macOS thins the background; Windows without blur fades the window
 
 
 class LiveCase(DemoCase):
@@ -71,8 +76,8 @@ class TestLiveUpdate(LiveCase):
         for blur in (0, 60):
             self.d.blur_slider.setValue(blur)
             self.d.opacity_slider.setValue(50)
-            self.assertAlmostEqual(_app.property("quillBackdrop"), 0.5, 2, f"blur {blur}")     # the background thins
-            self.assertEqual(self.app.window.widget.windowOpacity(), 1.0)                       # the window itself stays opaque
+            self.assertAlmostEqual(_app.property("quillBackdrop"), theme.backdrop_alpha(50, blur), 2, f"blur {blur}")   # the background thins
+            self.assertEqual(self.app.window.widget.windowOpacity(), 1.0 if (_THINS or blur > 0) else 0.5)   # the window stays opaque (Windows without blur fades whole)
             self.d.opacity_slider.setValue(100)
             self.assertAlmostEqual(_app.property("quillBackdrop"), 1.0, 2)
 
@@ -115,7 +120,7 @@ class TestLiveUpdate(LiveCase):
         self.d.blur_slider.setValue(0)
         self.d.opacity_slider.setValue(15)
         self.assertAlmostEqual(self.d.root.property("quillMinAlpha"), SettingsDialog.MIN_DIALOG_OPACITY / 100, 2)
-        self.assertAlmostEqual(_app.property("quillBackdrop"), 0.15, 2)        # the app's windows thin to the slider ...
+        self.assertAlmostEqual(_app.property("quillBackdrop"), theme.backdrop_alpha(15, 0), 2)   # the app's windows thin to the slider ...
         painted = self.d.root.grab().toImage().pixelColor(5, 5).alpha()
         self.assertAlmostEqual(painted / 255, SettingsDialog.MIN_DIALOG_OPACITY / 100, delta=0.02)   # ... Settings stops at its floor
         self.d.opacity_slider.setValue(85)
