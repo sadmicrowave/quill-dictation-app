@@ -1,6 +1,6 @@
-# Help redesign: outline and rules (draft for review)
+# Help redesign: the rules and the page list (written)
 
-The current help is organised by feature, written as long bullet lists, and mostly without pictures. This replaces it with pages organised by what
+The current help is organised by feature, written as long bullet lists, and mostly without pictures. This replaced it (`quill/help/`, 24 pages) with pages organised by what
 the user is trying to do, in the order they meet it.
 
 ## Rules every page follows
@@ -58,3 +58,9 @@ the user is trying to do, in the order they meet it.
 - The sidebar groups the pages under the five headings above (small, non-clickable labels) and shows plain words.
 - The "?" icons open the page for the place the user is in (as now).
 - A "Next:" link at the end of each page and a "Back to" link at the top.
+
+## Checks
+
+`tests/test_help.py` (`TestThePagesFollowTheRules`) holds the rules to the pages: no emoji, every link goes to a page, every page ends with "Next:",
+no nested or long bullet lists, task pages number their steps and say what you will see, every named icon has a light and dark picture, and
+the pages sit in the groups above in order. The icons are drawn by `tools/make_help_images.py` (`write_icons`), the real icons of the app.

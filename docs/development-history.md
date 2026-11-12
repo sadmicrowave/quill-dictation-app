@@ -341,6 +341,12 @@ Found on the first real Windows run of the dev build.
 - **Text size.** A point is 96/72 of a pixel on Windows and one pixel on a Mac, so the 14 that suits a Mac looked too large there. Each system's provider may name its own default (`platforms.default_font_size()`: `DEFAULT_FONT_SIZE = 12` for Windows, 14 otherwise); the settings and the theme follow it. `prefs_version` 4 moves a saved 14 to the system's default once (a size chosen afterwards is kept).
 - **File icon.** The muted folder (no file open) was drawn from an `#AARRGGBB` colour, which an SVG does not understand (nothing drawn, seen on Windows and in the offscreen test). `make_icon(..., alpha=)` draws it faint through the painter instead; a test checks no icon is given an ARGB colour.
 
+## Phase 78: the help rewritten by what the reader does
+
+- **Why.** The pages were organised by feature, long bullet lists with few pictures. They are now 24 short task pages in the order a person meets them (Start here, Set up, Dictate a row, Words Quill misses, Work the way you like, Reference), with numbered steps ("You'll see: ..."), a table of "You see | Do this" at the end, the real icons inline and a "Next:" link. Rules and outline: `docs/help-redesign/outline.md`.
+- **Sidebar.** `helpdocs.GROUPS` names the headings and their pages; `HelpWindow._fill_nav` lists a small heading before each group (not selectable; hidden by a search that matches nothing under it) and shows plain words (no emoji). Titles are short so they are not cut off.
+- **Pictures.** `tools/make_help_images.py` also writes `icon-<name>-light/dark.png` (`write_icons`): the app's own icons plus the round **x** and the **i**. The slugs the app opens (`welcome`, `term-helper`, `settings`, `privacy`, `troubleshooting`) are kept.
+
 ## Phase 79: tests that run in the Windows VM from the Mac; the Settings flicker
 
 - **Job runner** (`tools/windows-vm/jobrunner.py`, standard library only; `send_job.py` on the Mac): jobs are JSON files in `QuillShare/jobs`, answered in `QuillShare/out/<id>/` (`result.json`, `log.txt`, screenshots). Kinds: ping, sync, pytest (headless or the real display plugin), looks, dictation, libreoffice. Started at sign-in by a hidden launcher in the Startup folder (`--install`). Tested on any machine (`tests/test_vm_jobs.py`).
