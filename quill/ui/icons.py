@@ -106,12 +106,17 @@ def titlebar_png(name: str, size: int = 19, scale: int = 2, badge: bool = False,
     return bytes(data)
 
 
-def make_icon(name: str, color: str, size: int = 18, scale: int = 2, badge: bool = False) -> QIcon:
-    """Render icon *name* as a QIcon *size* points square (drawn at *scale*x for sharp screens)."""
+def make_icon(name: str, color: str, size: int = 18, scale: int = 2, badge: bool = False, alpha: float = 1.0) -> QIcon:
+    """Render icon *name* as a QIcon *size* points square (drawn at *scale*x for sharp screens).
+
+    *color* is ``"#RRGGBB"``; a fainter icon is asked for with *alpha* (0 to 1). (A colour with an alpha part, ``#AARRGGBB``, is not
+    a colour an SVG understands: Windows drew such an icon as nothing at all.)
+    """
     renderer = QSvgRenderer(QByteArray(svg_for(name, color).encode("utf-8")))
     pixmap = QPixmap(size * scale, size * scale)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
+    painter.setOpacity(max(0.0, min(1.0, alpha)))
     renderer.render(painter)
     painter.end()
     if badge:

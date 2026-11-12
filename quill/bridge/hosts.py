@@ -87,7 +87,8 @@ def _run(args: list[str], failed: list[str] | None = None) -> str:
     if os.environ.get("QUILL_NO_HOSTS"):              # the tests never ask the system
         return ""
     try:
-        done = subprocess.run(args, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, check=False)   # noqa: S603
+        done = subprocess.run(args, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, check=False,   # noqa: S603
+                              **platforms.no_console())
         if done.returncode != 0 and failed is not None:
             failed.append(args[0])
         return done.stdout

@@ -114,7 +114,8 @@ class TestWindowSize(unittest.TestCase):
         w.setup()
         w.widget.show()
         _app.processEvents()
-        self.assertEqual((w.widget.width(), w.widget.height()), MIN_WINDOW)
+        self.assertEqual(w.widget.width(), MIN_WINDOW[0])
+        self.assertEqual(w.widget.height(), max(MIN_WINDOW[1], w._fit_height()))        # (a window with a ribbon above Start needs more than the least height)
 
     def test_the_window_cannot_be_dragged_smaller(self):
         w = MainWindow()

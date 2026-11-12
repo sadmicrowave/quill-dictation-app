@@ -6,6 +6,8 @@ import os
 import pathlib
 import subprocess
 
+from quill import platforms
+
 
 def profile_scripts_dir(home: pathlib.Path) -> pathlib.Path:
     return pathlib.Path(os.environ.get("APPDATA", str(home))) / "LibreOffice" / "4" / "user" / "Scripts" / "python"
@@ -20,5 +22,6 @@ def find_soffice() -> str | None:
 
 
 def is_running() -> bool:
-    out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=6, check=False).stdout.lower()  # noqa: S603, S607
+    out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=6, check=False,   # noqa: S603, S607
+                         **platforms.no_console()).stdout.lower()
     return '"soffice.exe"' in out or '"soffice.bin"' in out

@@ -20,7 +20,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 
 from quill import platforms
 from quill.ui import glass as glass_module
-from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 _SCHEMES = {
@@ -62,7 +62,7 @@ DENSITIES = {
 TEXT_INSET = 12
 
 DEFAULT_ACCENT = "violet"
-DEFAULT_FONT_SIZE = 14
+DEFAULT_FONT_SIZE = platforms.default_font_size()      # 14 on a Mac; the system's provider may say otherwise (12 on Windows)
 DEFAULT_SPACING = "compact"
 
 
@@ -281,6 +281,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QWidget {{ font-size: {font_size}pt; }}
+QMenuBar {{ font-size: {_title_font_points()}pt; }}
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QFrame#sidePanel, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.26 if dark else 0.08)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.6)};
@@ -377,6 +378,12 @@ QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.7
 QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; border-color: {t['border']}; }}
 QPushButton[outline="true"][iconOnly="true"] {{ border-color: {t['accent']}; }}
+/* The toolbar above Start (where the system has no title-bar toolbar): icons with no border until the pointer is on one, and a rule under the row. */
+QWidget#ribbon {{ border: none; border-bottom: 1px solid {t['border']}; padding-bottom: 5px; }}
+QWidget#ribbon QPushButton[iconOnly="true"], QWidget#ribbon QToolButton {{ background: transparent; border: none; border-radius: 7px; padding: 5px 7px; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:hover, QWidget#ribbon QToolButton:hover {{ background: {rgba(t['text'], 0.14 if dark else 0.10)}; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:pressed, QWidget#ribbon QToolButton:pressed {{ background: {rgba(t['text'], 0.22 if dark else 0.16)}; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:disabled, QWidget#ribbon QToolButton:disabled {{ background: transparent; border: none; }}
 /* The Start button paints itself (see listen_button.py): nothing from the style sheet. */
 QPushButton[listenButton="true"] {{ background: transparent; border: none; padding: 0; }}
 /* The window's footer: flat icon buttons that fill with the accent while their panel is open. */
@@ -567,6 +574,13 @@ def apply_opacity(root: QWidget, percent: int, blur: int = 0) -> None:
     if root.graphicsEffect() is not None:
         root.setGraphicsEffect(None)                       # no effect may be left over from before
     root.window().setWindowOpacity(1.0 if (platforms.offered(sys.platform, "OPACITY_THINS_BACKGROUND", False) or int(blur) > 0) else percent / 100)
+
+
+def _title_font_points() -> int:
+    """The size (points) of the text in the system's window title bars. The menu bar drawn inside the window (File, Listening, View ...,
+    where the system has no global one) is in it, not in the size of Quill's own controls."""
+    size = QFontDatabase.systemFont(QFontDatabase.SystemFont.TitleFont).pointSizeF()
+    return max(8, round(size)) if size > 0 else 9
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:

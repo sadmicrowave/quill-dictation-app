@@ -2462,17 +2462,21 @@ class TestFileMustBeOpenToBeSeen(PanelApp):
 
 
 class TestFontSizeDefault(Dir):
-    def test_the_default_is_fourteen(self):
+    def test_the_default_is_the_systems_own_size(self):
+        """14 on a Mac, 12 on Windows (a point is larger there): see tests/windows/test_windows_text_size.py."""
+        from quill import platforms
         from quill.ui.theme import DEFAULT_FONT_SIZE
-        self.assertEqual((Settings.load(self.dir).preferences["font_size"], DEFAULT_FONT_SIZE), (14, 14))
+        size = platforms.default_font_size()
+        self.assertEqual((Settings.load(self.dir).preferences["font_size"], DEFAULT_FONT_SIZE), (size, size))
 
     def test_settings_saved_with_the_old_default_move_to_the_new_one_once(self):
         (self.dir / Settings.KEYWORDS_FILE).write_text("[preferences]\nfont_size = 12\n")
+        from quill import platforms
         settings = Settings.load(self.dir)
-        self.assertEqual(settings.preferences["font_size"], 14)
-        settings.preferences["font_size"] = 12                             # the user chooses 12 on purpose afterwards
+        self.assertEqual(settings.preferences["font_size"], platforms.default_font_size())
+        settings.preferences["font_size"] = 11                             # the user chooses another size on purpose afterwards
         settings.save()
-        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 12)
+        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 11)
 
     def test_a_size_the_user_chose_is_kept(self):
         (self.dir / Settings.KEYWORDS_FILE).write_text("[preferences]\nfont_size = 16\n")
