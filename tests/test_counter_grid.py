@@ -46,6 +46,7 @@ class GridCase(unittest.TestCase):
 
     def pill_colour(self, column):
         """The colour painted at the left end of the value pill of *column* (inside its padding)."""
+        QTest.qWait(1300)                                        # (the columns ease in: wait until they are fully drawn)
         self.table.resize(max(self.table.width(), 360), self.table.height())
         row = self.row_of(column)
         x = self.table.columnViewportPosition(1) + self.table.fontMetrics().averageCharWidth() // 4 + 7
@@ -128,14 +129,13 @@ class TestTheInformationIcon(GridCase):
 
     def test_the_help_of_a_note_says_how_to_dictate_it(self):
         tip = self.table.tip_for(self.row_of("Notes"))
-        for words in ("say the column's name", "end note", "next row"):
-            self.assertIn(words, tip.replace("\n", " "))
+        self.assertEqual(tip.replace("\n", " "), "Say \u201cnotes\u201d or \u201cstart note\u201d, speak your note, then \u201cend note\u201d or \u201cnext row\u201d.")
+        self.assertLessEqual(len(tip.replace("\n", " ")), 90, "short enough to read at a glance")
         self.assertTrue(all(len(line) <= self.table.TIP_WIDTH + 12 for line in tip.splitlines()), "wrapped, not one long line")
 
     def test_the_help_of_a_counter_names_the_run_and_the_next_value(self):
         tip = self.table.tip_for(self.row_of("ID")).replace("\n", " ")
-        self.assertIn("3, 4, 5 → 6", tip)
-        self.assertIn("Say a value", tip)
+        self.assertEqual(tip, "Counts up by itself: 3, 4, 5 → 6. Say a value to use your own.")
 
     def test_resting_the_pointer_on_the_icon_shows_the_help_and_elsewhere_does_not(self):
         self.window.show()

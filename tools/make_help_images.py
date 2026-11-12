@@ -89,7 +89,7 @@ def shoot(app: QApplication, theme: str) -> None:
     main_window.refresh_icons(colors["text"], colors["on_accent"], colors["accent"])
     heard_in = {"black": "Color", "t-shirt": "Type", "large": "Size", "good": "Condition", "appraisal": "Appraisal", "thirty": "Appraisal", "five": "Appraisal"}
     main_window.set_columns(["Record", "Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])        # (the sheet's columns, listed from the start)
-    main_window.set_column_tips({"Record": COUNTER_TIP.format(found="39, 40, 41 → 42"), "Notes": NOTE_TIP})   # (the "i" after a counter and a note)
+    main_window.set_column_tips({"Record": COUNTER_TIP.format(found="39, 40, 41 → 42"), "Notes": NOTE_TIP.format(column="notes")})   # (the "i" after a counter and a note)
     main_window.set_auto_values({"Record": 42})                    # (the next number Quill fills in itself: a grey pill)
     main_window.set_stream_classifier(lambda words: [WordMatch(w in heard_in, heard_in.get(w), span=list(heard_in).index(w) if w in heard_in else None) for w in words])
     main_window.add_stream_text('this next one is a black t-shirt large good indigo appraisal thirty five')
@@ -104,7 +104,7 @@ def shoot(app: QApplication, theme: str) -> None:
     mini.set_mini(True)
     mini.set_listening_indicator(True)
     mini.set_columns(["Record", "Type", "Color", "Size", "Era", "Condition", "Appraisal", "Notes"])
-    mini.set_column_tips({"Record": COUNTER_TIP.format(found="39, 40, 41 → 42"), "Notes": NOTE_TIP})
+    mini.set_column_tips({"Record": COUNTER_TIP.format(found="39, 40, 41 → 42"), "Notes": NOTE_TIP.format(column="notes")})
     mini.set_auto_values({"Record": 42})
     mini.update_current_row(row)
     mini.set_sorting_count(2)

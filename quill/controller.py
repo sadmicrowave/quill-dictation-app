@@ -70,11 +70,10 @@ NO_WORKBOOK_HELP = (
     "or choose Open File in the File menu."
 )
 
-#: What the information icon of a notes-style column says in the grid.
-NOTE_TIP = ("A note: say the column's name, then speak freely, pauses included. It stays open until you say \u201cend note\u201d "
-            "or \u201cnext row\u201d, or start a phrase with another column's name. Column names inside a note are just words.")
+#: What the information icon of a notes-style column says in the grid ({column} is its heading, in lower case).
+NOTE_TIP = "Say \u201c{column}\u201d or \u201cstart note\u201d, speak your note, then \u201cend note\u201d or \u201cnext row\u201d."
 #: What the information icon of a counter column says ({found} is the run Quill saw and what it continues it with).
-COUNTER_TIP = ("Quill continues this column's numbering: {found}. Say a value for it to use yours; remove its line to leave the cell empty.")
+COUNTER_TIP = "Counts up by itself: {found}. Say a value to use your own."
 
 
 class Controller:
@@ -249,7 +248,7 @@ class Controller:
         tips: dict[str, str] = {}
         for column in self.sheet_headers:
             if is_note_column(self.vocab, column):
-                tips[column] = NOTE_TIP
+                tips[column] = NOTE_TIP.format(column=column.lower())
             elif column in self.counters:
                 tips[column] = COUNTER_TIP.format(found=self.counters[column].explanation)
         return tips

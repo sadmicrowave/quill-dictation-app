@@ -56,6 +56,13 @@ While the code changes with every push, GitHub runs as little as it safely can; 
 CI runs the tests in parallel (`pytest -n auto`, about three times faster: 80 s against 250 s on the Mac); do the same locally with `pip install pytest-xdist` and `python -m pytest -n 4`. Documentation-only changes start nothing. After merging several pull requests into `develop` in a row, run the full suite locally once: nothing on GitHub checks
 the combination until the next pull request.
 
+## Windows long paths
+
+A new Windows PC refuses a file whose whole path is 260 characters or more ("path not found", for a file that is there) until its **long paths** setting is on
+(`LongPathsEnabled`, a registry value or a group policy). Quill's packaged program is built to use long paths when the setting is on (PyInstaller's manifest says
+`longPathAware`; `tests/windows/test_windows_long_paths.py` guards it), the self-check reports whether a long path works on that PC, and when a file cannot be reached
+the message gives the path's length and what to do. The GitHub runners have the setting on, the test VM does not: the long-path test runs only where Windows allows it.
+
 ## Mac and Windows
 
 A test that fakes one system's output (`ps`, `lsof`, AppleScript, POSIX paths) says so and is skipped on the other. **Every such skip has
@@ -70,13 +77,15 @@ No merge, tag or release is needed to try what is on `develop`:
 
 1. A push to `develop` that changes how the app is packaged (`packaging/`, the requirements, the icons, `main.py`...) runs the **dev build** workflow
    (`.github/workflows/dev-build.yml`); for any other change, start it by hand (Actions tab > dev build > Run workflow, on any branch), or build in the Windows
-   VM (`tools/windows-vm`). It builds `Quill.exe` on a Windows runner, runs the packaged exe with `--selftest` (a broken download fails the build) and
-   attaches `Quill-windows-dev.zip` to the run. Open the run in the Actions tab, then Artifacts, and download it (GitHub sign-in needed; kept 14 days).
-2. On the PC, unzip it and run `Quill.exe --selftest` (a Command Prompt or PowerShell in that folder). It writes **Quill self-check.txt** on the
+   VM (`tools/windows-vm`). It builds the app folder and `Quill-Setup.exe` on a Windows runner, installs the installer silently, runs the *installed*
+   `Quill.exe --selftest` (a broken installer or program fails the build), uninstalls it and checks nothing is left. It attaches `Quill-Setup.exe` and
+   `Quill-windows-dev.zip` (the portable folder) to the run. Open the run in the Actions tab, then Artifacts, and download it (GitHub
+   sign-in needed; kept 14 days).
+2. On the PC, run `Quill-Setup.exe` (or unzip the portable copy), then `Quill.exe --selftest` (a Command Prompt or PowerShell in its folder). It writes **Quill self-check.txt** on the
    Desktop and opens it: versions, microphone, the speech model, the folders, which spreadsheet programs are running and how fast
    they answer, a row written into a workbook with accents in its name, a CSV in Excel's ANSI encoding, a file held the way Excel holds
    one, and the Windows look. Nothing is changed or recorded, and the report holds no file names, words or sheet names.
-3. To send it, run **`Send Quill self-check.bat`** from the same zip (or `Quill.exe --selftest --send`). It runs the check and sends the
+3. To send it, run **`Send Quill self-check.bat`** from the portable zip's folder (or `Quill.exe --selftest --send`). It runs the check and sends the
    report through the support relay, which opens an issue in the private `quill-support` repository (titled "[problem] Self-check: ...", no
    token is in the exe). A message box says "sent as issue #N". Find them with `gh issue list --repo sadmicrowave/quill-support --search "Self-check"`,
    then close them. Each line says ok, warn, FAIL or skip.

@@ -36,9 +36,12 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QTableWidget,
     QTextEdit,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
+
+from quill.ui.widgets import CenteredToolTips
 
 
 #: Where the hint text of an empty Voice Stream box and an empty row grid starts: (left, top, right, bottom) inside the box.
@@ -408,7 +411,11 @@ class RowTable(QTableWidget):
             self._over_icon = icon
             self.viewport().update()
         self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if hot or name else Qt.CursorShape.ArrowCursor)
-        self.viewport().setToolTip(self.DELETE_TIP if hot else self.CHANGE_TIP if name else self.tip_for(row) if icon else "")
+        tip = self.DELETE_TIP if hot else self.CHANGE_TIP if name else self.tip_for(row) if icon else ""
+        if tip != self.viewport().toolTip():
+            QToolTip.hideText()                           # (a tip window shown again with other text keeps the old one's size: make a new one)
+            CenteredToolTips.hide_current()               # (and Quill's own rounded tip goes when the pointer leaves the icon)
+            self.viewport().setToolTip(tip)
 
     def leaveEvent(self, event) -> None:                             # noqa: N802
         super().leaveEvent(event)

@@ -191,3 +191,50 @@ def setup_logging(folder: pathlib.Path | None = None, verbose: bool = False) -> 
     from quill import __version__
     syslog().info("Quill started: version %s on %s %s (%s)", __version__, platform.system(), platform.release(), platform.machine())
     return path
+
+
+def install_window_trace(app, path: str | pathlib.Path):
+    """Write a line for every top-level window that is shown, hidden, resized or moved, and for every tool tip request and mouse press (for
+    finding a flicker: a window that appears for a moment shows up here with its class, title, size, the kind of window it is, the Python
+    code that showed it and the time in milliseconds). Only for a developer who set ``QUILL_TRACE_WINDOWS``; nothing the user said or
+    typed is written, only the kind and size of each window and the class names of the widgets involved."""
+    import time
+    import traceback
+    from PySide6.QtCore import QEvent, QObject, Qt
+    from PySide6.QtWidgets import QWidget
+
+    started = time.monotonic()
+    names = {QEvent.Type.Show: "Show", QEvent.Type.Hide: "Hide", QEvent.Type.Resize: "Resize", QEvent.Type.Move: "Move",
+             QEvent.Type.WindowStateChange: "State", QEvent.Type.Close: "Close"}
+    out = open(path, "w", encoding="utf-8", buffering=1)             # noqa: SIM115 (kept open for the life of the program)
+
+    def stamp() -> str:
+        return f"+{int((time.monotonic() - started) * 1000):>6} ms"
+
+    def kind_of(obj) -> str:
+        flags = obj.windowFlags() & Qt.WindowType.WindowType_Mask
+        return {Qt.WindowType.ToolTip: "tooltip", Qt.WindowType.Popup: "popup", Qt.WindowType.Tool: "tool", Qt.WindowType.Dialog: "dialog",
+                Qt.WindowType.Window: "window", Qt.WindowType.Sheet: "sheet", Qt.WindowType.SplashScreen: "splash"}.get(flags, str(int(flags)))
+
+    class Tracer(QObject):
+        def eventFilter(self, obj, event) -> bool:                   # noqa: N802 (Qt name)
+            kind = names.get(event.type())
+            if kind and isinstance(obj, QWidget) and obj.isWindow():
+                g = obj.geometry()
+                line = (f"{stamp()}  {kind:<6} {obj.metaObject().className():<18} kind={kind_of(obj):<8} name={obj.objectName() or '-':<16} "
+                        f"title={obj.windowTitle() or '-':<14} {g.width()}x{g.height()} at {g.x()},{g.y()}  visible={obj.isVisible()}")
+                if kind == "Show":
+                    frames = [f"{f.name}@{pathlib.Path(f.filename).name}:{f.lineno}" for f in traceback.extract_stack(limit=8)[:-1]]
+                    line += "  from " + " < ".join(reversed(frames))
+                out.write(line + "\n")
+            elif event.type() == QEvent.Type.ToolTip and isinstance(obj, QWidget):
+                out.write(f"{stamp()}  ToolTip asked of {obj.metaObject().className()} name={obj.objectName() or '-'} "
+                          f"has_text={bool(obj.toolTip())} under={obj.window().metaObject().className()}\n")
+            elif event.type() == QEvent.Type.MouseButtonPress and isinstance(obj, QWidget):
+                out.write(f"{stamp()}  Click on {obj.metaObject().className()} name={obj.objectName() or '-'}\n")
+            return False
+
+    tracer = Tracer(app)
+    tracer.close = lambda: (app.removeEventFilter(tracer), out.close())          # (a test closes the file so Windows can delete it)
+    app.installEventFilter(tracer)
+    return tracer

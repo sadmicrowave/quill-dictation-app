@@ -3,13 +3,16 @@ name: dev build
 # A Windows build of whatever is on `develop`, for trying it on a real PC without a merge, a tag or a release.
 #
 #   push to develop that changes how the app is packaged (the paths below)  ->  Actions tab > this run > Artifacts > "Quill-windows-dev"
+#   (Quill-Setup.exe, the portable zip, the reports)
 #   or, for any change on any branch: Actions tab > dev build > Run workflow
 #   (An ordinary code change does not start a build: the tests ran on its pull request, and the Windows test VM builds the packaged app on
 #   request: tools/windows-vm.)
 #
 # The artifact needs a GitHub sign-in to download and is deleted after 14 days: it is not a release. It also carries
-# "selfcheck.txt", the report of the packaged Quill.exe run with --selftest on the build machine.
-# On the PC: run Quill.exe --selftest, and send the "Quill self-check.txt" it writes (see docs/testing.md).
+# "selfcheck.txt", the report of the INSTALLED Quill.exe run with --selftest on the build machine (the build installs Quill-Setup.exe
+# silently, checks the installed program, uninstalls it and checks nothing is left).
+# On the PC: run Quill-Setup.exe (or unzip the portable copy), then Quill.exe --selftest and send the "Quill self-check.txt"
+# it writes (see docs/testing.md).
 on:
   push:
     branches: [develop]
@@ -51,25 +54,47 @@ jobs:
       - name: Stamp the build with its commit
         shell: bash
         run: echo "BUILD = \"$(git rev-parse --short HEAD) on ${GITHUB_REF_NAME}\"" > quill/_build.py
-      - name: Build
+      - name: Build the app folder
         shell: pwsh
         run: |
           python tools/make_app_icon.py
           pyinstaller --noconfirm packaging/quill_win.spec
-          Compress-Archive -Path dist/Quill.exe, "tools/Send Quill self-check.bat" -DestinationPath Quill-windows-dev.zip
-          Write-Host ("size: {0} MB" -f [int]((Get-Item Quill-windows-dev.zip).Length / 1MB))
-      - name: The packaged Quill.exe checks itself
+          if (-not (Test-Path dist/Quill/Quill.exe)) { throw "dist/Quill/Quill.exe was not built" }
+      - name: Build the installer and the portable zip
         shell: pwsh
         run: |
-          $run = Start-Process -FilePath dist/Quill.exe -ArgumentList "--selftest", "--out", "selfcheck.txt" -Wait -PassThru
+          choco install innosetup -y --no-progress
+          $version = (Select-String -Path quill/__init__.py -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" packaging/quill_win.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          Copy-Item "tools/Send Quill self-check.bat" dist/Quill/
+          Compress-Archive -Path dist/Quill -DestinationPath Quill-windows-dev.zip
+          Copy-Item dist/installer/Quill-Setup.exe Quill-Setup.exe
+          Write-Host ("installer: {0} MB, portable zip: {1} MB" -f [int]((Get-Item Quill-Setup.exe).Length / 1MB), [int]((Get-Item Quill-windows-dev.zip).Length / 1MB))
+      - name: Install it, check the installed program, uninstall it
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "QuillInstalled"
+          $setup = Start-Process -FilePath Quill-Setup.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$dir", "/LOG=install.log" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "the installer failed (exit code $($setup.ExitCode))" }
+          if (-not (Test-Path "$dir\Quill.exe")) { throw "the installer did not put Quill.exe in $dir" }
+          if (-not (Test-Path "$dir\unins000.exe")) { throw "the installer left no uninstaller" }
+          $run = Start-Process -FilePath "$dir\Quill.exe" -ArgumentList "--selftest", "--out", "selfcheck.txt" -Wait -PassThru
           if (Test-Path selfcheck.txt) { Get-Content selfcheck.txt } else { Write-Host "no report was written" }
-          if ($run.ExitCode -ne 0) { throw "Quill.exe --selftest failed (exit code $($run.ExitCode))" }
+          if ($run.ExitCode -ne 0) { throw "the installed Quill.exe failed its own check (exit code $($run.ExitCode))" }
+          $bye = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=uninstall.log" -Wait -PassThru
+          if ($bye.ExitCode -ne 0) { throw "the uninstaller failed (exit code $($bye.ExitCode))" }
+          for ($i = 0; $i -lt 30 -and (Test-Path "$dir\Quill.exe"); $i++) { Start-Sleep -Seconds 1 }     # (the uninstaller finishes in a copy of itself)
+          if (Test-Path "$dir\Quill.exe") { throw "the uninstaller left Quill.exe behind" }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: Quill-windows-dev
           path: |
+            Quill-Setup.exe
             Quill-windows-dev.zip
+            install.log
+            uninstall.log
             selfcheck.txt
           retention-days: 14
           if-no-files-found: warn

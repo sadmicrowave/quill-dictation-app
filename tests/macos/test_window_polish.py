@@ -256,10 +256,10 @@ class TestStatusRowWithTheIconsInTheTitleBar(unittest.TestCase):
         _app.processEvents()
         self.assertEqual(right(w.toggle_button, w.root), w.root.width() - w.root.layout().contentsMargins().right() - 1)
 
-    def test_the_settings_icon_returns_in_the_window_for_the_full_view_only(self):
+    def test_the_settings_icon_stays_in_the_toolbar_in_the_mini_view_too(self):
         w = window()
         w.set_mini(True)
-        self.assertFalse(w.settings_button.isVisibleTo(w.widget))
+        self.assertTrue(w.settings_button.isVisibleTo(w.widget))
 
 
 class TestCurrentRowSizing(unittest.TestCase):

@@ -26,6 +26,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+from quill import platforms
+
 OK, WARN, FAIL, INFO, SKIP = "ok", "warn", "fail", "info", "skip"
 LABELS = {OK: "  ok  ", WARN: " warn ", FAIL: " FAIL ", INFO: " info ", SKIP: " skip "}
 
@@ -244,7 +246,7 @@ def command_line_lookup() -> list[Check]:
         script.write_text("Start-Sleep -Seconds 40\n", encoding="utf-8")
         # (a stand-in program that has the file on its command line; not Python: inside the packaged app sys.executable is Quill.exe)
         child = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script), str(path)],   # noqa: S603, S607
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **platforms.no_console())
         text, took = "", 0.0
         try:
             for _ in range(8):                                                 # (a slow machine needs a moment for the child to appear)
@@ -260,6 +262,25 @@ def command_line_lookup() -> list[Check]:
     ok = str(path) in text
     return [Check("Which file a program was started with (PowerShell)", (OK if took < 6 else WARN) if ok else FAIL,
                   f"{'found, accents intact' if ok else 'NOT found'}; one question took {took:.2f} s (Quill asks again only when the programs change)")]
+
+
+def long_paths() -> list[Check]:
+    """Can this program use a folder whose path is longer than 260 characters? Windows says no until its long-paths setting is on (the default on a new
+    PC is off), and a program has to be built to use it: this tries it, as this program."""
+    if sys.platform != "win32":
+        return [Check("Long file paths", SKIP, "Windows only")]
+    with tempfile.TemporaryDirectory(prefix="quill-long-") as base:
+        folder = pathlib.Path(base)
+        while len(str(folder / "Stock list.xlsx")) < 280:
+            folder = folder / f"level {len(folder.parts)} with a long folder name"
+        try:
+            folder.mkdir(parents=True)
+            (folder / "probe.txt").write_text("ok", encoding="utf-8")
+            works, why = True, ""
+        except OSError as exc:
+            works, why = False, type(exc).__name__
+    return [Check("Long file paths (over 260 characters)", OK if works else INFO,
+                  "work" if works else f"do not work on this PC ({why}; Windows' default): Quill works in folders with shorter paths")]
 
 
 def excel_live() -> list[Check]:
@@ -285,7 +306,7 @@ def window_look() -> list[Check]:
 CHECKS: list[tuple[str, Callable[[], list[Check]]]] = [
     ("build", build), ("libraries", libraries), ("microphone", microphone), ("speech model", speech_model), ("folders", folders),
     ("programs", programs), ("command lines", command_line_lookup), ("excel", excel_live), ("window look", window_look),
-    ("workbook", workbook_round_trip), ("csv", csv_round_trip), ("held file", held_file),
+    ("workbook", workbook_round_trip), ("csv", csv_round_trip), ("held file", held_file), ("long paths", long_paths),
 ]
 
 
@@ -340,7 +361,7 @@ def show(text: str) -> None:
         elif sys.platform == "darwin":
             import subprocess
             subprocess.run(["osascript", "-e", "on run argv", "-e", "display dialog (item 1 of argv) with title \"Quill self-check\" buttons {\"OK\"}",     # noqa: S603, S607
-                            "-e", "end run", text], timeout=120, check=False, capture_output=True)
+                            "-e", "end run", text], timeout=120, check=False, capture_output=True, **platforms.no_console())
 
 
 def default_path() -> pathlib.Path:

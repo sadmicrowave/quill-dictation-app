@@ -29,6 +29,7 @@ class Action(Enum):
     SORT_TERMS      = auto()
     OPEN_TERM_HELPER = auto()
     UNDO            = auto()
+    START_NOTE      = auto()   # opens a note in the sheet's notes column
     END_NOTE        = auto()   # closes the note being dictated (it stays open across pauses)
     APPEND_ON       = auto()   # turn options, by voice
     APPEND_OFF      = auto()

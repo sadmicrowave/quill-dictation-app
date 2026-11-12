@@ -16,8 +16,9 @@ from tests.test_sorting import SENTENCE, DemoCase
 
 _app = QApplication.instance() or QApplication([])
 
-HIDDEN_IN_MINI = ("settings_button", "open_file_button",
-                  "last_label", "log_toggle", "log", "undo_button")
+HIDDEN_IN_MINI = ("last_label", "log_toggle", "log")
+#: The toolbar (help, undo, files, turns, settings, resize) is the same in the mini view as in the full window.
+KEPT_IN_MINI = ("help_button", "undo_button", "open_file_button", "turn_button", "settings_button", "mini_button")
 
 
 def shown(window, name):
@@ -59,7 +60,7 @@ class TestMiniWindow(unittest.TestCase):
     def test_the_mini_view_keeps_the_buttons_and_the_way_back(self):
         self.w.set_mini(True)
         _app.processEvents()
-        for name in ("wave", "toggle_button", "sorting_button", "mini_button"):
+        for name in ("wave", "toggle_button", "sorting_button", *KEPT_IN_MINI):
             self.assertTrue(shown(self.w, name), name)
 
     def test_the_default_mini_size_has_no_stream_or_row_but_a_taller_one_does(self):

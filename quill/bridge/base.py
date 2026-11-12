@@ -18,6 +18,23 @@ from collections.abc import Collection
 from quill.bridge.filters import ColumnFilter
 
 
+#: Windows' default limit on a file's whole path (characters), unless its "long paths" setting is on and the program is built to use it.
+WINDOWS_PATH_LIMIT = 260
+
+
+def long_path_hint(path, platform: str | None = None) -> str:
+    """A sentence to add to "not found" / "could not open" when *path* is longer than Windows allows by default, else ''.
+
+    Windows says "path not found" for a file in a folder whose whole path is 260 characters or more unless its long-paths setting is on, so the plain message
+    sends the user looking for a file that is there.
+    """
+    import sys
+    if (platform or sys.platform) != "win32" or len(str(path)) < WINDOWS_PATH_LIMIT - 1:
+        return ""
+    return (f" The path is {len(str(path))} characters long: Windows allows only {WINDOWS_PATH_LIMIT - 1} unless its long-paths setting is on. "
+            "Move the file to a folder with a shorter path, or switch long paths on in Windows.")
+
+
 class WorkbookBridge(ABC):
     """Thin, platform-neutral interface to an open Excel workbook."""
 

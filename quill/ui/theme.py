@@ -16,11 +16,11 @@ import pathlib
 import sys
 import tempfile
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, QRectF, Qt
 
 from quill import platforms
 from quill.ui import glass as glass_module
-from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPainterPath, QPalette, QRegion
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 _SCHEMES = {
@@ -62,7 +62,7 @@ DENSITIES = {
 TEXT_INSET = 12
 
 DEFAULT_ACCENT = "violet"
-DEFAULT_FONT_SIZE = 14
+DEFAULT_FONT_SIZE = platforms.default_font_size()      # 14 on a Mac; the system's provider may say otherwise (12 on Windows)
 DEFAULT_SPACING = "compact"
 
 
@@ -281,6 +281,7 @@ def stylesheet_for(dark: bool, accent: str = DEFAULT_ACCENT, spacing: str = DEFA
     hover = rgba(t["accent"], 0.20)            # list/menu hover: a tint, so the text colour never changes
     return f"""
 QWidget {{ font-size: {font_size}pt; }}
+QMenuBar {{ font-size: {_title_font_points()}pt; }}
 QMainWindow, QDialog, QWidget#sortingWindow {{ background: transparent; }}
 QWidget#mainRoot, QFrame#sidePanel, QWidget#settingsRoot, QWidget#sortingRoot, QWidget#helpRoot {{ background: transparent; }}
 QToolTip {{ background: {mix(t['surface'], t['text'], 0.26 if dark else 0.08)}; color: {t['text']}; border: 1px solid {rgba(t['border'], 0.6)};
@@ -377,6 +378,12 @@ QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.7
 QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; border-color: {t['border']}; }}
 QPushButton[outline="true"][iconOnly="true"] {{ border-color: {t['accent']}; }}
+/* The toolbar above Start (where the system has no title-bar toolbar): icons with no border until the pointer is on one, and a rule under the row. */
+QWidget#ribbon {{ border: none; border-bottom: 1px solid {t['border']}; padding-bottom: 5px; }}
+QWidget#ribbon QPushButton[iconOnly="true"], QWidget#ribbon QToolButton {{ background: transparent; border: none; border-radius: 7px; padding: 5px 7px; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:hover, QWidget#ribbon QToolButton:hover {{ background: {rgba(t['text'], 0.14 if dark else 0.10)}; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:pressed, QWidget#ribbon QToolButton:pressed {{ background: {rgba(t['text'], 0.22 if dark else 0.16)}; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:disabled, QWidget#ribbon QToolButton:disabled {{ background: transparent; border: none; }}
 /* The Start button paints itself (see listen_button.py): nothing from the style sheet. */
 QPushButton[listenButton="true"] {{ background: transparent; border: none; padding: 0; }}
 /* The window's footer: flat icon buttons that fill with the accent while their panel is open. */
@@ -500,19 +507,56 @@ def _restyle(app: QApplication) -> None:
 
 
 class _TooltipRounder(QObject):
-    """Lets tooltips have rounded corners: Qt draws them in a square window, so make that window transparent.
+    """Lets the pop-up windows have rounded corners: Qt draws them in a square window, so make that window transparent.
 
-    The style sheet then paints the rounded, softly bordered box and nothing square shows behind it.
+    The style sheet then paints the rounded, softly bordered box and nothing square shows behind it. This covers tooltips, menus,
+    the list a drop-down opens and the file-settings overlay. Where the system draws a transparent window badly (Windows kept square
+    black corners), the window is also cut to a rounded shape with a mask (see ``ROUND_POPUPS_WITH_MASK`` in the provider).
     """
 
+    #: Corner radius (px) of each pop-up, the same as in the style sheet: Qt class name, or object name, -> radius.
+    RADII = {"QTipLabel": 7, "QMenu": 10, "QComboBoxPrivateContainer": 8, "fileSettings": 10}
+    TIP_RADIUS = RADII["QTipLabel"]
+
+    @classmethod
+    def radius_of(cls, obj) -> int | None:
+        """The corner radius of *obj* if it is one of the pop-ups, else None."""
+        if not isinstance(obj, QWidget) or not obj.isWindow():
+            return None
+        for name, radius in cls.RADII.items():
+            if obj.objectName() == name or obj.inherits(name):
+                return radius
+        return None
+
     def eventFilter(self, obj, event) -> bool:
-        if event.type() == QEvent.Type.Polish and obj.inherits("QTipLabel"):
-            obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
-        elif event.type() == QEvent.Type.Show and obj.inherits("QTipLabel"):
-            from quill.ui.chrome import no_window_shadow          # the OS shadow shows a faint square corner
-            no_window_shadow(obj)
+        kind = event.type()
+        if kind not in (QEvent.Type.Polish, QEvent.Type.Show, QEvent.Type.Resize):
+            return False
+        radius = self.radius_of(obj)
+        if radius is None:
+            return False
+        tip = obj.inherits("QTipLabel")
+        if kind == QEvent.Type.Polish:
+            if tip or platforms.offered(None, "ROUND_POPUPS_WITH_MASK", False):
+                obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+                obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
+        elif kind == QEvent.Type.Show:
+            if tip:
+                from quill.ui.chrome import no_window_shadow      # the OS shadow shows a faint square corner
+                no_window_shadow(obj)
+            self._round(obj, radius)
+        else:
+            self._round(obj, radius)                              # (a tip shown again with other text changes size)
         return False
+
+    @staticmethod
+    def _round(window, radius: int = 7) -> None:
+        """Mask *window* to a rounded rectangle where the system needs it (see ``ROUND_POPUPS_WITH_MASK``)."""
+        if not platforms.offered(None, "ROUND_POPUPS_WITH_MASK", False) or window.width() <= 0:
+            return
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, window.width(), window.height()), radius, radius)
+        window.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,
@@ -567,6 +611,13 @@ def apply_opacity(root: QWidget, percent: int, blur: int = 0) -> None:
     if root.graphicsEffect() is not None:
         root.setGraphicsEffect(None)                       # no effect may be left over from before
     root.window().setWindowOpacity(1.0 if (platforms.offered(sys.platform, "OPACITY_THINS_BACKGROUND", False) or int(blur) > 0) else percent / 100)
+
+
+def _title_font_points() -> int:
+    """The size (points) of the text in the system's window title bars. The menu bar drawn inside the window (File, Listening, View ...,
+    where the system has no global one) is in it, not in the size of Quill's own controls."""
+    size = QFontDatabase.systemFont(QFontDatabase.SystemFont.TitleFont).pointSizeF()
+    return max(8, round(size)) if size > 0 else 9
 
 
 def apply_spacing(widget: QWidget, spacing: str | None = None) -> None:
