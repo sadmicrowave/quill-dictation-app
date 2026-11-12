@@ -29,7 +29,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: windows, os: windows-2025, file: "Quill-windows.zip" }
+          - { name: windows, os: windows-2025, file: "Quill-windows.zip", extra: "Quill-Setup.exe" }
           - { name: mac-apple-silicon, os: macos-26, file: "Quill-mac-apple-silicon.dmg" }
           - { name: mac-intel, os: macos-15-intel, file: "Quill-mac-intel.dmg" }
     env:
@@ -70,19 +70,37 @@ jobs:
         run: |
           python tools/make_app_icon.py
           pyinstaller --noconfirm packaging/quill_win.spec
-          $info = (Get-Item dist/Quill.exe).VersionInfo
+          $info = (Get-Item dist/Quill/Quill.exe).VersionInfo
           Write-Host "version resource:" $info.CompanyName "|" $info.FileDescription "|" $info.ProductVersion
           $expected = $env:TAG.TrimStart("v")
           if ($info.ProductVersion -ne $expected -or -not $info.FileDescription) { throw "Quill.exe has the wrong version resource" }
-          Compress-Archive -Path dist/Quill.exe -DestinationPath "${{ matrix.file }}"
-      - name: The packaged Quill.exe checks itself
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$expected" packaging/quill_win.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          Copy-Item dist/installer/Quill-Setup.exe Quill-Setup.exe
+          Compress-Archive -Path dist/Quill -DestinationPath "${{ matrix.file }}"
+      - name: Install it, check the installed program, uninstall it
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "QuillInstalled"
+          $setup = Start-Process -FilePath Quill-Setup.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$dir" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "the installer failed (exit code $($setup.ExitCode))" }
+          if (-not (Test-Path "$dir\Quill.exe") -or -not (Test-Path "$dir\unins000.exe")) { throw "the installer did not install Quill" }
+          $run = Start-Process -FilePath "$dir\Quill.exe" -ArgumentList "--selftest", "--out", "selfcheck.txt" -Wait -PassThru
+          if (Test-Path selfcheck.txt) { Get-Content selfcheck.txt }
+          if ($run.ExitCode -ne 0) { throw "the installed Quill.exe failed its own check (exit code $($run.ExitCode))" }
+          Start-Process -FilePath "$dir\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait | Out-Null
+          for ($i = 0; $i -lt 30 -and (Test-Path "$dir\Quill.exe"); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path "$dir\Quill.exe") { throw "the uninstaller left Quill.exe behind" }
+      - name: The portable zip's Quill.exe checks itself
         if: matrix.name == 'windows'
         shell: pwsh
         run: |
           Expand-Archive -Path "${{ matrix.file }}" -DestinationPath packaged -Force
-          $run = Start-Process -FilePath packaged/Quill.exe -ArgumentList "--selftest", "--out", "selfcheck.txt" -Wait -PassThru
-          if (Test-Path selfcheck.txt) { Get-Content selfcheck.txt }
-          if ($run.ExitCode -ne 0) { throw "the packaged Quill.exe failed its own check (exit code $($run.ExitCode))" }
+          $run = Start-Process -FilePath packaged/Quill/Quill.exe -ArgumentList "--selftest", "--out", "selfcheck-portable.txt" -Wait -PassThru
+          if (Test-Path selfcheck-portable.txt) { Get-Content selfcheck-portable.txt }
+          if ($run.ExitCode -ne 0) { throw "the portable Quill.exe failed its own check (exit code $($run.ExitCode))" }
       - name: Build (macOS)
         if: startsWith(matrix.name, 'mac')
         shell: bash
@@ -103,7 +121,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
-          path: ${{ matrix.file }}
+          path: |
+            ${{ matrix.file }}
+            ${{ matrix.extra }}
           if-no-files-found: error
 
   publish:
@@ -124,4 +144,4 @@ jobs:
         run: |
           gh release create "$TAG" downloads/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "Quill ${TAG#v}" \
-            --notes "Quill ${TAG#v}. Windows: Quill-windows.zip. Mac, Apple chip (M1 or newer): Quill-mac-apple-silicon.dmg. Mac, Intel chip: Quill-mac-intel.dmg. First run: these downloads are not signed with a paid certificate, so each system asks once (see packaging/README.md: edit these notes before publishing)."
+            --notes "Quill ${TAG#v}. Windows: Quill-Setup.exe (installer; or Quill-windows.zip, a portable copy: unzip it and run Quill.exe inside the Quill folder). Mac, Apple chip (M1 or newer): Quill-mac-apple-silicon.dmg. Mac, Intel chip: Quill-mac-intel.dmg. First run: these downloads are not signed with a paid certificate, so each system asks once (see packaging/README.md: edit these notes before publishing)."

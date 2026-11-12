@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Windows one-file .exe — run: pyinstaller packaging\quill_win.spec  (from repo root)
+# Windows app folder (dist\Quill\Quill.exe and its _internal folder) — run: pyinstaller packaging\quill_win.spec  (from repo root)
+# A folder, not one self-extracting file: a one-file exe unpacks itself to a temporary folder on every start (slow, and antivirus
+# dislikes it). The installer (packaging\quill_win.iss) puts this folder on the PC once; the portable zip is the same folder.
 import os
 import sys
 import re
@@ -43,4 +45,5 @@ with open(version_file, "w", encoding="utf-8") as handle:
             StringStruct("OriginalFilename", "Quill.exe"), StringStruct("ProductName", "Quill"), StringStruct("ProductVersion", VERSION)])]),
             VarFileInfo([VarStruct("Translation", [0x409, 1200])])])))
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="Quill", console=False, icon=r("quill", "assets", "Quill.ico"), version=version_file)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Quill", console=False, icon=r("quill", "assets", "Quill.ico"), version=version_file)
+coll = COLLECT(exe, a.binaries, a.datas, name="Quill")
