@@ -40,6 +40,13 @@ the headings row, ...) from fixed seeds, so a failure is reproducible: run `QUIL
 They have already found bugs nobody wrote a journey for (a row dictated for one file written into the next, the Term Helper button
 counting terms a deleted row had taken with it, stale lines in the grid after the sheet changed).
 
+## Windows long paths
+
+A new Windows PC refuses a file whose whole path is 260 characters or more ("path not found", for a file that is there) until its **long paths** setting is on
+(`LongPathsEnabled`, a registry value or a group policy). Quill's packaged program is built to use long paths when the setting is on (PyInstaller's manifest says
+`longPathAware`; `tests/windows/test_windows_long_paths.py` guards it), the self-check reports whether a long path works on that PC, and when a file cannot be reached
+the message gives the path's length and what to do. The GitHub runners have the setting on, the test VM does not: the long-path test runs only where Windows allows it.
+
 ## Mac and Windows
 
 A test that fakes one system's output (`ps`, `lsof`, AppleScript, POSIX paths) says so and is skipped on the other. **Every such skip has
