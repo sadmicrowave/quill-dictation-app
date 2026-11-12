@@ -233,6 +233,68 @@ class TestTheReport(Case):
         self.assertEqual(code, 0)
 
 
+class TestKeepingTheRunnerCurrent(Case):
+    def test_commands_use_the_console_python_beside_pythonw(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pythonw = pathlib.Path(folder) / "pythonw.exe"
+            python = pathlib.Path(folder) / "python.exe"
+            pythonw.write_text("")
+            python.write_text("")
+            self.assertEqual(runner_module.console_python(str(pythonw)), str(python))
+            self.assertEqual(runner_module.console_python(str(python)), str(python))
+            python.unlink()
+            self.assertEqual(runner_module.console_python(str(pythonw)), str(pythonw), "no sibling: leave it")
+
+    def test_a_newer_runner_in_the_synced_code_replaces_the_running_one(self):
+        restarted = []
+        runner = runner_module.Runner(self.share, self.work, restart=lambda: restarted.append(1))
+        runner.installed_script.parent.mkdir(parents=True)
+        runner.installed_script.write_text("# old runner\n", encoding="utf-8")
+        offered = self.share / "src" / "tools" / "windows-vm"
+        offered.mkdir(parents=True)
+        (offered / "jobrunner.py").write_text("# new runner\n", encoding="utf-8")
+        self.assertTrue(runner.update_if_newer())
+        self.assertEqual(runner.installed_script.read_text(encoding="utf-8"), "# new runner\n")
+        self.assertEqual(restarted, [1])
+        self.assertFalse(runner.update_if_newer(), "the same file twice is not an update")
+
+    def test_no_update_when_nothing_is_offered(self):
+        runner = runner_module.Runner(self.share, self.work, restart=lambda: self.fail("restarted"))
+        self.assertFalse(runner.update_if_newer())
+
+    def test_serve_ends_when_it_has_handed_over_to_a_newer_runner(self):
+        restarted = []
+        runner = runner_module.Runner(self.share, self.work, restart=lambda: restarted.append(1))
+        runner.installed_script.parent.mkdir(parents=True)
+        runner.installed_script.write_text("# old\n", encoding="utf-8")
+        offered = self.share / "src" / "tools" / "windows-vm"
+        offered.mkdir(parents=True)
+        (offered / "jobrunner.py").write_text("# new\n", encoding="utf-8")
+        runner_module.POLL_SECONDS = 0.01
+        runner.serve()                                           # returns by itself (a hung test would never get here)
+        self.assertEqual(restarted, [1])
+        self.assertTrue((runner.installed_script.parent / "runner.pid").is_file())
+
+    def test_installing_ends_a_runner_that_is_already_running(self):
+        import os
+        import signal
+        folder = self.work / "jobrunner"
+        folder.mkdir(parents=True)
+        victim = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        (folder / "runner.pid").write_text(str(victim.pid), encoding="utf-8")
+        try:
+            self.assertTrue(runner_module.stop_running(folder))
+            victim.wait(timeout=10)
+            self.assertIsNotNone(victim.returncode)
+            self.assertFalse((folder / "runner.pid").exists())
+        finally:
+            if victim.poll() is None:
+                victim.kill()
+
+    def test_stopping_with_no_pid_file_does_nothing(self):
+        self.assertFalse(runner_module.stop_running(self.work))
+
+
 class TestStartingWithWindows(Case):
     def test_the_launcher_starts_the_runner_with_no_window_and_quotes_its_paths(self):
         text = runner_module.launcher_text(r"C:\QuillTest\venv\Scripts\python.exe", pathlib.Path(r"C:\QuillTest\jobrunner\jobrunner.py"),

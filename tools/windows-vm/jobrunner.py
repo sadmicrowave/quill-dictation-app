@@ -29,6 +29,14 @@ WORK = pathlib.Path(os.environ.get("QUILL_VM_WORK", r"C:\QuillTest" if os.name =
 ALIVE_NAME = "runner-alive.txt"
 
 
+def console_python(python: str = sys.executable) -> str:
+    """The Python that runs commands: ``pythonw.exe`` (which starts with no window, so the runner itself uses it) has no output to report errors in, so
+    the commands the runner starts use ``python.exe`` beside it (and are hidden by the flags they are started with)."""
+    path = pathlib.Path(python)
+    sibling = path.with_name("python.exe")
+    return str(sibling) if path.name.lower() == "pythonw.exe" and sibling.is_file() else python
+
+
 def now() -> str:
     return dt.datetime.now().isoformat(timespec="seconds")
 
@@ -47,8 +55,11 @@ def result(status: str, summary: str, checks: list | None = None) -> dict:
 class Runner:
     """Watches ``<share>/jobs`` and runs each job once, oldest first."""
 
-    def __init__(self, share: pathlib.Path, work: pathlib.Path = WORK, python: str = sys.executable, handlers: dict | None = None) -> None:
-        self.share, self.work, self.python = pathlib.Path(os.path.normpath(str(share))), pathlib.Path(work), python
+    def __init__(self, share: pathlib.Path, work: pathlib.Path = WORK, python: str | None = None, handlers: dict | None = None,
+                 restart=None) -> None:
+        self.share, self.work = pathlib.Path(os.path.normpath(str(share))), pathlib.Path(work)
+        self.python = python or console_python()
+        self.restart = restart or self._restart
         self.jobs = self.share / "jobs"
         self.out = self.share / "out"
         self.handlers = dict(HANDLERS if handlers is None else handlers)
@@ -58,6 +69,32 @@ class Runner:
     @property
     def src(self) -> pathlib.Path:
         return self.work / "src"
+
+    @property
+    def installed_script(self) -> pathlib.Path:
+        return self.work / "jobrunner" / "jobrunner.py"
+
+    def newer_script(self) -> pathlib.Path | None:
+        """The runner's own file in the synced code, when it differs from the one running (so a new runner is picked up by itself)."""
+        import hashlib
+        offered = self.share / "src" / "tools" / "windows-vm" / "jobrunner.py"
+        if not offered.is_file() or not self.installed_script.is_file():
+            return None
+        same = hashlib.sha256(offered.read_bytes()).digest() == hashlib.sha256(self.installed_script.read_bytes()).digest()
+        return None if same else offered
+
+    def update_if_newer(self) -> bool:
+        """Replace the running file with the newer one and start it in this one's place. True when it did (the caller stops)."""
+        offered = self.newer_script()
+        if offered is None:
+            return False
+        shutil.copyfile(offered, self.installed_script)
+        self.restart()
+        return True
+
+    def _restart(self) -> None:
+        subprocess.Popen([sys.executable, str(self.installed_script), str(self.share)],              # noqa: S603
+                         **({"creationflags": 0x08000000 | 0x00000008} if os.name == "nt" else {}))
 
     def heartbeat(self) -> None:
         (self.out / ALIVE_NAME).write_text(f"{now()}\nhost={platform.node()}\npython={sys.version.split()[0]}\nwork={self.work}\n", encoding="utf-8")
@@ -104,9 +141,16 @@ class Runner:
         running.replace(self.jobs / "done" / path.name)
         return outcome
 
+    def write_pid(self) -> None:
+        self.installed_script.parent.mkdir(parents=True, exist_ok=True)
+        (self.installed_script.parent / "runner.pid").write_text(str(os.getpid()), encoding="utf-8")
+
     def serve(self, stop=lambda: False) -> None:
+        self.write_pid()
         while not stop():
             if not self.poll_once():
+                if self.update_if_newer():
+                    return                                   # (the new runner has been started: this one ends)
                 time.sleep(POLL_SECONDS)
 
 
@@ -243,10 +287,11 @@ def launcher_text(python: str, script: pathlib.Path, share: str) -> str:
 
 
 def install(share: str) -> pathlib.Path:
-    """Copy this file to the VM's own folder and make Windows start it at every sign-in (and start it now)."""
+    """Copy this file to the VM's own folder and make Windows start it at every sign-in (and start it now, in place of one already running)."""
     WORK.mkdir(parents=True, exist_ok=True)
     folder = WORK / "jobrunner"
     folder.mkdir(exist_ok=True)
+    stop_running(folder)
     script = folder / "jobrunner.py"
     shutil.copyfile(__file__, script)
     launcher = startup_folder() / "Quill job runner.vbs"
@@ -255,6 +300,28 @@ def install(share: str) -> pathlib.Path:
     if os.name == "nt":
         subprocess.Popen(["wscript.exe", str(launcher)], creationflags=0x08000000)         # noqa: S603, S607
     return launcher
+
+
+def stop_running(folder: pathlib.Path) -> bool:
+    """End a runner that is already running (its process number is in ``runner.pid``), so two never take the same job."""
+    pid_file = folder / "runner.pid"
+    if not pid_file.is_file():
+        return False
+    try:
+        pid = int(pid_file.read_text(encoding="utf-8").strip())
+    except ValueError:
+        return False
+    if pid == os.getpid():
+        return False
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=30, check=False, creationflags=0x08000000)    # noqa: S603, S607
+    else:
+        try:
+            os.kill(pid, 15)
+        except OSError:
+            return False
+    pid_file.unlink(missing_ok=True)
+    return True
 
 
 def uninstall() -> bool:
