@@ -14,6 +14,7 @@ from quill.listener.model import find_model, is_model_dir
 from quill.ui import theme
 from quill.ui.settings_dialog import SettingsDialog
 from quill.ui.settings_widgets import GuardedCombo, GuardedSlider, GuardedSpinBox
+from tests.fixtures import in_git_checkout
 from tests.test_sorting import DemoCase
 
 _app = QApplication.instance() or QApplication([])
@@ -313,6 +314,7 @@ class TestBundledModel(unittest.TestCase):
             finally:
                 (model_module.bundled_archive, model_module.user_model_dir, model_module.default_search_dirs) = saved
 
+    @unittest.skipUnless(in_git_checkout(ROOT.parents[1]), "needs a git checkout (a copy made for another machine has none)")
     def test_the_zip_is_tracked_and_an_unpacked_copy_is_ignored(self):
         import subprocess
         repo = self.ROOT.parents[1]

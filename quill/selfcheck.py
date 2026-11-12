@@ -264,6 +264,25 @@ def command_line_lookup() -> list[Check]:
                   f"{'found, accents intact' if ok else 'NOT found'}; one question took {took:.2f} s (Quill asks again only when the programs change)")]
 
 
+def long_paths() -> list[Check]:
+    """Can this program use a folder whose path is longer than 260 characters? Windows says no until its long-paths setting is on (the default on a new
+    PC is off), and a program has to be built to use it: this tries it, as this program."""
+    if sys.platform != "win32":
+        return [Check("Long file paths", SKIP, "Windows only")]
+    with tempfile.TemporaryDirectory(prefix="quill-long-") as base:
+        folder = pathlib.Path(base)
+        while len(str(folder / "Stock list.xlsx")) < 280:
+            folder = folder / f"level {len(folder.parts)} with a long folder name"
+        try:
+            folder.mkdir(parents=True)
+            (folder / "probe.txt").write_text("ok", encoding="utf-8")
+            works, why = True, ""
+        except OSError as exc:
+            works, why = False, type(exc).__name__
+    return [Check("Long file paths (over 260 characters)", OK if works else INFO,
+                  "work" if works else f"do not work on this PC ({why}; Windows' default): Quill works in folders with shorter paths")]
+
+
 def excel_live() -> list[Check]:
     if sys.platform != "win32":
         return [Check("Live Excel", SKIP, "Windows only")]
@@ -287,7 +306,7 @@ def window_look() -> list[Check]:
 CHECKS: list[tuple[str, Callable[[], list[Check]]]] = [
     ("build", build), ("libraries", libraries), ("microphone", microphone), ("speech model", speech_model), ("folders", folders),
     ("programs", programs), ("command lines", command_line_lookup), ("excel", excel_live), ("window look", window_look),
-    ("workbook", workbook_round_trip), ("csv", csv_round_trip), ("held file", held_file),
+    ("workbook", workbook_round_trip), ("csv", csv_round_trip), ("held file", held_file), ("long paths", long_paths),
 ]
 
 
