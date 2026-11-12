@@ -191,3 +191,31 @@ def setup_logging(folder: pathlib.Path | None = None, verbose: bool = False) -> 
     from quill import __version__
     syslog().info("Quill started: version %s on %s %s (%s)", __version__, platform.system(), platform.release(), platform.machine())
     return path
+
+
+def install_window_trace(app, path: str | pathlib.Path):
+    """Write a line for every top-level window that is shown, hidden, resized or moved (for finding a flicker: a window that appears for a
+    moment shows up here with its class, title, size and the time in milliseconds). Only for a developer who set ``QUILL_TRACE_WINDOWS``;
+    nothing the user said or typed is written, only the kind and size of each window."""
+    import time
+    from PySide6.QtCore import QEvent, QObject
+    from PySide6.QtWidgets import QWidget
+
+    started = time.monotonic()
+    names = {QEvent.Type.Show: "Show", QEvent.Type.Hide: "Hide", QEvent.Type.Resize: "Resize", QEvent.Type.Move: "Move",
+             QEvent.Type.WindowStateChange: "State", QEvent.Type.Close: "Close"}
+    out = open(path, "w", encoding="utf-8", buffering=1)             # noqa: SIM115 (kept open for the life of the program)
+
+    class Tracer(QObject):
+        def eventFilter(self, obj, event) -> bool:                   # noqa: N802 (Qt name)
+            kind = names.get(event.type())
+            if kind and isinstance(obj, QWidget) and obj.isWindow():
+                g = obj.geometry()
+                out.write(f"+{int((time.monotonic() - started) * 1000):>6} ms  {kind:<6} {obj.metaObject().className():<26} "
+                          f"name={obj.objectName() or '-':<18} title={obj.windowTitle() or '-':<18} {g.width()}x{g.height()} at {g.x()},{g.y()}  "
+                          f"visible={obj.isVisible()}\n")
+            return False
+
+    tracer = Tracer(app)
+    app.installEventFilter(tracer)
+    return tracer

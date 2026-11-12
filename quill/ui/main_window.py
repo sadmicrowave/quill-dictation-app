@@ -372,7 +372,7 @@ class MainWindow:
         # The icons the macOS title bar holds are, where the system has no such place, a toolbar of their own above Start (so Start keeps
         # the whole width), split as the title bar splits them: help and undo at the left; files, turns, settings and the resize icon at
         # the right. The icons have no border until the pointer is over one, and a thin rule under the row separates it from Start (all
-        # in the style sheet: ``QWidget#ribbon``). The resize icon goes back beside Start in the mini view, which has no room for a ribbon.
+        # in the style sheet: ``QWidget#ribbon``).
         self.ribbon = QWidget()
         self.ribbon.setObjectName("ribbon")
         self.ribbon.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -1070,14 +1070,6 @@ class MainWindow:
             if was_visible:
                 window.show()
 
-    def _place_mini_button(self, full: bool) -> None:
-        """The resize icon is the last one of the ribbon in the full window, and sits beside Start in the mini view (it has no ribbon)."""
-        home = self._ribbon_layout if full else self._status_row
-        if home.indexOf(self.mini_button) < 0:
-            for layout in (self._ribbon_layout, self._status_row):
-                layout.removeWidget(self.mini_button)
-            home.addWidget(self.mini_button)
-
     def _frame_extra(self) -> int:
         """Height of what the window holds besides its content: the menu bar drawn inside it where the system has no global one
         (the window is the content plus this, so a size worked out from the content alone cuts Start short)."""
@@ -1096,9 +1088,8 @@ class MainWindow:
             self.toggle_button.set_notice(True, NO_COLUMNS_START_HELP, NO_COLUMNS_TEXT, blocked=True, short=NO_COLUMNS_SHORT)
         else:
             self.toggle_button.set_notice(self._not_connected, self._not_connected_tip)
-        self._place_mini_button(full)
-        self.open_file_button.setVisible(full and not self._native_file_button)
-        self.turn_button.setVisible(full and not self._native_turn_button)
+        self.open_file_button.setVisible(not self._native_file_button)       # (the toolbar above Start is the same in the mini view)
+        self.turn_button.setVisible(not self._native_turn_button)
         sliding = self._next_animation is not None
         if not sliding:
             self.next_button.setVisible(self._listening)                      # only while a turn is going on
@@ -1112,7 +1103,7 @@ class MainWindow:
         else:
             self.next_button.setFixedSize(beside + 14, beside)                # as tall as the Start button
         self.mini_button.setVisible(not self._native_mini_button)           # the title bar has its own
-        self.settings_button.setVisible(full and not self._native_settings_button)
+        self.settings_button.setVisible(not self._native_settings_button)
         self.footer.setVisible(full)
         detail = full or self._mini_detail                                   # the mini view shows them only when tall
         self.stream.setVisible(detail)
@@ -1122,9 +1113,9 @@ class MainWindow:
         self.row_grip.allowed = full                                         # (only the full window is resized this way)
         self.row_grip.setVisible(full and detail)
         self.last_label.setVisible(full and self._has_last_saved)
-        self.help_button.setVisible(full and not self._native_help_button)
-        self.undo_button.setVisible(full and not self._native_undo_button)
-        self.ribbon.setVisible(full and any(not b.isHidden() for b in (self.help_button, self.undo_button, self.open_file_button,
+        self.help_button.setVisible(not self._native_help_button)
+        self.undo_button.setVisible(not self._native_undo_button)
+        self.ribbon.setVisible(any(not b.isHidden() for b in (self.help_button, self.undo_button, self.open_file_button,
                                                                           self.turn_button, self.settings_button, self.mini_button)))
         self.undo_button.setEnabled(self._undo_count > 0)
         self.log.setVisible(full and (not self._log_collapsed or self._log_closing()))

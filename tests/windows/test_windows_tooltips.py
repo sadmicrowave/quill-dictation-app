@@ -21,13 +21,13 @@ class TestTheRoundedMask(unittest.TestCase):
         return tip
 
     def test_windows_asks_for_the_mask_and_the_others_do_not(self):
-        self.assertTrue(platforms.offered("win32", "ROUND_TOOLTIPS_WITH_MASK", False))
-        self.assertFalse(platforms.offered("darwin", "ROUND_TOOLTIPS_WITH_MASK", False))
+        self.assertTrue(platforms.offered("win32", "ROUND_POPUPS_WITH_MASK", False))
+        self.assertFalse(platforms.offered("darwin", "ROUND_POPUPS_WITH_MASK", False))
 
     def test_the_corners_are_cut_and_the_rest_is_kept(self):
         tip = self.tip()
         with mock.patch.object(platforms, "offered", return_value=True):
-            _TooltipRounder._round(tip)
+            _TooltipRounder._round(tip, 7)
         mask = tip.mask()
         self.assertFalse(mask.contains(QPoint(0, 0)))
         self.assertFalse(mask.contains(QPoint(219, 0)))
@@ -39,16 +39,16 @@ class TestTheRoundedMask(unittest.TestCase):
     def test_the_cut_follows_the_size_the_tip_takes_when_it_is_shown_again(self):
         tip = self.tip()
         with mock.patch.object(platforms, "offered", return_value=True):
-            _TooltipRounder._round(tip)
+            _TooltipRounder._round(tip, 7)
             tip.resize(300, 120)
-            _TooltipRounder._round(tip)
+            _TooltipRounder._round(tip, 7)
         self.assertFalse(tip.mask().contains(QPoint(299, 119)))
         self.assertTrue(tip.mask().contains(QPoint(299, 60)))
 
     def test_nothing_is_masked_where_the_system_draws_it_rounded_already(self):
         tip = self.tip()
         with mock.patch.object(platforms, "offered", return_value=False):
-            _TooltipRounder._round(tip)
+            _TooltipRounder._round(tip, 7)
         self.assertTrue(tip.mask().isEmpty())
 
     def test_the_radius_is_the_style_sheets(self):

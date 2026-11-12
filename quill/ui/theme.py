@@ -507,33 +507,56 @@ def _restyle(app: QApplication) -> None:
 
 
 class _TooltipRounder(QObject):
-    """Lets tooltips have rounded corners: Qt draws them in a square window, so make that window transparent.
+    """Lets the pop-up windows have rounded corners: Qt draws them in a square window, so make that window transparent.
 
-    The style sheet then paints the rounded, softly bordered box and nothing square shows behind it.
+    The style sheet then paints the rounded, softly bordered box and nothing square shows behind it. This covers tooltips, menus,
+    the list a drop-down opens and the file-settings overlay. Where the system draws a transparent window badly (Windows kept square
+    black corners), the window is also cut to a rounded shape with a mask (see ``ROUND_POPUPS_WITH_MASK`` in the provider).
     """
 
-    def eventFilter(self, obj, event) -> bool:
-        if event.type() == QEvent.Type.Polish and obj.inherits("QTipLabel"):
-            obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
-        elif event.type() == QEvent.Type.Show and obj.inherits("QTipLabel"):
-            from quill.ui.chrome import no_window_shadow          # the OS shadow shows a faint square corner
-            no_window_shadow(obj)
-            self._round(obj)
-        elif event.type() == QEvent.Type.Resize and obj.inherits("QTipLabel"):
-            self._round(obj)                                      # (a tip that is shown again with other text changes size)
-        return False
-
-    TIP_RADIUS = 7                    # px, the same as the style sheet's ``QToolTip`` border radius
+    #: Corner radius (px) of each pop-up, the same as in the style sheet: Qt class name, or object name, -> radius.
+    RADII = {"QTipLabel": 7, "QMenu": 10, "QComboBoxPrivateContainer": 8, "fileSettings": 10}
+    TIP_RADIUS = RADII["QTipLabel"]
 
     @classmethod
-    def _round(cls, tip) -> None:
-        """Mask the tooltip window to a rounded rectangle where the system needs it (see ``ROUND_TOOLTIPS_WITH_MASK``)."""
-        if not platforms.offered(None, "ROUND_TOOLTIPS_WITH_MASK", False) or tip.width() <= 0:
+    def radius_of(cls, obj) -> int | None:
+        """The corner radius of *obj* if it is one of the pop-ups, else None."""
+        if not isinstance(obj, QWidget) or not obj.isWindow():
+            return None
+        for name, radius in cls.RADII.items():
+            if obj.objectName() == name or obj.inherits(name):
+                return radius
+        return None
+
+    def eventFilter(self, obj, event) -> bool:
+        kind = event.type()
+        if kind not in (QEvent.Type.Polish, QEvent.Type.Show, QEvent.Type.Resize):
+            return False
+        radius = self.radius_of(obj)
+        if radius is None:
+            return False
+        tip = obj.inherits("QTipLabel")
+        if kind == QEvent.Type.Polish:
+            if tip or platforms.offered(None, "ROUND_POPUPS_WITH_MASK", False):
+                obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+                obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
+        elif kind == QEvent.Type.Show:
+            if tip:
+                from quill.ui.chrome import no_window_shadow      # the OS shadow shows a faint square corner
+                no_window_shadow(obj)
+            self._round(obj, radius)
+        else:
+            self._round(obj, radius)                              # (a tip shown again with other text changes size)
+        return False
+
+    @staticmethod
+    def _round(window, radius: int = 7) -> None:
+        """Mask *window* to a rounded rectangle where the system needs it (see ``ROUND_POPUPS_WITH_MASK``)."""
+        if not platforms.offered(None, "ROUND_POPUPS_WITH_MASK", False) or window.width() <= 0:
             return
         path = QPainterPath()
-        path.addRoundedRect(QRectF(0, 0, tip.width(), tip.height()), cls.TIP_RADIUS, cls.TIP_RADIUS)
-        tip.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        path.addRoundedRect(QRectF(0, 0, window.width(), window.height()), radius, radius)
+        window.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,

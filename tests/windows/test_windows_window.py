@@ -87,13 +87,45 @@ class TestTheRibbon(Case):
         QTest.qWait(50)
         self.assertFalse(w.ribbon.isVisible(), "nothing to put in it: no empty bar above Start")
 
-    def test_the_resize_icon_stays_beside_start_in_the_mini_view(self):
+    def test_the_mini_view_keeps_the_same_toolbar_with_all_six_icons(self):
         w = build(520, 200)
         w.set_mini(True)
         QTest.qWait(50)
-        self.assertTrue(w.mini_button.isVisible())
-        self.assertFalse(w.ribbon.isVisible(), "the mini view has no ribbon: it keeps its height for Start")
-        self.assertEqual(top_left(w, w.mini_button).y() < top_left(w, w.toggle_button).y() + w.toggle_button.height(), True)
+        self.assertTrue(w.ribbon.isVisible())
+        start = top_left(w, w.toggle_button).y()
+        half = w.widget.width() / 2
+        for button in self.icons(w):
+            self.assertTrue(button.isVisible(), button.toolTip())
+            self.assertLessEqual(top_left(w, button).y() + button.height(), start, f"{button.toolTip()} is not above Start")
+        for button in (w.help_button, w.undo_button):
+            self.assertLess(top_left(w, button).x(), half)
+        for button in (w.open_file_button, w.turn_button, w.settings_button, w.mini_button):
+            self.assertGreater(top_left(w, button).x(), half)
+
+    def test_the_toolbar_is_where_it_was_when_the_window_gets_small_and_comes_back(self):
+        w = build()
+        before = {b.toolTip(): (top_left(w, b).x() - 0, top_left(w, b).y()) for b in self.icons(w)}
+        w.set_mini(True)
+        QTest.qWait(50)
+        mini_y = {top_left(w, b).y() for b in self.icons(w)}
+        self.assertEqual(len(mini_y), 1, "one row in the mini view too")
+        self.assertLessEqual(abs(next(iter(mini_y)) - before[w.help_button.toolTip()][1]), 2, "at the same height (the mini view's margin is a pixel less)")
+        w.set_mini(False)
+        QTest.qWait(50)
+        start = top_left(w, w.toggle_button).y()
+        self.assertTrue(all(top_left(w, b).y() + b.height() <= start for b in self.icons(w)))
+
+    def test_the_mini_view_is_tall_enough_for_the_toolbar_and_start(self):
+        w = build(520, 500)
+        w.set_mini(True)
+        QTest.qWait(50)
+        bar = w.widget.menuBar()
+        need = (bar.height() if bar.isVisible() else 0) + w.ribbon.height() + w.toggle_button.minimumSizeHint().height()
+        self.assertGreaterEqual(w.widget.height(), need)
+        self.assertGreaterEqual(w.toggle_button.height(), w.toggle_button.minimumSizeHint().height())
+        central = w.widget.centralWidget()
+        corner = w.toggle_button.mapTo(central, QPoint(w.toggle_button.width() - 1, w.toggle_button.height() - 1))
+        self.assertLessEqual(corner.y(), central.height())
 
     def test_the_icons_come_back_with_the_full_window(self):
         w = build()
