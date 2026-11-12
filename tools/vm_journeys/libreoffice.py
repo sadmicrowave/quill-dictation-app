@@ -117,6 +117,9 @@ def main(argv=None) -> int:
                      f"after {took:.1f} s" if took is not None else f"not found in 90 s; windows: {titles()}; {command_lines()}")
 
         hosts = SpreadsheetHosts()
+        named = second.name in command_lines()
+        report.check("... and by the window title, not by a command line (the handed-over file has none)", not named,
+                     "a command line names it too: the launcher was still running when looked at" if named else "no command line names it")
         names = {pathlib.Path(f.path).name for f in hosts.open_files(prefer=(str(first), str(second)))}
         report.check("both files are listed together", {first.name, second.name} <= names, str(sorted(names)))
         report.check("LibreOffice is listed as running", any(a.key == "libreoffice" for a in hosts.running()))
