@@ -332,3 +332,4 @@ Notes from each phase of the project, newest last. They record why things are th
 ## Phase 80: less CI while the code is in flux
 
 - A plain push no longer starts `tests`; a pull request into `develop` runs the quick pair (macOS 26, Windows 2025), only one of them when only that system's own files changed (`tools/ci_plan.py`, tested in `tests/test_ci_plan.py`), and a draft pull request is skipped. A merge into `develop` starts nothing; the `dev build` starts only for packaging changes (or by hand). `main`, the weekly run and manual runs still use every runner. Before: a change cost three to four runs (the branch push, the merge push, the dev build), each 4 to 5 minutes, about 85 % of it the tests themselves.
+- The tests run in parallel in CI (`pytest-xdist`, `-n auto`). Measured locally on the Mac: the quick suite takes about 250 s one process at a time, 89 s and 81 s with `-n 4` and 76 s with `-n 8`, 2092 passed every time (three runs, no flake).

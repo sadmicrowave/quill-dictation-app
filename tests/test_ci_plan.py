@@ -85,6 +85,10 @@ class TestWhatStartsARun(unittest.TestCase):
         for path in ("!README.md", "!**/README.md", "!docs/**"):
             self.assertGreaterEqual(TESTS.count(path), 2, path)
 
+    def test_the_tests_run_in_parallel(self):
+        self.assertIn("pytest pytest-xdist", TESTS)
+        self.assertEqual(TESTS.count("-n auto"), 2, "the quick and the full step")
+
     def test_the_weekly_full_run_and_the_manual_one_remain(self):
         self.assertIn("cron:", TESTS)
         self.assertIn("workflow_dispatch:", TESTS)

@@ -102,7 +102,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          (pip install -r requirements.txt pytest) 2>&1 | tee install.log
+          (pip install -r requirements.txt pytest pytest-xdist) 2>&1 | tee install.log
           test "${PIPESTATUS[0]}" -eq 0 || { python tools/ci_annotate.py "install failed" install.log 80; exit 1; }
       - name: Support relay tests
         if: matrix.os == 'macos-26'
@@ -114,11 +114,11 @@ jobs:
         if: github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.full)
         shell: bash
         run: |
-          python -m pytest -q --tb=line -rf 2>&1 | tee tests.log
+          python -m pytest -q -n auto --tb=line -rf 2>&1 | tee tests.log
           test "${PIPESTATUS[0]}" -eq 0 || { python tools/ci_annotate.py "tests failed" tests.log 120; exit 1; }
       - name: Full tests
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full)
         shell: bash
         run: |
-          python -m pytest -q --full --tb=line -rf 2>&1 | tee tests.log
+          python -m pytest -q -n auto --full --tb=line -rf 2>&1 | tee tests.log
           test "${PIPESTATUS[0]}" -eq 0 || { python tools/ci_annotate.py "tests failed" tests.log 120; exit 1; }

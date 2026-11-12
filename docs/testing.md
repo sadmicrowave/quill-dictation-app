@@ -53,7 +53,7 @@ While the code changes with every push, GitHub runs as little as it safely can; 
 | A pull request into `main`, a push to `main`, the weekly run, a manual run | Every runner (macOS 26, 15, 15 Intel, Windows 2025, 2022, 11 Arm), and weekly the full suite |
 | A tag | The release builds |
 
-Documentation-only changes start nothing. After merging several pull requests into `develop` in a row, run the full suite locally once: nothing on GitHub checks
+CI runs the tests in parallel (`pytest -n auto`, about three times faster: 80 s against 250 s on the Mac); do the same locally with `pip install pytest-xdist` and `python -m pytest -n 4`. Documentation-only changes start nothing. After merging several pull requests into `develop` in a row, run the full suite locally once: nothing on GitHub checks
 the combination until the next pull request.
 
 ## Mac and Windows
