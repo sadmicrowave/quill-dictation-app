@@ -291,6 +291,7 @@ class SettingsDialog:
             self._restore_position()
             self._apply_dialog_look()
             self._install_help_icon()
+            self._centre_on_parent()
         finally:
             QGuiApplication.restoreOverrideCursor()
 
@@ -319,6 +320,23 @@ class SettingsDialog:
         width, height = int(prefs.get("settings_width", 0)), int(prefs.get("settings_height", 0))
         if width >= 720 and height >= 520:
             self._dialog.resize(width, height)
+
+    def _centre_on_parent(self) -> None:
+        """Put the window in the middle of the window it belongs to *before* it is shown. Left to Qt it is shown first (in the screen's corner on
+        Windows) and moved a moment later: a visible jump. A window that has been moved is never moved again by Qt."""
+        from PySide6.QtCore import QPoint
+        dialog, parent = self._dialog, self._parent
+        if dialog is None or parent is None or dialog.isVisible():
+            return
+        frame = dialog.frameGeometry()
+        size = frame.size() if frame.width() > dialog.width() else dialog.size()          # (the frame is known only once the window exists)
+        target = parent.frameGeometry().center() - QPoint(size.width() // 2, size.height() // 2)
+        screen = parent.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:                                                            # (never off the screen)
+            room = screen.availableGeometry()
+            target.setX(max(room.left(), min(target.x(), room.right() - size.width())))
+            target.setY(max(room.top(), min(target.y(), room.bottom() - size.height())))
+        dialog.move(target)
 
     def _remember_position(self) -> None:
         """Keep the open page and the window size for next time (saved even if the changes were cancelled)."""

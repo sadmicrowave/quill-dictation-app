@@ -139,7 +139,8 @@ class ModelRow(SettingRow):
         self.cost_label = QLabel(cost)
         self.cost_label.setWordWrap(True)
         self.cost_label.setProperty("modelCost", True)
-        self.cost_label.setVisible(bool(cost))
+        if not cost:
+            self.cost_label.hide()      # (never setVisible(True) here: a widget with no parent yet would open as a window of its own for a moment)
         text.addWidget(self.cost_label)
         self.line.setAlignment(holder, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)      # the buttons sit level with the name
         self.radio = QRadioButton()

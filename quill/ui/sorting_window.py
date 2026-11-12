@@ -139,7 +139,8 @@ class TermRow(QFrame):
         self.match_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         inside.addWidget(self.match_label)
         self.match_button.setMinimumWidth(self.match_label.sizeHint().width() + 30)
-        self.match_button.setVisible(bool(self.short_code))
+        if not self.short_code:
+            self.match_button.hide()          # (never setVisible(True) here: with no parent yet it would open as a window of its own for a moment)
         self.match_button.setToolTip("Another name for the short code Quill thinks this is.")
 
         for control in (self.edit, self.combo, self.match_button, self.add_button, self.same_button, self.ignore_button):
