@@ -2,8 +2,11 @@ name: dev build
 
 # A Windows build of whatever is on `develop`, for trying it on a real PC without a merge, a tag or a release.
 #
-#   push to develop  ->  Actions tab > this run > Artifacts > "Quill-windows-dev"  (Quill-Setup.exe, the portable zip, the reports)
-#   or: Actions tab > dev build > Run workflow            (any branch)
+#   push to develop that changes how the app is packaged (the paths below)  ->  Actions tab > this run > Artifacts > "Quill-windows-dev"
+#   (Quill-Setup.exe, the portable zip, the reports)
+#   or, for any change on any branch: Actions tab > dev build > Run workflow
+#   (An ordinary code change does not start a build: the tests ran on its pull request, and the Windows test VM builds the packaged app on
+#   request: tools/windows-vm.)
 #
 # The artifact needs a GitHub sign-in to download and is deleted after 14 days: it is not a release. It also carries
 # "selfcheck.txt", the report of the INSTALLED Quill.exe run with --selftest on the build machine (the build installs Quill-Setup.exe
@@ -13,6 +16,16 @@ name: dev build
 on:
   push:
     branches: [develop]
+    paths:
+      - "packaging/**"
+      - "requirements*.txt"
+      - "main.py"
+      - "tools/make_app_icon.py"
+      - "tools/Send Quill self-check.bat"
+      - "quill/assets/**"
+      - "quill/model/**"
+      - "quill/selfcheck.py"
+      - ".github/workflows/dev-build.yml"
   workflow_dispatch:
 
 permissions:

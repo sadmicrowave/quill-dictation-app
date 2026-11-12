@@ -40,6 +40,22 @@ the headings row, ...) from fixed seeds, so a failure is reproducible: run `QUIL
 They have already found bugs nobody wrote a journey for (a row dictated for one file written into the next, the Term Helper button
 counting terms a deleted row had taken with it, stale lines in the grid after the sheet changed).
 
+## What runs on GitHub
+
+While the code changes with every push, GitHub runs as little as it safely can; the real gate is local (the full quick suite on the Mac, and the Windows VM:
+`docs/windows-vm-jobs.md`).
+
+| Event | What runs |
+|---|---|
+| A plain push to a feature branch | Nothing |
+| A pull request into `develop` | The quick tests on macOS 26 and Windows 2025 (only one of them when only that system's own files changed: `tools/ci_plan.py`). A **draft** pull request is skipped until it is marked ready |
+| A merge into `develop` | Nothing (the pull request already ran the same tests); the **dev build** runs only when packaging files changed |
+| A pull request into `main`, a push to `main`, the weekly run, a manual run | Every runner (macOS 26, 15, 15 Intel, Windows 2025, 2022, 11 Arm), and weekly the full suite |
+| A tag | The release builds |
+
+CI runs the tests in parallel (`pytest -n auto`, about three times faster: 80 s against 250 s on the Mac); do the same locally with `pip install pytest-xdist` and `python -m pytest -n 4`. Documentation-only changes start nothing. After merging several pull requests into `develop` in a row, run the full suite locally once: nothing on GitHub checks
+the combination until the next pull request.
+
 ## Windows long paths
 
 A new Windows PC refuses a file whose whole path is 260 characters or more ("path not found", for a file that is there) until its **long paths** setting is on
@@ -59,11 +75,12 @@ publishes no Arm64 wheel, so the Arm runner cannot install Quill; the x64 build 
 
 No merge, tag or release is needed to try what is on `develop`:
 
-1. Every push to `develop` runs the **dev build** workflow (`.github/workflows/dev-build.yml`): it builds the app folder and
-   `Quill-Setup.exe` on a Windows runner, installs the installer silently, runs the *installed* `Quill.exe --selftest` (a broken
-   installer or program fails the build), uninstalls it and checks nothing is left. It attaches `Quill-Setup.exe` and
+1. A push to `develop` that changes how the app is packaged (`packaging/`, the requirements, the icons, `main.py`...) runs the **dev build** workflow
+   (`.github/workflows/dev-build.yml`); for any other change, start it by hand (Actions tab > dev build > Run workflow, on any branch), or build in the Windows
+   VM (`tools/windows-vm`). It builds the app folder and `Quill-Setup.exe` on a Windows runner, installs the installer silently, runs the *installed*
+   `Quill.exe --selftest` (a broken installer or program fails the build), uninstalls it and checks nothing is left. It attaches `Quill-Setup.exe` and
    `Quill-windows-dev.zip` (the portable folder) to the run. Open the run in the Actions tab, then Artifacts, and download it (GitHub
-   sign-in needed; kept 14 days). It can also be started by hand, for any branch.
+   sign-in needed; kept 14 days).
 2. On the PC, run `Quill-Setup.exe` (or unzip the portable copy), then `Quill.exe --selftest` (a Command Prompt or PowerShell in its folder). It writes **Quill self-check.txt** on the
    Desktop and opens it: versions, microphone, the speech model, the folders, which spreadsheet programs are running and how fast
    they answer, a row written into a workbook with accents in its name, a CSV in Excel's ANSI encoding, a file held the way Excel holds
