@@ -10,6 +10,8 @@ from quill.platforms.windows.speech import render_clip, speak
 
 NATIVE_QPA = "windows"
 QUIT_LABEL = "Exit"
+#: Cut a tooltip's corners with a mask as well: on Windows a tooltip whose text changed while it was showing kept square black corners.
+ROUND_TOOLTIPS_WITH_MASK = True
 TRAY_CLICK_OPENS_MENU = True
 
 

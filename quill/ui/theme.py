@@ -16,11 +16,11 @@ import pathlib
 import sys
 import tempfile
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, QRectF, Qt
 
 from quill import platforms
 from quill.ui import glass as glass_module
-from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette, QRegion
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 _SCHEMES = {
@@ -512,7 +512,21 @@ class _TooltipRounder(QObject):
         elif event.type() == QEvent.Type.Show and obj.inherits("QTipLabel"):
             from quill.ui.chrome import no_window_shadow          # the OS shadow shows a faint square corner
             no_window_shadow(obj)
+            self._round(obj)
+        elif event.type() == QEvent.Type.Resize and obj.inherits("QTipLabel"):
+            self._round(obj)                                      # (a tip that is shown again with other text changes size)
         return False
+
+    TIP_RADIUS = 7                    # px, the same as the style sheet's ``QToolTip`` border radius
+
+    @classmethod
+    def _round(cls, tip) -> None:
+        """Mask the tooltip window to a rounded rectangle where the system needs it (see ``ROUND_TOOLTIPS_WITH_MASK``)."""
+        if not platforms.offered(None, "ROUND_TOOLTIPS_WITH_MASK", False) or tip.width() <= 0:
+            return
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, tip.width(), tip.height()), cls.TIP_RADIUS, cls.TIP_RADIUS)
+        tip.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,

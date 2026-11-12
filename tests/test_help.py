@@ -9,6 +9,7 @@ from quill import helpdocs
 from quill.ui.help_window import HelpWindow
 from quill.ui.main_window import HELP_TOPIC as MAIN_TOPIC, MainWindow
 from quill.ui.sorting_window import HELP_TOPIC as SORTING_TOPIC
+from quill.ui.hints import plain
 
 _app = QApplication.instance() or QApplication([])
 
@@ -72,8 +73,25 @@ class TestWindow(unittest.TestCase):
         self.help.show("troubleshooting", self.help.topic("troubleshooting").sections[-1])
         _app.processEvents()
         _app.processEvents()
-        self.assertEqual(self.help.nav.currentItem().text(0), self.help.topic("troubleshooting").sections[-1])
+        self.assertEqual(self.help.nav.currentItem().text(0), plain(self.help.topic("troubleshooting").sections[-1]))
         self.assertGreater(self.help.page.verticalScrollBar().value(), 0)
+
+    def test_the_sidebar_shows_plain_words_while_the_pages_keep_their_headings(self):
+        for topic in self.help.topics:
+            item = self.help._items[topic.slug]
+            self.assertEqual(item.text(0), plain(topic.title))
+            self.assertEqual(plain(item.text(0)), item.text(0), "no emoji in the sidebar")
+            for i, section in enumerate(topic.sections):
+                self.assertEqual(item.child(i).text(0), plain(section))
+        self.assertIn("Quick start", self.help.nav.topLevelItem(0).child(0).text(0))
+        self.assertNotRegex("".join(self.help.nav.topLevelItem(i).text(0) for i in range(self.help.nav.topLevelItemCount())), "[\U0001F000-\U0001FFFF]")
+
+    def test_a_section_can_be_asked_for_with_or_without_its_emoji(self):
+        raw = self.help.topic("troubleshooting").sections[-1]
+        for asked in (raw, plain(raw)):
+            self.help.show("welcome")
+            self.help.goto("troubleshooting", asked)
+            self.assertEqual(self.help.nav.currentItem().text(0), plain(raw))
 
     def test_an_unknown_or_missing_topic_opens_the_first_page(self):
         self.help.show("nope")
