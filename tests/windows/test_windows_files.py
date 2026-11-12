@@ -107,9 +107,40 @@ class TestNamesWindowsAllows(Case):
                 self.assertEqual(path.read_bytes(), "Item,Qty\r\nRosé,4\r\n".encode())
 
     def test_a_deep_folder_path(self):
-        folder = self.dir.joinpath(*[f"level {n} with a long folder name" for n in range(1, 8)])
+        """Many levels, kept inside the 260 characters every Windows allows (past that, Windows needs its long-paths setting: the next test)."""
+        levels = max(2, min(7, (230 - len(str(self.dir))) // 33))
+        folder = self.dir.joinpath(*[f"level {n} with a long folder name" for n in range(1, levels + 1)])
         folder.mkdir(parents=True)
         path = folder / "Stock.xlsx"
+        book = openpyxl.Workbook()
+        book.active.append(["Item"])
+        book.save(path)
+        bridge = XlsxBridge(path)
+        bridge.connect()
+        bridge.append_row(book.active.title, {"Item": "Palm"})
+        self.assertEqual(list(openpyxl.load_workbook(path).active.values), [("Item",), ("Palm",)])
+
+
+def long_paths_enabled() -> bool:
+    """Is Windows set to allow paths over 260 characters (off by default on a new PC; the GitHub runners have it on)?"""
+    if sys.platform != "win32":
+        return False
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\FileSystem") as key:
+            return int(winreg.QueryValueEx(key, "LongPathsEnabled")[0]) == 1
+    except OSError:
+        return False
+
+
+@unittest.skipUnless(long_paths_enabled(), "Windows' long paths are off here (the default): a path over 260 characters cannot be used")
+class TestAPathPastTheOldLimit(Case):
+    def test_a_workbook_in_a_path_over_260_characters_is_filled(self):
+        folder = self.dir
+        while len(str(folder / "Stock list.xlsx")) < 280:
+            folder = folder / f"level {len(folder.parts)} with a long folder name"
+        folder.mkdir(parents=True)
+        path = folder / "Stock list.xlsx"
         book = openpyxl.Workbook()
         book.active.append(["Item"])
         book.save(path)

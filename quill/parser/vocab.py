@@ -156,6 +156,10 @@ class Vocabulary:
         """True if the sheet has any column at all (a heading or a drop-down list); False for a sheet whose headings were not found."""
         return bool(self._fields or self._by_column)
 
+    def headers(self) -> list[str]:
+        """Every header of the sheet, in sheet order."""
+        return list(self._headers)
+
     def columns(self) -> list[str]:
         """Return all column names that have at least one value."""
         return list(self._by_column.keys())

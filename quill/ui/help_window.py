@@ -126,13 +126,13 @@ class HelpWindow:
         self.nav.clear()
         self._items = {}
         for topic in self.topics:
-            item = QTreeWidgetItem([topic.title])
+            item = QTreeWidgetItem([plain(topic.title)])                  # (the pages keep their emoji; the sidebar shows plain words like the rest of the app)
             item.setData(0, Qt.ItemDataRole.UserRole, (topic.slug, None))
             item.setToolTip(0, f"Open the {plain(topic.title)} page.")
             self.nav.addTopLevelItem(item)
             self._items[topic.slug] = item
             for section in topic.sections:
-                child = QTreeWidgetItem([section])
+                child = QTreeWidgetItem([plain(section)])
                 child.setData(0, Qt.ItemDataRole.UserRole, (topic.slug, section))
                 child.setToolTip(0, f"Jump to {plain(section)}")
                 child.setForeground(0, self.nav.palette().placeholderText())
@@ -164,7 +164,9 @@ class HelpWindow:
             return
         target = item
         if section:
-            target = next((item.child(i) for i in range(item.childCount()) if item.child(i).text(0) == section), item)
+            wanted = {section, plain(section)}                  # (callers may give the heading with or without its emoji)
+            target = next((item.child(i) for i in range(item.childCount())
+                           if wanted & {item.child(i).data(0, Qt.ItemDataRole.UserRole)[1], item.child(i).text(0)}), item)
         self.nav.setCurrentItem(target)                       # -> _nav_changed
 
     def _nav_changed(self, item: QTreeWidgetItem | None, _previous=None) -> None:

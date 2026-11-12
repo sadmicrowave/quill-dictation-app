@@ -143,12 +143,12 @@ def _defaults_path() -> pathlib.Path:
 
 
 #: Commands added after the first release: a keyword file saved earlier gets their shipped phrases too.
-NEW_ACTIONS = (Action.OPEN_TERM_HELPER, Action.END_NOTE, Action.APPEND_ON, Action.APPEND_OFF, Action.ROWS_DOWN_ON, Action.ROWS_DOWN_OFF)
+NEW_ACTIONS = (Action.OPEN_TERM_HELPER, Action.START_NOTE, Action.END_NOTE, Action.APPEND_ON, Action.APPEND_OFF, Action.ROWS_DOWN_ON, Action.ROWS_DOWN_OFF)
 #: Most skipped words kept (the oldest go first).
 MAX_SKIP_WORDS = 200
 #: Most workbook-and-sheet layouts kept (the oldest go first).
 MAX_LAYOUTS = 500
-KEYWORDS_VERSION = 4          # raised whenever shipped commands are added
+KEYWORDS_VERSION = 5          # raised whenever shipped commands are added
 
 
 @dataclass(frozen=True)

@@ -53,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
     app = QuillApplication(sys.argv[:1])
     app.setApplicationName("Quill")
     app.setQuitOnLastWindowClosed(False)  # lives in tray after window closes
+    if os.environ.get("QUILL_TRACE_WINDOWS"):              # a developer looking for a flicker: where each window appears, and for how long
+        from quill.diagnostics import install_window_trace
+        install_window_trace(app, os.environ["QUILL_TRACE_WINDOWS"])
 
     from quill.bridge.factory import startup_bridge
     from quill.demo import make_demo_workbook

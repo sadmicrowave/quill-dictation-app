@@ -16,11 +16,11 @@ import pathlib
 import sys
 import tempfile
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, QRectF, Qt
 
 from quill import platforms
 from quill.ui import glass as glass_module
-from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPalette
+from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPainterPath, QPalette, QRegion
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 _SCHEMES = {
@@ -507,19 +507,56 @@ def _restyle(app: QApplication) -> None:
 
 
 class _TooltipRounder(QObject):
-    """Lets tooltips have rounded corners: Qt draws them in a square window, so make that window transparent.
+    """Lets the pop-up windows have rounded corners: Qt draws them in a square window, so make that window transparent.
 
-    The style sheet then paints the rounded, softly bordered box and nothing square shows behind it.
+    The style sheet then paints the rounded, softly bordered box and nothing square shows behind it. This covers tooltips, menus,
+    the list a drop-down opens and the file-settings overlay. Where the system draws a transparent window badly (Windows kept square
+    black corners), the window is also cut to a rounded shape with a mask (see ``ROUND_POPUPS_WITH_MASK`` in the provider).
     """
 
+    #: Corner radius (px) of each pop-up, the same as in the style sheet: Qt class name, or object name, -> radius.
+    RADII = {"QTipLabel": 7, "QMenu": 10, "QComboBoxPrivateContainer": 8, "fileSettings": 10}
+    TIP_RADIUS = RADII["QTipLabel"]
+
+    @classmethod
+    def radius_of(cls, obj) -> int | None:
+        """The corner radius of *obj* if it is one of the pop-ups, else None."""
+        if not isinstance(obj, QWidget) or not obj.isWindow():
+            return None
+        for name, radius in cls.RADII.items():
+            if obj.objectName() == name or obj.inherits(name):
+                return radius
+        return None
+
     def eventFilter(self, obj, event) -> bool:
-        if event.type() == QEvent.Type.Polish and obj.inherits("QTipLabel"):
-            obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
-        elif event.type() == QEvent.Type.Show and obj.inherits("QTipLabel"):
-            from quill.ui.chrome import no_window_shadow          # the OS shadow shows a faint square corner
-            no_window_shadow(obj)
+        kind = event.type()
+        if kind not in (QEvent.Type.Polish, QEvent.Type.Show, QEvent.Type.Resize):
+            return False
+        radius = self.radius_of(obj)
+        if radius is None:
+            return False
+        tip = obj.inherits("QTipLabel")
+        if kind == QEvent.Type.Polish:
+            if tip or platforms.offered(None, "ROUND_POPUPS_WITH_MASK", False):
+                obj.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+                obj.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
+        elif kind == QEvent.Type.Show:
+            if tip:
+                from quill.ui.chrome import no_window_shadow      # the OS shadow shows a faint square corner
+                no_window_shadow(obj)
+            self._round(obj, radius)
+        else:
+            self._round(obj, radius)                              # (a tip shown again with other text changes size)
         return False
+
+    @staticmethod
+    def _round(window, radius: int = 7) -> None:
+        """Mask *window* to a rounded rectangle where the system needs it (see ``ROUND_POPUPS_WITH_MASK``)."""
+        if not platforms.offered(None, "ROUND_POPUPS_WITH_MASK", False) or window.width() <= 0:
+            return
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, window.width(), window.height()), radius, radius)
+        window.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
 
 def apply_theme(app: QApplication, mode: str, accent: str = DEFAULT_ACCENT,

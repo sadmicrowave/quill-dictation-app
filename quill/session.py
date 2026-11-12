@@ -32,7 +32,7 @@ from quill.parser.commands import (
     CommandEvent,
     CommandMatcher,
 )
-from quill.parser.phrase_parser import finish_note, merge_values, parse
+from quill.parser.phrase_parser import finish_note, is_note_column, merge_values, parse
 from quill.parser.tokens import display_name, tokenize
 from quill.parser.vocab import Vocabulary
 
@@ -396,6 +396,20 @@ class Session:
         self.record[column] = f"{self.record[column]} {text}" if self.record.get(column) else text
         return [Event("updated", detail=f"{column}={self.record[column]}")]
 
+    def note_columns(self) -> list[str]:
+        """The sheet's notes-style columns (no list, a heading ending in notes, comments, description ...), in sheet order."""
+        return [header for header in self.vocab.headers() if is_note_column(self.vocab, header)]
+
+    def _start_note(self) -> list[Event]:
+        """``start note``: open a note without saying a column's name: the first notes column not yet filled in this row (else the first)."""
+        if self.open_note:
+            return [Event("ignored", detail=f"A note is already open in {self.open_note}")]
+        columns = self.note_columns()
+        if not columns:
+            return [Event("ignored", detail="This sheet has no notes column")]
+        self.open_note = next((c for c in columns if not self.record.get(c)), columns[0])
+        return [Event("ignored", detail=f"Note started in {self.open_note}: speak it, then say end note or next row")]
+
     def _close_note(self, say: bool) -> list[Event]:
         """End the open note: its text gets a capital and a full stop (``say``: tell the log what the cell now holds)."""
         column, self.open_note = self.open_note, None
@@ -420,6 +434,8 @@ class Session:
             return [Event("stopped", detail="Not Listening")] + self._ask_if_needed()
         if not self.listening:
             return [Event("ignored", detail=f"{action.name.replace('_', ' ').title()} heard while stopped")]
+        if action is Action.START_NOTE:
+            return self._start_note()
         if action is Action.END_NOTE:
             return self._close_note(say=True) or [Event("ignored", detail="No note is open")]
         self._close_note(say=False)                                  # any other command ends the note too

@@ -25,7 +25,7 @@ from tests.test_controller import FakeSpeaker
 LISTS = {"Species": ["Fern", "Cactus"], "Light": ["Low", "Bright"]}
 HEADERS = ["Species", "Light", "Price", "Acquired", "Notes", "Description"]
 KEYWORDS = {"start listening": Action.START_LISTENING, "stop listening": Action.STOP_LISTENING, "next row": Action.NEXT_ROW,
-            "cancel": Action.DELETE_ROW, "end note": Action.END_NOTE, "end notes": Action.END_NOTE}
+            "cancel": Action.DELETE_ROW, "end note": Action.END_NOTE, "end notes": Action.END_NOTE, "start note": Action.START_NOTE}
 
 
 def listening():
@@ -212,6 +212,47 @@ class TestWhatIsHeardWhileSpeaking(unittest.TestCase):
         self.assertIsNone(listening().note_words(["and", "water"]))
 
 
+class TestStartNote(unittest.TestCase):
+    """``start note`` opens a note without saying the column's name."""
+
+    def test_the_words_after_it_are_the_note(self):
+        s = listening()
+        say(s, "start note needs repotting soon", "and water weekly", "next row")
+        self.assertEqual(s.committed, 1)
+        s2 = listening()
+        say(s2, "start note needs repotting soon", "and water weekly")
+        self.assertEqual(s2.record, {"Notes": "needs repotting soon and water weekly"})
+
+    def test_it_opens_the_first_notes_column_not_yet_filled(self):
+        s = listening()
+        say(s, "notes first thing", "end note", "start note second thing")
+        self.assertEqual(s.record, {"Notes": "First thing.", "Description": "second thing"})
+
+    def test_after_a_pause_the_note_is_taken_from_the_next_phrase(self):
+        s = listening()
+        say(s, "start note", "needs repotting")
+        self.assertEqual(s.record, {"Notes": "needs repotting"})
+
+    def test_it_says_so_when_the_sheet_has_no_notes_column(self):
+        vocab = Vocabulary()
+        vocab.load({}, ["Species", "Price"])
+        s = Session(vocab, CommandMatcher(KEYWORDS), today=lambda: dt.date(2026, 10, 30))
+        s.feed("start listening")
+        events = say(s, "start note")
+        self.assertEqual([(e.kind, e.detail) for e in events], [("ignored", "This sheet has no notes column")])
+
+    def test_a_note_already_open_stays_the_one_that_is_open(self):
+        s = listening()
+        say(s, "notes one")
+        events = say(s, "start note")
+        self.assertEqual(s.open_note, "Notes")
+        self.assertIn("already open", events[0].detail)
+
+    def test_it_is_a_default_keyword_and_an_older_file_gains_it(self):
+        keywords = Settings.defaults().keywords
+        self.assertEqual((keywords["start note"], keywords["start notes"]), (Action.START_NOTE, Action.START_NOTE))
+
+
 class TestTheKeyword(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -227,10 +268,11 @@ class TestTheKeyword(unittest.TestCase):
         (self.dir / Settings.KEYWORDS_FILE).write_text('keywords_version = 3\n[keywords]\n"go" = "START_LISTENING"\n', encoding="utf-8")
         loaded = Settings.load(self.dir).keywords
         self.assertEqual(loaded["end note"], Action.END_NOTE)
+        self.assertEqual(loaded["start note"], Action.START_NOTE)
         self.assertNotIn("next row", loaded)                                   # (a phrase the user removed stays removed)
 
     def test_a_user_who_renamed_it_keeps_their_phrase_and_gains_no_second_one_when_current(self):
-        (self.dir / Settings.KEYWORDS_FILE).write_text('keywords_version = 4\n[keywords]\n"finish note" = "END_NOTE"\n', encoding="utf-8")
+        (self.dir / Settings.KEYWORDS_FILE).write_text('keywords_version = 5\n[keywords]\n"finish note" = "END_NOTE"\n', encoding="utf-8")
         loaded = Settings.load(self.dir).keywords
         self.assertEqual(loaded, {"finish note": Action.END_NOTE})
 
