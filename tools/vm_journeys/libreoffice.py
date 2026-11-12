@@ -46,17 +46,38 @@ def main(argv=None) -> int:
     process = subprocess.Popen([soffice, f"-env:UserInstallation={profile.as_uri()}", "--calc", "--norestart", "--nologo", "--nodefault", str(path)],
                                creationflags=0x08000000 if sys.platform == "win32" else 0)       # noqa: S603
     hosts = SpreadsheetHosts()
+
+    def processes() -> str:
+        """Which LibreOffice processes exist and what each was started with (for the report when something is not found)."""
+        from quill.bridge import hosts as hosts_module
+        from quill.platforms.windows import hosts as winhosts
+        found = []
+        for name in ("soffice.exe", "soffice.bin"):
+            try:
+                lines = winhosts.command_lines(name, lambda args: hosts_module._run(args))
+            except Exception as exc:                                # noqa: BLE001
+                lines = f"(could not ask: {type(exc).__name__})"
+            found.append(f"{name}: {lines!r}"[:600])
+        return " | ".join(found)
+
+    def soffice_running() -> bool:
+        out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=30, check=False,       # noqa: S603, S607
+                             creationflags=0x08000000).stdout.lower()
+        return '"soffice.exe"' in out or '"soffice.bin"' in out
+
+    already = soffice_running()
     try:
         started = time.monotonic()
         found = False
-        while time.monotonic() - started < 90:
+        while time.monotonic() - started < 60:
             time.sleep(2)
             files = hosts.open_files()
             if any(pathlib.Path(f.path).name == path.name for f in files):
                 found = True
                 break
         report.check("Quill sees the file LibreOffice has open (accents and spaces in its name)", found,
-                     f"after {time.monotonic() - started:.1f} s" if found else f"not found in 90 s; open files: {[f.name for f in hosts.open_files()]}")
+                     (f"after {time.monotonic() - started:.1f} s" if found else
+                      f"not found in 60 s; open files: {[f.name for f in hosts.open_files()]}; LibreOffice was already running: {already}; {processes()}"))
         report.check("LibreOffice is listed as running", any(a.key == "libreoffice" for a in hosts.running()))
 
         events: list = []
@@ -66,7 +87,7 @@ def main(argv=None) -> int:
             controller.handle_transcript(phrase)
         row = [openpyxl.load_workbook(path)["Inventory"].cell(4, c).value for c in (1, 2, 3, 5)]
         report.check("a row is written to the file while LibreOffice holds it", row == ["Fern", "Small", "Bright", 12.0], f"{row}; events: {[e.kind for e in events][-4:]}")
-        report.check("LibreOffice is still running afterwards", process.poll() is None)
+        report.check("LibreOffice is still running afterwards (a soffice process exists)", soffice_running(), processes())
         report.skip("the row shows in the open LibreOffice document", "reading the open document back is not built yet")
     finally:
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True, timeout=30, check=False,       # noqa: S603, S607
