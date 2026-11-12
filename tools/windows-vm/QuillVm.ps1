@@ -21,14 +21,15 @@ function Copy-QuillSource {
 function Find-QuillPython {
     # Python 3.13: through the launcher, on the path, or in the places the installer puts it.
     $candidates = @()
-    $launcher = Get-Command py -ErrorAction SilentlyContinue
-    if ($launcher) { $candidates += @{ Path = $launcher.Source; Args = @("-3.13") } }
-    $onPath = Get-Command python -ErrorAction SilentlyContinue
-    if ($onPath) { $candidates += @{ Path = $onPath.Source; Args = @() } }
+    # The real install folders first: a bare "python" on a new Windows is often the Microsoft Store stub, not Python.
     foreach ($folder in @("$env:LOCALAPPDATA\Programs\Python\Python313", "$env:ProgramFiles\Python313", "${env:ProgramFiles(x86)}\Python313")) {
         $exe = Join-Path $folder "python.exe"
         if (Test-Path $exe) { $candidates += @{ Path = $exe; Args = @() } }
     }
+    $launcher = Get-Command py -ErrorAction SilentlyContinue
+    if ($launcher) { $candidates += @{ Path = $launcher.Source; Args = @("-3.13") } }
+    $onPath = Get-Command python -ErrorAction SilentlyContinue
+    if ($onPath) { $candidates += @{ Path = $onPath.Source; Args = @() } }
     foreach ($candidate in $candidates) {
         $version = & $candidate.Path @($candidate.Args) --version 2>&1
         if ($LASTEXITCODE -eq 0 -and "$version" -match "^Python 3\.13\.") { return $candidate }
