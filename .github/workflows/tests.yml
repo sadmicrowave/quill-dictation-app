@@ -1,23 +1,30 @@
 name: tests
 
-# Two lanes. A push to any branch other than main runs the quick tests on two runners (macOS 26, Windows 2025): cheap and
-# fast, for everyday work. A pull request, a push to main, the weekly run and a manual run use every runner. The full suite
-# (slow tests too) runs once a week and on demand (Actions tab > tests > Run workflow). Quill's tests run on Qt's
-# "offscreen" platform: no screen is needed. A newer push to the same branch cancels the run still going for the old one.
+# Two lanes, and nothing on a plain push to a feature branch (the work is checked locally first, and again once on its pull request).
+#
+#   pull request into develop   the quick tests on macOS 26 and Windows 2025 (one of them when only that system's own files changed: tools/ci_plan.py);
+#                               a draft pull request is skipped until it is marked ready
+#   pull request into main, a push to main, the weekly run, a manual run   every runner (macOS 26, 15, 15 Intel, Windows 2025, 2022, 11 Arm)
+#   a push to develop (a merge)  nothing here: the pull request already ran these tests on the same code (the "dev build" workflow runs only
+#                               when packaging changed)
+#
+# The full suite (slow tests too) runs once a week and on demand (Actions tab > tests > Run workflow). Quill's tests run on Qt's "offscreen"
+# platform: no screen is needed. A newer push to the same pull request cancels the run still going for the old one.
 #
 # Documentation never starts a run: the README files and the docs folder are read by nothing. Everything else counts, the bundled help pages
 # (quill/help) and UI_STYLE.md included, because tests read them. (A new documentation file that no test reads goes in
 # the list below; a file a test starts reading comes off it.)
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     paths:
       - "**"
       - "!README.md"
       - "!**/README.md"
       - "!docs/**"
   pull_request:
-    branches: [main]
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "**"
       - "!README.md"
@@ -43,22 +50,29 @@ jobs:
   plan:
     name: which runners
     runs-on: ubuntu-latest
+    # A draft pull request is not checked until it is marked ready.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0            # the pull request's changed files are listed against its base branch
       - id: pick
         env:
           EVENT: ${{ github.event_name }}
-          REF: ${{ github.ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ "$EVENT" = push ] && [ "$REF" != refs/heads/main ]; then
-            echo 'matrix={"include":[{"os":"macos-26"},{"os":"windows-2025"}]}' >> "$GITHUB_OUTPUT"
+          # macOS 26 (latest) and 15 on Apple Silicon, macOS 15 on Intel; Windows Server 2025 and 2022 (x64). GitHub offers no
+          # Windows 10 image and no 32-bit one (and Qt for Python has no 32-bit wheels), so those cannot be tested here.
+          # Windows 11 on Arm is experimental: its wheels (Qt, Vosk) may not all exist yet.
+          if [ "$EVENT" = pull_request ]; then
+            git diff --name-only "origin/$BASE_REF...HEAD" > changed.txt
           else
-            # macOS 26 (latest) and 15 on Apple Silicon, macOS 15 on Intel; Windows Server 2025 and 2022 (x64). GitHub offers no
-            # Windows 10 image and no 32-bit one (and Qt for Python has no 32-bit wheels), so those cannot be tested here.
-            # Windows 11 on Arm is experimental: its wheels (Qt, Vosk) may not all exist yet.
-            echo 'matrix={"include":[{"os":"macos-26"},{"os":"macos-15"},{"os":"macos-15-intel"},{"os":"windows-2025"},{"os":"windows-2022"},{"os":"windows-11-arm","experimental":true}]}' >> "$GITHUB_OUTPUT"
+            : > changed.txt
           fi
+          python3 tools/ci_plan.py --event "$EVENT" --base "${BASE_REF:-}" --changed changed.txt >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
 
   test:
     needs: plan
