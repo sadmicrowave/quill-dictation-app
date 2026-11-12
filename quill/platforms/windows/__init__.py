@@ -12,6 +12,8 @@ NATIVE_QPA = "windows"
 QUIT_LABEL = "Exit"
 #: Cut a tooltip's corners with a mask as well: on Windows a tooltip whose text changed while it was showing kept square black corners.
 ROUND_TOOLTIPS_WITH_MASK = True
+#: Default text size (points). A point is 96/72 of a pixel on Windows and one pixel on a Mac, so the 14 that suits a Mac looked too large here.
+DEFAULT_FONT_SIZE = 12
 TRAY_CLICK_OPENS_MENU = True
 
 

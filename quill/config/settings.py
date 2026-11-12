@@ -39,6 +39,7 @@ except ImportError:
     except ImportError:
         tomllib = None  # type: ignore[assignment]
 
+from quill import platforms
 from quill.feedback import ECHO_WORDS, MODES, PACKS
 from quill.learning import LEARN_AFTER_RANGE, LinkStore
 from quill.licensing import DEFAULT_ACCOUNT, clean_account
@@ -62,9 +63,9 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "history_limit": 100,     # how many sorting answers undo remembers
     "accent": "violet",   # one of ACCENTS (ui/theme.py)
     "spacing": "compact",     # "compact" | "comfortable"
-    "font_size": 14,          # base text size in points (14 since preferences version 2; 12 before)
+    "font_size": platforms.default_font_size(),   # base text size in points: 14 on a Mac (12 before preferences version 2), 12 on Windows (a point is larger there)
     "model_migrated": False,   # the speech model was once switched to the best one installed
-    "prefs_version": 3,       # raised when a default changes that saved settings should follow
+    "prefs_version": 4,       # raised when a default changes that saved settings should follow
     "log_collapsed": True,    # the main window's log starts hidden (a click on "Log" opens it)
     "hide_dock_icon": False,  # macOS: keep Quill out of the Dock (it stays in the menu bar)
     "window_width": 0,        # the full window's size when Quill last closed (0 = not saved yet)
@@ -262,6 +263,9 @@ class Settings:
                 settings.preferences["font_size"] = int(DEFAULT_PREFERENCES["font_size"])
         if int(prefs.get("prefs_version", 1) if isinstance(prefs, dict) else 1) < 3:      # the default window got shorter: follow it once
             settings.preferences["window_height"] = 0
+        if int(prefs.get("prefs_version", 1) if isinstance(prefs, dict) else 1) < 4:      # a system whose default size is not the Mac's: the old shared 14 follows it once
+            if settings.preferences["font_size"] == platforms.BASE_FONT_SIZE:
+                settings.preferences["font_size"] = int(DEFAULT_PREFERENCES["font_size"])
         settings.preferences["prefs_version"] = int(DEFAULT_PREFERENCES["prefs_version"])
         settings.account = clean_account(data.get("account") if isinstance(data.get("account"), dict) else None)
         settings.links = LinkStore.from_list(data.get("links"))

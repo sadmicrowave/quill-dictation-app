@@ -4,6 +4,8 @@ import pathlib
 import tempfile
 import unittest
 
+from quill import platforms
+
 from PySide6.QtWidgets import QApplication, QWidget
 
 from quill.app import QuillApp
@@ -360,7 +362,7 @@ class TestFontSize(unittest.TestCase):
         theme.apply_theme(_app, "light", font_size=12)
 
     def test_default_is_fourteen_and_is_clamped_on_load(self):
-        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 14)
+        self.assertEqual(Settings.load(self.dir).preferences["font_size"], platforms.default_font_size())
         (self.dir / "keywords.toml").write_text("[preferences]\nfont_size = 90\n")
         self.assertEqual(Settings.load(self.dir).preferences["font_size"], FONT_SIZE_RANGE[1])
         (self.dir / "keywords.toml").write_text("[preferences]\nfont_size = 2\n")
@@ -375,15 +377,17 @@ class TestFontSize(unittest.TestCase):
     def test_every_text_is_the_same_size(self):
         """Titles, buttons, notes, values and placeholders differ in colour and style, never in size."""
         sheet = theme.stylesheet_for(False, font_size=12)
-        self.assertEqual(sheet.count("font-size"), 1)                    # one base size for every widget (the platform's own
-        self.assertIn("QWidget { font-size: 12pt; }", sheet)             # per-class sizes would otherwise win over the setting)
-        self.assertEqual(theme.stylesheet_for(True, font_size=16).count("font-size"), 1)
+        self.assertEqual(sheet.count("font-size"), 2)                    # one base size for every widget (the platform's own
+        self.assertIn("QWidget { font-size: 12pt; }", sheet)             # per-class sizes would otherwise win over the setting) ...
+        self.assertIn(f"QMenuBar {{ font-size: {theme._title_font_points()}pt; }}", sheet)   # ... except the menu bar inside the window: the title bar's size
+        self.assertEqual(theme.stylesheet_for(False, font_size=20).count(f"QMenuBar {{ font-size: {theme._title_font_points()}pt"), 1)   # (whatever the setting)
+        self.assertEqual(theme.stylesheet_for(True, font_size=16).count("font-size"), 2)
 
     def test_dialog_has_a_text_size_box_that_saves(self):
         settings = Settings.load(self.dir)
         dlg = SettingsDialog(settings)
         dlg.build()
-        self.assertEqual(dlg.font_spin.value(), 14)
+        self.assertEqual(dlg.font_spin.value(), platforms.default_font_size())
         dlg.font_spin.setValue(16)
         self.assertTrue(dlg.try_accept())
         self.assertEqual(Settings.load(self.dir).preferences["font_size"], 16)

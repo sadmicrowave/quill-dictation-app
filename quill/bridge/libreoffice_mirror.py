@@ -594,7 +594,8 @@ def change_fields(sheet: str, row: int, col: int, value: object) -> list:
 
 def _system(args: list[str]) -> int:
     try:
-        return subprocess.run(args, capture_output=True, timeout=ANSWER_TIMEOUT_S, check=False).returncode   # noqa: S603
+        return subprocess.run(args, capture_output=True, timeout=ANSWER_TIMEOUT_S, check=False,   # noqa: S603
+                              **platforms.no_console()).returncode
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("soffice call failed: %s", exc)
         return 1
@@ -610,7 +611,8 @@ def _is_running(platform: str | None = None) -> bool:
         other = platforms.offered(platform, "libreoffice")
         if other is not None and hasattr(other, "is_running"):
             return other.is_running()
-        out = subprocess.run(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=6, check=False).stdout   # noqa: S603, S607
+        out = subprocess.run(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=6, check=False,   # noqa: S603, S607
+                             **platforms.no_console()).stdout
         return any(pathlib.PurePosixPath(line.strip()).name.lower() in ("soffice", "soffice.bin") for line in out.splitlines())
     except (OSError, subprocess.SubprocessError):
         return False
