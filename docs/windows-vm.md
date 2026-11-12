@@ -44,7 +44,7 @@ One-time setup:
 1. On the Mac: `tools/windows-vm/sync-to-share.sh` (it makes `~/Developer/QuillShare/src` and `.../out`; the repository and its `.git` are never shared, only this copy).
 2. Fusion, VM shut down or running: **Virtual Machine > Settings > Sharing**: tick **Enable Shared Folders**, **+**, choose `~/Developer/QuillShare`, **Read & Write**. (VMware Tools must be installed in Windows. macOS may ask to let Fusion see the folder.)
 3. In the VM the folder is `\\vmware-host\Shared Folders\QuillShare` (Explorer > Network > vmware-host). Open `src\tools\windows-vm` there.
-4. Install Python once: `winget install -e --id Python.Python.3.13`, then open a new PowerShell.
+4. Install Python once: `winget install -e --id Python.Python.3.13 --source winget`, then open a new PowerShell. (Without `--source winget` a fresh Windows often fails on the Microsoft Store source with a certificate error. The scripts find Python by themselves, with or without the `py` launcher.)
 
 Every change:
 

@@ -18,13 +18,33 @@ function Copy-QuillSource {
     if (Test-Path $stamp) { Write-Host (Get-Content $stamp) }
 }
 
+function Find-QuillPython {
+    # Python 3.13: through the launcher, on the path, or in the places the installer puts it.
+    $candidates = @()
+    $launcher = Get-Command py -ErrorAction SilentlyContinue
+    if ($launcher) { $candidates += @{ Path = $launcher.Source; Args = @("-3.13") } }
+    $onPath = Get-Command python -ErrorAction SilentlyContinue
+    if ($onPath) { $candidates += @{ Path = $onPath.Source; Args = @() } }
+    foreach ($folder in @("$env:LOCALAPPDATA\Programs\Python\Python313", "$env:ProgramFiles\Python313", "${env:ProgramFiles(x86)}\Python313")) {
+        $exe = Join-Path $folder "python.exe"
+        if (Test-Path $exe) { $candidates += @{ Path = $exe; Args = @() } }
+    }
+    foreach ($candidate in $candidates) {
+        $version = & $candidate.Path @($candidate.Args) --version 2>&1
+        if ($LASTEXITCODE -eq 0 -and "$version" -match "^Python 3\.13\.") { return $candidate }
+    }
+    return $null
+}
+
 function Initialize-QuillPython {
     if (-not (Test-Path $VenvPython)) {
-        $py = Get-Command py -ErrorAction SilentlyContinue
-        if (-not $py) { throw "Python is not installed. Run:  winget install -e --id Python.Python.3.13   then open a new PowerShell." }
-        Write-Host "Making the Python environment (first time only) ..."
-        & py -3.13 -m venv $Venv
-        if ($LASTEXITCODE -ne 0) { throw "Could not make the Python environment (is Python 3.13 installed?)" }
+        $python = Find-QuillPython
+        if (-not $python) {
+            throw "Python 3.13 was not found. Run:  winget install -e --id Python.Python.3.13 --source winget   then open a new PowerShell."
+        }
+        Write-Host "Making the Python environment (first time only), with $($python.Path) ..."
+        & $python.Path @($python.Args) -m venv $Venv
+        if ($LASTEXITCODE -ne 0) { throw "Could not make the Python environment" }
     }
     $wanted = (Get-FileHash (Join-Path $Src "requirements.txt")).Hash
     $marker = Join-Path $Venv "requirements.sha"
