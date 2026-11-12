@@ -109,6 +109,8 @@ FOOTER_ROOM = 22 + 3 + LOG_BOTTOM_MARGIN
 ROW_GRIP_DROP = 5
 SIZE_SETTLE_MS = 400        # how long the window must stay still before its size is reported
 MIN_REMEMBERED = (300, 300)  # a remembered size below this is ignored
+#: Size of each icon of the ribbon above Start.
+RIBBON_BUTTON = QSize(32, 28)
 MIN_WINDOW = (453, 340)      # the full window never gets smaller than this, and opens at it the first time
 LOG_OPEN_HEIGHT = 120       # height of the log while it is open (until the user drags it to another)
 LOG_MIN_HEIGHT, LOG_MAX_HEIGHT = 60, 600     # how short and tall the user may drag the log
@@ -367,15 +369,20 @@ class MainWindow:
         row.addWidget(self.toggle_button, 1)
         row.addWidget(self.next_button)
         row.addWidget(self.error_button)
-        # The icons the macOS title bar holds are, where the system has no such place, a ribbon of their own above Start (so Start keeps
-        # the whole width): help, undo, files, turns, settings and the resize icon, right-aligned, in the title bar's order. The resize
-        # icon goes back beside Start in the mini view, which has no room for a ribbon.
+        # The icons the macOS title bar holds are, where the system has no such place, a toolbar of their own above Start (so Start keeps
+        # the whole width), split as the title bar splits them: help and undo at the left; files, turns, settings and the resize icon at
+        # the right. The icons have no border until the pointer is over one, and a thin rule under the row separates it from Start (all
+        # in the style sheet: ``QWidget#ribbon``). The resize icon goes back beside Start in the mini view, which has no room for a ribbon.
         self.ribbon = QWidget()
+        self.ribbon.setObjectName("ribbon")
+        self.ribbon.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.ribbon.setProperty("keepMargins", True)
         self._ribbon_layout = QHBoxLayout(self.ribbon)
         self._ribbon_layout.setContentsMargins(0, 0, 0, 0)
+        self._ribbon_layout.addWidget(self.help_button)
+        self._ribbon_layout.addWidget(self.undo_button)
         self._ribbon_layout.addStretch(1)
-        for button in (self.help_button, self.undo_button, self.settings_button, self.mini_button):
+        for button in (self.settings_button, self.mini_button):
             self._ribbon_layout.addWidget(button)
         layout.addWidget(self.ribbon)
         layout.addLayout(row)
@@ -397,6 +404,8 @@ class MainWindow:
         self.turn_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.turn_button.clicked.connect(lambda: self.toggle_panel(TURN_PAGE))
         self._ribbon_layout.insertWidget(self._ribbon_layout.indexOf(self.settings_button), self.turn_button)
+        for button in (self.help_button, self.undo_button, self.open_file_button, self.turn_button, self.settings_button, self.mini_button):
+            button.setFixedSize(RIBBON_BUTTON)                   # (one size for all six, so the row is even whatever each draws)
 
         # --- current row
         # (Not collapsible: the row being built is the point of every spoken turn, so it is always in view.)

@@ -10,6 +10,8 @@ from quill.platforms.windows.speech import render_clip, speak
 
 NATIVE_QPA = "windows"
 QUIT_LABEL = "Exit"
+#: Default text size (points). A point is 96/72 of a pixel on Windows and one pixel on a Mac, so the 14 that suits a Mac looked too large here.
+DEFAULT_FONT_SIZE = 12
 TRAY_CLICK_OPENS_MENU = True
 
 

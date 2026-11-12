@@ -59,6 +59,15 @@ def provider(platform: str | None = None) -> ModuleType | None:
         return None
 
 
+#: The default text size (points) of a system that has no ``DEFAULT_FONT_SIZE`` of its own.
+BASE_FONT_SIZE = 14
+
+
+def default_font_size(platform: str | None = None) -> int:
+    """The text size (points) Quill starts with on *platform* (default: this system): what its provider offers, else :data:`BASE_FONT_SIZE`."""
+    return int(offered(platform, "DEFAULT_FONT_SIZE", BASE_FONT_SIZE))
+
+
 #: Windows' ``CREATE_NO_WINDOW``: the child process gets no console window.
 CREATE_NO_WINDOW = 0x08000000
 

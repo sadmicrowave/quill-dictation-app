@@ -12,7 +12,7 @@ import unittest
 from unittest import mock
 
 from PySide6.QtCore import QPoint
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -103,6 +103,88 @@ class TestTheRibbon(Case):
         QTest.qWait(50)
         start = top_left(w, w.toggle_button).y()
         self.assertTrue(all(top_left(w, b).y() + b.height() <= start for b in self.icons(w)))
+
+
+class TestTheToolbarLook(Case):
+    """The ribbon is a toolbar as the macOS title bar is: help and undo at the left, the rest at the right, no border round an icon until the
+    pointer is on it, and a thin rule under the row that separates it from Start. Measured on the painted window."""
+
+    @staticmethod
+    def pixel(w, point):
+        return w.widget.grab().toImage().pixelColor(point)
+
+    @staticmethod
+    def close(a, b, delta=6):
+        return all(abs(x - y) <= delta for x, y in ((a.red(), b.red()), (a.green(), b.green()), (a.blue(), b.blue())))
+
+    def settled(self, width=520):
+        w = build(width, 600)
+        QTest.qWait(1300)                                                # (the columns ease in: wait until they are drawn)
+        return w
+
+    def test_help_and_undo_are_at_the_left_and_the_other_icons_at_the_right(self):
+        w = self.settled()
+        half = w.widget.width() / 2
+        for button in (w.help_button, w.undo_button):
+            self.assertLess(top_left(w, button).x() + button.width(), half, button.toolTip())
+        for button in (w.open_file_button, w.turn_button, w.settings_button, w.mini_button):
+            self.assertGreater(top_left(w, button).x(), half, button.toolTip())
+        self.assertLess(top_left(w, w.help_button).x(), 25)
+        self.assertGreater(top_left(w, w.mini_button).x() + w.mini_button.width(), w.widget.width() - 25)
+
+    def test_the_six_icons_are_one_size_in_one_row(self):
+        w = self.settled()
+        buttons = [w.help_button, w.undo_button, w.open_file_button, w.turn_button, w.settings_button, w.mini_button]
+        self.assertEqual({(b.width(), b.height()) for b in buttons}, {(32, 28)})
+        self.assertEqual({top_left(w, b).y() for b in buttons}, {top_left(w, buttons[0]).y()})
+
+    def test_an_icon_has_no_border_or_fill_until_the_pointer_is_on_it(self):
+        w = self.settled()
+        for button in (w.help_button, w.open_file_button, w.settings_button, w.mini_button):
+            with self.subTest(button.toolTip()):
+                origin = top_left(w, button)
+                outside = self.pixel(w, QPoint(origin.x() - 4, origin.y() + button.height() // 2))
+                for dx, dy in ((1, button.height() // 2), (button.width() - 2, button.height() // 2), (button.width() // 2, 1)):
+                    self.assertTrue(self.close(self.pixel(w, QPoint(origin.x() + dx, origin.y() + dy)), outside),
+                                    f"{button.toolTip()}: the edge of the icon is drawn")
+
+    def test_the_icon_under_the_pointer_gets_a_soft_fill(self):
+        w = self.settled()
+        button = w.settings_button
+        origin = top_left(w, button)
+        edge = QPoint(origin.x() + 3, origin.y() + button.height() // 2)
+        before = self.pixel(w, edge)
+        QTest.mouseMove(button, QPoint(button.width() // 2, button.height() // 2))
+        QTest.qWait(150)
+        after = self.pixel(w, edge)
+        self.assertFalse(self.close(before, after, 3), "no fill under the pointer")
+        QTest.mouseMove(w.widget.centralWidget(), QPoint(w.widget.width() // 2, 400))
+        QTest.qWait(150)
+        self.assertTrue(self.close(self.pixel(w, edge), before), "the fill goes when the pointer leaves")
+
+    def test_a_thin_rule_under_the_row_separates_it_from_start(self):
+        from quill.ui.theme import colors_for
+        w = self.settled()
+        ribbon = w.ribbon
+        bottom = top_left(w, ribbon).y() + ribbon.height() - 1
+        middle = top_left(w, ribbon).x() + ribbon.width() // 2
+        rule = QColor(colors_for(False)["border"])
+        self.assertTrue(self.close(self.pixel(w, QPoint(middle, bottom)), rule), "the rule is the theme's border colour")
+        self.assertFalse(self.close(self.pixel(w, QPoint(middle, bottom - 4)), rule), "and only one pixel thick")
+        self.assertLess(bottom, top_left(w, w.toggle_button).y(), "Start is below the rule")
+
+    def test_the_rule_is_also_there_in_the_dark_theme(self):
+        from quill.ui.theme import colors_for
+        apply_theme(_app, "dark")
+        w = MainWindow()
+        w.setup()
+        w.widget.resize(520, 600)
+        w.widget.show()
+        QTest.qWait(1300)
+        ribbon = w.ribbon
+        bottom = top_left(w, ribbon).y() + ribbon.height() - 1
+        middle = top_left(w, ribbon).x() + ribbon.width() // 2
+        self.assertTrue(self.close(self.pixel(w, QPoint(middle, bottom)), QColor(colors_for(True)["border"])))
 
 
 class TestTheMiniView(Case):

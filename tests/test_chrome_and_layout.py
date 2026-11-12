@@ -4,6 +4,8 @@ import pathlib
 import tempfile
 import unittest
 
+from quill import platforms
+
 from PySide6.QtWidgets import QApplication, QWidget
 
 from quill.app import QuillApp
@@ -360,7 +362,7 @@ class TestFontSize(unittest.TestCase):
         theme.apply_theme(_app, "light", font_size=12)
 
     def test_default_is_fourteen_and_is_clamped_on_load(self):
-        self.assertEqual(Settings.load(self.dir).preferences["font_size"], 14)
+        self.assertEqual(Settings.load(self.dir).preferences["font_size"], platforms.default_font_size())
         (self.dir / "keywords.toml").write_text("[preferences]\nfont_size = 90\n")
         self.assertEqual(Settings.load(self.dir).preferences["font_size"], FONT_SIZE_RANGE[1])
         (self.dir / "keywords.toml").write_text("[preferences]\nfont_size = 2\n")
@@ -385,7 +387,7 @@ class TestFontSize(unittest.TestCase):
         settings = Settings.load(self.dir)
         dlg = SettingsDialog(settings)
         dlg.build()
-        self.assertEqual(dlg.font_spin.value(), 14)
+        self.assertEqual(dlg.font_spin.value(), platforms.default_font_size())
         dlg.font_spin.setValue(16)
         self.assertTrue(dlg.try_accept())
         self.assertEqual(Settings.load(self.dir).preferences["font_size"], 16)

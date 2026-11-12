@@ -62,7 +62,7 @@ DENSITIES = {
 TEXT_INSET = 12
 
 DEFAULT_ACCENT = "violet"
-DEFAULT_FONT_SIZE = 14
+DEFAULT_FONT_SIZE = platforms.default_font_size()      # 14 on a Mac; the system's provider may say otherwise (12 on Windows)
 DEFAULT_SPACING = "compact"
 
 
@@ -378,6 +378,12 @@ QLabel[countdown="true"] {{ background: transparent; color: {rgba(t['text'], 0.7
 QPushButton[accent="true"] QLabel[countdown="true"], QPushButton:checked QLabel[countdown="true"] {{ color: {rgba(t['on_accent'], 0.92)}; font-weight: 400; }}
 QPushButton[iconOnly="true"] {{ padding: 6px 9px; border-color: {t['border']}; }}
 QPushButton[outline="true"][iconOnly="true"] {{ border-color: {t['accent']}; }}
+/* The toolbar above Start (where the system has no title-bar toolbar): icons with no border until the pointer is on one, and a rule under the row. */
+QWidget#ribbon {{ border: none; border-bottom: 1px solid {t['border']}; padding-bottom: 5px; }}
+QWidget#ribbon QPushButton[iconOnly="true"], QWidget#ribbon QToolButton {{ background: transparent; border: none; border-radius: 7px; padding: 5px 7px; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:hover, QWidget#ribbon QToolButton:hover {{ background: {rgba(t['text'], 0.14 if dark else 0.10)}; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:pressed, QWidget#ribbon QToolButton:pressed {{ background: {rgba(t['text'], 0.22 if dark else 0.16)}; }}
+QWidget#ribbon QPushButton[iconOnly="true"]:disabled, QWidget#ribbon QToolButton:disabled {{ background: transparent; border: none; }}
 /* The Start button paints itself (see listen_button.py): nothing from the style sheet. */
 QPushButton[listenButton="true"] {{ background: transparent; border: none; padding: 0; }}
 /* The window's footer: flat icon buttons that fill with the accent while their panel is open. */

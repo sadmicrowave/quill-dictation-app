@@ -95,7 +95,7 @@ The window opens at the smallest size it can be (and never gets smaller). The mi
 | Sliders | right | **Settings** |
 | Arrows | far right | **Mini view** |
 
-> 💡 **On Windows** the same icons (help, undo, folder, turn, settings, mini view) sit in a **ribbon of their own above the Start button**, right-aligned in that order, so Start keeps the whole width. The mini view has no ribbon: its arrows sit beside Start. The **File, Listening, View, Window, Help** menu bar is in the size of the title bar's text.
+> 💡 **On Windows** the same icons (help, undo, folder, turn, settings, mini view) sit in a **toolbar of their own above the Start button**, split as on a Mac: help and undo at the left, the folder, turn, settings and mini-view icons at the right. They have no border until the pointer is on one, and a thin line under the row separates it from Start, so Start keeps the whole width. The mini view has no ribbon: its arrows sit beside Start. The **File, Listening, View, Window, Help** menu bar is in the size of the title bar's text.
 
 ## 🔔 Menu bar icon
 
