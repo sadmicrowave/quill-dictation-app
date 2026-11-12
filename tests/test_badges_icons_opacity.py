@@ -337,7 +337,17 @@ class TestOpacityAndBlur(unittest.TestCase):
         with mock.patch("quill.ui.theme.sys.platform", "win32"):
             self.assertEqual(theme.backdrop_alpha(50, 0), 1.0)                # (elsewhere the window fades as a whole)
 
+    @staticmethod
+    def _restore_theme(before):
+        sheet, palette, key, backdrop = before
+        _app.setStyleSheet(sheet)
+        _app.setPalette(palette)
+        _app.setProperty("quillThemeKey", key)
+        _app.setProperty("quillBackdrop", backdrop)
+
     def test_a_window_can_ask_for_a_floor_under_its_background_alpha(self):
+        before = (_app.styleSheet(), _app.palette(), _app.property("quillThemeKey"), _app.property("quillBackdrop"))
+        self.addCleanup(self._restore_theme, before)                                # (the theme is put back: other tests share the app)
         theme.apply_theme(_app, "light", "violet", "compact", backdrop=0.2)       # (not left to whichever test ran before)
         theme.set_backdrop(_app, 0.2)
         root = QWidget()
