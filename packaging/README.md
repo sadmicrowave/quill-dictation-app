@@ -17,10 +17,21 @@ requirement that names only its identifier (`com.quill.app`), so that choice is 
 without that step every rebuild looks like a new app and asks again. (The first run after this change asks
 once more, because the earlier permission was tied to an older build.)
 
-## Windows (.exe)
+## Windows (installer and portable folder)
 
     pyinstaller packaging\quill_win.spec
-    # Output: dist\Quill.exe
+    # Output: the folder dist\Quill (Quill.exe and its _internal folder). Not one self-extracting file: that unpacked itself to a
+    # temporary folder on every start (slow, and antivirus dislikes it).
+    ISCC /DAppVersion=0.1.0 packaging\quill_win.iss
+    # Output: dist\installer\Quill-Setup.exe  (Inno Setup 6.3 or newer: choco install innosetup)
+
+`Quill-Setup.exe` installs for the current user only (no administrator rights) into `%LOCALAPPDATA%\Programs\Quill`, with a Start menu
+entry, an optional desktop shortcut, an entry in Settings > Apps and an uninstaller. Running a newer one over an older Quill replaces it
+(same `AppId`: never change it) and closes a running Quill first. An uninstall leaves the user's settings and speech model (their own
+data folder). The portable zip (`Quill-windows.zip`) is the same folder: unzip it and run `Quill\Quill.exe`.
+
+The dev-build and release workflows build both, install the installer silently on the runner, run the *installed* `Quill.exe --selftest`,
+uninstall it and check nothing is left.
 
 ## Vosk speech model
 
@@ -45,7 +56,7 @@ every screen, have a tester on that macOS confirm it, and only then lower the nu
     git tag v0.1.0 && git push origin v0.1.0
 
 The `release` workflow (`.github/workflows/release.yml`) builds Windows, macOS Apple Silicon and macOS Intel on GitHub's
-machines and attaches `Quill-windows.zip`, `Quill-mac-apple-silicon.dmg`, `Quill-mac-intel.dmg` and `SHA256SUMS.txt` to a
+machines and attaches `Quill-Setup.exe`, `Quill-windows.zip`, `Quill-mac-apple-silicon.dmg`, `Quill-mac-intel.dmg` and `SHA256SUMS.txt` to a
 **draft** release. Nothing is public until you read the notes and press *Publish release*. (The tag must equal `__version__`.)
 The site's download buttons and the app's update check read the newest published, non-pre-release release.
 
