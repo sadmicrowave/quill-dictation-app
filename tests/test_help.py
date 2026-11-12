@@ -55,6 +55,63 @@ class TestPages(unittest.TestCase):
         self.assertFalse(topic.matches("zzzz-not-in-the-help"))
 
 
+EMOJI = re.compile("[\U0001F000-\U0001FFFF\u2600-\u27BF\uFE0F\u200D]")
+
+
+class TestThePagesFollowTheRules(unittest.TestCase):
+    """The rules of docs/help-redesign/outline.md, checked on every page: organised by what the reader does, plain, with pictures."""
+
+    def setUp(self):
+        self.topics = helpdocs.load_topics()
+        self.slugs = {t.slug for t in self.topics}
+
+    def test_no_emoji_anywhere(self):
+        for topic in self.topics:
+            self.assertNotRegex(topic.text, EMOJI, topic.slug)
+
+    def test_every_link_to_another_page_goes_to_a_page(self):
+        for topic in self.topics:
+            for target in re.findall(r"\]\(help:([\w-]+)\)", topic.text):
+                self.assertIn(target, self.slugs, f"{topic.slug} links to {target}")
+
+    def test_every_page_but_the_last_ends_with_where_to_go_next(self):
+        for topic in self.topics[:-1]:
+            if topic.slug in ("troubleshooting",):
+                continue
+            self.assertRegex(topic.text.strip().splitlines()[-1], r"^\*\*Next:\*\* \[[^\]]+\]\(help:[\w-]+\)$", topic.slug)
+
+    def test_no_bullet_lists_inside_bullet_lists_and_no_long_ones(self):
+        for topic in self.topics:
+            bullets = [line for line in topic.text.splitlines() if re.match(r"^\s*[-*] ", line)]
+            self.assertFalse([b for b in bullets if b.startswith(" ")], f"{topic.slug}: a nested bullet")
+            self.assertLessEqual(len(bullets), 4, f"{topic.slug}: too many bullets (use steps or a table)")
+
+    def test_a_task_page_numbers_its_steps_and_says_what_you_will_see(self):
+        for slug in ("quick-start", "use-a-file-directly", "first-row", "notes", "ids", "term-helper", "mini-view"):
+            text = next(t.text for t in self.topics if t.slug == slug)
+            self.assertRegex(text, r"(?m)^\*\*1\. ", slug)
+            self.assertIn("*You'll see:*", text, slug)
+
+    def test_every_icon_a_page_names_has_a_picture_in_both_themes(self):
+        for topic in self.topics:
+            for name in re.findall(r"\(images/(icon-[\w-]+)\.png\)", topic.text):
+                for theme in ("light", "dark"):
+                    self.assertTrue((helpdocs.help_dir() / "images" / f"{name}-{theme}.png").exists(), f"{topic.slug}: {name}")
+
+    def test_the_pages_are_grouped_in_the_order_a_person_meets_them(self):
+        order = [t.group for t in self.topics]
+        seen = []
+        for group in order:
+            if not seen or seen[-1] != group:
+                seen.append(group)
+        self.assertEqual(seen, [name for name, _ in helpdocs.GROUPS], "one stretch per group, in order")
+        self.assertNotIn("More", order, "every page belongs to a group")
+
+    def test_the_pages_the_app_opens_exist(self):
+        for wanted in ("welcome", "term-helper", "settings", "privacy", "troubleshooting"):
+            self.assertIn(wanted, self.slugs)
+
+
 class TestWindow(unittest.TestCase):
     def setUp(self):
         self.help = HelpWindow()
@@ -83,7 +140,6 @@ class TestWindow(unittest.TestCase):
             self.assertEqual(plain(item.text(0)), item.text(0), "no emoji in the sidebar")
             for i, section in enumerate(topic.sections):
                 self.assertEqual(item.child(i).text(0), plain(section))
-        self.assertIn("Quick start", self.help.nav.topLevelItem(0).child(0).text(0))
         self.assertNotRegex("".join(self.help.nav.topLevelItem(i).text(0) for i in range(self.help.nav.topLevelItemCount())), "[\U0001F000-\U0001FFFF]")
 
     def test_a_section_can_be_asked_for_with_or_without_its_emoji(self):

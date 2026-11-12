@@ -44,6 +44,49 @@ def main() -> None:
         old.unlink()
     for theme in ("light", "dark"):
         shoot(app, theme)
+    write_icons()
+
+
+#: The icons the help pages show inline (``![](images/icon-<name>.png)``): help name -> the app's icon name.
+HELP_ICONS = {"play": "play", "stop": "stop", "settings": "settings", "turn": "turn", "undo": "undo", "help": "question", "mini": "minimize",
+              "folder": "folder", "next": "next", "gear": "gear", "refresh": "refresh", "bug": "bug", "export": "export"}
+ICON_SIZE = 20
+
+
+def write_icons() -> None:
+    """Every icon the pages name, in the light and the dark colour, 20 px: the real icons of the app, drawn the same way, plus the round
+    **x** (a line's delete button) and the **i** (a column's information icon)."""
+    from PySide6.QtCore import QPointF, QRectF
+    from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
+
+    from quill.ui.icons import make_icon
+    for theme in ("light", "dark"):
+        colors = colors_for(theme == "dark", "violet")
+        for name, icon in HELP_ICONS.items():
+            make_icon(icon, colors["text"], ICON_SIZE, scale=1).pixmap(ICON_SIZE, ICON_SIZE).save(str(OUT / f"icon-{name}-{theme}.png"))
+        for name in ("x", "info"):
+            pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            box = QRectF(2, 2, ICON_SIZE - 4, ICON_SIZE - 4)
+            painter.setPen(Qt.PenStyle.NoPen)
+            if name == "x":
+                painter.setBrush(QColor(colors["accent"]))
+                painter.drawEllipse(box)
+                painter.setPen(QPen(QColor(colors["on_accent"]), 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                c, r = box.center(), box.width() * 0.2
+                painter.drawLine(QPointF(c.x() - r, c.y() - r), QPointF(c.x() + r, c.y() + r))
+                painter.drawLine(QPointF(c.x() + r, c.y() - r), QPointF(c.x() - r, c.y() + r))
+            else:
+                painter.setBrush(QColor(colors["text"]))
+                painter.drawEllipse(box)
+                painter.setPen(QPen(QColor(colors["bg"]), 1.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                x, top = box.center().x(), box.top()
+                painter.drawPoint(QPointF(x, top + box.height() * 0.30))
+                painter.drawLine(QPointF(x, top + box.height() * 0.46), QPointF(x, top + box.height() * 0.74))
+            painter.end()
+            pixmap.save(str(OUT / f"icon-{name}-{theme}.png"))
 
 
 def support_form():

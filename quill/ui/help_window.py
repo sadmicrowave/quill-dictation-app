@@ -125,7 +125,19 @@ class HelpWindow:
     def _fill_nav(self) -> None:
         self.nav.clear()
         self._items = {}
+        self._group_items = {}
         for topic in self.topics:
+            if topic.group not in self._group_items:                  # a small heading, not a page: it cannot be selected
+                heading = QTreeWidgetItem([topic.group])
+                heading.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                font = heading.font(0)
+                font.setBold(True)
+                font.setPointSizeF(max(font.pointSizeF() * 0.85, 7.0))
+                heading.setFont(0, font)
+                heading.setForeground(0, self.nav.palette().placeholderText())
+                heading.setData(0, Qt.ItemDataRole.UserRole, None)
+                self.nav.addTopLevelItem(heading)
+                self._group_items[topic.group] = heading
             item = QTreeWidgetItem([plain(topic.title)])                  # (the pages keep their emoji; the sidebar shows plain words like the rest of the app)
             item.setData(0, Qt.ItemDataRole.UserRole, (topic.slug, None))
             item.setToolTip(0, f"Open the {plain(topic.title)} page.")
@@ -172,7 +184,10 @@ class HelpWindow:
     def _nav_changed(self, item: QTreeWidgetItem | None, _previous=None) -> None:
         if item is None or self._loading:
             return
-        slug, section = item.data(0, Qt.ItemDataRole.UserRole)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data is None:                                      # a group heading, not a page
+            return
+        slug, section = data
         topic = self.topic(slug)
         if topic is None:
             return
@@ -195,10 +210,15 @@ class HelpWindow:
     def filter(self, text: str) -> None:
         """Show only the pages that mention *text* (the page being read stays selected if it still matches)."""
         shown = 0
+        visible_groups = set()
         for topic in self.topics:
             visible = topic.matches(text)
             self._items[topic.slug].setHidden(not visible)
             shown += visible
+            if visible:
+                visible_groups.add(topic.group)
+        for name, heading in self._group_items.items():            # a heading with nothing under it goes too
+            heading.setHidden(name not in visible_groups)
         self.empty_label.setVisible(shown == 0)
 
     # ------------------------------------------------------------------ #

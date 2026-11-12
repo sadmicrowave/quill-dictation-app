@@ -12,6 +12,22 @@ import sys
 from dataclasses import dataclass, field
 
 
+#: The sidebar's headings and the pages under each (by slug), in the order a person meets them. A page named in no group goes under "More".
+GROUPS = (
+    ("Start here", ("welcome", "quick-start")),
+    ("Set up", ("choose-spreadsheet", "use-a-file-directly", "data-starts", "microphone")),
+    ("Dictate a row", ("first-row", "numbers-dates", "notes", "ids", "fix-mistake")),
+    ("Words Quill misses", ("term-helper", "term-helper-voice", "teach-words")),
+    ("Work the way you like", ("mini-view", "turns", "search", "sounds")),
+    ("Reference", ("phrases", "icons", "settings", "menus", "privacy", "troubleshooting")),
+)
+
+
+def group_of(slug: str) -> str:
+    """The sidebar heading *slug* sits under."""
+    return next((name for name, slugs in GROUPS if slug in slugs), "More")
+
+
 @dataclass
 class Topic:
     """One help page."""
@@ -20,6 +36,11 @@ class Topic:
     title: str                                  # "🧩 Term Helper"
     text: str                                   # the page's Markdown
     sections: list[str] = field(default_factory=list)      # its "## " headings, in order
+
+    @property
+    def group(self) -> str:
+        """The sidebar heading this page is listed under."""
+        return group_of(self.slug)
 
     def matches(self, query: str) -> bool:
         """True if *query* (case-insensitive) appears in the title or the text."""
