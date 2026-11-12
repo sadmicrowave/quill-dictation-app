@@ -4,7 +4,7 @@ What each icon does, and where to find it.
 
 ## The toolbar
 
-On a Mac these sit in the title bar. On Windows they sit in a toolbar above the Start button.
+On a Mac these sit in the title bar. On Windows they sit in a toolbar above the Start button: help and undo at the left, the others at the right. An icon has no border until the pointer is on it, and a thin line under the row separates the toolbar from Start. The menu bar (File, Listening, View, Window, Help) is in the size of the title bar's text.
 
 | Icon | Name | What it does |
 |---|---|---|

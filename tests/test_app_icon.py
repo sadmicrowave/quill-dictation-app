@@ -12,6 +12,7 @@ from quill import assets
 from quill.app import QuillApp
 from quill.bridge.xlsx_bridge import XlsxBridge
 from quill.config.settings import Settings
+from tests.fixtures import in_git_checkout
 
 _app = QApplication.instance() or QApplication([])
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -145,6 +146,7 @@ class TestPackaging(unittest.TestCase):
         for spec in (mac, win):
             self.assertIn('(r("quill", "assets"), "quill/assets")', spec)
 
+    @unittest.skipUnless(in_git_checkout(ROOT), "needs a git checkout (a copy made for another machine has none)")
     def test_the_icon_files_are_not_git_ignored(self):
         import subprocess
         for name in ("Quill.icns", "Quill.ico", "icon.svg", "icon-1024.png"):

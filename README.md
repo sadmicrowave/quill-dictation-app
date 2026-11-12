@@ -23,7 +23,7 @@ or from the [Quill website](https://quill-website-eta.vercel.app/download.html):
 |---|---|
 | Mac with an Apple chip (M1 or newer), macOS 26 or newer | `Quill-mac-apple-silicon.dmg` |
 | Mac with an Intel chip, macOS 26 or newer | `Quill-mac-intel.dmg` |
-| Windows (64-bit) | `Quill-windows.zip` (open it and run `Quill.exe`) |
+| Windows (64-bit) | `Quill-Setup.exe` (the installer; or `Quill-windows.zip`, a portable copy: unzip it and run `Quill.exe` inside the folder) |
 
 **The first time you open it,** your computer will ask you to confirm, because Quill is not signed with a paid developer
 certificate (yet). This happens once:

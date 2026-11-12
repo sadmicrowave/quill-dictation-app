@@ -182,9 +182,9 @@ class TestWhereItIsOffered(FileCase):
         self.app.window.panel.file_button.click()           # the folder opens the side panel, whose button opens the file window
         self.assertTrue(self.app.connected)
 
-    def test_the_button_is_hidden_in_the_mini_view_with_the_rest_of_the_full_view(self):
+    def test_the_button_stays_in_the_mini_views_toolbar_and_brings_the_full_window_back(self):
         self.app.window.set_mini(True)
-        self.assertFalse(self.app.window.open_file_button.isVisibleTo(self.app.window.widget))
+        self.assertTrue(self.app.window.open_file_button.isVisibleTo(self.app.window.widget))
 
     def test_the_menu_bar_icon_menu_offers_it_too(self):
         self.chosen[0] = str(self.plants)

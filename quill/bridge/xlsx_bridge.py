@@ -14,7 +14,7 @@ import sys
 import openpyxl
 
 from quill import platforms
-from quill.bridge.base import BridgeError, BridgeLockedError
+from quill.bridge.base import BridgeError, BridgeLockedError, long_path_hint
 from quill.bridge.grid import OpenpyxlGrid
 from quill.bridge.grid_bridge import GridBridge
 from quill.bridge.introspect import ListSource, discover
@@ -53,11 +53,13 @@ class XlsxBridge(GridBridge):
         if path is None:
             raise BridgeError("No workbook path given")
         if not path.exists():
-            raise BridgeError(f"Workbook not found: {path}")
+            hint = long_path_hint(path)
+            raise BridgeError(f"Workbook not found: {path}" + (f".{hint}" if hint else ""))
         try:
             self._wb = openpyxl.load_workbook(path, keep_vba=path.suffix.lower() == ".xlsm")
         except Exception as exc:  # corrupt / unsupported file
-            raise BridgeError(f"Could not open {path.name}: {exc}") from exc
+            hint = long_path_hint(path)
+            raise BridgeError(f"Could not open {path.name}: {exc}" + (f".{hint}" if hint else "")) from exc
         self._path = path
         self._name = path.name
         self._grid = OpenpyxlGrid(self._wb)

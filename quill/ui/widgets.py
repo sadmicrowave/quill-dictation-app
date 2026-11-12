@@ -219,10 +219,20 @@ class CenteredToolTips(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._window: TipWindow | None = None
+        CenteredToolTips.current = self
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(TOOLTIP_SECONDS * 1000)
         self._timer.timeout.connect(self._hide)
+
+    #: The application's tool tips (the one installed), so a widget whose tip text changes under a still pointer can take the old tip away.
+    current: "CenteredToolTips | None" = None
+
+    @classmethod
+    def hide_current(cls) -> None:
+        """Take the tip that is showing away (if any)."""
+        if cls.current is not None:
+            cls.current._hide()
 
     @property
     def window(self) -> TipWindow:
@@ -240,7 +250,8 @@ class CenteredToolTips(QObject):
         """The tool tip text *obj* would show at *pos* ("" when none), including the items of a list."""
         parent = obj.parentWidget() if isinstance(obj, QWidget) else None
         if isinstance(parent, QAbstractItemView) and obj is parent.viewport():
-            return str(parent.indexAt(pos).data(Qt.ItemDataRole.ToolTipRole) or "")
+            item_tip = str(parent.indexAt(pos).data(Qt.ItemDataRole.ToolTipRole) or "")
+            return item_tip or obj.toolTip()                    # (a list may also tip its whole area: the row grid's icons do)
         return obj.toolTip() if isinstance(obj, QWidget) else ""
 
     @staticmethod
@@ -274,7 +285,11 @@ class CenteredToolTips(QObject):
         kind = event.type()
         if kind == QEvent.Type.ToolTip:
             text = self.tip_for(obj, event.pos())
-            if not text or ("<" in text and ">" in text):                       # (rich text keeps the system's tip)
+            if not text:
+                if self._window is not None and shiboken6.isValid(self._window) and self._window.isVisible():
+                    self._window.hide()                                         # (the pointer rests where nothing is shown now)
+                return False
+            if "<" in text and ">" in text:                                     # (rich text keeps the system's tip)
                 return False
             self.show_tip(event.globalPos(), text)
             return True

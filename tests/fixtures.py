@@ -162,3 +162,10 @@ class FakeXlwings:
     def __init__(self, apps: list[FakeApp]) -> None:
         self.apps = self._Apps(apps)
         self.apps.active = apps[0] if apps else None
+
+
+def in_git_checkout(root: pathlib.Path) -> bool:
+    """True where the tests that ask git about the repository can run: git is installed and *root* is a checkout (a copy of the code made for another machine,
+    such as the Windows test VM's, has no ``.git``)."""
+    import shutil
+    return shutil.which("git") is not None and (root / ".git").exists()
