@@ -167,15 +167,31 @@ def handle_sync(runner: Runner, job: dict, folder: pathlib.Path) -> dict:
     return result("passed", f"code synced: {build}" + (f"; {', '.join(notes)}" if notes else ""))
 
 
+def ensure_test_tools(runner: Runner, folder: pathlib.Path) -> str | None:
+    """Make sure pytest (and pytest-xdist, for parallel runs) are in the VM's Python: the requirements file does not list them. None when fine, else why not."""
+    probe = subprocess.run([runner.python, "-c", "import pytest, xdist"], capture_output=True, timeout=60, check=False,
+                           **({"creationflags": 0x08000000} if os.name == "nt" else {}))
+    if probe.returncode == 0:
+        return None
+    code = run_command(runner, [runner.python, "-m", "pip", "install", "pytest", "pytest-xdist"], folder, 900, cwd=runner.work)
+    return None if code == 0 else f"installing pytest failed (exit code {code}): see log.txt"
+
+
 def parse_pytest(log: pathlib.Path) -> str:
     lines = [line for line in log.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
     return next((line for line in reversed(lines) if " passed" in line or " failed" in line or " error" in line), "(no pytest summary line)")
 
 
 def handle_pytest(runner: Runner, job: dict, folder: pathlib.Path) -> dict:
-    """Run the test suite on this machine. args: ``paths`` (list), ``k`` (expression), ``full`` (bool), ``native`` (real Windows display plugin)."""
+    """Run the test suite on this machine. args: ``paths`` (list), ``k`` (expression), ``full`` (bool), ``native`` (real Windows display plugin),
+    ``workers`` (parallel processes: a number or ``auto``)."""
     args = job["args"]
+    problem = ensure_test_tools(runner, folder)
+    if problem:
+        return result("error", problem)
     command = [runner.python, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={folder / 'junit.xml'}", *args.get("paths", [])]
+    if args.get("workers"):
+        command += ["-n", str(args["workers"])]
     if args.get("k"):
         command += ["-k", str(args["k"])]
     env = {"QUILL_FULL": "1"} if args.get("full") else {}

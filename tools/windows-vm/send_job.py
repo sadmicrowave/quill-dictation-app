@@ -2,7 +2,7 @@
 
     python tools/windows-vm/send_job.py ping
     python tools/windows-vm/send_job.py sync                       # copy the code the last sync-to-share.sh left, install requirements
-    python tools/windows-vm/send_job.py pytest --k windows         # pytest on Windows (--full, --native, --path tests/x.py)
+    python tools/windows-vm/send_job.py pytest --k windows         # pytest on Windows (--full, --native, --workers auto, --path tests/x.py)
     python tools/windows-vm/send_job.py looks | dictation | libreoffice
 
 Prints the result, the checks that failed and where the screenshots are (``~/Developer/QuillShare/out/<id>/``). Exit code 0 only when it passed.
@@ -78,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--path", action="append", default=[], help="pytest: a test file or folder (repeatable)")
     parser.add_argument("--full", action="store_true", help="pytest: every test, the slow ones too")
     parser.add_argument("--native", action="store_true", help="pytest: the real display plugin instead of the headless one")
+    parser.add_argument("--workers", help="pytest: run in parallel with this many processes (a number, or auto)")
     parser.add_argument("--no-install", action="store_true", help="sync: do not install requirements")
     args = parser.parse_args(argv)
     age = runner_age(args.share)
@@ -86,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
               "'Install job runner.bat' once, or start it by hand; the job is left waiting.")
     job_args: dict = {}
     if args.kind == "pytest":
-        job_args = {"paths": args.path, "k": args.k, "full": args.full, "native": args.native}
+        job_args = {"paths": args.path, "k": args.k, "full": args.full, "native": args.native, "workers": args.workers}
     if args.kind == "sync":
         job_args = {"no_install": args.no_install}
     job_id = submit(args.share, args.kind, job_args)

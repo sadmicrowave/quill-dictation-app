@@ -145,6 +145,34 @@ class TestTheKindsOfJob(Case):
         self.assertIn("2 passed", outcome["summary"])
         self.assertTrue((self.share / "out" / job_id / "junit.xml").is_file())
 
+    def test_pytest_can_run_in_parallel(self):
+        src = self.work / "src"
+        src.mkdir(parents=True)
+        (src / "test_probe.py").write_text("def test_a():\n    assert True\n\ndef test_b():\n    assert True\n", encoding="utf-8")
+        job_id = send.submit(self.share, "pytest", {"paths": ["test_probe.py"], "workers": 2})
+        self.runner.poll_once()
+        outcome = self.result(job_id)
+        self.assertEqual(outcome["status"], "passed", outcome)
+        self.assertIn("2 passed", outcome["summary"])
+
+    def test_a_missing_pytest_is_installed_before_the_tests_run(self):
+        calls = []
+        real = runner_module.run_command
+
+        def fake(runner, args, folder, timeout, **kwargs):
+            calls.append(args)
+            return 0
+        original_run = runner_module.subprocess.run
+        runner_module.run_command = fake
+        runner_module.subprocess.run = lambda *a, **k: type("P", (), {"returncode": 1})()           # (the probe: pytest is not importable)
+        try:
+            problem = runner_module.ensure_test_tools(self.runner, self.share)
+        finally:
+            runner_module.run_command = real
+            runner_module.subprocess.run = original_run
+        self.assertIsNone(problem)
+        self.assertEqual(calls[0][-2:], ["pytest", "pytest-xdist"])
+
     def test_a_failing_test_is_a_failed_job_with_the_failure_in_the_log(self):
         src = self.work / "src"
         src.mkdir(parents=True)
