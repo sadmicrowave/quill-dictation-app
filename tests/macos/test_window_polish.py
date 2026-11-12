@@ -407,6 +407,21 @@ class TestSectionHeadings(unittest.TestCase):
 class TestResizingKeepsAlignment(unittest.TestCase):
     """Making the window taller gives the height to the Current Row box; nothing else gaps or stretches."""
 
+    def setUp(self):
+        # The Start button's least height comes from Quill's own style sheet; without it (a run that reaches this class before any
+        # test has installed the theme) the system style makes the button taller. So the theme is installed here, and put back.
+        before = (_app.styleSheet(), _app.palette(), _app.property("quillThemeKey"), _app.property("quillBackdrop"))
+        self.addCleanup(self._restore_theme, before)
+        theme.apply_theme(_app, "light", "violet", "compact", backdrop=1.0)
+
+    @staticmethod
+    def _restore_theme(before):
+        sheet, palette, key, backdrop = before
+        _app.setStyleSheet(sheet)
+        _app.setPalette(palette)
+        _app.setProperty("quillThemeKey", key)
+        _app.setProperty("quillBackdrop", backdrop)
+
     def top(self, w, name):
         widget = getattr(w, name)
         return widget.mapTo(w.root, widget.rect().topLeft()).y()
